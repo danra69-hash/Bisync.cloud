@@ -57,12 +57,12 @@ test('Split Use parent nett recipe cost is 0.0125/g when 20% peels take 0% value
         key: 'peels',
         name: 'Carrot Peels',
         qty: '200',
-        inventoryUom: 'Gr',
+        uom: 'Gr',
         valueAssignedPct: '0',
         isWaste: false,
       }),
     ],
   };
-  const nettCost = calcSplitUseNettUnitCost(10, config, 'Kg', 'Gr', '1', '1000');
+  const nettCost = calcSplitUseNettUnitCost(10, config, 'Gr');
   assert.equal(Number(nettCost.toFixed(4)), 0.0125);
 });

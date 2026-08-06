@@ -43,9 +43,9 @@ public class WastageService(
                     .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
 
             var deductQty = quantity;
-            var deductUom = (uom ?? string.Empty).Trim();
-            if (ingredient is not null)
-                (deductQty, deductUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, deductQty, deductUom);
+            var deductUom = !string.IsNullOrWhiteSpace(uom)
+                ? uom.Trim()
+                : ingredient?.RecipeUom.Trim() ?? string.Empty;
 
             var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
                 itemKey.Trim(),
@@ -69,7 +69,7 @@ public class WastageService(
             companyId,
             loc,
             [loc],
-            "inventory",
+            "recipe",
             wastedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             cancellationToken);
 
@@ -150,7 +150,8 @@ public class WastageService(
             var deductUom = entry.Uom;
             if (ingredient is not null)
             {
-                (deductQty, deductUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, deductQty, deductUom);
+                if (string.IsNullOrWhiteSpace(deductUom))
+                    deductUom = ingredient.RecipeUom.Trim();
                 if (string.IsNullOrWhiteSpace(entry.ItemName))
                     entry.ItemName = ingredient.Name;
             }
@@ -321,7 +322,7 @@ public class WastageService(
             var qty = line.Quantity * quantity;
             if (qty <= 0) continue;
 
-            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+            var (deductQty, deductUom) = await ToComponentDeductionAsync(
                 line.ComponentId,
                 companyId,
                 qty,
@@ -348,7 +349,7 @@ public class WastageService(
             var qty = pack.Quantity * quantity;
             if (qty <= 0) continue;
 
-            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+            var (deductQty, deductUom) = await ToComponentDeductionAsync(
                 pack.ComponentId,
                 companyId,
                 qty,
@@ -445,7 +446,7 @@ public class WastageService(
             var qty = line.Quantity * shortfall;
             if (qty <= 0) continue;
 
-            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+            var (deductQty, deductUom) = await ToComponentDeductionAsync(
                 line.ComponentId,
                 companyId,
                 qty,
@@ -472,7 +473,7 @@ public class WastageService(
             var qty = pack.Quantity * shortfall;
             if (qty <= 0) continue;
 
-            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+            var (deductQty, deductUom) = await ToComponentDeductionAsync(
                 pack.ComponentId,
                 companyId,
                 qty,
@@ -539,7 +540,7 @@ public class WastageService(
             unitPriceOverride: unitPrice);
     }
 
-    async Task<(decimal Quantity, string Uom)> ToInventoryDeductionAsync(
+    async Task<(decimal Quantity, string Uom)> ToComponentDeductionAsync(
         string componentId,
         int companyId,
         decimal quantity,
@@ -554,11 +555,12 @@ public class WastageService(
                 .FirstOrDefaultAsync(i => i.ComponentId == componentId, cancellationToken);
 
         if (ingredient is null)
-            return (quantity, uom);
+            return (quantity, uom.Trim());
 
         // Recipe qty is nett usable; inflate by Yield Loss % before stock write.
         var grossQty = ComponentYieldLossRules.ToGrossQuantity(ingredient, quantity);
-        return IngredientUomBridge.ToInventoryPreferred(ingredient, grossQty, uom);
+        var resolvedUom = string.IsNullOrWhiteSpace(uom) ? ingredient.RecipeUom : uom;
+        return (grossQty, resolvedUom.Trim());
     }
 
     static DateTime EndOfUtcDay(DateOnly date) =>

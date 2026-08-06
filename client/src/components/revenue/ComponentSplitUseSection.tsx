@@ -4,7 +4,6 @@ import { inputCls, qtyPriceWidthCls, selectCls } from '../../data/componentForm'
 import {
   calcSplitUseLineAssignedValue,
   createSplitUseLine,
-  resolveSplitUseBasisUom,
   SPLIT_USE_UOM_OPTIONS,
   sumSplitUseLineQtyInBasis,
   type ComponentSplitUseConfig,
@@ -28,14 +27,10 @@ function updateLine(lines: SplitUseLine[], key: string, patch: Partial<SplitUseL
 export function ComponentSplitUseSection({ form, componentPrice, principalQty, onChange }: Props) {
   const { number } = useCountryFormatters();
   const splitUse = form.splitUse;
-  const basisUom = resolveSplitUseBasisUom(splitUse.qtyBasis, form.inventoryUnit, form.recipeUnit);
+  const basisUom = form.recipeUnit;
   const { total: lineTotal } = sumSplitUseLineQtyInBasis(
     splitUse.lines,
     basisUom,
-    form.inventoryUnit,
-    form.recipeUnit,
-    form.convertFromInventoryQty,
-    form.convertToRecipeQty,
   );
   const componentQty = parseFloat(splitUse.componentQty) || 0;
   // Full butcher splits may consume 100% of the reference qty (nett = 0).
@@ -46,10 +41,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
       line,
       splitUse,
       componentPrice,
-      form.inventoryUnit,
       form.recipeUnit,
-      form.convertFromInventoryQty,
-      form.convertToRecipeQty,
       principalQty,
     );
     return sum + (value ?? 0);
@@ -71,8 +63,8 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
           <p className="font-medium text-foreground truncate">{form.name.trim() || '—'}</p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Inventory UOM</p>
-          <p className="font-medium text-foreground">{form.inventoryUnit}</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Principal Component UOM</p>
+          <p className="font-medium text-foreground">{form.recipeUnit}</p>
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">QTY</p>
@@ -85,14 +77,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
               value={splitUse.componentQty}
               onChange={e => patchSplitUse({ componentQty: e.target.value })}
             />
-            <select
-              className={`${selectCls} w-28`}
-              value={splitUse.qtyBasis}
-              onChange={e => patchSplitUse({ qtyBasis: e.target.value as 'inventory' | 'recipe' })}
-            >
-              <option value="inventory">{form.inventoryUnit}</option>
-              <option value="recipe">{form.recipeUnit}</option>
-            </select>
+            <span className="text-xs text-muted-foreground">{form.recipeUnit}</span>
           </div>
         </div>
       </div>
@@ -104,7 +89,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
             <tr className="border-b border-border bg-muted/20">
               <TableHeaderCell>Sub-component Name</TableHeaderCell>
               <TableHeaderCell>QTY</TableHeaderCell>
-              <TableHeaderCell>Inventory UOM</TableHeaderCell>
+              <TableHeaderCell>UOM</TableHeaderCell>
               <TableHeaderCell headerAlign="right">Value Assigned %</TableHeaderCell>
               <TableHeaderCell headerAlign="right">Calculated Value</TableHeaderCell>
               <TableHeaderCell headerAlign="center">Waste</TableHeaderCell>
@@ -117,10 +102,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
                 line,
                 splitUse,
                 componentPrice,
-                form.inventoryUnit,
                 form.recipeUnit,
-                form.convertFromInventoryQty,
-                form.convertToRecipeQty,
                 principalQty,
               );
               return (
@@ -146,8 +128,8 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
                   <td className="p-2">
                     <select
                       className={`${selectCls} w-24`}
-                      value={line.inventoryUom}
-                      onChange={e => patchLine(line.key, { inventoryUom: e.target.value })}
+                      value={line.uom}
+                      onChange={e => patchLine(line.key, { uom: e.target.value })}
                     >
                       {SPLIT_USE_UOM_OPTIONS.map(uom => (
                         <option key={uom} value={uom}>{uom}</option>

@@ -17,7 +17,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
-import { fromApiUom } from '../../data/componentForm';
+import { fromApiUom, parseDetailConfigJson } from '../../data/componentForm';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -97,10 +97,9 @@ function productUoms(p: Product): string[] {
 }
 
 function componentUoms(ing: Ingredient): string[] {
-  const inventory = fromApiUom(ing.inventoryUom || '');
   const recipe = fromApiUom(ing.recipeUom || '');
-  // Prefer inventory UOM first — stock cards default to inventory units.
-  return uniqueUoms([inventory], [recipe]);
+  const detail = parseDetailConfigJson(ing.detailConfigJson);
+  return uniqueUoms([recipe], detail.altRecipeUnits.map(alt => fromApiUom(alt.unit)));
 }
 
 function formatWastedDate(iso: string) {

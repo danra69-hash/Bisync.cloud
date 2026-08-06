@@ -464,32 +464,48 @@ public sealed class InventoryAlertComputationService(
         if (qty <= 0) return 0;
         var lot = NormalizeUom(lotUom);
         var recipe = NormalizeUom(ingredient.RecipeUom);
-        var inventory = NormalizeUom(ingredient.InventoryUom);
 
         if (string.IsNullOrEmpty(lot) || string.IsNullOrEmpty(recipe) || lot == recipe)
             return qty;
 
-        if (lot == inventory && TryReadConversion(ingredient.DetailConfigJson, out var fromInv, out var toRecipe)
-            && fromInv > 0)
+        if (TryReadAlternativeConversion(ingredient.DetailConfigJson, lot, out var fromQty, out var recipeQty))
         {
-            return qty * (toRecipe / fromInv);
+            return qty * (recipeQty / fromQty);
         }
 
         // Unknown UOM mapping — treat as already recipe-compatible rather than drop the lot.
         return qty;
     }
 
-    static bool TryReadConversion(string? json, out decimal inventoryQty, out decimal recipeQty)
+    static bool TryReadAlternativeConversion(
+        string? json,
+        string normalizedUnit,
+        out decimal fromQty,
+        out decimal recipeQty)
     {
-        inventoryQty = recipeQty = 0;
+        fromQty = recipeQty = 0;
         if (string.IsNullOrWhiteSpace(json) || json is "{}") return false;
         try
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
-            inventoryQty = ReadDecimal(root, "convertFromInventoryQty", "ConvertFromInventoryQty");
-            recipeQty = ReadDecimal(root, "convertToRecipeQty", "ConvertToRecipeQty");
-            return inventoryQty > 0 && recipeQty > 0;
+            if (!root.TryGetProperty("altRecipeUnits", out var alternatives)
+                || alternatives.ValueKind != JsonValueKind.Array)
+                return false;
+
+            foreach (var alternative in alternatives.EnumerateArray())
+            {
+                if (alternative.ValueKind != JsonValueKind.Object
+                    || !alternative.TryGetProperty("unit", out var unitElement)
+                    || unitElement.ValueKind != JsonValueKind.String
+                    || NormalizeUom(unitElement.GetString()) != normalizedUnit)
+                    continue;
+
+                fromQty = ReadDecimal(alternative, "fromQty", "FromQty");
+                recipeQty = ReadDecimal(alternative, "qty", "Qty");
+                return fromQty > 0 && recipeQty > 0;
+            }
+            return false;
         }
         catch (JsonException)
         {

@@ -19,8 +19,6 @@ import {
   generateComponentId,
   getConversion,
   getComponentUomChoices,
-  isConversionQtyAutoFilled,
-  resolveInventoryToRecipeQty,
   inputCls,
   isComponentNameTaken,
   findSimilarComponentNames,
@@ -43,11 +41,8 @@ import {
 } from './VendorProductTable';
 import { isVendorProductTagReady, countComponentTaggedVendors } from '../../data/vendorProductTagging';
 import {
-  dailyUsageToRecipeBasis,
   formatParStock,
-  resolveDailyUsageInBasis,
   resolveParStockDisplay,
-  type ParStockUomBasis,
 } from '../../data/componentParStock';
 import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { ComponentSplitUseSection } from './ComponentSplitUseSection';
@@ -227,7 +222,11 @@ function refreshAltUnitQtys(altUnits: AltUnitEntry[], principalUom: string): Alt
 }
 
 function isAltQtyAutoFilled(altUnit: string, principalUom: string, qty: string, fromQty: string) {
-  return isConversionQtyAutoFilled(altUnit, principalUom, qty, fromQty);
+  const conversion = getConversion(altUnit, principalUom);
+  const parsedQty = parseFloat(qty);
+  if (conversion === null || !Number.isFinite(parsedQty)) return false;
+  const from = parseFloat(fromQty || '1') || 1;
+  return Math.abs(parsedQty - conversion * from) < 0.0001;
 }
 
 type PrincipalAlternateUomBlockProps = {
@@ -235,18 +234,11 @@ type PrincipalAlternateUomBlockProps = {
   alternateLabel: string;
   addAlternateLabel: string;
   principalUnit: string;
-  referencePrincipalUom?: string;
-  referenceFromQty?: string;
-  referenceQty?: string;
-  referenceQtyAutoFilled?: boolean;
-  onReferenceFromQtyChange?: (fromQty: string) => void;
-  onReferenceQtyChange?: (qty: string) => void;
   altUnits: AltUnitEntry[];
   onPrincipalChange: (unit: string) => void;
   onAltUnitsChange: (units: AltUnitEntry[]) => void;
   showComponentUomChoices?: boolean;
   className?: string;
-  principalAside?: React.ReactNode;
 };
 
 function PrincipalAlternateUomBlock({
@@ -254,18 +246,11 @@ function PrincipalAlternateUomBlock({
   alternateLabel,
   addAlternateLabel,
   principalUnit,
-  referencePrincipalUom,
-  referenceFromQty,
-  referenceQty,
-  referenceQtyAutoFilled = false,
-  onReferenceFromQtyChange,
-  onReferenceQtyChange,
   altUnits,
   onPrincipalChange,
   onAltUnitsChange,
   showComponentUomChoices = false,
   className = 'mb-6',
-  principalAside,
 }: PrincipalAlternateUomBlockProps) {
   const recipeUnits = getKnownRecipeUnits();
   const unitOptions = recipeUnits.filter(u => u !== principalUnit);
@@ -311,7 +296,7 @@ function PrincipalAlternateUomBlock({
 
   return (
     <div className={className}>
-      <div className={`mb-5 ${principalAside ? 'flex flex-wrap items-start gap-4' : ''}`}>
+      <div className="mb-5">
         <FormField label={principalLabel}>
           <select className={`${selectCls} w-40`} value={principalUnit} onChange={e => onPrincipalChange(e.target.value)}>
             {showComponentUomChoices && componentUomChoices.length > 0 && (
@@ -331,36 +316,7 @@ function PrincipalAlternateUomBlock({
             {!showComponentUomChoices && recipeUnits.map(u => <option key={u}>{u}</option>)}
           </select>
         </FormField>
-        {principalAside}
       </div>
-
-      {referencePrincipalUom && onReferenceFromQtyChange && onReferenceQtyChange && (
-        principalUnit === referencePrincipalUom ? (
-          <div className="mb-4 rounded-md border border-border bg-muted/20 p-3">
-            <p className="text-xs text-muted-foreground">
-              Inventory UOM matches principal component UOM — no conversion required.
-            </p>
-          </div>
-        ) : (
-        <div className="mb-4">
-          <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">
-            Principal Conversion Reference
-          </p>
-          <p className="text-xs text-muted-foreground mb-2">
-            Define how inventory UOM converts to principal component UOM (auto-filled when known).
-          </p>
-          <UomConversionLine
-            unit={principalUnit}
-            fromQty={referenceFromQty ?? ''}
-            onFromQtyChange={onReferenceFromQtyChange}
-            qty={referenceQty ?? ''}
-            onQtyChange={onReferenceQtyChange}
-            targetUom={referencePrincipalUom}
-            autoFilled={referenceQtyAutoFilled}
-          />
-        </div>
-        )
-      )}
 
       <div>
         <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">
@@ -429,7 +385,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [vendorSearch, setVendorSearch] = useState('');
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationOption[]>([]);
-  const [parStockUomBasis, setParStockUomBasis] = useState<ParStockUomBasis>('recipe');
   const [splitUseError, setSplitUseError] = useState<string | null>(null);
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
   const [catalogVersion, setCatalogVersion] = useState(0);
@@ -585,26 +540,11 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     });
   }
 
-  function resolveConvertToRecipeQty(
-    inventoryUnit: string,
-    recipeUnit: string,
-    fromQty: string,
-    currentQty: string,
-  ) {
-    return resolveInventoryToRecipeQty(inventoryUnit, recipeUnit, fromQty, currentQty);
-  }
-
   function handleComponentUnitChange(val: string) {
     const isAlternateChoice = form.altRecipeUnits.some(a => a.unit === val) && val !== form.recipeUnit;
     if (isAlternateChoice) {
       const swapped = swapPrincipalWithAlternateUnit(form.recipeUnit, form.altRecipeUnits, val);
       setForm(f => {
-        const converted = resolveConvertToRecipeQty(
-          f.inventoryUnit,
-          swapped.principalUnit,
-          f.convertFromInventoryQty,
-          f.convertToRecipeQty,
-        );
         const choices = getComponentUomChoices(swapped.principalUnit, swapped.altUnits);
         const vendorProductComponentUom = Object.fromEntries(
           Object.entries(f.vendorProductComponentUom).filter(([, uom]) => choices.includes(uom)),
@@ -613,8 +553,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
           ...f,
           recipeUnit: swapped.principalUnit,
           altRecipeUnits: refreshAltUnitQtys(swapped.altUnits, swapped.principalUnit),
-          convertFromInventoryQty: converted.fromQty,
-          convertToRecipeQty: converted.qty,
           vendorProductComponentUom,
         };
       });
@@ -622,7 +560,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     }
 
     setForm(f => {
-      const converted = resolveConvertToRecipeQty(f.inventoryUnit, val, f.convertFromInventoryQty, f.convertToRecipeQty);
       const choices = getComponentUomChoices(val, f.altRecipeUnits);
       const vendorProductComponentUom = Object.fromEntries(
         Object.entries(f.vendorProductComponentUom).filter(([, uom]) => choices.includes(uom)),
@@ -631,34 +568,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         ...f,
         recipeUnit: val,
         altRecipeUnits: refreshAltUnitQtys(f.altRecipeUnits, val),
-        convertFromInventoryQty: converted.fromQty,
-        convertToRecipeQty: converted.qty,
         vendorProductComponentUom,
-      };
-    });
-  }
-
-  function handleInventoryUnitChange(val: string) {
-    setForm(f => {
-      const converted = resolveConvertToRecipeQty(val, f.recipeUnit, f.convertFromInventoryQty, f.convertToRecipeQty);
-      return {
-        ...f,
-        inventoryUnit: val,
-        altInventoryUnits: refreshAltUnitQtys(f.altInventoryUnits, val),
-        convertFromInventoryQty: converted.fromQty,
-        convertToRecipeQty: converted.qty,
-      };
-    });
-  }
-
-  function handleReferenceFromQtyChange(fromQty: string) {
-    setForm(f => {
-      const from = parseFloat(fromQty || '1') || 1;
-      const conv = getConversion(f.inventoryUnit, f.recipeUnit);
-      return {
-        ...f,
-        convertFromInventoryQty: fromQty,
-        convertToRecipeQty: conv !== null ? String(conv * from) : f.convertToRecipeQty,
       };
     });
   }
@@ -803,21 +713,14 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     ? toSplitUseBasisQty(
       taggedPricing.principalQty,
       taggedPricing.productUom,
-      form.splitUse,
-      form.inventoryUnit,
       form.recipeUnit,
-      form.convertFromInventoryQty,
-      form.convertToRecipeQty,
     ) ?? undefined
     : undefined;
   const splitNettPrice = form.splitUse.enabled
     ? calcSplitUseNettUnitCost(
       delivPrice,
       form.splitUse,
-      form.inventoryUnit,
       form.recipeUnit,
-      form.convertFromInventoryQty,
-      form.convertToRecipeQty,
       taggedReceiptBasisQty,
     )
     : 0;
@@ -828,23 +731,12 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     ? parseFloat(form.dailyUsage) || 0
     : 0;
 
-  const dailyUsageDisplay = resolveDailyUsageInBasis(
-    dailyUsageRecipe,
-    parStockUomBasis,
-    form.recipeUnit,
-    form.inventoryUnit,
-    form.convertFromInventoryQty,
-    form.convertToRecipeQty,
-  );
+  const dailyUsageDisplay = dailyUsageRecipe;
 
   const parStockDisplay = resolveParStockDisplay({
     dailyUsage: dailyUsageRecipe,
     orderFreqDays: parseInt(form.orderFreqDays, 10) || 0,
-    basis: parStockUomBasis,
     recipeUnit: form.recipeUnit,
-    inventoryUnit: form.inventoryUnit,
-    convertFromInventoryQty: form.convertFromInventoryQty,
-    convertToRecipeQty: form.convertToRecipeQty,
   });
 
   function handleDailyUsageChange(rawValue: string) {
@@ -854,19 +746,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     }
     const parsed = parseFloat(rawValue);
     if (!Number.isFinite(parsed) || parsed <= 0) return;
-    const recipeValue = dailyUsageToRecipeBasis(
-      parsed,
-      parStockUomBasis,
-      form.recipeUnit,
-      form.inventoryUnit,
-      form.convertFromInventoryQty,
-      form.convertToRecipeQty,
-    );
-    set('dailyUsage', String(recipeValue));
-  }
-
-  function toggleParStockUomBasis() {
-    setParStockUomBasis(prev => (prev === 'recipe' ? 'inventory' : 'recipe'));
+    set('dailyUsage', String(parsed));
   }
 
   const vendorNames = useMemo(() => {
@@ -883,8 +763,8 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         nextSplitUse.lines = [createSplitUseLine()];
       }
       if (enabled && (!nextSplitUse.componentQty.trim() || nextSplitUse.componentQty === '1')) {
-        nextSplitUse.componentQty = f.convertFromInventoryQty || '1';
-        nextSplitUse.qtyBasis = 'inventory';
+        nextSplitUse.componentQty = '1';
+        nextSplitUse.qtyBasis = 'recipe';
       }
       return {
         ...f,
@@ -908,10 +788,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     }
     const splitError = validateSplitUseConfig(
       form.splitUse,
-      form.inventoryUnit,
       form.recipeUnit,
-      form.convertFromInventoryQty,
-      form.convertToRecipeQty,
     );
     if (splitError) {
       setSplitUseError(splitError);
@@ -927,8 +804,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       storageNote: form.storageNote,
       active: form.active,
       recipeUOM: toApiUom(form.recipeUnit),
-      inventoryUOM: toApiUom(form.inventoryUnit),
-      lastPriceInventory: delivPrice,
       lastPriceRecipe: componentPrice,
       dailyUsage: dailyUsageRecipe,
       orderFreqDays: parseInt(form.orderFreqDays, 10) || 7,
@@ -1077,8 +952,8 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
 
             <PrincipalAlternateUomBlock
               principalLabel="Principal Component UOM"
-              alternateLabel="Alternate Component UOM"
-              addAlternateLabel="+ Add alternate component UOM"
+              alternateLabel="Alternate UOM"
+              addAlternateLabel="+ Add alternate UOM"
               principalUnit={form.recipeUnit}
               altUnits={form.altRecipeUnits}
               showComponentUomChoices
@@ -1086,82 +961,39 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               onAltUnitsChange={handleAltRecipeUnitsChange}
             />
 
-            <PrincipalAlternateUomBlock
-              principalLabel="Principal Inventory UOM"
-              alternateLabel="Alternate Inventory UOM"
-              addAlternateLabel="+ Add alternate inventory UOM"
-              principalUnit={form.inventoryUnit}
-              referencePrincipalUom={form.recipeUnit}
-              referenceFromQty={form.convertFromInventoryQty}
-              referenceQty={form.convertToRecipeQty}
-              referenceQtyAutoFilled={
-                form.inventoryUnit !== form.recipeUnit
-                && isAltQtyAutoFilled(
-                  form.inventoryUnit,
-                  form.recipeUnit,
-                  form.convertToRecipeQty,
-                  form.convertFromInventoryQty,
-                )
-              }
-              onReferenceFromQtyChange={handleReferenceFromQtyChange}
-              onReferenceQtyChange={qty => set('convertToRecipeQty', qty)}
-              altUnits={form.altInventoryUnits}
-              onPrincipalChange={handleInventoryUnitChange}
-              onAltUnitsChange={units => set('altInventoryUnits', units.slice(0, MAX_ALTERNATE_UOMS))}
-              principalAside={(
-                <div className="flex-1 min-w-[280px] rounded-md border border-border bg-muted/10 p-3">
-                  <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.splitUse.enabled}
-                      onChange={e => handleSplitUseEnabledChange(e.target.checked)}
-                      className="rounded border-border"
-                    />
-                    Split Use
-                  </label>
-                  {form.splitUse.enabled ? (
-                    <ComponentSplitUseSection
-                      form={form}
-                      componentPrice={componentPrice}
-                      principalQty={taggedPricing?.principalQty ?? (parseFloat(form.convertToRecipeQty) || 1)}
-                      onChange={splitUse => setForm(f => ({ ...f, splitUse }))}
-                    />
-                  ) : (
-                    <p className="text-[10px] text-muted-foreground mt-2">
-                      Break this component into sub-components for stock and costing (e.g. whole chicken into parts).
-                    </p>
-                  )}
-                </div>
+            <div className="rounded-md border border-border bg-muted/10 p-3">
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.splitUse.enabled}
+                  onChange={e => handleSplitUseEnabledChange(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Split Use
+              </label>
+              {form.splitUse.enabled ? (
+                <ComponentSplitUseSection
+                  form={form}
+                  componentPrice={componentPrice}
+                  principalQty={taggedPricing?.principalQty ?? 1}
+                  onChange={splitUse => setForm(f => ({ ...f, splitUse }))}
+                />
+              ) : (
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  Break this component into sub-components for stock and costing (e.g. whole chicken into parts).
+                </p>
               )}
-            />
+            </div>
           </div>
 
           <div>
             <SectionTitle>Usage &amp; Par Stock</SectionTitle>
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <p className="text-xs text-muted-foreground font-sans">
-                Base par stock = daily usage × order frequency. Stored daily usage uses component UOM.
-              </p>
-              <div className="flex items-center border border-border rounded-md overflow-hidden text-xs font-sans shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setParStockUomBasis('recipe')}
-                  className={`px-3 py-1.5 transition-colors ${parStockUomBasis === 'recipe' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  Component UOM
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setParStockUomBasis('inventory')}
-                  className={`px-3 py-1.5 border-l border-border transition-colors ${parStockUomBasis === 'inventory' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  Inventory UOM
-                </button>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground font-sans mb-3">
+              Base par stock = daily usage × order frequency. Stored daily usage uses the principal component UOM.
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <FormField label={`Daily Usage (${parStockUomBasis === 'recipe' ? form.recipeUnit : form.inventoryUnit}/day)`}>
+              <FormField label={`Daily Usage (${form.recipeUnit}/day)`}>
                 <input
                   className={inputCls}
                   type="number"
@@ -1183,14 +1015,9 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 />
               </FormField>
               <FormField label="Base Par Stock">
-                <button
-                  type="button"
-                  onClick={toggleParStockUomBasis}
-                  className={`${inputCls} text-left cursor-pointer hover:border-primary/60 transition-colors`}
-                  title="Click to switch par stock UOM basis"
-                >
+                <div className={`${inputCls} text-left`}>
                   {formatParStock(parStockDisplay.value, parStockDisplay.uom)}
-                </button>
+                </div>
               </FormField>
             </div>
           </div>

@@ -974,9 +974,7 @@ public class IngredientsController(
                 i.Category,
                 i.Group,
                 i.RecipeUom,
-                i.InventoryUom,
                 i.LastPriceRecipe,
-                i.LastPriceInventory,
                 dailyUsage,
                 orderFreqDays = orderFreq,
                 parStock,
@@ -1026,7 +1024,6 @@ public class IngredientsController(
         item.Category = IngredientCatalogNormalizer.NormalizeCategory(updated.Category);
         item.Group = IngredientCatalogNormalizer.NormalizeGroup(updated.Group);
         item.RecipeUom = updated.RecipeUom;
-        item.InventoryUom = updated.InventoryUom;
         if (item.Active && !updated.Active)
         {
             var deactivateError = await DeactivationGuardService.ValidateComponentDeactivationAsync(db, item);
@@ -1035,7 +1032,6 @@ public class IngredientsController(
         }
         item.Active = updated.Active;
         item.LastPriceRecipe = updated.LastPriceRecipe;
-        item.LastPriceInventory = updated.LastPriceInventory;
         item.StorageJson = updated.StorageJson;
         item.StorageNote = updated.StorageNote ?? string.Empty;
         item.DailyUsage = updated.DailyUsage;

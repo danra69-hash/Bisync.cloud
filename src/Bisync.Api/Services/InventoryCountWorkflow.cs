@@ -53,7 +53,7 @@ public sealed class InventoryCountSessionDto
     public string SessionType { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
     public string PeriodMonth { get; init; } = string.Empty;
-    public string UomMode { get; init; } = "inventory";
+    public string UomMode { get; init; } = "recipe";
     public string ItemTypeFilter { get; init; } = "all";
     public string GroupFilter { get; init; } = "All";
     public string CountDate { get; init; } = string.Empty;
@@ -77,7 +77,7 @@ public sealed class InventoryCountSessionSummaryDto
     public string SessionType { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
     public string PeriodMonth { get; init; } = string.Empty;
-    public string UomMode { get; init; } = "inventory";
+    public string UomMode { get; init; } = "recipe";
     public string ItemTypeFilter { get; init; } = "all";
     public string GroupFilter { get; init; } = "All";
     public string CountDate { get; init; } = string.Empty;

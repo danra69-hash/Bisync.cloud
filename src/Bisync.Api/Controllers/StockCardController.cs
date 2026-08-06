@@ -12,14 +12,14 @@ public class StockCardController(StockCardService stockCardService) : Controller
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? itemType = "all",
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? period = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
             return Ok(Array.Empty<object>());
 
-        var rows = await stockCardService.ListAsync(companyId, locationIdList, itemType, uomMode ?? "inventory", period);
+        var rows = await stockCardService.ListAsync(companyId, locationIdList, itemType, "recipe", period);
         return Ok(rows.Select(r => new
         {
             r.ItemType,
@@ -34,7 +34,6 @@ public class StockCardController(StockCardService stockCardService) : Controller
             onHandAverageCogs = r.OnHandAverageCogs,
             uom = r.Uom,
             recipeUom = r.RecipeUom,
-            inventoryUom = r.InventoryUom,
         }));
     }
 
@@ -44,7 +43,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
         string itemKey,
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? period = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
@@ -56,7 +55,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
             itemKey,
             companyId,
             locationIdList,
-            uomMode ?? "inventory",
+            "recipe",
             period);
 
         if (detail is null)
@@ -70,7 +69,6 @@ public class StockCardController(StockCardService stockCardService) : Controller
             detail.Name,
             uom = detail.Uom,
             recipeUom = detail.RecipeUom,
-            inventoryUom = detail.InventoryUom,
             balanceForward = detail.BalanceForward,
             inboundQty = detail.InboundQty,
             outboundQty = detail.OutboundQty,
@@ -127,7 +125,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string locationExternalId,
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? asOfDate = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
@@ -144,7 +142,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
             companyId,
             locationExternalId,
             locationIdList,
-            uomMode ?? "inventory",
+            "recipe",
             parsedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
 
         if (snapshot is null)
@@ -188,7 +186,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
             body.CompanyId,
             body.LocationExternalId,
             locationIdList,
-            body.UomMode ?? "inventory",
+            "recipe",
             adjustmentDate,
             body.Quantity,
             body.Direction,

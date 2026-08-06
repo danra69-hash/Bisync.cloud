@@ -19,8 +19,6 @@ export type TransferProduct = {
 
 export type TransferProductDetail = TransferProduct & {
   recipeUnit?: string
-  inventoryUnit?: string
-  conversionRate?: number
   productionPrice?: number
   averagePrice?: number
   lowPrice?: number
@@ -227,8 +225,6 @@ export async function getTransferProductDetail(
   return {
     ...base,
     recipeUnit: (row.recipeUnitString as string | undefined) || base.uom,
-    inventoryUnit: (row.inventoryUnitString as string | undefined) || undefined,
-    conversionRate: num(row.conversionRate),
     productionPrice: num(row.productionPrice),
     averagePrice: num(row.averagePrice),
     lowPrice: num(row.lowPrice),

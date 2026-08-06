@@ -80,7 +80,7 @@ function buildComponentOption(
   const recipeUnit = fromApiUom(component.recipeUOM);
   const componentUom = product
     ? detail.vendorProductComponentUom[product.id] || recipeUnit
-    : component.inventoryUOM || component.recipeUOM;
+    : component.recipeUOM;
 
   return {
     key: product ? `${component.componentId}::${product.id}` : component.componentId,

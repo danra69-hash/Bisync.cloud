@@ -355,9 +355,6 @@ def infer_category_group(product_name: str) -> tuple[str, str]:
 def empty_detail_config() -> dict:
     return {
         "altRecipeUnits": [],
-        "altInventoryUnits": [],
-        "convertFromInventoryQty": "1",
-        "convertToRecipeQty": "1",
         "taggedVendorProductIds": [],
         "vendorProductPrincipalQty": {},
         "vendorProductLossYield": {},
@@ -370,7 +367,7 @@ def empty_detail_config() -> dict:
         "splitUse": {
             "enabled": False,
             "componentQty": "1",
-            "qtyBasis": "inventory",
+            "qtyBasis": "recipe",
             "lines": [],
         },
     }
@@ -382,7 +379,6 @@ def ensure_component(
     category: str,
     group: str,
     recipe_uom: str,
-    inventory_uom: str,
 ) -> dict | None:
     key = name_key(name)
     existing = by_name.get(key)
@@ -405,9 +401,7 @@ def ensure_component(
         "category": category[:100],
         "group": group[:100],
         "recipeUom": recipe_uom,
-        "inventoryUom": inventory_uom,
         "lastPriceRecipe": 0,
-        "lastPriceInventory": 0,
         "dailyUsage": 0,
         "orderFreqDays": 0,
         "parStock": 0,
@@ -448,18 +442,17 @@ def resolve_ingredient(
 
     stub = STUB_COMPONENTS.get(raw_name.upper()) or STUB_COMPONENTS.get(raw_name)
     if stub:
-        category, group, recipe_uom, inventory_uom = stub
+        category, group, recipe_uom, *_rest = stub
         # Prefer recipe line UOM when present.
         if line_uom:
             recipe_uom = to_api_uom(line_uom)
-        created = ensure_component(raw_name, by_name, category, group, recipe_uom, inventory_uom)
+        created = ensure_component(raw_name, by_name, category, group, recipe_uom)
         return created, "created stub"
 
     # Last resort: create under Food / Recipe Import using line UOM.
     recipe_uom = to_api_uom(line_uom) if line_uom else "g"
-    inv = "kg" if recipe_uom in {"g", "mg"} else ("L" if recipe_uom in {"ml", "cl"} else recipe_uom)
     created = ensure_component(
-        raw_name, by_name, "Food", "Recipe Import", recipe_uom, inv
+        raw_name, by_name, "Food", "Recipe Import", recipe_uom
     )
     return created, "created fallback"
 
@@ -468,9 +461,6 @@ def line_unit_price(component: dict, api_uom: str) -> float:
     recipe_uom = (component.get("recipeUom") or "").lower()
     if recipe_uom == api_uom.lower():
         return float(component.get("lastPriceRecipe") or 0)
-    inventory_uom = (component.get("inventoryUom") or "").lower()
-    if inventory_uom == api_uom.lower():
-        return float(component.get("lastPriceInventory") or 0)
     return float(component.get("lastPriceRecipe") or 0)
 
 

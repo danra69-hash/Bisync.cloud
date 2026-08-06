@@ -18,7 +18,7 @@ function carrotConfig(qty = '200') {
         key: 'peels',
         name: 'Carrot Peels',
         qty,
-        inventoryUom: 'Gr',
+        uom: 'Gr',
         valueAssignedPct: '20',
         isWaste: false,
       }),
@@ -30,13 +30,13 @@ function beefRibConfig() {
   return {
     enabled: true,
     componentQty: '10',
-    qtyBasis: 'inventory',
+    qtyBasis: 'recipe',
     lines: [
       createSplitUseLine({
         key: 'off-bone',
         name: 'Beef Rib Off Bone',
         qty: '8',
-        inventoryUom: 'Kg',
+        uom: 'Kg',
         valueAssignedPct: '100',
         isWaste: false,
       }),
@@ -44,7 +44,7 @@ function beefRibConfig() {
         key: 'bone',
         name: 'Beef Bone',
         qty: '2',
-        inventoryUom: 'Kg',
+        uom: 'Kg',
         valueAssignedPct: '0',
         noValue: true,
         isWaste: false,
@@ -54,17 +54,17 @@ function beefRibConfig() {
 }
 
 test('Split Use accepts outputs that leave nett parent stock', () => {
-  const error = validateSplitUseConfig(carrotConfig(), 'Kg', 'Gr', '1', '1000');
+  const error = validateSplitUseConfig(carrotConfig(), 'Gr');
   assert.equal(error, null);
 });
 
 test('Split Use accepts full butcher split where outputs equal component qty', () => {
-  const error = validateSplitUseConfig(beefRibConfig(), 'Kg', 'Gr', '1', '1000');
+  const error = validateSplitUseConfig(beefRibConfig(), 'Kg');
   assert.equal(error, null);
 });
 
 test('Split Use rejects outputs that exceed component qty', () => {
-  const error = validateSplitUseConfig(carrotConfig('1001'), 'Kg', 'Gr', '1', '1000');
+  const error = validateSplitUseConfig(carrotConfig('1001'), 'Gr');
   assert.match(error ?? '', /cannot exceed component quantity/i);
 });
 
@@ -74,10 +74,7 @@ test('Split Use calculates percentage-assigned output value', () => {
     config.lines[0],
     config,
     10,
-    'Kg',
     'Gr',
-    '1',
-    '1000',
     1000,
   );
   assert.equal(value, 0.4);
@@ -85,11 +82,11 @@ test('Split Use calculates percentage-assigned output value', () => {
 
 test('Tagged 1kg delivery scales a 10kg Split Use recipe into basis qty', () => {
   const config = beefRibConfig();
-  const receiptBasisQty = toSplitUseBasisQty(1, 'Kg', config, 'Kg', 'Gr', '1', '1000');
+  const receiptBasisQty = toSplitUseBasisQty(1, 'Kg', 'Kg');
   assert.equal(receiptBasisQty, 1);
 
   // Full split against 1kg receipt → parent nett unit cost is 0 (value on children).
-  const nett = calcSplitUseNettUnitCost(42, config, 'Kg', 'Gr', '1', '1000', receiptBasisQty);
+  const nett = calcSplitUseNettUnitCost(42, config, 'Kg', receiptBasisQty);
   assert.equal(nett, 0);
 });
 
@@ -103,18 +100,18 @@ test('Tagged receipt qty scales Split Use nett cost correctly', () => {
         key: 'peels',
         name: 'Carrot Peels',
         qty: '200',
-        inventoryUom: 'Gr',
+        uom: 'Gr',
         valueAssignedPct: '0',
       }),
     ],
   };
-  const receiptBasisQty = toSplitUseBasisQty(1000, 'Gr', configZeroValue, 'Kg', 'Gr', '1', '1000');
+  const receiptBasisQty = toSplitUseBasisQty(1000, 'Gr', 'Gr');
   assert.equal(receiptBasisQty, 1000);
-  const nett = calcSplitUseNettUnitCost(10, configZeroValue, 'Kg', 'Gr', '1', '1000', receiptBasisQty);
+  const nett = calcSplitUseNettUnitCost(10, configZeroValue, 'Gr', receiptBasisQty);
   assert.equal(Number(nett.toFixed(4)), 0.0125);
 
   // Same unit cost when tagging half the recipe qty at half the price.
-  const halfReceipt = toSplitUseBasisQty(500, 'Gr', configZeroValue, 'Kg', 'Gr', '1', '1000');
-  const halfNett = calcSplitUseNettUnitCost(5, configZeroValue, 'Kg', 'Gr', '1', '1000', halfReceipt);
+  const halfReceipt = toSplitUseBasisQty(500, 'Gr', 'Gr');
+  const halfNett = calcSplitUseNettUnitCost(5, configZeroValue, 'Gr', halfReceipt);
   assert.equal(Number(halfNett.toFixed(4)), 0.0125);
 });

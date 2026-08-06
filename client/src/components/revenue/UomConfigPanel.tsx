@@ -148,7 +148,6 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
           const ingredients = await api.ingredients(selectedCompanyId);
           const used = ingredients.flatMap(i => [
             fromApiUom(i.recipeUom),
-            fromApiUom(i.inventoryUom),
             fromApiUom(i.parStockUom ?? ''),
           ]);
           ensureRecipeUnitsExist(used, selectedCompanyId);

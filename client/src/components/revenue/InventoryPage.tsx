@@ -37,19 +37,13 @@ import {
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import {
-  buildComponentConversion,
-  computeTotalQty,
-  displayOnHandQty,
-  displayUomForRow,
-} from '../../utils/inventoryUomConversion';
-import {
   currentStockCardMonth,
   earliestStockCardMonth,
   formatStockCardMonthLabel,
 } from './stockCardPeriod';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
-const TABLE_COL_COUNT = 12;
+const TABLE_COL_COUNT = 8;
 const HISTORY_TABLE_COL_COUNT = 13;
 const INVENTORY_TABS = [
   { id: 'count', label: 'Count' },
@@ -70,11 +64,8 @@ type CountSortColumn =
   | 'type'
   | 'group'
   | 'name'
-  | 'uom'
   | 'onHand'
   | 'principalUom'
-  | 'inventoryUom'
-  | 'totalQty'
   | 'area'
   | 'storage';
 
@@ -95,16 +86,12 @@ type HistorySortColumn =
 const COUNT_TABLE_COLUMNS: SortableColumnDef<string>[] = [
   { key: 'type', label: 'Type', ...tableColWidth('7%') },
   { key: 'group', label: 'Group', ...tableColWidth('8%') },
-  { key: 'name', label: 'Name', ...tableColWidth('14%') },
-  { key: 'uom', label: 'UOM', ...tableColWidth('6%') },
-  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const, ...tableColWidth('9%') },
-  { key: 'principalQty', label: 'QTY', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
-  { key: 'inventoryUom', label: 'Inventory UOM', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'inventoryQty', label: 'QTY', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
-  { key: 'totalQty', label: 'Total QTY', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'area', label: 'Area', ...tableColWidth('8%') },
-  { key: 'storage', label: 'Storage', ...tableColWidth('9%') },
+  { key: 'name', label: 'Name', ...tableColWidth('20%') },
+  { key: 'principalUom', label: 'Principal Component UOM', ...tableColWidth('12%') },
+  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth('12%') },
+  { key: 'principalQty', label: 'Counted QTY', align: 'right' as const, sortable: false, ...tableColWidth('12%') },
+  { key: 'area', label: 'Area', ...tableColWidth('12%') },
+  { key: 'storage', label: 'Storage', ...tableColWidth('12%') },
 ] ;
 
 const HISTORY_TABLE_COLUMNS: SortableColumnDef<string>[] = [
@@ -276,7 +263,6 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [countDate, setCountDate] = useState(todayIsoDate);
   const [inventoryMode, setInventoryMode] = useState<InventoryCountSessionType>('spot');
@@ -293,9 +279,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [confirmingHistoryId, setConfirmingHistoryId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ id: number; periodMonth: string } | null>(null);
-  const [recipeQtyByKey, setRecipeQtyByKey] = useState<Record<string, string>>({});
-  const [inventoryQtyByKey, setInventoryQtyByKey] = useState<Record<string, string>>({});
-  const [componentDetails, setComponentDetails] = useState<Record<string, string>>({});
+  const [countedQtyByKey, setCountedQtyByKey] = useState<Record<string, string>>({});
   const [componentStorageByKey, setComponentStorageByKey] = useState<Record<string, string[]>>({});
   const [itemCategoryByKey, setItemCategoryByKey] = useState<Record<string, string>>({});
   const [areaFilter, setAreaFilter] = useState('All');
@@ -322,20 +306,18 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   useEffect(() => {
     setListLoaded(false);
     setRows([]);
-    setRecipeQtyByKey({});
-    setInventoryQtyByKey({});
-    setComponentDetails({});
+    setCountedQtyByKey({});
     setComponentStorageByKey({});
     setItemCategoryByKey({});
     setActiveSession(null);
     setError(null);
     setActionMessage(null);
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, countDate, inventoryMode, categoryFilter]);
+  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, selectedMonth, countDate, inventoryMode, categoryFilter]);
 
   useEffect(() => {
     resetSort();
     resetHistorySort();
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, countDate, inventoryMode, categoryFilter, areaFilter, selectedStorageKeys, resetSort, resetHistorySort]);
+  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, selectedMonth, countDate, inventoryMode, categoryFilter, areaFilter, selectedStorageKeys, resetSort, resetHistorySort]);
 
   useEffect(() => {
     setAreaFilter('All');
@@ -405,21 +387,16 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
       const [stockRows, session, ingredients, products] = await Promise.all([
         api.stockCards(selectedCompanyId, countLocationIds, {
           itemType: itemTypeFilterParam(itemTypeFilter),
-          uomMode: 'inventory',
           period: selectedMonth,
         }),
-        api.activeInventoryCount(inventoryMode, selectedCompanyId, countLocationIds, selectedMonth, uomMode),
+        api.activeInventoryCount(inventoryMode, selectedCompanyId, countLocationIds, selectedMonth),
         api.ingredients(),
         api.products(selectedCompanyId),
       ]);
 
-      const detailMap: Record<string, string> = {};
       const storageMap: Record<string, string[]> = {};
       const categoryMap: Record<string, string> = {};
       for (const ingredient of ingredients) {
-        if (ingredient.detailConfigJson) {
-          detailMap[ingredient.componentId] = ingredient.detailConfigJson;
-        }
         storageMap[ingredient.componentId] = parseComponentStorageJson(ingredient.storageJson);
         categoryMap[`component-${ingredient.componentId}`] = ingredient.category;
       }
@@ -429,24 +406,20 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
       }
 
       setRows(stockRows);
-      setComponentDetails(detailMap);
       setComponentStorageByKey(storageMap);
       setItemCategoryByKey(categoryMap);
       setActiveSession(session);
 
-      const nextRecipe: Record<string, string> = {};
-      const nextInventory: Record<string, string> = {};
+      const nextCounted: Record<string, string> = {};
       if (session) {
         for (const line of session.lines) {
           if (line.countedQty == null) continue;
           const key = `${line.itemType}-${line.itemKey}`;
           const qty = fmtQty(line.countedQty, countryCode);
-          if (uomMode === 'recipe') nextRecipe[key] = qty;
-          else nextInventory[key] = qty;
+          nextCounted[key] = qty;
         }
       }
-      setRecipeQtyByKey(nextRecipe);
-      setInventoryQtyByKey(nextInventory);
+      setCountedQtyByKey(nextCounted);
       setListLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load inventory.');
@@ -454,7 +427,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     } finally {
       setLoading(false);
     }
-  }, [selectedCompanyId, countLocationIds, itemTypeFilter, uomMode, selectedMonth, countDate, inventoryMode]);
+  }, [selectedCompanyId, countLocationIds, itemTypeFilter, selectedMonth, countDate, inventoryMode]);
 
   const filteredRows = useMemo(() => {
     let next = rows;
@@ -510,32 +483,15 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     return map;
   }, [sortedHistoryLineRows]);
 
-  function updateRecipeQty(key: string, value: string) {
+  function updateCountedQty(key: string, value: string) {
     if (isReadOnly) return;
     if (value !== '' && !/^\d*\.?\d*$/.test(value)) return;
-    setRecipeQtyByKey(prev => ({ ...prev, [key]: value }));
-  }
-
-  function updateInventoryQty(key: string, value: string) {
-    if (isReadOnly) return;
-    if (value !== '' && !/^\d*\.?\d*$/.test(value)) return;
-    setInventoryQtyByKey(prev => ({ ...prev, [key]: value }));
-  }
-
-  function rowConversion(row: StockCardListRow) {
-    return buildComponentConversion(row, componentDetails[row.itemKey]);
+    setCountedQtyByKey(prev => ({ ...prev, [key]: value }));
   }
 
   function rowTotalQty(row: StockCardListRow): number | null {
     const key = rowKey(row);
-    const isComponent = row.itemType === 'component';
-    return computeTotalQty(
-      parseQty(recipeQtyByKey[key] ?? ''),
-      parseQty(inventoryQtyByKey[key] ?? ''),
-      uomMode,
-      rowConversion(row),
-      isComponent,
-    );
+    return parseQty(countedQtyByKey[key] ?? '');
   }
 
   const displayRows = useMemo(() => {
@@ -568,11 +524,8 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         type: row => itemTypeLabel(row.itemType),
         group: row => row.group || '',
         name: row => row.name,
-        uom: row => displayUomForRow(row, uomMode),
         onHand: row => row.onHandQty,
         principalUom: row => row.recipeUom || row.uom || '',
-        inventoryUom: row => row.inventoryUom || row.uom || '',
-        totalQty: row => rowTotalQty(row) ?? -1,
         area: row => row.sortArea,
         storage: row => row.sortStorage,
       },
@@ -592,10 +545,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     componentStorageByKey,
     sortColumn,
     sortDirection,
-    uomMode,
-    recipeQtyByKey,
-    inventoryQtyByKey,
-    componentDetails,
+    countedQtyByKey,
     storageAssignmentVersion,
   ]);
 
@@ -615,14 +565,13 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     const lines = filteredRows
       .map(row => {
         const totalQty = rowTotalQty(row);
-        const conv = rowConversion(row);
         return {
           itemType: row.itemType,
           itemKey: row.itemKey,
           itemName: row.name,
           groupName: row.group,
-          uom: displayUomForRow(row, uomMode),
-          systemQty: displayOnHandQty(row, uomMode, conv),
+          uom: row.itemType === 'component' ? row.recipeUom || row.uom : row.uom,
+          systemQty: row.onHandQty,
           countedQty: totalQty,
         };
       })
@@ -642,7 +591,6 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         companyId: selectedCompanyId,
         locationIds: countLocationIds.join(','),
         periodMonth: selectedMonth,
-        uomMode,
         itemTypeFilter: itemTypeFilterParam(itemTypeFilter),
         groupFilter: 'All',
         countDate: inventoryMode === 'spot' ? countDate : new Date().toISOString().slice(0, 10),
@@ -793,17 +741,6 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                   onStorageKeysChange={setSelectedStorageKeys}
                 />
                 <div className="flex flex-col gap-1 shrink-0">
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-                  <select
-                    value={uomMode}
-                    onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-                    className={`${filterSelectCls} min-w-[130px]`}
-                  >
-                    <option value="inventory">Inventory UOM</option>
-                    <option value="recipe">Component UOM</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1 shrink-0">
                   <span className="text-xs font-sans text-transparent uppercase tracking-wider select-none" aria-hidden="true">
                     Create
                   </span>
@@ -929,47 +866,26 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
               visibleItems.map(row => {
                 const key = rowKey(row);
                 const isComponent = row.itemType === 'component';
-                const conv = rowConversion(row);
-                const principalUom = isComponent ? row.recipeUom || row.uom : '—';
-                const inventoryUom = isComponent ? row.inventoryUom || row.uom : row.uom;
-                const totalQty = rowTotalQty(row);
-                const onHand = displayOnHandQty(row, uomMode, conv);
+                const principalUom = isComponent ? row.recipeUom || row.uom : row.uom;
 
                 return (
                   <tr key={key} className="border-b border-border/60 hover:bg-muted/40">
                     <td className="px-3 py-2.5 text-muted-foreground">{itemTypeLabel(row.itemType)}</td>
                     <td className="px-3 py-2.5">{row.group || '—'}</td>
                     <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
-                    <td className="px-3 py-2.5">{displayUomForRow(row, uomMode)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(onHand, countryCode)}</td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground">{principalUom}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{principalUom}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty, countryCode)}</td>
                     <td className="px-3 py-2.5 text-right">
                       <input
                         type="text"
                         inputMode="decimal"
-                        value={recipeQtyByKey[key] ?? ''}
-                        onChange={e => updateRecipeQty(key, e.target.value)}
-                        placeholder="0"
-                        disabled={isReadOnly || !isComponent}
-                        className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
-                        aria-label={`Principal component quantity for ${row.name}`}
-                      />
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground">{inventoryUom}</td>
-                    <td className="px-3 py-2.5 text-right">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={inventoryQtyByKey[key] ?? ''}
-                        onChange={e => updateInventoryQty(key, e.target.value)}
+                        value={countedQtyByKey[key] ?? ''}
+                        onChange={e => updateCountedQty(key, e.target.value)}
                         placeholder="0"
                         disabled={isReadOnly}
                         className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
-                        aria-label={`Inventory quantity for ${row.name}`}
+                        aria-label={`Counted quantity for ${row.name}`}
                       />
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">
-                      {totalQty != null ? fmtQty(totalQty, countryCode) : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.areaLabel}</td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.storageLabel}</td>

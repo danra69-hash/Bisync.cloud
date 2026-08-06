@@ -20,7 +20,7 @@ import {
 } from './stockCardPeriod';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
-import { fromApiUom } from '../../data/componentForm';
+import { fromApiUom, parseDetailConfigJson } from '../../data/componentForm';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
@@ -102,9 +102,9 @@ function productUoms(p: Product): string[] {
 }
 
 function componentUoms(ing: Ingredient): string[] {
-  const inventory = fromApiUom(ing.inventoryUom || '');
   const recipe = fromApiUom(ing.recipeUom || '');
-  return uniqueUoms([inventory], [recipe]);
+  const detail = parseDetailConfigJson(ing.detailConfigJson);
+  return uniqueUoms([recipe], detail.altRecipeUnits.map(alt => fromApiUom(alt.unit)));
 }
 
 function formatTransferDate(iso: string) {

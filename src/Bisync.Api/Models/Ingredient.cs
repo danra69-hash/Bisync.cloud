@@ -10,9 +10,7 @@ public class Ingredient
     public string Category { get; set; } = string.Empty;
     public string Group { get; set; } = string.Empty;
     public string RecipeUom { get; set; } = string.Empty;
-    public string InventoryUom { get; set; } = string.Empty;
     public decimal LastPriceRecipe { get; set; }
-    public decimal LastPriceInventory { get; set; }
     public decimal DailyUsage { get; set; }
     public int OrderFreqDays { get; set; }
     /// <summary>User-adjustable par stock quantity (principal recipe UOM by default).</summary>

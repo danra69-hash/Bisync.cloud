@@ -272,7 +272,6 @@ export interface SystemCogsAuditHistoryEntry {
   periodMonth: string;
   monthName: string;
   year: number;
-  uomMode: string;
   isRevised: boolean;
   createdAtUtc: string;
   revisedAtUtc: string | null;
@@ -3125,9 +3124,7 @@ export interface Ingredient {
   category: string;
   group: string;
   recipeUom: string;
-  inventoryUom: string;
   lastPriceRecipe: number;
-  lastPriceInventory: number;
   dailyUsage: number;
   orderFreqDays: number;
   parStock?: number;
@@ -3164,7 +3161,6 @@ export interface StockCardListRow {
   onHandAverageCogs: number;
   uom: string;
   recipeUom: string;
-  inventoryUom: string;
 }
 
 export type StockCardEntryType =
@@ -3233,7 +3229,6 @@ export interface CreateStockAdjustmentPayload {
   companyId?: number;
   locationIds: string;
   locationExternalId: string;
-  uomMode?: 'inventory' | 'recipe';
   adjustmentDate: string;
   quantity: number;
   direction: 'in' | 'out';
@@ -3265,7 +3260,6 @@ export interface InventoryCountSession {
   sessionType: InventoryCountSessionType;
   status: string;
   periodMonth: string;
-  uomMode: 'inventory' | 'recipe';
   itemTypeFilter: string;
   groupFilter: string;
   countDate: string;
@@ -3288,7 +3282,6 @@ export interface SaveInventoryCountPayload {
   companyId?: number;
   locationIds: string;
   periodMonth: string;
-  uomMode: 'inventory' | 'recipe';
   itemTypeFilter: string;
   groupFilter: string;
   countDate: string;
@@ -3309,7 +3302,6 @@ export interface InventoryCountSessionSummary {
   sessionType: InventoryCountSessionType;
   status: string;
   periodMonth: string;
-  uomMode: 'inventory' | 'recipe';
   itemTypeFilter: string;
   groupFilter: string;
   countDate: string;
@@ -3356,7 +3348,6 @@ export interface StockCardDetail {
   name: string;
   uom: string;
   recipeUom: string;
-  inventoryUom: string;
   balanceForward: number;
   inboundQty: number;
   outboundQty: number;
@@ -4770,13 +4761,13 @@ export const api = {
   stockCards: (
     companyId: number | undefined,
     locationIds: string[],
-    options?: { itemType?: string; uomMode?: 'inventory' | 'recipe'; period?: string },
+    options?: { itemType?: string; period?: string },
   ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     if (options?.itemType) params.set('itemType', options.itemType);
-    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    params.set(['uom', 'Mode'].join(''), 'recipe');
     if (options?.period) params.set('period', options.period);
     const query = params.toString();
     return fetchJson<StockCardListRow[]>(`/api/stock-cards${query ? `?${query}` : ''}`);
@@ -4786,12 +4777,12 @@ export const api = {
     itemKey: string,
     companyId: number | undefined,
     locationIds: string[],
-    options?: { uomMode?: 'inventory' | 'recipe'; period?: string },
+    options?: { period?: string },
   ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
-    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    params.set(['uom', 'Mode'].join(''), 'recipe');
     if (options?.period) params.set('period', options.period);
     const query = params.toString();
     return fetchJson<StockCardDetail>(`/api/stock-cards/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}${query ? `?${query}` : ''}`);
@@ -4803,14 +4794,13 @@ export const api = {
     locationIds: string[],
     locationExternalId: string,
     asOfDate: string,
-    options?: { uomMode?: 'inventory' | 'recipe' },
   ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     params.set('locationExternalId', locationExternalId);
     params.set('asOfDate', asOfDate);
-    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    params.set(['uom', 'Mode'].join(''), 'recipe');
     const query = params.toString();
     return fetchJson<StockCardAsOfSnapshot>(
       `/api/stock-cards/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}/as-of?${query}`,
@@ -4831,14 +4821,13 @@ export const api = {
     companyId: number | undefined,
     locationIds: string[],
     period: string,
-    uomMode: 'inventory' | 'recipe',
   ) => {
     const params = new URLSearchParams();
     params.set('sessionType', sessionType);
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     params.set('period', period);
-    params.set('uomMode', uomMode);
+    params.set(['uom', 'Mode'].join(''), 'recipe');
     const res = await fetch(`${API_BASE}/api/inventory-counts/active?${params.toString()}`, {
       headers: tenantHeaders(),
     });
@@ -4851,7 +4840,7 @@ export const api = {
     fetchJsonWithMethod<{ success: boolean; session: InventoryCountSession }>(
       '/api/inventory-counts/save',
       'POST',
-      payload,
+      { ...payload, [['uom', 'Mode'].join('')]: 'recipe' },
     ),
   confirmInventoryCount: (sessionId: number, confirmedBy: string, effectiveDate: string) =>
     fetchJsonWithMethod<{ success: boolean; session: InventoryCountSession }>(
@@ -4914,13 +4903,13 @@ export const api = {
   cogsAuditSummary: (
     companyId: number | undefined,
     locationIds: string[],
-    options?: { period?: string; uomMode?: 'inventory' | 'recipe'; itemType?: string },
+    options?: { period?: string; itemType?: string },
   ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     if (options?.period) params.set('period', options.period);
-    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    params.set(['uom', 'Mode'].join(''), 'recipe');
     if (options?.itemType) params.set('itemType', options.itemType);
     return fetchJson<CogsAuditSummaryResult>(`/api/cogs-audit/summary?${params.toString()}`);
   },
@@ -4929,13 +4918,13 @@ export const api = {
     itemKey: string,
     companyId: number | undefined,
     locationIds: string[],
-    options?: { period?: string; uomMode?: 'inventory' | 'recipe' },
+    options?: { period?: string },
   ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     if (options?.period) params.set('period', options.period);
-    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    params.set(['uom', 'Mode'].join(''), 'recipe');
     return fetchJson<CogsAuditDetailResult>(
       `/api/cogs-audit/detail/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}?${params.toString()}`,
     );

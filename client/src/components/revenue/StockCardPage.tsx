@@ -119,7 +119,6 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [search, setSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
   const [listVersion, setListVersion] = useState(0);
@@ -129,7 +128,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
 
   useEffect(() => {
     resetSort();
-  }, [search, groupFilter, itemTypeFilter, uomMode, selectedMonth, selectedCompanyId, selectedLocationIds, resetSort]);
+  }, [search, groupFilter, itemTypeFilter, selectedMonth, selectedCompanyId, selectedLocationIds, resetSort]);
 
   useEffect(() => {
     if (!selectedCompanyId || selectedLocationIds.length === 0) {
@@ -144,13 +143,12 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
     api
       .stockCards(selectedCompanyId, selectedLocationIds, {
         itemType: itemTypeFilterParam(itemTypeFilter),
-        uomMode,
         period: selectedMonth,
       })
       .then(setRows)
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load stock cards.'))
       .finally(() => setLoading(false));
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, listVersion]);
+  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, selectedMonth, listVersion]);
 
   const groups = useMemo(() => {
     const unique = new Set(rows.map(row => row.group).filter(Boolean));
@@ -208,17 +206,6 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
         <div className="flex flex-wrap items-end gap-3">
           <FilterSelect label="Type" value={itemTypeFilter} options={[...ITEM_TYPES]} onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])} />
           <FilterSelect label="Group" value={groupFilter} options={groups} onChange={setGroupFilter} />
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-            <select
-              value={uomMode}
-              onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-              className={`${filterSelectCls} min-w-[160px]`}
-            >
-              <option value="inventory">Inventory UOM</option>
-              <option value="recipe">Component UOM</option>
-            </select>
-          </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
             <input
@@ -285,7 +272,6 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
             rows={sortedRows}
             companyId={selectedCompanyId}
             locationIds={selectedLocationIds}
-            uomMode={uomMode}
             selectedMonth={selectedMonth}
             onOpenDetail={setSelectedRow}
           />
@@ -346,10 +332,8 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           itemKey={selectedRow.itemKey}
           companyId={selectedCompanyId}
           locationIds={selectedLocationIds}
-          uomMode={uomMode}
           selectedMonth={selectedMonth}
           onClose={() => setSelectedRow(null)}
-          onUomModeChange={setUomMode}
           onAdjusted={() => setListVersion(v => v + 1)}
         />
       ) : null}

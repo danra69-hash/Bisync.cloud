@@ -18,7 +18,7 @@ public class CogsAuditController(
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? period = null,
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? itemType = "component")
     {
         var locations = ParseLocationIds(locationIds);
@@ -29,7 +29,7 @@ public class CogsAuditController(
             companyId,
             locations,
             period,
-            uomMode ?? "inventory",
+            "recipe",
             itemType ?? "component");
         return Ok(result);
     }
@@ -41,7 +41,7 @@ public class CogsAuditController(
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? period = null,
-        [FromQuery] string? uomMode = "inventory")
+        [FromQuery] string? uomMode = "recipe")
     {
         var locations = ParseLocationIds(locationIds);
         if (locations.Count == 0)
@@ -53,7 +53,7 @@ public class CogsAuditController(
             companyId,
             locations,
             period,
-            uomMode ?? "inventory");
+            "recipe");
 
         if (detail is null)
             return NotFound(new { message = "Ingredient not found for the selected filters." });

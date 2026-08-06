@@ -471,7 +471,6 @@ export function ComparePricePage({
     const payload = componentRowToIngredientPayload({
       ...row,
       lastPriceRecipe: isPrimary ? uomCost : row.lastPriceRecipe,
-      lastPriceInventory: isPrimary ? cell.product.deliveryPrice : row.lastPriceInventory,
       detailConfig: nextDetail,
       detailConfigJson: serializeDetailConfig(nextDetail),
     });

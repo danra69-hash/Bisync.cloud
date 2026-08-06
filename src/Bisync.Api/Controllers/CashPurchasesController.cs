@@ -4,6 +4,8 @@ using Bisync.Api.Models;
 using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Bisync.Api.Controllers;
 
@@ -148,10 +150,9 @@ public class CashPurchasesController(
                     LocationExternalId = locationExternalId,
                 };
                 db.InventoryPurchases.Add(inventoryPurchase);
-                ingredient.LastPriceInventory = unitCost;
-                if (ingredient.InventoryUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase)
-                    && ingredient.RecipeUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase))
-                    ingredient.LastPriceRecipe = unitCost;
+                var principalUnitPrice = ResolvePrincipalUnitPrice(ingredient, componentUom, unitCost);
+                if (principalUnitPrice is decimal price)
+                    ingredient.LastPriceRecipe = price;
             }
 
             await db.SaveChangesAsync();
@@ -195,6 +196,55 @@ public class CashPurchasesController(
                 splitParentComponentId = inventoryPurchase.SplitParentComponentId,
             },
         });
+    }
+
+    static decimal? ResolvePrincipalUnitPrice(Ingredient ingredient, string sourceUom, decimal sourceUnitPrice)
+    {
+        if (ingredient.RecipeUom.Equals(sourceUom, StringComparison.OrdinalIgnoreCase))
+            return sourceUnitPrice;
+        if (string.IsNullOrWhiteSpace(ingredient.DetailConfigJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(ingredient.DetailConfigJson);
+            if (!doc.RootElement.TryGetProperty("altRecipeUnits", out var alternatives)
+                || alternatives.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var alternative in alternatives.EnumerateArray())
+            {
+                if (alternative.ValueKind != JsonValueKind.Object
+                    || !alternative.TryGetProperty("unit", out var unit)
+                    || unit.ValueKind != JsonValueKind.String
+                    || !string.Equals(unit.GetString(), sourceUom, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var fromQty = ReadQuantity(alternative, "fromQty");
+                var recipeQty = ReadQuantity(alternative, "qty");
+                return fromQty > 0 && recipeQty > 0
+                    ? StockCardFifoEngine.RoundUnitPrice(sourceUnitPrice * fromQty / recipeQty)
+                    : null;
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    static decimal ReadQuantity(JsonElement item, string property)
+    {
+        if (!item.TryGetProperty(property, out var value))
+            return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
+            return number;
+        return value.ValueKind == JsonValueKind.String
+            && decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : 0;
     }
 
     static object MapCashPurchase(CashPurchase purchase) => new

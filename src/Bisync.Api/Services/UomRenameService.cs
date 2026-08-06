@@ -103,11 +103,6 @@ public static class UomRenameService
                 row.RecipeUom = recipe;
                 dirty = true;
             }
-            if (TryReplace(row.InventoryUom, fromKeys, to, out var inventory))
-            {
-                row.InventoryUom = inventory;
-                dirty = true;
-            }
             if (TryReplace(row.ParStockUom, fromKeys, to, out var par))
             {
                 row.ParStockUom = par;

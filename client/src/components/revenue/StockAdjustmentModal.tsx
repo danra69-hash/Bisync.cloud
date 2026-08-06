@@ -15,13 +15,11 @@ type Props = {
   itemName: string;
   companyId: number;
   locationIds: string[];
-  uomMode: 'inventory' | 'recipe';
   periodStart: string;
   periodEnd: string;
   isCurrentMonth: boolean;
   defaultUom: string;
   recipeUom: string;
-  inventoryUom: string;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -61,21 +59,19 @@ export function StockAdjustmentModal({
   itemName,
   companyId,
   locationIds,
-  uomMode,
   periodStart,
   periodEnd,
   isCurrentMonth,
   defaultUom,
   recipeUom,
-  inventoryUom,
   onClose,
   onSaved,
 }: Props) {
   const countryCode = useOrgCountryCode();
   const { rm } = useCountryFormatters();
   const uomOptions = useMemo(
-    () => [...new Set([inventoryUom, recipeUom].map(u => u.trim()).filter(Boolean))],
-    [inventoryUom, recipeUom],
+    () => [recipeUom].map(u => u.trim()).filter(Boolean),
+    [recipeUom],
   );
   const canChooseUom = uomOptions.length > 1;
 
@@ -115,14 +111,14 @@ export function StockAdjustmentModal({
     setSnapshotLoading(true);
     setSnapshotError(null);
     api
-      .stockCardAsOf(itemType, itemKey, companyId, locationIds, locationExternalId, adjustmentDate, { uomMode })
+      .stockCardAsOf(itemType, itemKey, companyId, locationIds, locationExternalId, adjustmentDate)
       .then(setSnapshot)
       .catch(e => {
         setSnapshot(null);
         setSnapshotError(e instanceof Error ? e.message : 'Failed to load stock for selected date.');
       })
       .finally(() => setSnapshotLoading(false));
-  }, [itemType, itemKey, companyId, locationIds, locationExternalId, adjustmentDate, uomMode]);
+  }, [itemType, itemKey, companyId, locationIds, locationExternalId, adjustmentDate]);
 
   useEffect(() => {
     setInboundUom(defaultUom);
@@ -144,7 +140,6 @@ export function StockAdjustmentModal({
         companyId,
         locationIds: locationIds.join(','),
         locationExternalId,
-        uomMode,
         adjustmentDate,
         quantity: parsedQty,
         direction,

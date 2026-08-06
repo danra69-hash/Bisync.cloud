@@ -273,7 +273,7 @@ export function VendorProductDetailPanel({
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
                 Define Order UOM (required). Add Primary and Secondary Packaging when the order breaks into smaller packs.
-                Result must convert to your component Principal / Inventory UOM.
+                Result must convert to your principal component UOM.
               </p>
             </Field>
 

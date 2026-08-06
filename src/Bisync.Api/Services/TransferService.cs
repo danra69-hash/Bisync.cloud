@@ -53,7 +53,6 @@ public class TransferService(
             var ingredient = await FindIngredientAsync(companyId, key, cancellationToken);
             if (ingredient is not null)
             {
-                (moveQty, moveUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, quantity, uom);
                 if (string.IsNullOrWhiteSpace(name))
                     name = ingredient.Name;
             }
@@ -79,7 +78,6 @@ public class TransferService(
             ItemType = type,
             ItemKey = key,
             ItemName = name,
-            // Persist inventory-preferred qty/uom for components so reservations match stock cards.
             Quantity = moveQty,
             Uom = moveUom,
             UnitPrice = estimatedUnitPrice,
@@ -123,13 +121,6 @@ public class TransferService(
         var type = NormalizeItemType(entry.ItemType);
         var moveUom = entry.Uom;
         var moveQty = receiveQty;
-
-        if (type == "component")
-        {
-            var ingredient = await FindIngredientAsync(companyId, entry.ItemKey, cancellationToken);
-            if (ingredient is not null)
-                (moveQty, moveUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, receiveQty, entry.Uom);
-        }
 
         await EnsureAvailableAsync(
             companyId,
@@ -343,8 +334,8 @@ public class TransferService(
             var ingredient = companyId is int cid
                 ? await FindIngredientAsync(cid, key, cancellationToken)
                 : await db.Ingredients.AsNoTracking().FirstOrDefaultAsync(i => i.ComponentId == key, cancellationToken);
-            if (ingredient is not null)
-                (_, moveUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, 1, moveUom);
+            if (ingredient is not null && string.IsNullOrWhiteSpace(moveUom))
+                moveUom = ingredient.RecipeUom.Trim();
 
             onHand = await componentStock.GetOnHandAsync(key, loc, moveUom, cancellationToken);
         }

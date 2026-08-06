@@ -289,7 +289,7 @@ export function PreCommittedPoPage({
       componentName: component.name,
       componentUom: detail.vendorProductComponentUom[product.id]
         || fromApiUom(component.recipeUOM)
-        || component.inventoryUOM,
+        || component.recipeUOM,
       deliveryUnit: formatDeliveryUnitPath(product.delivery),
       vendorProductId: product.id,
       vendorExternalId: product.vendorExternalId,

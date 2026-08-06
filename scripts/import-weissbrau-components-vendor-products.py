@@ -201,9 +201,6 @@ def api_json(method: str, path: str, payload: dict | None = None):
 def empty_detail_config() -> dict:
     return {
         "altRecipeUnits": [],
-        "altInventoryUnits": [],
-        "convertFromInventoryQty": "1",
-        "convertToRecipeQty": "1",
         "taggedVendorProductIds": [],
         "vendorProductPrincipalQty": {},
         "vendorProductLossYield": {},
@@ -216,7 +213,7 @@ def empty_detail_config() -> dict:
         "splitUse": {
             "enabled": False,
             "componentQty": "1",
-            "qtyBasis": "inventory",
+            "qtyBasis": "recipe",
             "lines": [],
         },
     }
@@ -296,7 +293,8 @@ def load_rows():
                 "legacyComponentId": clean_text(row[2])[:50],
                 "name": name[:200],
                 "recipeUom": to_api_uom(row[4] if len(row) > 4 else ""),
-                "inventoryUom": to_api_uom(row[5] if len(row) > 5 else ""),
+                "principalUom": to_api_uom(row[4] if len(row) > 4 else ""),
+                "altUom": to_api_uom(row[5] if len(row) > 5 else ""),
                 "conversion1": parse_number(row[6] if len(row) > 6 else None, 1.0) or 1.0,
                 "vendorName": clean_text(row[11] if len(row) > 11 else ""),
                 "vendorProductName": clean_text(row[12] if len(row) > 12 else "")[:300] or name,
@@ -310,11 +308,16 @@ def load_rows():
 
 def ingredient_payload(base: dict, detail: dict, existing: dict | None = None) -> dict:
     conv = base["conversion1"]
-    inv_price = 0.0
+    unit_price = 0.0
     delivery = parse_delivery_unit(base["deliveryUnit"])
-    if delivery["orderUnit"].lower() == base["inventoryUom"].lower() and base["deliveryPrice"] > 0:
-        inv_price = base["deliveryPrice"]
-    recipe_price = (inv_price / conv) if conv > 0 and inv_price > 0 else 0.0
+    order_uom = delivery["orderUnit"].lower()
+    if order_uom and order_uom == (base.get("altUom") or "").lower() and base["deliveryPrice"] > 0:
+        # Delivery priced in alternate UOM: convert to principal (recipe) unit price.
+        unit_price = (base["deliveryPrice"] / conv) if conv > 0 else 0.0
+    elif order_uom and order_uom == (base.get("recipeUom") or "").lower() and base["deliveryPrice"] > 0:
+        unit_price = base["deliveryPrice"]
+    elif base["deliveryPrice"] > 0 and conv > 0:
+        unit_price = base["deliveryPrice"] / conv
 
     note = f"Source Component ID: {base['legacyComponentId']}" if base["legacyComponentId"] else ""
     if existing and existing.get("storageNote") and "Source Component ID:" not in existing.get("storageNote", ""):
@@ -330,9 +333,7 @@ def ingredient_payload(base: dict, detail: dict, existing: dict | None = None) -
         "category": base["category"],
         "group": base["group"],
         "recipeUom": base["recipeUom"],
-        "inventoryUom": base["inventoryUom"],
-        "lastPriceRecipe": recipe_price if not existing else existing.get("lastPriceRecipe", 0) or recipe_price,
-        "lastPriceInventory": inv_price if not existing else existing.get("lastPriceInventory", 0) or inv_price,
+        "lastPriceRecipe": unit_price if not existing else existing.get("lastPriceRecipe", 0) or unit_price,
         "dailyUsage": existing.get("dailyUsage", 0) if existing else 0,
         "orderFreqDays": existing.get("orderFreqDays", 0) if existing else 0,
         "parStock": existing.get("parStock", 0) if existing else 0,
@@ -459,13 +460,18 @@ def main() -> int:
             continue
 
         detail = parse_detail(existing.get("detailConfigJson") if existing else None)
-        # Replace conversion from this import; merge tags.
-        detail["convertFromInventoryQty"] = "1"
-        detail["convertToRecipeQty"] = (
-            str(int(base["conversion1"]))
-            if float(base["conversion1"]).is_integer()
-            else str(base["conversion1"])
-        )
+        # Alternate UOM from import: 1 alt = conversion1 × principal component UOM.
+        alt_uom = (base.get("altUom") or "").strip()
+        recipe_uom = (base.get("recipeUom") or "").strip()
+        alts = []
+        if alt_uom and alt_uom.lower() != recipe_uom.lower() and base["conversion1"] > 0:
+            qty = base["conversion1"]
+            alts.append({
+                "fromQty": "1",
+                "qty": str(int(qty)) if float(qty).is_integer() else str(qty),
+                "unit": alt_uom,
+            })
+        detail["altRecipeUnits"] = alts[:5]
         merged_tags = list(dict.fromkeys([*(detail.get("taggedVendorProductIds") or []), *tag_ids]))
         detail["taggedVendorProductIds"] = merged_tags
         for vp_id in tag_ids:

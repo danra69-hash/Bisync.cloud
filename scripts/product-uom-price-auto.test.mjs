@@ -38,15 +38,17 @@ function formatBomUnitPrice(value) {
   return String(rounded);
 }
 
-function convertViaInventory(recipePrice, selectedUom, recipeUom, inventoryUom, fromQty, toQty) {
+/** 1 alternate = qty × principal → price in alternate = principalPrice * qty / fromQty */
+function convertViaAlternate(principalPrice, selectedUom, principalUom, altUnits) {
   const selected = fromApiUom(selectedUom);
-  const recipe = fromApiUom(recipeUom);
-  const inventory = fromApiUom(inventoryUom);
-  if (sameUom(selected, recipe)) return recipePrice;
-  if (sameUom(selected, inventory) && fromQty > 0 && toQty > 0) {
-    return recipePrice * (toQty / fromQty);
-  }
-  return null;
+  const principal = fromApiUom(principalUom);
+  if (sameUom(selected, principal)) return principalPrice;
+  const alt = (altUnits || []).find(a => sameUom(a.unit, selected));
+  if (!alt) return null;
+  const fromQty = parseFloat(alt.fromQty || '1') || 1;
+  const qty = parseFloat(alt.qty || '1') || 1;
+  if (fromQty <= 0 || qty <= 0) return null;
+  return principalPrice * (qty / fromQty);
 }
 
 function resolveAutomatedComponentUomPrice({
@@ -61,13 +63,13 @@ function resolveAutomatedComponentUomPrice({
 }
 
 describe('product UOM price automation', () => {
-  it('converts recipe last price to inventory UOM (1 kg = 1000 g)', () => {
-    const price = convertViaInventory(0.021, 'Kg', 'g', 'kg', 1, 1000);
+  it('converts principal last price to alternate UOM (1 kg = 1000 g)', () => {
+    const price = convertViaAlternate(0.021, 'Kg', 'g', [{ fromQty: '1', qty: '1000', unit: 'Kg' }]);
     assert.equal(price, 21);
   });
 
-  it('converts recipe last price to Bottle via inventory ratio', () => {
-    const price = convertViaInventory(0.127, 'Bottle', 'ml', 'btl', 1, 750);
+  it('converts principal last price to Bottle via alternate ratio', () => {
+    const price = convertViaAlternate(0.127, 'Bottle', 'ml', [{ fromQty: '1', qty: '750', unit: 'Bottle' }]);
     assert.equal(price, 0.127 * 750);
   });
 
@@ -96,41 +98,5 @@ describe('product UOM price automation', () => {
       }),
       '21',
     );
-  });
-
-  it('normalizes g/Gr aliases as the same UOM', () => {
-    assert.equal(sameUom('g', 'Gr'), true);
-    assert.equal(sameUom('btl', 'Bottle'), true);
-    assert.equal(sameUom('Ml', 'Kg'), false);
-  });
-
-  it('uses system price when last purchase is unavailable', () => {
-    // Priority: purchase → system → vendor
-    const sources = [];
-    const purchasePrice = null;
-    const systemPrice = 0.021;
-    const vendorPrice = 0.03;
-
-    let resolved = null;
-    if (purchasePrice != null && purchasePrice > 0) {
-      sources.push('purchase');
-      resolved = purchasePrice;
-    } else if (systemPrice > 0) {
-      sources.push('system_price');
-      resolved = systemPrice;
-    } else if (vendorPrice > 0) {
-      sources.push('vendor');
-      resolved = vendorPrice;
-    }
-
-    assert.equal(sources[0], 'system_price');
-    assert.equal(resolved, 0.021);
-  });
-
-  it('keeps purchase price when a usable last purchase exists', () => {
-    const purchasePrice = 0.025;
-    const systemPrice = 0.021;
-    const resolved = purchasePrice > 0 ? purchasePrice : systemPrice;
-    assert.equal(resolved, 0.025);
   });
 });

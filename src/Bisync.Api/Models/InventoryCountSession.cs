@@ -8,7 +8,7 @@ public class InventoryCountSession
     public int? CompanyId { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
     public string PeriodMonth { get; set; } = string.Empty;
-    public string UomMode { get; set; } = "inventory";
+    public string UomMode { get; set; } = "recipe";
     public string ItemTypeFilter { get; set; } = "all";
     public string GroupFilter { get; set; } = "All";
     public string CountDate { get; set; } = string.Empty;

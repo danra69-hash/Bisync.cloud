@@ -762,8 +762,7 @@ public class InventoryCountService(
         };
     }
 
-    static string NormalizeUomMode(string uomMode) =>
-        string.Equals(uomMode, "recipe", StringComparison.OrdinalIgnoreCase) ? "recipe" : "inventory";
+    static string NormalizeUomMode(string uomMode) => "recipe";
 
     static string ResolveCountDate(string sessionType, string countDate, string periodMonth, DateTime utcNow)
     {

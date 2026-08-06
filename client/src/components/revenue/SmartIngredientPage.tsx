@@ -75,7 +75,7 @@ const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
   { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
 ];
 
-type UomFilterMode = 'principal' | 'inventory' | string;
+type UomFilterMode = 'principal' | string;
 
 function FilterSelect({ label, value, options, onChange }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
@@ -98,16 +98,13 @@ function uomSourceForRow(row: ComponentRow): ComponentUomSource {
   const detail = resolveDetailConfigForRow(row);
   return {
     recipeUom: fromApiUom(row.recipeUOM),
-    inventoryUom: fromApiUom(row.inventoryUOM),
     altRecipeUnits: detail.altRecipeUnits,
-    altInventoryUnits: detail.altInventoryUnits,
   };
 }
 
 function displayUomForRow(row: ComponentRow, mode: UomFilterMode): string {
   const source = uomSourceForRow(row);
   if (mode === 'principal') return source.recipeUom;
-  if (mode === 'inventory') return source.inventoryUom;
   return mode || source.recipeUom;
 }
 
@@ -117,13 +114,8 @@ function convertFromRecipe(
   toUom: string,
 ): number | null {
   if (!Number.isFinite(qty)) return null;
-  const detail = resolveDetailConfigForRow(row);
   const source = uomSourceForRow(row);
-  return convertComponentQtyBetweenUoms(qty, source.recipeUom, toUom, {
-    ...source,
-    convertFromInventoryQty: detail.convertFromInventoryQty,
-    convertToRecipeQty: detail.convertToRecipeQty,
-  });
+  return convertComponentQtyBetweenUoms(qty, source.recipeUom, toUom, source);
 }
 
 export function SmartIngredientPage({
@@ -288,7 +280,7 @@ export function SmartIngredientPage({
     const units = new Set<string>();
     for (const row of activityScopedRows) {
       const source = uomSourceForRow(row);
-      for (const alt of [...source.altRecipeUnits, ...source.altInventoryUnits]) {
+      for (const alt of source.altRecipeUnits) {
         const unit = fromApiUom(alt.unit);
         if (unit) units.add(unit);
       }
@@ -419,13 +411,8 @@ export function SmartIngredientPage({
     }
 
     const displayUom = displayUomForRow(row, uomFilter);
-    const detail = resolveDetailConfigForRow(row);
     const source = uomSourceForRow(row);
-    const recipeQty = convertComponentQtyBetweenUoms(parsed, displayUom, source.recipeUom, {
-      ...source,
-      convertFromInventoryQty: detail.convertFromInventoryQty,
-      convertToRecipeQty: detail.convertToRecipeQty,
-    });
+    const recipeQty = convertComponentQtyBetweenUoms(parsed, displayUom, source.recipeUom, source);
     const parStock = recipeQty ?? parsed;
     const parStockUom = source.recipeUom;
 
@@ -567,7 +554,6 @@ export function SmartIngredientPage({
               className={`${filterSelectCls} min-w-[180px]`}
             >
               <option value="principal">Principal Component UOM</option>
-              <option value="inventory">Principal Inventory UOM</option>
               {alternateUomOptions.map(unit => (
                 <option key={unit} value={unit}>Alternate: {unit}</option>
               ))}

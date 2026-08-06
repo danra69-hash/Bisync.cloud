@@ -41,7 +41,7 @@ public class SplitUseService(BisyncDbContext db)
         if (splitNode is null || !ReadBool(splitNode, "enabled", "Enabled"))
             return root.ToJsonString();
 
-        var config = ParseAndValidate(splitNode, parent.InventoryUom, parent.RecipeUom);
+        var config = ParseAndValidate(splitNode, parent.RecipeUom);
         var companyCode = await CompanyCodeService.ResolveCodeAsync(db, companyId);
         var canonicalLines = new JsonArray();
 
@@ -68,9 +68,7 @@ public class SplitUseService(BisyncDbContext db)
                         Name = normalizedName,
                         Category = parent.Category,
                         Group = parent.Group,
-                        InventoryUom = line.Uom,
                         RecipeUom = line.Uom,
-                        LastPriceInventory = 0,
                         LastPriceRecipe = 0,
                         DailyUsage = 0,
                         OrderFreqDays = parent.OrderFreqDays > 0 ? parent.OrderFreqDays : 7,
@@ -102,7 +100,7 @@ public class SplitUseService(BisyncDbContext db)
                 ["key"] = line.Key,
                 ["name"] = ComponentIdentityRules.NormalizeName(line.Name),
                 ["qty"] = line.Quantity.ToString("0.######"),
-                ["inventoryUom"] = line.Uom,
+                ["uom"] = line.Uom,
                 ["valueAssignedPct"] = line.ValueAssignedPct.ToString("0.######"),
                 ["valueAssigned"] = line.ValueAssignedPct.ToString("0.######"),
                 ["isWaste"] = line.IsWaste,
@@ -128,7 +126,7 @@ public class SplitUseService(BisyncDbContext db)
         var splitNode = root["splitUse"] as JsonObject;
         if (splitNode is null || !ReadBool(splitNode, "enabled", "Enabled"))
             return null;
-        return ParseAndValidate(splitNode, ingredient.InventoryUom, ingredient.RecipeUom);
+        return ParseAndValidate(splitNode, ingredient.RecipeUom);
     }
 
     public async Task<SplitUsePostingResult> PostInboundAsync(
@@ -152,7 +150,7 @@ public class SplitUseService(BisyncDbContext db)
         if (receiptQuantity <= 0)
             throw new InvalidOperationException("Receipt quantity must be greater than zero.");
 
-        var basisUom = config.QuantityBasis == "recipe" ? parent.RecipeUom : parent.InventoryUom;
+        var basisUom = parent.RecipeUom;
         var receiptBasisQty = ConvertQuantity(receiptQuantity, receiptUom, basisUom, parent);
         if (receiptBasisQty <= 0)
             throw new InvalidOperationException("Receipt UOM cannot be converted to the Split Use basis UOM.");
@@ -214,8 +212,7 @@ public class SplitUseService(BisyncDbContext db)
                 ?? throw new InvalidOperationException($"Split Use component '{line.Name}' was not found.");
 
             // Child BOM/catalog price is the allocated nett cost.
-            child.LastPriceInventory = StockCardFifoEngine.RoundUnitPrice(lineUnitPrice);
-            child.LastPriceRecipe = child.LastPriceInventory;
+            child.LastPriceRecipe = StockCardFifoEngine.RoundUnitPrice(lineUnitPrice);
             child.UpdatedAt = DateTime.UtcNow;
 
             childPurchases.Add(CreatePurchase(
@@ -265,7 +262,6 @@ public class SplitUseService(BisyncDbContext db)
         // Stock card: GROSS inbound, then split outs (children/waste). On-hand = Component Nett.
         // Product BOM: always LastPriceRecipe = nett unit cost (same idea as Yield Loss).
         // Full split: parent on-hand goes to zero; BOM cost lives on children.
-        parent.LastPriceInventory = StockCardFifoEngine.RoundUnitPrice(parentBasisUnitCost);
         parent.LastPriceRecipe = nettQty > Tolerance
             ? StockCardFifoEngine.RoundUnitPrice(nettValue / nettQty)
             : 0m;
@@ -351,15 +347,13 @@ public class SplitUseService(BisyncDbContext db)
             SplitParentComponentId = parentComponentId,
         };
 
-    static SplitUseConfig ParseAndValidate(JsonObject node, string inventoryUom, string recipeUom)
+    static SplitUseConfig ParseAndValidate(JsonObject node, string recipeUom)
     {
         var componentQty = ReadDecimal(node, "componentQty", "ComponentQty");
         if (componentQty <= 0)
             throw new InvalidOperationException("Enter a valid component quantity for Split Use.");
-        var qtyBasis = ReadString(node, "qtyBasis", "QtyBasis").Equals("recipe", StringComparison.OrdinalIgnoreCase)
-            ? "recipe"
-            : "inventory";
-        var basisUom = qtyBasis == "recipe" ? recipeUom : inventoryUom;
+        const string qtyBasis = "recipe";
+        var basisUom = recipeUom;
         var linesNode = node["lines"] as JsonArray ?? node["Lines"] as JsonArray;
         if (linesNode is null || linesNode.Count == 0)
             throw new InvalidOperationException("Add at least one Split Use output.");
@@ -377,7 +371,7 @@ public class SplitUseService(BisyncDbContext db)
             var qty = ReadDecimal(line, "qty", "Qty");
             if (qty <= 0)
                 throw new InvalidOperationException($"Split Use output '{name}' needs a quantity greater than zero.");
-            var uom = NormalizeUom(ReadString(line, "inventoryUom", "InventoryUom"));
+            var uom = NormalizeUom(ReadString(line, "uom", "Uom", "inventoryUom", "InventoryUom"));
             if (string.IsNullOrWhiteSpace(uom))
                 throw new InvalidOperationException($"Split Use output '{name}' needs a UOM.");
             var pct = ReadDecimal(line, "valueAssignedPct", "ValueAssignedPct");
@@ -415,16 +409,19 @@ public class SplitUseService(BisyncDbContext db)
         var simple = ConvertSimple(qty, fromUom, toUom);
         if (simple is decimal converted) return converted;
 
-        var inventory = NormalizeUom(ingredient.InventoryUom);
         var recipe = NormalizeUom(ingredient.RecipeUom);
         var from = NormalizeUom(fromUom);
         var to = NormalizeUom(toUom);
-        if (!TryReadIngredientRatio(ingredient.DetailConfigJson, out var inventoryQty, out var recipeQty))
-            throw new InvalidOperationException($"UOM '{fromUom}' cannot be converted to '{toUom}'.");
-        if (from == recipe && to == inventory)
-            return qty * inventoryQty / recipeQty;
-        if (from == inventory && to == recipe)
-            return qty * recipeQty / inventoryQty;
+
+        var alternatives = ReadAlternativeRecipeUnits(ingredient.DetailConfigJson);
+        if (from == recipe && alternatives.TryGetValue(to, out var toRatio))
+            return qty * toRatio.FromQty / toRatio.RecipeQty;
+        if (to == recipe && alternatives.TryGetValue(from, out var fromRatio))
+            return qty * fromRatio.RecipeQty / fromRatio.FromQty;
+        if (alternatives.TryGetValue(from, out fromRatio)
+            && alternatives.TryGetValue(to, out toRatio))
+            return qty * fromRatio.RecipeQty / fromRatio.FromQty
+                * toRatio.FromQty / toRatio.RecipeQty;
         throw new InvalidOperationException($"UOM '{fromUom}' cannot be converted to '{toUom}'.");
     }
 
@@ -476,13 +473,23 @@ public class SplitUseService(BisyncDbContext db)
         };
     }
 
-    static bool TryReadIngredientRatio(string? json, out decimal inventoryQty, out decimal recipeQty)
+    static Dictionary<string, (decimal FromQty, decimal RecipeQty)> ReadAlternativeRecipeUnits(string? json)
     {
-        inventoryQty = recipeQty = 0;
+        var result = new Dictionary<string, (decimal FromQty, decimal RecipeQty)>(StringComparer.OrdinalIgnoreCase);
         var root = ParseRoot(json);
-        inventoryQty = ReadDecimal(root, "convertFromInventoryQty", "ConvertFromInventoryQty");
-        recipeQty = ReadDecimal(root, "convertToRecipeQty", "ConvertToRecipeQty");
-        return inventoryQty > 0 && recipeQty > 0;
+        if (root["altRecipeUnits"] is not JsonArray alternatives)
+            return result;
+
+        foreach (var item in alternatives.OfType<JsonObject>())
+        {
+            var unit = NormalizeUom(ReadString(item, "unit", "Unit"));
+            var fromQty = ReadDecimal(item, "fromQty", "FromQty");
+            var recipeQty = ReadDecimal(item, "qty", "Qty");
+            if (!string.IsNullOrWhiteSpace(unit) && fromQty > 0 && recipeQty > 0)
+                result.TryAdd(unit, (fromQty, recipeQty));
+        }
+
+        return result;
     }
 
     static bool ConfigReferencesComponent(string? json, string componentId)
@@ -513,8 +520,16 @@ public class SplitUseService(BisyncDbContext db)
         }
     }
 
-    static string ReadString(JsonObject node, string camel, string pascal)
-        => node[camel]?.ToString() ?? node[pascal]?.ToString() ?? string.Empty;
+    static string ReadString(JsonObject node, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var value = node[name]?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return string.Empty;
+    }
 
     static decimal ReadDecimal(JsonObject node, string camel, string pascal)
         => decimal.TryParse(ReadString(node, camel, pascal), out var value) ? value : 0;

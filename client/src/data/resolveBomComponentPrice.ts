@@ -28,7 +28,7 @@ export type BomComponentPriceResult = {
   sampleCount: number;
 };
 
-/** Convert a unit price from one UOM to another via recipe UOM (and inventory↔recipe when needed). */
+/** Convert a unit price from one UOM to another via the principal component UOM. */
 export function convertComponentUnitPrice(
   unitPrice: number,
   fromUom: string,
@@ -58,7 +58,6 @@ export function resolveSystemComponentUnitPrice(
   selectedUom: string,
 ): number | null {
   const recipeUom = fromApiUom(component.recipeUOM);
-  const inventoryUom = fromApiUom(component.inventoryUOM);
   const target = fromApiUom(selectedUom) || recipeUom;
   if (!target) return null;
 
@@ -68,16 +67,10 @@ export function resolveSystemComponentUnitPrice(
     if (converted !== null && converted > 0) return converted;
   }
 
-  const lastInventory = component.lastPriceInventory ?? 0;
-  if (lastInventory > 0 && inventoryUom) {
-    const converted = convertComponentUnitPrice(lastInventory, inventoryUom, target, component);
-    if (converted !== null && converted > 0) return converted;
-  }
-
   const detail = resolveDetailConfigForRow(component);
   const delivery = parseFloat(detail.deliveryUnitPrice || '') || 0;
-  if (delivery > 0 && inventoryUom) {
-    const converted = convertComponentUnitPrice(delivery, inventoryUom, target, component);
+  if (delivery > 0 && recipeUom) {
+    const converted = convertComponentUnitPrice(delivery, recipeUom, target, component);
     if (converted !== null && converted > 0) return converted;
   }
 
@@ -98,18 +91,8 @@ function unitPriceToRecipeUom(
     return unitPrice / direct;
   }
 
-  const detail = resolveDetailConfigForRow(component);
-  const inventoryUom = fromApiUom(component.inventoryUOM);
-  if (fromUom === inventoryUom) {
-    const fromQty = parseFloat(detail.convertFromInventoryQty) || 1;
-    const toQty = parseFloat(detail.convertToRecipeQty) || 1;
-    if (fromQty > 0 && toQty > 0) {
-      // 1 inventory = (toQty/fromQty) recipe → price/recipe = unitPrice / (toQty/fromQty)
-      return unitPrice / (toQty / fromQty);
-    }
-  }
-
   // Try via alt recipe units: alt.fromQty of recipe = alt.qty of alt unit
+  const detail = resolveDetailConfigForRow(component);
   const alt = detail.altRecipeUnits.find(item => fromApiUom(item.unit) === fromUom);
   if (alt) {
     const from = parseFloat(alt.fromQty || '1') || 1;
@@ -143,15 +126,6 @@ function recipePriceToSelectedUom(
   const conv = getConversion(selectedUom, recipe);
   if (conv !== null && conv > 0) {
     return recipePrice * conv;
-  }
-
-  const inventoryUom = fromApiUom(component.inventoryUOM);
-  if (selectedUom === inventoryUom) {
-    const fromQty = parseFloat(detail.convertFromInventoryQty) || 1;
-    const toQty = parseFloat(detail.convertToRecipeQty) || 1;
-    if (fromQty > 0 && toQty > 0) {
-      return recipePrice * (toQty / fromQty);
-    }
   }
 
   return null;
