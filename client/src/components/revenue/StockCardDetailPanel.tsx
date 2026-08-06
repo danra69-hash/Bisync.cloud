@@ -467,7 +467,7 @@ export function StockCardDetailPanel({
 
                 <option value="inventory">Inventory UOM</option>
 
-                <option value="recipe">Component UOM</option>
+                <option value="recipe">Principal Component Unit</option>
 
               </select>
 

@@ -106,7 +106,8 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
       },
       {
         term: 'Inventory UOM',
-        meaning: 'Unit used when receiving or counting stock; convertible to PCU.',
+        meaning:
+          'Alternate unit for counting or vendor packaging conversion; inbound stock is converted to PCU for the stock card. Delivery packages are order-time only.',
         dbName: 'Ingredients.InventoryUom',
       },
       {

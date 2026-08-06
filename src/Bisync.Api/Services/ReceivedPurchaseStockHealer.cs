@@ -91,7 +91,15 @@ public sealed class ReceivedPurchaseStockHealer(
                         cancellationToken);
 
                     if (parent is not null)
-                        (qty, uom) = IngredientUomBridge.ToInventoryPreferred(parent, qty, uom);
+                    {
+                        (qty, uom, price) = IngredientUomBridge.ToInboundPrincipal(
+                            parent,
+                            qty,
+                            uom,
+                            price,
+                            item.VendorProductId,
+                            string.IsNullOrWhiteSpace(item.Unit) ? item.DeliveryPackage : item.Unit);
+                    }
 
                     if (parent is not null && splitUse.ReadConfig(parent) is not null)
                     {

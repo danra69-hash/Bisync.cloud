@@ -126,7 +126,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [search, setSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
+  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('recipe');
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
   const [listVersion, setListVersion] = useState(0);
@@ -233,7 +233,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
               className={`${filterSelectCls} min-w-[160px]`}
             >
               <option value="inventory">Inventory UOM</option>
-              <option value="recipe">Component UOM</option>
+              <option value="recipe">Principal Component Unit</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">

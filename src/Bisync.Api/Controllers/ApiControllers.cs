@@ -1776,9 +1776,17 @@ public class PurchaseOrdersController(
                     || ingredient.CompanyId == null
                     || ingredient.CompanyId == order.CompanyId));
 
-            // Stock Card defaults to Inventory UOM and matches receipts by exact UOM.
+            // Stock Card bases on Principal Component Unit; convert delivery packages → PCU.
             if (parent is not null)
-                (qty, uom) = IngredientUomBridge.ToInventoryPreferred(parent, qty, uom);
+            {
+                (qty, uom, price) = IngredientUomBridge.ToInboundPrincipal(
+                    parent,
+                    qty,
+                    uom,
+                    price,
+                    item.VendorProductId,
+                    string.IsNullOrWhiteSpace(item.Unit) ? item.DeliveryPackage : item.Unit);
+            }
 
             try
             {

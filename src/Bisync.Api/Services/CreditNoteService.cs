@@ -131,12 +131,21 @@ public class CreditNoteService(
 
         decimal stockQty = quantity;
         var stockUom = deliveryUom;
+        var stockUnitPrice = deliveryUnitPrice;
         if (ingredient is not null)
-            (stockQty, stockUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, quantity, deliveryUom);
+        {
+            (stockQty, stockUom, stockUnitPrice) = IngredientUomBridge.ToInboundPrincipal(
+                ingredient,
+                quantity,
+                string.IsNullOrWhiteSpace(item.ComponentUom) ? deliveryUom : item.ComponentUom,
+                deliveryUnitPrice,
+                item.VendorProductId,
+                deliveryUom);
+        }
 
-        var stockUnitPrice = stockQty > 0
+        stockUnitPrice = stockQty > 0
             ? StockCardFifoEngine.RoundUnitPrice(amount / stockQty)
-            : deliveryUnitPrice;
+            : stockUnitPrice;
 
         var onHand = await componentStock.GetOnHandAsync(
             item.ComponentId, location, stockUom, cancellationToken);

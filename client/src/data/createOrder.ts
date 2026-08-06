@@ -427,7 +427,7 @@ export function buildCartItems(
       lineKey: line.key,
       componentId: line.component.componentId,
       componentName: line.component.name,
-      componentUom: line.component.inventoryUOM,
+      componentUom: fromApiUom(line.component.recipeUOM) || line.component.recipeUOM,
       vendorProductId: line.vendorProduct.id,
       vendorExternalId: line.vendorProduct.vendorExternalId,
       vendorName: line.vendorProduct.vendorName,

@@ -14,7 +14,7 @@ public class StockCardController(
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? itemType = "all",
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? period = null,
         CancellationToken cancellationToken = default)
     {
@@ -36,7 +36,7 @@ public class StockCardController(
             companyId,
             locationIdList,
             itemType,
-            uomMode ?? "inventory",
+            uomMode ?? "recipe",
             period,
             cancellationToken);
         return Ok(rows.Select(r => new
@@ -64,7 +64,7 @@ public class StockCardController(
         string itemKey,
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? period = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
@@ -76,7 +76,7 @@ public class StockCardController(
             itemKey,
             companyId,
             locationIdList,
-            uomMode ?? "inventory",
+            uomMode ?? "recipe",
             period);
 
         if (detail is null)
@@ -147,7 +147,7 @@ public class StockCardController(
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string locationExternalId,
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? asOfDate = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
@@ -164,7 +164,7 @@ public class StockCardController(
             companyId,
             locationExternalId,
             locationIdList,
-            uomMode ?? "inventory",
+            uomMode ?? "recipe",
             parsedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
 
         if (snapshot is null)

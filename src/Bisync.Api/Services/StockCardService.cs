@@ -877,7 +877,6 @@ public class StockCardService(
         IReadOnlyDictionary<int, Product> productionProducts,
         CancellationToken cancellationToken)
     {
-        var normalizedUom = NormalizeUom(displayUom);
         var purchases = preloadedPurchases;
 
         if (companyId is int cid)
@@ -885,7 +884,8 @@ public class StockCardService(
 
         purchases = purchases
             .Where(p => LocationMatchesAny(p.LocationIdsJson, locationIds))
-            .Where(p => NormalizeUom(p.Uom) == normalizedUom)
+            .Where(p => CanNormalizePurchaseUom(ingredient, p.Uom, displayUom))
+            .Select(p => NormalizePurchaseToDisplayUom(ingredient, p, displayUom))
             .ToList();
 
         var movements = preloadedMovements;
@@ -895,7 +895,8 @@ public class StockCardService(
 
         movements = movements
             .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
-            .Where(m => NormalizeUom(m.Uom) == normalizedUom)
+            .Where(m => CanNormalizePurchaseUom(ingredient, m.Uom, displayUom))
+            .Select(m => NormalizeMovementToDisplayUom(ingredient, m, displayUom))
             .ToList();
 
         var fifoResult = await BuildComponentFifoResultAsync(
@@ -1168,7 +1169,6 @@ public class StockCardService(
         IReadOnlyDictionary<int, string>? poNumbersOverride = null,
         IReadOnlyDictionary<int, Product>? productionProductsOverride = null)
     {
-        var normalizedUom = NormalizeUom(displayUom);
         var purchases = purchasesOverride ?? await db.InventoryPurchases.AsNoTracking()
             .Where(p => p.ComponentId == ingredient.ComponentId)
             .ToListAsync(cancellationToken);
@@ -1204,7 +1204,14 @@ public class StockCardService(
         {
             if (!LocationMatchesAny(purchase.LocationIdsJson, locationIds))
                 continue;
-            if (NormalizeUom(purchase.Uom) != normalizedUom)
+            if (!TryNormalizeStockQty(
+                    ingredient,
+                    purchase.Uom,
+                    displayUom,
+                    purchase.Quantity,
+                    purchase.UnitPrice,
+                    out var convertedQty,
+                    out var convertedPrice))
                 continue;
 
             var entryType = purchase.PurchaseOrderId > 0 ? "purchase" : "cash_purchase";
@@ -1242,10 +1249,10 @@ public class StockCardService(
                 Id = purchase.Id,
                 OccurredAt = purchase.DateCreatedInStock,
                 EntryType = entryType,
-                Quantity = purchase.Quantity,
-                SignedQty = purchase.Quantity,
-                Uom = purchase.Uom,
-                UnitPrice = purchase.UnitPrice,
+                Quantity = convertedQty,
+                SignedQty = convertedQty,
+                Uom = displayUom,
+                UnitPrice = convertedPrice,
                 Reason = reason,
                 ReferenceNumber = poNumber,
                 SourceLabel = sourceLabel,
@@ -1276,23 +1283,33 @@ public class StockCardService(
         var productionProducts = productionProductsOverride
             ?? await LoadProductionProductsForMovementsAsync(movements, cancellationToken);
 
-        foreach (var movement in movements.Where(m => NormalizeUom(m.Uom) == normalizedUom))
+        foreach (var movement in movements)
         {
+            if (!TryNormalizeStockQty(
+                    ingredient,
+                    movement.Uom,
+                    displayUom,
+                    Math.Abs(movement.QtyDelta),
+                    movement.UnitPrice,
+                    out var convertedAbsQty,
+                    out var convertedPrice))
+                continue;
+
             var entryType = ClassifyMovementEntryType(movement);
-            var qty = Math.Abs(movement.QtyDelta);
+            var signedQty = movement.QtyDelta < 0 ? -convertedAbsQty : convertedAbsQty;
             var productionProduct = TryResolveProductionProduct(movement, productionProducts);
             events.Add(new FifoEvent
             {
                 Id = movement.Id,
                 OccurredAt = movement.CreatedAt,
                 EntryType = entryType,
-                Quantity = qty,
-                SignedQty = movement.QtyDelta,
-                Uom = movement.Uom,
+                Quantity = convertedAbsQty,
+                SignedQty = signedQty,
+                Uom = displayUom,
                 UnitPrice = entryType is "adjustment_out"
                     ? 0
-                    : movement.UnitPrice > 0
-                        ? movement.UnitPrice
+                    : convertedPrice > 0
+                        ? convertedPrice
                         : entryType is "adjustment_in"
                             ? 0
                             : ResolveComponentFallbackPrice(ingredient, displayUom),
@@ -1303,6 +1320,120 @@ public class StockCardService(
         }
 
         return events;
+    }
+
+    static bool CanNormalizePurchaseUom(Ingredient ingredient, string sourceUom, string displayUom)
+        => TryNormalizeStockQty(ingredient, sourceUom, displayUom, 1m, 1m, out _, out _);
+
+    static bool TryNormalizeStockQty(
+        Ingredient ingredient,
+        string sourceUom,
+        string displayUom,
+        decimal quantity,
+        decimal unitPrice,
+        out decimal convertedQty,
+        out decimal convertedPrice)
+    {
+        var source = NormalizeUom(sourceUom);
+        var display = NormalizeUom(displayUom);
+        if (source == display)
+        {
+            convertedQty = quantity;
+            convertedPrice = unitPrice;
+            return true;
+        }
+
+        return IngredientUomBridge.TryConvertToUom(
+            ingredient,
+            quantity,
+            unitPrice,
+            sourceUom,
+            displayUom,
+            out convertedQty,
+            out convertedPrice);
+    }
+
+    static InventoryPurchase NormalizePurchaseToDisplayUom(
+        Ingredient ingredient,
+        InventoryPurchase purchase,
+        string displayUom)
+    {
+        if (!TryNormalizeStockQty(
+                ingredient,
+                purchase.Uom,
+                displayUom,
+                purchase.Quantity,
+                purchase.UnitPrice,
+                out var qty,
+                out var price))
+            return purchase;
+
+        if (NormalizeUom(purchase.Uom) == NormalizeUom(displayUom)
+            && qty == purchase.Quantity
+            && price == purchase.UnitPrice)
+            return purchase;
+
+        return new InventoryPurchase
+        {
+            Id = purchase.Id,
+            ComponentId = purchase.ComponentId,
+            ComponentName = purchase.ComponentName,
+            Quantity = qty,
+            Uom = displayUom,
+            UnitPrice = price,
+            DateOrdered = purchase.DateOrdered,
+            DateCreatedInStock = purchase.DateCreatedInStock,
+            PurchaseOrderId = purchase.PurchaseOrderId,
+            PurchaseOrderItemId = purchase.PurchaseOrderItemId,
+            ProductExpiryDate = purchase.ProductExpiryDate,
+            Remarks = purchase.Remarks,
+            CompanyId = purchase.CompanyId,
+            LocationIdsJson = purchase.LocationIdsJson,
+            LocationExternalId = purchase.LocationExternalId,
+            SplitSourceType = purchase.SplitSourceType,
+            SplitSourceId = purchase.SplitSourceId,
+            SplitLineKey = purchase.SplitLineKey,
+            SplitParentComponentId = purchase.SplitParentComponentId,
+        };
+    }
+
+    static InventoryMovement NormalizeMovementToDisplayUom(
+        Ingredient ingredient,
+        InventoryMovement movement,
+        string displayUom)
+    {
+        var absQty = Math.Abs(movement.QtyDelta);
+        if (!TryNormalizeStockQty(
+                ingredient,
+                movement.Uom,
+                displayUom,
+                absQty,
+                movement.UnitPrice,
+                out var convertedAbs,
+                out var convertedPrice))
+            return movement;
+
+        if (NormalizeUom(movement.Uom) == NormalizeUom(displayUom)
+            && convertedAbs == absQty
+            && convertedPrice == movement.UnitPrice)
+            return movement;
+
+        var signed = movement.QtyDelta < 0 ? -convertedAbs : convertedAbs;
+        return new InventoryMovement
+        {
+            Id = movement.Id,
+            ComponentId = movement.ComponentId,
+            ComponentName = movement.ComponentName,
+            QtyDelta = signed,
+            Uom = displayUom,
+            UnitPrice = convertedPrice,
+            CreatedAt = movement.CreatedAt,
+            CompanyId = movement.CompanyId,
+            LocationExternalId = movement.LocationExternalId,
+            Reason = movement.Reason,
+            ReferenceType = movement.ReferenceType,
+            ReferenceId = movement.ReferenceId,
+        };
     }
 
     static bool IsProductSaleEntryType(string entryType)

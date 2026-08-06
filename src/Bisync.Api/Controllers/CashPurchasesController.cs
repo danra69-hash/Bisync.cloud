@@ -81,6 +81,16 @@ public class CashPurchasesController(
             ? Math.Round(request.DeliveryPrice / request.Quantity, 4, MidpointRounding.AwayFromZero)
             : request.DeliveryPrice;
 
+        var stockQty = request.Quantity;
+        var stockUom = componentUom;
+        (stockQty, stockUom, unitCost) = IngredientUomBridge.ToInboundPrincipal(
+            ingredient,
+            request.Quantity,
+            componentUom,
+            unitCost,
+            vendorProductId: null,
+            deliveryUom: deliveryUnit);
+
         var receiptBase64 = request.ReceiptFileBase64?.Trim() ?? string.Empty;
         if (receiptBase64.Length > 2_000_000)
             return BadRequest(new { message = "Receipt attachment is too large (max ~1.5 MB)." });
@@ -116,8 +126,8 @@ public class CashPurchasesController(
             {
                 var posting = await splitUse.PostInboundAsync(
                     ingredient,
-                    request.Quantity,
-                    componentUom,
+                    stockQty,
+                    stockUom,
                     unitCost,
                     request.DatePurchased,
                     cashPurchase.CreatedAt,
@@ -136,8 +146,8 @@ public class CashPurchasesController(
                 {
                     ComponentId = componentId,
                     ComponentName = componentName,
-                    Quantity = request.Quantity,
-                    Uom = componentUom,
+                    Quantity = stockQty,
+                    Uom = stockUom,
                     UnitPrice = unitCost,
                     DateOrdered = request.DatePurchased,
                     DateCreatedInStock = cashPurchase.CreatedAt,
@@ -148,10 +158,19 @@ public class CashPurchasesController(
                     LocationExternalId = locationExternalId,
                 };
                 db.InventoryPurchases.Add(inventoryPurchase);
-                ingredient.LastPriceInventory = unitCost;
-                if (ingredient.InventoryUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase)
-                    && ingredient.RecipeUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase))
-                    ingredient.LastPriceRecipe = unitCost;
+                ingredient.LastPriceRecipe = unitCost;
+                if (ingredient.InventoryUom.Equals(stockUom, StringComparison.OrdinalIgnoreCase)
+                    || ingredient.RecipeUom.Equals(ingredient.InventoryUom, StringComparison.OrdinalIgnoreCase))
+                    ingredient.LastPriceInventory = unitCost;
+                else if (IngredientUomBridge.TryConvertToUom(
+                             ingredient,
+                             1m,
+                             unitCost,
+                             stockUom,
+                             ingredient.InventoryUom,
+                             out _,
+                             out var inventoryUnitCost))
+                    ingredient.LastPriceInventory = inventoryUnitCost;
             }
 
             await db.SaveChangesAsync();
