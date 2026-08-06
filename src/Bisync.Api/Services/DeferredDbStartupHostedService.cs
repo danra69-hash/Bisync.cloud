@@ -98,6 +98,20 @@ public sealed class DeferredDbStartupHostedService(
                 logger.LogError(healEx, "Received stock heal failed; continuing startup");
             }
 
+            try
+            {
+                var purged = await sp.GetRequiredService<CreditNoteService>()
+                    .PurgeErroneousTinyQuantityAsync(cancellationToken);
+                if (purged > 0)
+                    logger.LogInformation(
+                        "Purged {Count} erroneous tiny-qty credit note(s) (≤ 0.0010).",
+                        purged);
+            }
+            catch (Exception purgeEx)
+            {
+                logger.LogError(purgeEx, "Tiny credit-note purge failed; continuing startup");
+            }
+
             logger.LogInformation("Deferred DB startup: complete");
         }
         catch (Exception ex)

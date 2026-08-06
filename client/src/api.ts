@@ -4393,6 +4393,15 @@ export const api = {
     }),
   cancelCreditNote: (id: number, payload: CancelCreditNotePayload) =>
     fetchJsonWithMethod<CreditNoteRow>(`/api/credit-notes/${id}/cancel`, 'POST', payload),
+  deleteCreditNote: (id: number, companyId?: number | null) => {
+    const params = new URLSearchParams();
+    if (companyId != null) params.set('companyId', String(companyId));
+    const q = params.toString();
+    return fetchJsonWithMethod<void>(
+      `/api/credit-notes/${id}${q ? `?${q}` : ''}`,
+      'DELETE',
+    );
+  },
   centralStoreConfig: (companyId: number) =>
     fetchJson<CentralStoreConfig>(`/api/central-store/config?companyId=${companyId}`),
   activateCentralStore: (payload: ActivateCentralStorePayload) =>

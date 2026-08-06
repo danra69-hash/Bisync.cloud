@@ -510,4 +510,48 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
     }
 
     static string NormalizeUom(string uom) => (uom ?? string.Empty).Trim().ToUpperInvariant();
+
+    /// <summary>
+    /// Puts qty back onto the batches that <c>issue_fifo_stock</c> deducted, then drops the
+    /// transaction audit rows. Used when permanently deleting a credit note (or similar).
+    /// </summary>
+    public async Task RestoreIssueTransactionAsync(
+        Guid transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (transactionId == Guid.Empty)
+            return;
+
+        await EnsureSchemaAsync(cancellationToken);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            WITH restored AS (
+                SELECT batch_id, SUM(qty_deducted) AS qty_deducted
+                FROM transaction_lines
+                WHERE transaction_id = {0}
+                GROUP BY batch_id
+            )
+            UPDATE inventory_batches b
+            SET
+                remaining_qty = ROUND(b.remaining_qty + r.qty_deducted, 4),
+                status = CASE
+                    WHEN ROUND(b.remaining_qty + r.qty_deducted, 4) > 0 THEN 'ACTIVE'
+                    ELSE 'DEPLETED'
+                END
+            FROM restored r
+            WHERE b.batch_id = r.batch_id
+            """,
+            transactionId);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM transaction_lines WHERE transaction_id = {0}
+            """,
+            transactionId);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM transactions WHERE transaction_id = {0}
+            """,
+            transactionId);
+    }
 }
