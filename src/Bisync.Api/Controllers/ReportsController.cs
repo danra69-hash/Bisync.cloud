@@ -61,6 +61,30 @@ public class ReportsController(ReportsService reports, ITenantContext tenant) : 
         => Run(companyId, locationIds, month, (cid, locs, period, ct) =>
             reports.WastageReportAsync(cid, locs, period, ct), cancellationToken);
 
+    [HttpGet("ops-expenses-analysis")]
+    public async Task<ActionResult<ReportPayload>> OpsExpensesAnalysis(
+        [FromQuery] int? companyId,
+        [FromQuery] string? locationIds,
+        [FromQuery] string? period,
+        [FromQuery] string? categories = null,
+        [FromQuery] string? groups = null,
+        CancellationToken cancellationToken = default)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var locs = ParseLocationIds(locationIds);
+        if (locs.Count == 0 || string.IsNullOrWhiteSpace(period))
+            return Ok(new ReportPayload("Ops Expenses Analysis", period ?? "", new(), []));
+
+        var payload = await reports.OpsExpensesAnalysisAsync(
+            cid,
+            locs,
+            period.Trim(),
+            categories,
+            groups,
+            cancellationToken);
+        return Ok(payload);
+    }
+
     [HttpGet("bcg-matrix")]
     public Task<ActionResult<ReportPayload>> BcgMatrix(
         [FromQuery] int? companyId,

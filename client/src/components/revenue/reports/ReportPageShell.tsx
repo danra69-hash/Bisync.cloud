@@ -44,6 +44,8 @@ type Props = {
   onRefresh: () => void;
   csvFilename: string;
   extraFilters?: ReactNode;
+  /** When false, hide the built-in month period select (use extraFilters instead). */
+  showPeriodSelect?: boolean;
   visual?: ReactNode;
   /** When true, render the chart/visual before metric cards. */
   visualFirst?: boolean;
@@ -90,6 +92,7 @@ export function ReportPageShell({
   onRefresh,
   csvFilename,
   extraFilters,
+  showPeriodSelect = true,
   visual,
   visualFirst = false,
   secondaryTable,
@@ -121,21 +124,23 @@ export function ReportPageShell({
             <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
           ) : null}
         </div>
-        <label className="flex flex-col gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Period
-          <select
-            className={filterSelectCls}
-            value={period}
-            onChange={e => onPeriodChange(e.target.value)}
-            disabled={!orgReady}
-          >
-            {periods.map(m => (
-              <option key={m} value={m}>
-                {formatStockCardMonthLabel(m, m === currentStockCardMonth())}
-              </option>
-            ))}
-          </select>
-        </label>
+        {showPeriodSelect ? (
+          <label className="flex flex-col gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Period
+            <select
+              className={filterSelectCls}
+              value={period}
+              onChange={e => onPeriodChange(e.target.value)}
+              disabled={!orgReady}
+            >
+              {periods.map(m => (
+                <option key={m} value={m}>
+                  {formatStockCardMonthLabel(m, m === currentStockCardMonth())}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {extraFilters}
         <label className="flex flex-col gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground min-w-[10rem]">
           Search

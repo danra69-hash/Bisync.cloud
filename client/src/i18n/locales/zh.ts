@@ -170,6 +170,7 @@ export const zh = {
       wastageReport: '损耗报表',
       bcgMatrix: 'BCG 矩阵',
       cogsAudit: 'COGS Audit',
+      opsExpensesAnalysis: 'Ops Expenses Analysis',
     },
     selectModule: '请从上方导航栏选择模块。',
     alertsMessages: '提醒与消息',

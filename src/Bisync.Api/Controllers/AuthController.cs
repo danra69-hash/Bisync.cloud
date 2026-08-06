@@ -668,7 +668,7 @@ public class AuthController(
                 "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",
                 "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",
                 "manageCustomers", "customerGroup", "customerManagement", "manageSalesOrder", "approveSalesOrder", "manageInvoice", "promotionScheduler",
-                "viewReports", "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit",
+                "viewReports", "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit", "opsExpensesAnalysis",
                 "accountMapping",
                 // hidePrices omitted — owners see prices by default
             })

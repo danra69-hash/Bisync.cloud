@@ -569,6 +569,17 @@
       "notes": "RMS Reports — inventory on-hand and movement summary"
     },
     {
+      "id": "dr.page.ops-expenses-analysis-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/OpsExpensesAnalysisReportPage.tsx",
+      "symbol": "OpsExpensesAnalysisReportPage",
+      "route": "/revenue/reports/ops-expenses-analysis",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-06",
+      "notes": "RMS Reports — Ops Expenses analysis by week/month with covers and checks"
+    },
+    {
       "id": "dr.page.detailed-purchase-summary-report",
       "kind": "client-page",
       "path": "client/src/components/revenue/reports/DetailedPurchaseSummaryReportPage.tsx",

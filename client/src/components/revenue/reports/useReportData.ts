@@ -72,4 +72,10 @@ export const reportApi = {
     api.reportWastage(companyId, locationIds, month),
   bcgMatrix: (companyId: number, locationIds: string[], month: string) =>
     api.reportBcgMatrix(companyId, locationIds, month),
+  opsExpenses: (
+    companyId: number,
+    locationIds: string[],
+    period: string,
+    opts?: { categories?: string; groups?: string },
+  ) => api.reportOpsExpensesAnalysis(companyId, locationIds, period, opts),
 };

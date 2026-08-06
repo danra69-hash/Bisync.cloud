@@ -63,6 +63,7 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'Wastage Report': 'revMgmt.items.wastageReport',
   'BCG Matrix': 'revMgmt.items.bcgMatrix',
   'COGS Audit': 'revMgmt.items.cogsAudit',
+  'Ops Expenses Analysis': 'revMgmt.items.opsExpensesAnalysis',
 };
 
 export const POS_ITEM_I18N: Record<string, string> = {

@@ -167,6 +167,7 @@ export const en = {
       wastageReport: 'Wastage Report',
       bcgMatrix: 'BCG Matrix',
       cogsAudit: 'COGS Audit',
+      opsExpensesAnalysis: 'Ops Expenses Analysis',
     },
     selectModule: 'Select a module from the navigation bar above.',
     alertsMessages: 'Alerts & Messages',

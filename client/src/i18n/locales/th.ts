@@ -170,6 +170,7 @@ export const th = {
       wastageReport: 'รายงานของเสีย',
       bcgMatrix: 'เมทริกซ์ BCG',
       cogsAudit: 'COGS Audit',
+      opsExpensesAnalysis: 'Ops Expenses Analysis',
     },
     selectModule: 'เลือกโมดูลจากแถบนำทางด้านบน',
     alertsMessages: 'การแจ้งเตือนและข้อความ',

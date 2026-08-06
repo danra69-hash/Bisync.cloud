@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -1726,6 +1727,23 @@ public class StockCardService(
             year = now.Year;
             month = now.Month;
         }
+        else if (TryParseWeekKey(period.Trim(), out var weekYear, out var weekNumber))
+        {
+            var weekStartDate = ISOWeek.ToDateTime(weekYear, weekNumber, DayOfWeek.Monday);
+            var weekStart = DateTime.SpecifyKind(weekStartDate.Date, DateTimeKind.Utc);
+            if (weekStart < earliestMonth)
+                weekStart = earliestMonth;
+            var weekEndExclusive = weekStart.AddDays(7);
+            var weekEnd = weekEndExclusive.AddSeconds(-1);
+            if (weekEnd > now)
+                weekEnd = now;
+            return new StockCardPeriod(
+                $"{weekYear:D4}-W{weekNumber:D2}",
+                weekStart,
+                weekEnd,
+                archiveCutoff,
+                weekEnd >= now.Date);
+        }
         else if (!TryParseMonthKey(period.Trim(), out year, out month))
         {
             year = now.Year;
@@ -1760,6 +1778,10 @@ public class StockCardService(
         CancellationToken cancellationToken)
     {
         var basePeriod = ResolvePeriod(period);
+        // Carry-forward inventory shifts apply to calendar months only.
+        if (basePeriod.MonthKey.Contains('-') && basePeriod.MonthKey.Contains('W', StringComparison.OrdinalIgnoreCase))
+            return basePeriod;
+
         var carryForward = await FindCarryForwardEffectiveDateAsync(
             basePeriod.MonthKey,
             companyId,
@@ -1863,6 +1885,25 @@ public class StockCardService(
         }
 
         return false;
+    }
+
+    static bool TryParseWeekKey(string value, out int year, out int week)
+    {
+        year = 0;
+        week = 0;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+        var match = System.Text.RegularExpressions.Regex.Match(
+            value.Trim(),
+            @"^(?<y>\d{4})-W(?<w>\d{1,2})$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return false;
+        if (!int.TryParse(match.Groups["y"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out year))
+            return false;
+        if (!int.TryParse(match.Groups["w"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out week))
+            return false;
+        return year is >= 2000 and <= 2100 && week is >= 1 and <= 53;
     }
 
     static DateTime? ParseProductionDate(string productionDate)

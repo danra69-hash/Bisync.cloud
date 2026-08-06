@@ -170,6 +170,7 @@ export const ko = {
       wastageReport: '폐기 보고서',
       bcgMatrix: 'BCG 매트릭스',
       cogsAudit: 'COGS Audit',
+      opsExpensesAnalysis: 'Ops Expenses Analysis',
     },
     selectModule: '위 탐색 바에서 모듈을 선택하세요.',
     alertsMessages: '알림 및 메시지',

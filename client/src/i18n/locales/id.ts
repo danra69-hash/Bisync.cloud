@@ -170,6 +170,7 @@ export const id = {
       wastageReport: 'Laporan Susut',
       bcgMatrix: 'Matriks BCG',
       cogsAudit: 'COGS Audit',
+      opsExpensesAnalysis: 'Ops Expenses Analysis',
     },
     selectModule: 'Pilih modul dari bilah navigasi di atas.',
     alertsMessages: 'Peringatan & Pesan',

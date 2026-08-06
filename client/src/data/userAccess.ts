@@ -113,6 +113,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
       { id: 'wastageReport', label: 'Wastage Report' },
       { id: 'bcgMatrix', label: 'BCG Matrix' },
       { id: 'cogsAudit', label: 'COGS Audit' },
+      { id: 'opsExpensesAnalysis', label: 'Ops Expenses Analysis' },
     ],
   },
   {
