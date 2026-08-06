@@ -772,7 +772,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-03",
-      "notes": "Point-of-Sales bar — POS Config after Promotion Scheduler; Payment / Entertainment / Discount type tables"
+      "notes": "Point-of-Sales bar — POS Config after Promotion Scheduler; Payment / Entertainment / Discount type tables plus Device Set up routing"
     },
     {
       "id": "dr.api.pos-config-types",
@@ -784,6 +784,17 @@
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-03",
       "notes": "POS Config lookup CRUD — payment, entertainment, and discount types per company"
+    },
+    {
+      "id": "dr.api.pos-device-setup",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosDeviceSetupController.cs",
+      "symbol": "PosDeviceSetupController",
+      "route": "api/pos-device-setup",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-06",
+      "notes": "POS Config Device Set up — product category/group/product routes to primary, secondary, and concurrent devices"
     },
     {
       "id": "dr.api.pos-tax-service-config",

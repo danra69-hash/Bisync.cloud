@@ -1370,6 +1370,48 @@ export interface UpsertPosConfigTypePayload {
   percentage?: number;
 }
 
+export interface PosDeviceSetupDeviceRef {
+  id: number;
+  name: string;
+  deviceType: string;
+  locationExternalId?: string;
+  active?: boolean;
+}
+
+export interface PosDeviceSetupRule {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  productCategory: string;
+  productGroup: string;
+  productId?: number | null;
+  productName: string;
+  primaryDeviceId?: number | null;
+  secondaryDeviceId?: number | null;
+  concurrentDeviceId?: number | null;
+  primaryDevice?: PosDeviceSetupDeviceRef | null;
+  secondaryDevice?: PosDeviceSetupDeviceRef | null;
+  concurrentDevice?: PosDeviceSetupDeviceRef | null;
+  sequence: number;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpsertPosDeviceSetupRulePayload {
+  companyId: number;
+  locationExternalId?: string;
+  productCategory?: string;
+  productGroup?: string;
+  productId?: number | null;
+  productName?: string;
+  primaryDeviceId?: number | null;
+  secondaryDeviceId?: number | null;
+  concurrentDeviceId?: number | null;
+  sequence?: number;
+  active?: boolean;
+}
+
 export interface PosTaxServiceChargeLine {
   id: string;
   name: string;
@@ -4013,6 +4055,24 @@ export const api = {
     fetchJsonWithMethod<PosConfigType>(`/api/pos-config-types/${id}/active`, 'PATCH', { active }),
   deletePosConfigType: (id: number) =>
     fetchJsonWithMethod<void>(`/api/pos-config-types/${id}`, 'DELETE'),
+  posDeviceSetupRules: (
+    companyId: number,
+    opts?: { locationExternalId?: string; includeInactive?: boolean },
+  ) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.locationExternalId) params.set('locationExternalId', opts.locationExternalId);
+    if (opts?.includeInactive === false) params.set('includeInactive', 'false');
+    else params.set('includeInactive', 'true');
+    return fetchJson<PosDeviceSetupRule[]>(`/api/pos-device-setup?${params}`);
+  },
+  createPosDeviceSetupRule: (data: UpsertPosDeviceSetupRulePayload) =>
+    fetchJsonWithMethod<PosDeviceSetupRule>('/api/pos-device-setup', 'POST', data),
+  updatePosDeviceSetupRule: (id: number, data: UpsertPosDeviceSetupRulePayload) =>
+    fetchJsonWithMethod<PosDeviceSetupRule>(`/api/pos-device-setup/${id}`, 'PUT', data),
+  setPosDeviceSetupRuleActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosDeviceSetupRule>(`/api/pos-device-setup/${id}/active`, 'PATCH', { active }),
+  deletePosDeviceSetupRule: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-device-setup/${id}`, 'DELETE'),
   posTaxServiceConfig: (companyId: number) => {
     const params = new URLSearchParams({ companyId: String(companyId) });
     return fetchJson<PosTaxServiceConfig>(`/api/pos-tax-service-config?${params}`);

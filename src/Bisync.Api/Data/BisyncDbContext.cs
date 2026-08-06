@@ -80,6 +80,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosPrepaidPurchase> PosPrepaidPurchases => Set<PosPrepaidPurchase>();
     public DbSet<PosPrepaidLedger> PosPrepaidLedgers => Set<PosPrepaidLedger>();
     public DbSet<PosDevice> PosDevices => Set<PosDevice>();
+    public DbSet<PosDeviceSetupRule> PosDeviceSetupRules => Set<PosDeviceSetupRule>();
     public DbSet<PosModifierGroup> PosModifierGroups => Set<PosModifierGroup>();
     public DbSet<PosModifierOption> PosModifierOptions => Set<PosModifierOption>();
     public DbSet<PosModifierAttachment> PosModifierAttachments => Set<PosModifierAttachment>();
@@ -691,6 +692,15 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.PrinterModel).HasMaxLength(120);
             e.Property(x => x.PrintAlignment).HasMaxLength(20);
             e.Property(x => x.CreatedBy).HasMaxLength(256);
+        });
+        modelBuilder.Entity<PosDeviceSetupRule>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.Active });
+            e.HasIndex(x => new { x.CompanyId, x.ProductId });
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.ProductCategory).HasMaxLength(120);
+            e.Property(x => x.ProductGroup).HasMaxLength(120);
+            e.Property(x => x.ProductName).HasMaxLength(200);
         });
         modelBuilder.Entity<PosModifierGroup>(e =>
         {
