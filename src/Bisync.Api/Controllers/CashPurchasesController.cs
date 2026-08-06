@@ -77,8 +77,10 @@ public class CashPurchasesController(
         if (!string.IsNullOrEmpty(locationExternalId))
             await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
 
+        // DeliveryPrice is the PO/cash line amount; Quantity is the entered delivery/stock qty.
+        // Principal unit price is derived once as round4(lineAmount ÷ principalQty) inside the bridge.
         var unitCost = request.Quantity > 0
-            ? Math.Round(request.DeliveryPrice / request.Quantity, 4, MidpointRounding.AwayFromZero)
+            ? request.DeliveryPrice / request.Quantity
             : request.DeliveryPrice;
 
         var stockQty = request.Quantity;

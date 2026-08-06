@@ -1776,7 +1776,8 @@ public class PurchaseOrdersController(
                     || ingredient.CompanyId == null
                     || ingredient.CompanyId == order.CompanyId));
 
-            // Stock Card bases on Principal Component Unit; convert delivery packages → PCU.
+            // Step 1: delivery packages → Principal Component qty + unit price
+            // (PO line amount ÷ total principal qty, 4dp). No operational rounding true-up.
             if (parent is not null)
             {
                 (qty, uom, price) = IngredientUomBridge.ToInboundPrincipal(

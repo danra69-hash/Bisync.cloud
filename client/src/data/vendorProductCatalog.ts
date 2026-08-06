@@ -1049,6 +1049,8 @@ export function resolveComponentUomQty(
 }
 
 export function calcComponentPrincipalUomPrice(deliveryPrice: number, principalQty: number): number {
+  // Same Step 1 rule as stock inbound: delivery (package) price ÷ principal qty per package.
+  // Full PO line: (packages × deliveryPrice) ÷ (packages × principalQty) — identical per unit.
   return principalQty > 0 ? deliveryPrice / principalQty : 0;
 }
 
