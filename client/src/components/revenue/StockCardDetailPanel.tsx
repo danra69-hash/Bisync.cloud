@@ -343,14 +343,14 @@ export function StockCardDetailPanel({
   }, [loadDetail]);
 
   useEffect(() => {
-    if (itemType !== 'component' || !itemKey) {
+    if (itemType !== 'component' || !itemKey || !companyId) {
       setSplitUseIngredient(null);
       return;
     }
-    api.ingredients()
+    api.ingredients(companyId)
       .then(rows => setSplitUseIngredient(rows.find(row => row.componentId === itemKey) ?? null))
       .catch(() => setSplitUseIngredient(null));
-  }, [itemType, itemKey]);
+  }, [itemType, itemKey, companyId]);
 
 
 
@@ -566,9 +566,9 @@ export function StockCardDetailPanel({
                 <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
 
                   <tr>
-                    <th className={tableHeaderCls('left', 'px-5')}>Date &amp; time</th>
+                    <th className={tableHeaderCls('left', 'px-5')}>Date</th>
                     <th className={tableHeaderCls('left')}>Type</th>
-                    <th className={tableHeaderCls('right')}>Inbound</th>
+                    <th className={tableHeaderCls('right')}>Stock QTY</th>
                     <th className={tableHeaderCls('right')}>Outbound</th>
                     <th className={tableHeaderCls('left')}>UOM</th>
                     <th className={tableHeaderCls('right')}>UOM price</th>

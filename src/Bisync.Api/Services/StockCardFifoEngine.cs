@@ -674,8 +674,17 @@ public static class StockCardFifoEngine
         AddLayer(layers, monthStart, 0, totalQty, avg, "B/F", seq > 0 ? seq : 1);
     }
 
-    static DateTime MonthStartUtc(DateTime value) =>
-        new(value.Year, value.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    static DateTime MonthStartUtc(DateTime value)
+    {
+        // Unspecified / Local timestamps from SQLite legacy rows must not throw on Kind convert.
+        var utc = value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        };
+        return new DateTime(utc.Year, utc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    }
 
     static bool IsInboundLayer(string entryType) =>
         entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "balance_forward" or "split_use_in";

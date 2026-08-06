@@ -251,7 +251,10 @@ public class StockCardService(
         if (normalizedType is "component" or "smart-component" or "smart component")
         {
             var ingredient = await db.Ingredients.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
+                .FirstOrDefaultAsync(i =>
+                    i.ComponentId == itemKey
+                    && (companyId == null || i.CompanyId == companyId),
+                    cancellationToken);
             if (ingredient is null)
                 return null;
 
@@ -345,7 +348,10 @@ public class StockCardService(
         if (normalizedType is "component" or "smart-component" or "smart component")
         {
             var ingredient = await db.Ingredients.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
+                .FirstOrDefaultAsync(i =>
+                    i.ComponentId == itemKey
+                    && (companyId == null || i.CompanyId == companyId),
+                    cancellationToken);
             if (ingredient is null)
                 return null;
 
