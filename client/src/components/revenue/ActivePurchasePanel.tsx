@@ -496,14 +496,14 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       ? 'Approve to convert this PR into an open purchase order.'
       : mode === 'receive'
         ? (order.allowPartialDelivery
-          ? 'Enter qty for this shipment (defaults to remaining). Consolidate to stock; PO stays Partially Delivered until Final delivery completed.'
-          : 'Confirm quantities and prices received from the vendor before posting to stock.')
+          ? 'Enter qty for this shipment (defaults to remaining). Confirm receive posts stock with a pending-consolidation remark. PO stays Partially Delivered until Final delivery completed.'
+          : 'Confirm quantities and prices received — stock posts to the stock card with a received remark until Accounting consolidates.')
         : mode === 'reconcile'
           ? (order.allowPartialDelivery
-            ? 'Post this shipment to inventory. PO remains active as Partially Delivered until you click Final delivery completed.'
-            : 'Final review — stock will be created in inventory after reconciliation.')
+            ? 'Accounting affirmation for this shipment — clears received remarks on the stock card. PO stays Partially Delivered until Final delivery completed.'
+            : 'Accounting affirmation — clears received remarks; stock was already posted at receive.')
           : order.canFinalizeDelivery
-            ? 'Partial deliveries are consolidated. Click Final delivery completed to close this PO (delivery rating uses final qty/price vs issued).'
+            ? 'Shipments are received into stock and consolidated for Accounting. Click Final delivery completed to close this PO (delivery rating uses final qty/price vs issued).'
             : 'This purchase has no pending workflow action.';
 
   return createPortal(
@@ -535,7 +535,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <p className="font-semibold">Pre-committed PO</p>
               <p className="mt-0.5 leading-relaxed">
                 Company-level blanket. Issue regular POs to draw down; delivery unit and price follow this
-                commitment. Stock / inbound is affected only when each drawdown PO is received and consolidated.
+                commitment. Stock posts when each drawdown PO is received; consolidation affirms it for Accounting.
               </p>
             </div>
           ) : null}
@@ -543,9 +543,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-800 dark:text-orange-300">
               <p className="font-semibold">Partial delivery enabled for this vendor</p>
               <p className="mt-0.5 leading-relaxed">
-                Delivered vs remaining is listed per line. Consolidate each shipment to stock; use
-                Final delivery completed to close the PO. Delivery rating is scored only after final close
-                if qty or price differs from the issued PO.
+                Delivered vs remaining is listed per line. Receive posts stock for ops; consolidate affirms
+                for Accounting. Use Final delivery completed to close the PO. Delivery rating is scored only
+                after final close if qty or price differs from the issued PO.
               </p>
             </div>
           ) : null}
@@ -1130,7 +1130,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                 ? 'Reconciling…'
                 : order.allowPartialDelivery
                   ? 'Confirm consolidate shipment'
-                  : 'Confirm reconcile & add to inventory'}
+                  : 'Confirm consolidate'}
             </button>
           )}
           {canFinalizeDelivery && (

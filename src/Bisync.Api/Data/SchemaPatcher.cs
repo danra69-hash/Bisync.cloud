@@ -294,6 +294,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitLineKey", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitParentComponentId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "ProductExpiryDate", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "Remarks", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "UX_InventoryPurchases_SplitSource"
             ON "InventoryPurchases" ("SplitSourceType", "SplitSourceId", "SplitLineKey", "LocationExternalId")

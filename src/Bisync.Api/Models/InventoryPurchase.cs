@@ -13,10 +13,14 @@ public class InventoryPurchase
     public int PurchaseOrderId { get; set; }
     public int PurchaseOrderItemId { get; set; }
     /// <summary>
-    /// Product expiry date (yyyy-MM-dd) copied from the PO line at consolidate when provided on receive.
-    /// Empty when the receipt was consolidated without an expiry date.
+    /// Product expiry date (yyyy-MM-dd) copied from the PO line at receive when provided.
+    /// Empty when the receipt was posted without an expiry date.
     /// </summary>
     public string ProductExpiryDate { get; set; } = string.Empty;
+    /// <summary>
+    /// Ops receive remark shown on the stock card until accounting consolidates (then cleared).
+    /// </summary>
+    public string Remarks { get; set; } = string.Empty;
     public int? CompanyId { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
     /// <summary>Partition key (first LocationIdsJson element, or empty).</summary>

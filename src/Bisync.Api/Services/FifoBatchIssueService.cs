@@ -47,6 +47,25 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
             cancellationToken);
     }
 
+    /// <summary>
+    /// Syncs FIFO batch unit cost when accounting consolidates / affirms a receipt price.
+    /// </summary>
+    public async Task UpdateBatchUnitCostFromPurchaseAsync(
+        InventoryPurchase purchase,
+        CancellationToken cancellationToken = default)
+    {
+        if (purchase.Id <= 0) return;
+        await EnsureSchemaAsync(cancellationToken);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE inventory_batches
+            SET unit_cost = {0}
+            WHERE source_purchase_id = {1}
+            """,
+            StockCardFifoEngine.RoundUnitPrice(purchase.UnitPrice),
+            purchase.Id);
+    }
+
     public async Task RecordReceiptBatchAsync(
         string componentId,
         string locationExternalId,
