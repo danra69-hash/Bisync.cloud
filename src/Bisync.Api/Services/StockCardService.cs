@@ -35,6 +35,36 @@ public class StockCardService(
             var visibleIngredients = ingredients
                 .Where(i => MatchesIngredientLocations(i, locationIds))
                 .ToList();
+
+            // Also surface components that already have inbound stock at the selected locations,
+            // even when the ingredient catalog location filter would exclude them (common after receive).
+            var purchasedComponentIds = await db.InventoryPurchases.AsNoTracking()
+                .Where(p => p.DateCreatedInStock >= stockPeriod.ArchiveCutoff
+                    && p.DateCreatedInStock <= stockPeriod.PeriodEnd
+                    && (companyId == null || p.CompanyId == null || p.CompanyId == companyId))
+                .Select(p => new { p.ComponentId, p.LocationIdsJson, p.LocationExternalId })
+                .ToListAsync(cancellationToken);
+            var purchasedAtLocation = purchasedComponentIds
+                .Where(p =>
+                    StockLocationRules.PurchaseMatchesAny(p.LocationIdsJson, locationIds)
+                    || (!string.IsNullOrWhiteSpace(p.LocationExternalId)
+                        && locationIds.Any(id => id.Equals(p.LocationExternalId, StringComparison.OrdinalIgnoreCase))))
+                .Select(p => p.ComponentId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (purchasedAtLocation.Count > 0)
+            {
+                foreach (var ingredient in ingredients)
+                {
+                    if (!purchasedAtLocation.Contains(ingredient.ComponentId))
+                        continue;
+                    if (visibleIngredients.Any(v =>
+                            v.ComponentId.Equals(ingredient.ComponentId, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    visibleIngredients.Add(ingredient);
+                }
+            }
+
             var componentIds = visibleIngredients.Select(i => i.ComponentId).ToList();
 
             // Batch-load purchases/movements for all components at once to avoid N+1 round-trips.
@@ -1661,7 +1691,8 @@ public class StockCardService(
             return true;
         if (itemLocations.Any(l => l.Equals("all", StringComparison.OrdinalIgnoreCase)))
             return true;
-        return selectedLocations.Any(itemLocations.Contains);
+        return selectedLocations.Any(selected =>
+            itemLocations.Any(item => item.Equals(selected, StringComparison.OrdinalIgnoreCase)));
     }
 
     static bool LogMatchesAnyLocation(string locationIdsJson, IReadOnlyList<string> locationIds)

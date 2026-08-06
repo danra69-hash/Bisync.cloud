@@ -1569,8 +1569,9 @@ public class PurchaseOrdersController(
         var locationIdsJson = locationIds.Count > 0
             ? order.LocationIdsJson
             : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+        // Keep original casing from the PO so stock-card location filters match ingredient/purchase ids.
         var locationExternalId = locationIds.Count > 0
-            ? locationIds[0].Trim().ToLowerInvariant()
+            ? locationIds[0].Trim()
             : string.Empty;
 
         if (!string.IsNullOrEmpty(locationExternalId))
@@ -1674,7 +1675,7 @@ public class PurchaseOrdersController(
                 ? order.LocationIdsJson
                 : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
             var locationExternalId = locationIds.Count > 0
-                ? locationIds[0].Trim().ToLowerInvariant()
+                ? locationIds[0].Trim()
                 : string.Empty;
 
             if (!string.IsNullOrEmpty(locationExternalId))
@@ -1762,13 +1763,23 @@ public class PurchaseOrdersController(
             var price = item.ReceivedUnitPrice ?? item.ReconciledUnitPrice ?? line.UnitPrice;
             if (qty <= 0) continue;
             if (item.IsReturnableDeposit) continue;
+            if (string.IsNullOrWhiteSpace(item.ComponentId))
+                return $"Cannot post stock for '{item.Name}' — component id is missing on the PO line.";
+
             var uom = string.IsNullOrWhiteSpace(line.ComponentUom)
                 ? (string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom)
                 : line.ComponentUom.Trim();
 
             var parent = await db.Ingredients.FirstOrDefaultAsync(ingredient =>
                 ingredient.ComponentId == item.ComponentId
-                && (order.CompanyId == null || ingredient.CompanyId == order.CompanyId));
+                && (order.CompanyId == null
+                    || ingredient.CompanyId == null
+                    || ingredient.CompanyId == order.CompanyId));
+
+            // Stock Card defaults to Inventory UOM and matches receipts by exact UOM.
+            if (parent is not null)
+                (qty, uom) = IngredientUomBridge.ToInventoryPreferred(parent, qty, uom);
+
             try
             {
                 if (parent is not null && splitUse.ReadConfig(parent) is not null)

@@ -11,11 +11,21 @@ public static class StockLocationRules
 
     public static bool MovementMatchesAny(string movementLocationId, IReadOnlyList<string> locationIds)
         => movementLocationId.Equals(SharedLocationId, StringComparison.OrdinalIgnoreCase)
-            || locationIds.Contains(movementLocationId);
+            || locationIds.Any(id => id.Equals(movementLocationId, StringComparison.OrdinalIgnoreCase));
 
     public static bool PurchaseMatchesLocation(string locationIdsJson, string locationExternalId)
     {
         var ids = PurchaseOrderWorkflow.DeserializeLocationIds(locationIdsJson);
-        return ids.Count == 0 || ids.Contains(locationExternalId);
+        return ids.Count == 0
+            || ids.Any(id => id.Equals(locationExternalId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool PurchaseMatchesAny(string locationIdsJson, IReadOnlyList<string> locationIds)
+    {
+        var ids = PurchaseOrderWorkflow.DeserializeLocationIds(locationIdsJson);
+        if (ids.Count == 0)
+            return true;
+        return locationIds.Any(selected =>
+            ids.Any(id => id.Equals(selected, StringComparison.OrdinalIgnoreCase)));
     }
 }

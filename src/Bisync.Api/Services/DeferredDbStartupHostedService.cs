@@ -85,6 +85,19 @@ public sealed class DeferredDbStartupHostedService(
             var partitions = sp.GetRequiredService<LocationPartitionService>();
             await partitions.EnsureLocationListPartitionsAsync();
             await partitions.EnsurePartitionsForAllLocationsAsync();
+
+            try
+            {
+                var healed = await sp.GetRequiredService<ReceivedPurchaseStockHealer>()
+                    .HealMissingReceivedStockAsync(cancellationToken);
+                if (healed > 0)
+                    logger.LogInformation("Healed received stock for {Count} purchase order(s).", healed);
+            }
+            catch (Exception healEx)
+            {
+                logger.LogError(healEx, "Received stock heal failed; continuing startup");
+            }
+
             logger.LogInformation("Deferred DB startup: complete");
         }
         catch (Exception ex)
