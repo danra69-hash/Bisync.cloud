@@ -124,7 +124,7 @@ const fieldCls =
 const labelCls = 'text-xs font-medium text-foreground';
 
 export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Props) {
-  const { rm } = useCountryFormatters();
+  const { rm, uomPrice } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
   const [loading, setLoading] = useState(false);
@@ -376,7 +376,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
       });
 
       setSuccess(
-        `Added ${result.inventoryPurchase.quantity} ${result.inventoryPurchase.uom} of ${result.inventoryPurchase.componentName} to inventory (${rm(result.inventoryPurchase.unitPrice)} per ${result.inventoryPurchase.uom}).`,
+        `Added ${result.inventoryPurchase.quantity} ${result.inventoryPurchase.uom} of ${result.inventoryPurchase.componentName} to inventory (${uomPrice(result.inventoryPurchase.unitPrice)} per ${result.inventoryPurchase.uom}).`,
       );
       resetForm();
       loadHistory();
@@ -696,8 +696,8 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                       <div className="mt-2 rounded-md border border-border bg-muted/20 px-2.5 py-2 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-muted-foreground">
                           {currentUnitPrice !== null
-                            ? `Unit: ${rm(currentUnitPrice)} / ${principalUom}`
-                            : `Unit: ${rm(unitPriceForPurchase(purchase))} / ${purchase.componentUom}`}
+                            ? `Unit: ${uomPrice(currentUnitPrice)} / ${principalUom}`
+                            : `Unit: ${uomPrice(unitPriceForPurchase(purchase))} / ${purchase.componentUom}`}
                         </span>
                         {reference ? (
                           <span
@@ -708,7 +708,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                             {isUp && <ArrowUp size={12} />}
                             {isDown && <ArrowDown size={12} />}
                             {!isUp && !isDown && '→'}
-                            {reference.label}: {rm(reference.unitPrice)}
+                            {reference.label}: {uomPrice(reference.unitPrice)}
                           </span>
                         ) : (
                           <span className="text-[11px] text-muted-foreground">No price benchmark</span>

@@ -21,7 +21,7 @@ import {
   VENDOR_PRODUCT_CATALOG,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
-import { formatCountryCurrency, formatCountryNumber } from '../../utils/numberFormat';
+import { formatCountryCurrency, formatCountryNumber, formatPrincipalUomPrice } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { tableHeaderCompactCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderStyles';
 
@@ -114,6 +114,11 @@ function formatQty(n: number, countryCode: string): string {
 function formatPrice(n: number, countryCode: string): string {
   if (n <= 0) return '—';
   return formatCountryCurrency(n, countryCode);
+}
+
+function formatPrincipalPrice(n: number, countryCode: string): string {
+  if (n <= 0) return '—';
+  return formatPrincipalUomPrice(n, countryCode);
 }
 
 function VendorProductLocationModal({
@@ -363,7 +368,7 @@ export function VendorProductTableBody({
                     <p className="text-[11px] text-muted-foreground mt-1">Enter conversion manually</p>
                   )}
                 </td>
-                <td className="px-2 py-2.5 font-sans">{formatPrice(principalPrice, countryCode)}</td>
+                <td className="px-2 py-2.5 font-sans">{formatPrincipalPrice(principalPrice, countryCode)}</td>
                 <td className="px-2 py-2.5">
                   <select
                     className={`${selectCls} text-xs py-1 w-full`}
@@ -396,7 +401,7 @@ export function VendorProductTableBody({
                     </p>
                   )}
                 </td>
-                <td className="px-2 py-2.5 font-sans font-medium">{formatPrice(nettPrice, countryCode)}</td>
+                <td className="px-2 py-2.5 font-sans font-medium">{formatPrincipalPrice(nettPrice, countryCode)}</td>
                 {showLocationColumn && (
                   <td className="px-2 py-2.5 text-center">
                     <button

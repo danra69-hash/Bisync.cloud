@@ -64,7 +64,7 @@ function ComponentItemsTable({
   totalLabel: string;
   onOpenProductionMethod?: () => void;
 }) {
-  const { rm } = useCountryFormatters();
+  const { rm, uomPrice } = useCountryFormatters();
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedItems,
@@ -116,7 +116,7 @@ function ComponentItemsTable({
                     <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.componentId}</p>
                   </td>
                   <td className={tdCls}>{item.componentUom || '—'}</td>
-                  <td className={tdCls}>{rm(item.componentUomPrice)}</td>
+                  <td className={tdCls}>{uomPrice(item.componentUomPrice)}</td>
                   <td className={tdCls}>{item.quantity}</td>
                   <td className={`${tdCls} font-medium`}>{rm(item.subtotal)}</td>
                 </tr>

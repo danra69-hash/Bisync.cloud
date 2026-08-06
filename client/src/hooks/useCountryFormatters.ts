@@ -5,6 +5,7 @@ import {
   formatCountryCurrency,
   formatCountryNumber,
   formatCountryPercent,
+  formatPrincipalUomPrice,
   getCurrencyCode,
   getCurrencySymbol,
 } from '../utils/numberFormat';
@@ -25,6 +26,8 @@ export function useCountryFormatters() {
     percent: (value: number) => formatCountryPercent(value, countryCode),
     /** Alias kept for call sites that historically used Malaysian RM formatting. */
     rm: (value: number) => formatCountryCurrency(value, countryCode),
+    /** Principal Component / stock UOM unit price — always 4 decimal places. */
+    uomPrice: (value: number, symbol?: string) => formatPrincipalUomPrice(value, countryCode, symbol),
     cogsPercent: (cogs: number, rrp: number) => formatCogsPercent(cogs, rrp, countryCode),
   }), [countryCode]);
 }

@@ -121,6 +121,27 @@ export function formatCountryCurrency(
   return `${prefix} ${formatCountryNumber(value, countryCode)}`;
 }
 
+/** Always 4 decimal places — Principal Component / stock UOM unit prices (e.g. 0.0330). */
+export const PRINCIPAL_UOM_PRICE_DECIMALS = 4;
+
+export function formatPrincipalUomPriceNumber(value: number): string {
+  if (!Number.isFinite(value)) return (0).toFixed(PRINCIPAL_UOM_PRICE_DECIMALS);
+  return value.toFixed(PRINCIPAL_UOM_PRICE_DECIMALS);
+}
+
+/**
+ * Currency display for Principal Component Unit price (and stock UOM price).
+ * Always shows exactly 4 decimal places so values like 0.0330 are not collapsed to 0.03.
+ */
+export function formatPrincipalUomPrice(
+  value: number,
+  countryCode = 'MY',
+  symbol?: string,
+): string {
+  const prefix = symbol ?? getCurrencySymbol(countryCode);
+  return `${prefix} ${formatPrincipalUomPriceNumber(value)}`;
+}
+
 /** Compact money for dashboard KPIs (e.g. RM 1.2k, S$ 2.50M). */
 export function formatCompactCurrency(value: number, countryCode = 'MY'): string {
   const symbol = getCurrencySymbol(countryCode);

@@ -119,7 +119,7 @@ function FilterSelect({
 
 export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const countryCode = useOrgCountryCode();
-  const { rm } = useCountryFormatters();
+  const { uomPrice } = useCountryFormatters();
   const [rows, setRows] = useState<StockCardListRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,7 +342,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.inboundQty, countryCode)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.outboundQty, countryCode)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">
-                      {row.averageCogs > 0 ? rm(row.averageCogs) : '—'}
+                      {row.averageCogs > 0 ? uomPrice(row.averageCogs) : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty, countryCode)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">
