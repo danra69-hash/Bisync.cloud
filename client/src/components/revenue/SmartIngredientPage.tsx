@@ -15,6 +15,7 @@ import { labelsEqual } from '../../utils/labelMatch';
 import {
   blankComponentRow,
   fromApiUom,
+  migrateInventoryUomsIntoComponentAlts,
   resolveDetailConfigForRow,
   type ComponentRow,
 } from '../../data/componentForm';
@@ -96,18 +97,25 @@ function FilterSelect({ label, value, options, onChange }: {
 
 function uomSourceForRow(row: ComponentRow): ComponentUomSource {
   const detail = resolveDetailConfigForRow(row);
-  return {
-    recipeUom: fromApiUom(row.recipeUOM),
-    inventoryUom: fromApiUom(row.inventoryUOM),
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: fromApiUom(row.recipeUOM),
+    inventoryUnit: fromApiUom(row.inventoryUOM),
     altRecipeUnits: detail.altRecipeUnits,
     altInventoryUnits: detail.altInventoryUnits,
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  return {
+    recipeUom: migrated.recipeUnit,
+    inventoryUom: migrated.inventoryUnit,
+    altRecipeUnits: migrated.altRecipeUnits,
+    altInventoryUnits: [],
   };
 }
 
 function displayUomForRow(row: ComponentRow, mode: UomFilterMode): string {
   const source = uomSourceForRow(row);
-  if (mode === 'principal') return source.recipeUom;
-  if (mode === 'inventory') return source.inventoryUom;
+  if (mode === 'principal' || mode === 'inventory') return source.recipeUom;
   return mode || source.recipeUom;
 }
 
@@ -288,7 +296,7 @@ export function SmartIngredientPage({
     const units = new Set<string>();
     for (const row of activityScopedRows) {
       const source = uomSourceForRow(row);
-      for (const alt of [...source.altRecipeUnits, ...source.altInventoryUnits]) {
+      for (const alt of source.altRecipeUnits) {
         const unit = fromApiUom(alt.unit);
         if (unit) units.add(unit);
       }
@@ -567,7 +575,6 @@ export function SmartIngredientPage({
               className={`${filterSelectCls} min-w-[180px]`}
             >
               <option value="principal">Principal Component UOM</option>
-              <option value="inventory">Principal Inventory UOM</option>
               {alternateUomOptions.map(unit => (
                 <option key={unit} value={unit}>Alternate: {unit}</option>
               ))}

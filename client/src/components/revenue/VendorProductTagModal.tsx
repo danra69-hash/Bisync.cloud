@@ -117,8 +117,6 @@ export function VendorProductTagModal({
 
   const [recipeUnit, setRecipeUnit] = useState('');
 
-  const [inventoryUnit, setInventoryUnit] = useState('');
-
   const [componentUom, setComponentUom] = useState('');
 
   const [principalQty, setPrincipalQty] = useState('');
@@ -243,7 +241,6 @@ export function VendorProductTagModal({
 
   const componentDetail = selectedRow ? resolveDetailConfigForRow(selectedRow) : null;
   const altRecipeUnits = componentDetail?.altRecipeUnits ?? [];
-  const altInventoryUnits = componentDetail?.altInventoryUnits ?? [];
 
 
 
@@ -289,8 +286,6 @@ export function VendorProductTagModal({
 
     const recipe = fromApiUom(row.recipeUOM);
 
-    const inventory = fromApiUom(row.inventoryUOM);
-
     const detail = row.detailConfig;
 
     const choices = getComponentUomChoices(recipe, detail?.altRecipeUnits ?? []);
@@ -302,8 +297,6 @@ export function VendorProductTagModal({
     setSelectedRow(row);
 
     setRecipeUnit(recipe);
-
-    setInventoryUnit(inventory);
 
     setComponentUom(uom);
 
@@ -383,7 +376,7 @@ export function VendorProductTagModal({
 
       recipeUnit,
 
-      inventoryUnit,
+      inventoryUnit: recipeUnit,
 
       componentUom: componentUom || recipeUnit,
 
@@ -687,25 +680,11 @@ export function VendorProductTagModal({
 
                 </Field>
 
-                <Field label="Principal Inventory UOM">
-
-                  <select className={selectCls} value={inventoryUnit} onChange={e => setInventoryUnit(e.target.value)}>
-
-                    {RECIPE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-
-                  </select>
-
-                </Field>
-
               </div>
 
               <ComponentUomSummary
                 recipeUnit={recipeUnit}
-                inventoryUnit={inventoryUnit}
                 altRecipeUnits={altRecipeUnits}
-                altInventoryUnits={altInventoryUnits}
-                convertFromInventoryQty={componentDetail?.convertFromInventoryQty}
-                convertToRecipeQty={componentDetail?.convertToRecipeQty}
               />
 
 

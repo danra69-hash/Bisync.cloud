@@ -1,6 +1,7 @@
 import {
   fromApiUom,
   generateComponentId,
+  migrateInventoryUomsIntoComponentAlts,
   resolveDetailConfigForRow,
   serializeDetailConfig,
   toApiUom,
@@ -632,8 +633,9 @@ function rowToDraft(
   if (!name) return null;
 
   const recipeUom = get(['Principal Component', 'Principal Component Unit'], 4);
-  const inventoryUom = get(['Principal Inventory Unit'], 9);
-  if (!recipeUom || !inventoryUom) return null;
+  if (!recipeUom) return null;
+  // Legacy templates may still include Principal Inventory Unit; fold into component alts on save.
+  const inventoryUom = get(['Principal Inventory Unit'], 9) || recipeUom;
 
   const principalInventoryConversion = parsePrincipalInventoryConversion(
     get(['Principal inventory Conversion'], 10),
@@ -694,8 +696,8 @@ function rowToDraftLegacy(cols: string[], scope?: SmartComponentLocationScope): 
   if (!name) return null;
 
   const recipeUom = cols[4]?.trim() ?? '';
-  const inventoryUom = cols[5]?.trim() ?? '';
-  if (!recipeUom || !inventoryUom) return null;
+  if (!recipeUom) return null;
+  const inventoryUom = cols[5]?.trim() || recipeUom;
 
   return {
     componentId: cols[0]?.trim().toUpperCase() ?? '',
@@ -896,13 +898,21 @@ function buildTemplateComparable(
 }
 
 function draftToComparableRow(draft: SmartComponentImportDraft): ComponentRow {
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: fromApiUom(draft.recipeUom) || draft.recipeUom,
+    inventoryUnit: fromApiUom(draft.inventoryUom) || draft.inventoryUom || draft.recipeUom,
+    altRecipeUnits: draft.altRecipeUnits,
+    altInventoryUnits: draft.altInventoryUnits,
+    convertFromInventoryQty: draft.convertFromInventoryQty || '1',
+    convertToRecipeQty: draft.convertToRecipeQty || '1',
+  });
   return {
     componentId: draft.componentId,
     name: draft.name,
     category: draft.category,
     group: draft.group,
-    recipeUOM: normalizeUom(draft.recipeUom),
-    inventoryUOM: normalizeUom(draft.inventoryUom),
+    recipeUOM: normalizeUom(migrated.recipeUnit),
+    inventoryUOM: normalizeUom(migrated.inventoryUnit),
     lastPriceRecipe: draft.lastPriceRecipe,
     lastPriceInventory: draft.lastPriceInventory,
     dailyUsage: draft.dailyUsage,
@@ -914,10 +924,10 @@ function draftToComparableRow(draft: SmartComponentImportDraft): ComponentRow {
     active: draft.active,
     locations: draft.locations.length > 0 ? draft.locations : ['all'],
     detailConfig: {
-      altRecipeUnits: draft.altRecipeUnits,
-      altInventoryUnits: draft.altInventoryUnits,
-      convertFromInventoryQty: draft.convertFromInventoryQty || '1',
-      convertToRecipeQty: draft.convertToRecipeQty || '1',
+      altRecipeUnits: migrated.altRecipeUnits,
+      altInventoryUnits: [],
+      convertFromInventoryQty: '1',
+      convertToRecipeQty: '1',
       taggedVendorProductIds: [],
       vendorProductPrincipalQty: {},
       vendorProductLossYield: {},
@@ -1478,10 +1488,7 @@ export function draftToComponentRow(
 
   const detailConfig = {
     ...existingDetail,
-    altRecipeUnits: draft.altRecipeUnits,
-    altInventoryUnits: draft.altInventoryUnits,
-    convertFromInventoryQty: draft.convertFromInventoryQty || existingDetail.convertFromInventoryQty || '1',
-    convertToRecipeQty: draft.convertToRecipeQty || existingDetail.convertToRecipeQty || '1',
+    ...(comparable.detailConfig ?? {}),
   };
 
   return {

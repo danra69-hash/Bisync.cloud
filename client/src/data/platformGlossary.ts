@@ -105,10 +105,10 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
         dbName: 'Ingredients.RecipeUom (PCU)',
       },
       {
-        term: 'Inventory UOM',
+        term: 'Alternate Component UOM',
         meaning:
-          'Alternate unit for counting or vendor packaging conversion; inbound stock is converted to PCU for the stock card. Delivery packages are order-time only.',
-        dbName: 'Ingredients.InventoryUom',
+          'Up to five additional component units convertible to the Principal Component Unit (e.g. Bottle → ML). Replaces the former separate Inventory UOM model.',
+        dbName: 'Ingredients.DetailConfigJson.altRecipeUnits',
       },
       {
         term: 'Category / Group',

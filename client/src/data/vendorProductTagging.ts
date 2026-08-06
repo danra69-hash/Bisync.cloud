@@ -358,7 +358,6 @@ export function buildComponentRowWithVendorProductTag(
   }
 
   const recipeUnit = options.recipeUnit;
-  const inventoryUnit = options.inventoryUnit;
   const componentUom = options.componentUom;
   const lossYield = parseFloat(options.yieldLossPct) || 0;
 
@@ -376,6 +375,9 @@ export function buildComponentRowWithVendorProductTag(
 
   const nextDetail: ComponentDetailConfig = {
     ...detail,
+    altInventoryUnits: [],
+    convertFromInventoryQty: '1',
+    convertToRecipeQty: '1',
     taggedVendorProductIds,
     vendorProductPrincipalQty: {
       ...detail.vendorProductPrincipalQty,
@@ -409,7 +411,7 @@ export function buildComponentRowWithVendorProductTag(
   return {
     ...row,
     recipeUOM: toApiUom(recipeUnit),
-    inventoryUOM: toApiUom(inventoryUnit),
+    inventoryUOM: toApiUom(recipeUnit),
     storage: storages,
     detailConfig: nextDetail,
     detailConfigJson: serializeDetailConfig(nextDetail),
