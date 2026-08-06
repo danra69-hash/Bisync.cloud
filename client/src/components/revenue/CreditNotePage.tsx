@@ -66,6 +66,7 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
   const [cancelPoNumber, setCancelPoNumber] = useState('');
   const [cancelDoOrInvoice, setCancelDoOrInvoice] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -246,6 +247,26 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
       setDetailError(e instanceof Error ? e.message : 'Failed to cancel credit note.');
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function deleteCreditNoteCompletely() {
+    if (!selectedCompanyId || !detailRow) return;
+    const ok = window.confirm(
+      `Permanently delete credit note for ${detailRow.productName || detailRow.poNumber}? `
+        + 'Stock outbound will be reversed. This cannot be undone.',
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setDetailError(null);
+    try {
+      await api.deleteCreditNote(detailRow.id, selectedCompanyId);
+      setRows(prev => prev.filter(r => r.id !== detailRow.id));
+      setDetailRow(null);
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : 'Failed to delete credit note.');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -665,10 +686,26 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
                           <button
                             type="button"
                             onClick={() => void cancelCreditNote()}
-                            disabled={cancelling}
+                            disabled={cancelling || deleting}
                             className="rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive disabled:opacity-50"
                           >
                             {cancelling ? 'Cancelling…' : 'Cancel credit note'}
+                          </button>
+                        </div>
+
+                        <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                          <p className="text-xs font-medium text-destructive">Delete completely</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Removes this credit note and reverses its stock outbound. Use for erroneous
+                            entries (e.g. qty 0.0010).
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void deleteCreditNoteCompletely()}
+                            disabled={deleting || cancelling}
+                            className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground disabled:opacity-50"
+                          >
+                            {deleting ? 'Deleting…' : 'Delete credit note'}
                           </button>
                         </div>
                       </>

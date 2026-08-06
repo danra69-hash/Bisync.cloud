@@ -142,6 +142,22 @@ public class CreditNotesController(
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    /// <summary>Permanently delete a credit note and reverse its stock outbound.</summary>
+    [HttpDelete("{id:int}")]
+    public async Task<ActionResult> Delete(int id, [FromQuery] int? companyId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        try
+        {
+            await creditNotes.DeleteCompletelyAsync(id, cid);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }
 
 public class CreateCreditNoteRequest
@@ -151,7 +167,7 @@ public class CreateCreditNoteRequest
     public int PurchaseOrderId { get; set; }
     [Required]
     public int PurchaseOrderItemId { get; set; }
-    [Range(0.0001, double.MaxValue)]
+    [Range(0.01, double.MaxValue)]
     public decimal Quantity { get; set; }
     public string? CreditNoteNumber { get; set; }
     [Required]

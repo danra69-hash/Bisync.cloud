@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,15 @@ public class CreditNoteService(
     public const string ReferenceType = "credit_note";
     public const string StatusConfirmed = "confirmed";
     public const string StatusCancelled = "cancelled";
+
+    /// <summary>
+    /// Erroneous delivery qty that can appear from bad PCU conversion / mistype (displayed 0.0010).
+    /// </summary>
+    public const decimal ErroneousTinyQuantity = 0.001m;
+
+    static readonly Regex FifoTransactionMarker = new(
+        @"\[fifo:([0-9a-fA-F]{32})\]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public async Task<IReadOnlyList<object>> SearchPurchaseOrdersAsync(
         int companyId,
@@ -66,6 +76,9 @@ public class CreditNoteService(
     {
         if (quantity <= 0)
             throw new InvalidOperationException("Credit quantity must be greater than zero.");
+        if (quantity <= ErroneousTinyQuantity + 0.00005m)
+            throw new InvalidOperationException(
+                "Credit quantity looks invalid (≤ 0.0010 delivery units). Enter the shortfall in whole delivery packages.");
 
         var order = await db.PurchaseOrders
             .Include(o => o.Items)
@@ -254,6 +267,128 @@ public class CreditNoteService(
         }
 
         return entry;
+    }
+
+    /// <summary>
+    /// Permanently removes a credit note, reverses its stock outbound (ledger + FIFO), and
+    /// deletes related inventory movements. Unlike Cancel, no replacement PO is required.
+    /// </summary>
+    public async Task DeleteCompletelyAsync(
+        int id,
+        int? companyId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = db.CreditNotes.Where(c => c.Id == id);
+        if (companyId is int cid)
+            query = query.Where(c => c.CompanyId == cid);
+
+        var entry = await query.FirstOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Credit note not found.");
+
+        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await ReverseStockEffectsAsync(entry, cancellationToken);
+            db.CreditNotes.Remove(entry);
+            await db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// One-shot purge of confirmed/cancelled credit notes whose delivery qty is the erroneous
+    /// 0.0010 value (wrong PCU / conversion display). Reverses stock then deletes the rows.
+    /// </summary>
+    public async Task<int> PurgeErroneousTinyQuantityAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var tiny = await db.CreditNotes
+            .Where(c =>
+                c.Quantity > 0
+                && c.Quantity <= ErroneousTinyQuantity + 0.00005m)
+            .OrderBy(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        if (tiny.Count == 0)
+            return 0;
+
+        var purged = 0;
+        foreach (var entry in tiny)
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                await ReverseStockEffectsAsync(entry, cancellationToken);
+                db.CreditNotes.Remove(entry);
+                await db.SaveChangesAsync(cancellationToken);
+                await tx.CommitAsync(cancellationToken);
+                purged++;
+            }
+            catch
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        return purged;
+    }
+
+    async Task ReverseStockEffectsAsync(CreditNote entry, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(entry.Status, StatusConfirmed, StringComparison.OrdinalIgnoreCase))
+        {
+            // Cancelled notes already kept outbound; still drop orphan movements if any.
+        }
+
+        var movements = await db.InventoryMovements
+            .Where(m => m.ReferenceType == ReferenceType && m.ReferenceId == entry.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var movement in movements)
+        {
+            var fifoId = TryParseFifoTransactionId(movement.Reason);
+            if (fifoId is Guid txId)
+                await fifoBatches.RestoreIssueTransactionAsync(txId, cancellationToken);
+        }
+
+        if (movements.Count > 0)
+            db.InventoryMovements.RemoveRange(movements);
+
+        // If outbound posted but movement/FIFO marker is missing, still restore ledger via addition
+        // only when no movements were found and confirmed stock qty remains.
+        if (movements.Count == 0
+            && string.Equals(entry.Status, StatusConfirmed, StringComparison.OrdinalIgnoreCase)
+            && entry.StockQuantity > StockCardFifoEngine.QtyEpsilon)
+        {
+            componentStock.RecordAddition(
+                entry.ComponentId,
+                entry.ComponentName,
+                entry.LocationExternalId,
+                entry.StockQuantity,
+                entry.StockUom,
+                $"Credit note #{entry.Id} deleted — reverse outbound",
+                "credit_note_delete",
+                entry.Id,
+                entry.CompanyId,
+                createdAt: DateTime.UtcNow,
+                unitPrice: entry.StockUnitPrice);
+        }
+    }
+
+    static Guid? TryParseFifoTransactionId(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return null;
+        var match = FifoTransactionMarker.Match(reason);
+        if (!match.Success)
+            return null;
+        return Guid.TryParseExact(match.Groups[1].Value, "N", out var id) ? id : null;
     }
 
     public async Task<CreditNote> UpdateNumberAsync(
