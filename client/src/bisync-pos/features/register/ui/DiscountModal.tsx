@@ -4,8 +4,11 @@ import {
   discountCentsFromPercent,
   findPosConfigBlockedProducts,
   formatDiscountLabel,
+  hasPosConfigExceptions,
+  isPosConfigProductExcepted,
 } from '../../../../data/entertainmentSettlement'
 import { formatMoney } from '../../../core/types/money'
+import { saleDetailExtraChargeCents } from '../domain/saleDetail'
 import type { CartLine, Product } from '../domain/types'
 import './DiscountModal.css'
 
@@ -61,7 +64,6 @@ export function DiscountModal({
   )
 
   const percentage = Number(selected?.percentage ?? 0)
-  const discountCents = discountCentsFromPercent(subtotalCents, percentage)
 
   const cartProducts = useMemo(() => {
     const byId = new Map(catalog.map(p => [String(p.id), p]))
@@ -71,16 +73,36 @@ export function DiscountModal({
       .map(p => ({ id: p.id, name: p.name, group: p.group }))
   }, [cartLines, catalog])
 
-  const blockedProducts = useMemo(
+  const exceptedProducts = useMemo(
     () => findPosConfigBlockedProducts(selected, cartProducts),
     [selected, cartProducts],
   )
 
+  const eligibleSubtotalCents = useMemo(() => {
+    if (!selected || !hasPosConfigExceptions(selected)) return 0
+    const byId = new Map(catalog.map(p => [String(p.id), p]))
+    return cartLines.reduce((sum, line) => {
+      const product = byId.get(String(line.productId))
+      if (!product) return sum
+      if (isPosConfigProductExcepted(selected, {
+        id: product.id,
+        name: product.name,
+        group: product.group,
+      })) {
+        return sum
+      }
+      const unit = line.unitPriceCents ?? product.priceCents
+      return sum + unit * line.quantity + saleDetailExtraChargeCents(line.saleDetail)
+    }, 0)
+  }, [selected, cartLines, catalog])
+
+  const discountCents = discountCentsFromPercent(eligibleSubtotalCents, percentage)
+
   const canApply =
     selected != null
+    && hasPosConfigExceptions(selected)
     && percentage > 0
     && discountCents > 0
-    && blockedProducts.length === 0
 
   return (
     <div className="discount-modal" role="dialog" aria-modal="true" aria-label="Apply discount">
@@ -120,7 +142,12 @@ export function DiscountModal({
             </label>
 
             <div className="discount-modal__total">
-              <span>{Number(percentage)}% off</span>
+              <span>
+                {Number(percentage)}% off
+                {eligibleSubtotalCents < subtotalCents
+                  ? ` · eligible ${formatMoney(eligibleSubtotalCents)}`
+                  : ''}
+              </span>
               <strong>−{formatMoney(discountCents)}</strong>
             </div>
 
@@ -135,11 +162,25 @@ export function DiscountModal({
               />
             </label>
 
-            {blockedProducts.length > 0 ? (
+            {selected && !hasPosConfigExceptions(selected) ? (
               <p className="discount-modal__error" role="alert">
-                Not allowed on {selected?.name || 'this type'}:{' '}
-                {blockedProducts.map(p => p.name).join(', ')}.
-                Remove them or enable Include all on the discount detail.
+                {selected.name} has no exceptions configured. Edit it under POS Config → Discount
+                and tick at least one Product Group or Product exception.
+              </p>
+            ) : null}
+
+            {exceptedProducts.length > 0 && hasPosConfigExceptions(selected) ? (
+              <p className="discount-modal__hint" role="status">
+                Excluded from this discount: {exceptedProducts.map(p => p.name).join(', ')}.
+              </p>
+            ) : null}
+
+            {hasPosConfigExceptions(selected)
+              && exceptedProducts.length > 0
+              && eligibleSubtotalCents <= 0 ? (
+              <p className="discount-modal__error" role="alert">
+                Every item on this check is excepted for {selected?.name || 'this type'}.
+                Remove excepted items or choose another discount type.
               </p>
             ) : null}
           </>

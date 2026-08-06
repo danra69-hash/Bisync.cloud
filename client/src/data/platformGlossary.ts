@@ -410,17 +410,13 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
       {
         term: 'Entertainment',
         meaning:
-          'Non-revenue settlement key: zeros tax and service, settles the full check amount, and requires employee name + reason. Exception groups/items can be blocked unless Include all overrides them.',
+          'Non-revenue settlement key: zeros tax and service, settles the full check amount, and requires employee name + reason. Each entertainment type must define at least one Product Group or Product exception; POS blocks that type when any excepted item is on the check.',
         dbName: 'PosConfigTypes (kind=entertainment) / PosPayments.Method = entertainment',
       },
       {
-        term: 'Include All (Entertainment)',
-        meaning: 'When ticked on an entertainment type, overrides all exception product groups and items so every product is allowed.',
-        dbName: 'PosConfigTypes.IncludeAll',
-      },
-      {
         term: 'Entertainment Exception',
-        meaning: 'Product group or item that is not allowed when settling under that entertainment type (unless Include all).',
+        meaning:
+          'Required multi-select of Product Groups and/or Products that cannot be settled under that entertainment type. At least one exception is required during setup.',
         dbName: 'PosConfigTypes.ExceptionGroupsJson / ExceptionProductIdsJson',
       },
       {
@@ -446,12 +442,18 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
       {
         term: 'Discount Type',
         meaning:
-          'Configured POS discount with a user-defined percentage. Exception groups/items are not allowed unless Include all overrides them. At apply time, reason is optional.',
-        dbName: 'PosConfigTypes (kind=discount) / Percentage / Exception* / IncludeAll',
+          'Configured POS discount with a user-defined percentage. Each discount type must define at least one Product Group or Product exception; POS skips those lines when applying the percentage. At apply time, reason is optional.',
+        dbName: 'PosConfigTypes (kind=discount) / Percentage / Exception*',
+      },
+      {
+        term: 'Discount Exception',
+        meaning:
+          'Required multi-select of Product Groups and/or Products excluded from that discount type. At least one exception is required during setup.',
+        dbName: 'PosConfigTypes.ExceptionGroupsJson / ExceptionProductIdsJson',
       },
       {
         term: 'Discount Percentage',
-        meaning: 'User-defined percent off the check subtotal for a discount type (0–100).',
+        meaning: 'User-defined percent off the eligible (non-excepted) check subtotal for a discount type (0–100).',
         dbName: 'PosConfigTypes.Percentage',
       },
       {

@@ -1,6 +1,7 @@
 /**
  * Shared exception helpers for entertainment / discount PosConfig types.
- * Exception groups/items are NOT allowed unless Include all overrides them.
+ * Exception product groups and products are required at setup; POS skips those
+ * lines for discount and blocks entertainment when any excepted item is on the check.
  */
 
 export type PosConfigExceptionRule = {
@@ -19,29 +20,47 @@ function normGroup(value: string | undefined | null): string {
   return (value || '').trim().toLowerCase()
 }
 
-/** Returns catalog products on the check that this config type forbids. */
-export function findPosConfigBlockedProducts(
+/** True when the type has at least one configured exception group or product. */
+export function hasPosConfigExceptions(
   rule: PosConfigExceptionRule | null | undefined,
-  cartProducts: PosConfigCartProduct[],
-): PosConfigCartProduct[] {
-  if (!rule || rule.includeAll) return []
+): boolean {
+  if (!rule) return false
+  const groups = (rule.exceptionGroups ?? []).filter(g => g.trim().length > 0)
+  const products = (rule.exceptionProductIds ?? []).filter(id => Number(id) > 0)
+  return groups.length > 0 || products.length > 0
+}
+
+/** True when this product is listed as an exception (group or product id). */
+export function isPosConfigProductExcepted(
+  rule: PosConfigExceptionRule | null | undefined,
+  product: PosConfigCartProduct,
+): boolean {
+  if (!rule || rule.includeAll) return false
   const blockedGroups = new Set((rule.exceptionGroups ?? []).map(normGroup).filter(Boolean))
   const blockedIds = new Set(
     (rule.exceptionProductIds ?? [])
       .map(id => Number(id))
       .filter(id => Number.isFinite(id) && id > 0),
   )
-  if (blockedGroups.size === 0 && blockedIds.size === 0) return []
+  if (blockedGroups.size === 0 && blockedIds.size === 0) return false
+  const numericId = Number(product.id)
+  const byId = Number.isFinite(numericId) && blockedIds.has(numericId)
+  const byGroup = blockedGroups.has(normGroup(product.group))
+  return byId || byGroup
+}
 
+/** Returns catalog products on the check that this config type forbids. */
+export function findPosConfigBlockedProducts(
+  rule: PosConfigExceptionRule | null | undefined,
+  cartProducts: PosConfigCartProduct[],
+): PosConfigCartProduct[] {
+  if (!rule || rule.includeAll) return []
   const seen = new Set<string>()
   const blocked: PosConfigCartProduct[] = []
   for (const product of cartProducts) {
-    const numericId = Number(product.id)
     const key = String(product.id)
     if (seen.has(key)) continue
-    const byId = Number.isFinite(numericId) && blockedIds.has(numericId)
-    const byGroup = blockedGroups.has(normGroup(product.group))
-    if (byId || byGroup) {
+    if (isPosConfigProductExcepted(rule, product)) {
       seen.add(key)
       blocked.push(product)
     }

@@ -183,30 +183,22 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             return;
         }
 
-        row.IncludeAll = body.IncludeAll;
-        if (body.IncludeAll)
-        {
-            // Include-all overrides exceptions — persist empty lists for clarity.
-            row.ExceptionGroupsJson = "[]";
-            row.ExceptionProductIdsJson = "[]";
-        }
-        else
-        {
-            var groups = (body.ExceptionGroups ?? [])
-                .Select(g => (g ?? string.Empty).Trim())
-                .Where(g => g.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            var productIds = (body.ExceptionProductIds ?? [])
-                .Where(id => id > 0)
-                .Distinct()
-                .OrderBy(id => id)
-                .ToArray();
+        // Exceptions are required for entertainment/discount — IncludeAll is no longer used.
+        row.IncludeAll = false;
+        var groups = (body.ExceptionGroups ?? [])
+            .Select(g => (g ?? string.Empty).Trim())
+            .Where(g => g.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var productIds = (body.ExceptionProductIds ?? [])
+            .Where(id => id > 0)
+            .Distinct()
+            .OrderBy(id => id)
+            .ToArray();
 
-            row.ExceptionGroupsJson = JsonSerializer.Serialize(groups, JsonOpts);
-            row.ExceptionProductIdsJson = JsonSerializer.Serialize(productIds, JsonOpts);
-        }
+        row.ExceptionGroupsJson = JsonSerializer.Serialize(groups, JsonOpts);
+        row.ExceptionProductIdsJson = JsonSerializer.Serialize(productIds, JsonOpts);
 
         if (kind == "discount")
         {
@@ -239,6 +231,15 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             return "code may only contain letters, digits, hyphen, and underscore.";
         if (kind == "discount" && (body.Percentage < 0 || body.Percentage > 100))
             return "percentage must be between 0 and 100.";
+        if (kind is "entertainment" or "discount")
+        {
+            var groups = (body.ExceptionGroups ?? [])
+                .Count(g => !string.IsNullOrWhiteSpace(g));
+            var products = (body.ExceptionProductIds ?? [])
+                .Count(id => id > 0);
+            if (groups == 0 && products == 0)
+                return "Select at least one exception Product Group or Product.";
+        }
         return null;
     }
 
@@ -357,20 +358,8 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             ("QR", "QR Pay", 40, 0),
             ("GIFT-CARD", "Gift Card", 50, 0),
         ]);
-        Seed("entertainment",
-        [
-            ("STAFF", "Staff Meal", 10, 0),
-            ("COMP", "Complimentary", 20, 0),
-            ("PROMO", "Promotional", 30, 0),
-            ("MANAGER", "Manager Comp", 40, 0),
-        ]);
-        Seed("discount",
-        [
-            ("PERCENT", "Percentage Discount", 10, 10),
-            ("AMOUNT", "Fixed Amount", 20, 0),
-            ("VIP", "VIP Discount", 30, 15),
-            ("SENIOR", "Senior Citizen", 40, 20),
-        ]);
+        // Entertainment and discount types are not seeded — each must be created with
+        // at least one Product Group or Product exception during setup.
         // Codes must match PosDevices.DeviceType keys used by POS Device Management.
         Seed("device",
         [

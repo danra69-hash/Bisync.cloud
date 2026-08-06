@@ -3,6 +3,7 @@ import type { PosConfigType } from '../../../../api'
 import {
   findEntertainmentBlockedProducts,
   formatEntertainmentPurpose,
+  hasPosConfigExceptions,
 } from '../../../../data/entertainmentSettlement'
 import { formatMoney } from '../../../core/types/money'
 import { TENDER_LABEL, type TenderType } from '../../cashier/domain/payments'
@@ -114,6 +115,7 @@ export function PaymentModal({
     tender !== 'entertainment'
     || (
       selectedEntertainment != null
+      && hasPosConfigExceptions(selectedEntertainment)
       && employeeName.trim().length > 0
       && reason.trim().length > 0
       && blockedProducts.length === 0
@@ -246,11 +248,19 @@ export function PaymentModal({
                     onChange={e => setReason(e.target.value)}
                   />
                 </label>
+                {selectedEntertainment && !hasPosConfigExceptions(selectedEntertainment) ? (
+                  <p className="payment-modal__error" role="alert">
+                    {selectedEntertainment.name} has no exceptions configured. Edit it under
+                    POS Config → Entertainment and tick at least one Product Group or Product
+                    exception.
+                  </p>
+                ) : null}
                 {blockedProducts.length > 0 ? (
                   <p className="payment-modal__error" role="alert">
                     Not allowed on {selectedEntertainment?.name || 'this type'}:{' '}
                     {blockedProducts.map(p => p.name).join(', ')}.
-                    Remove them or enable Include all on the entertainment detail.
+                    Remove excepted products from the check, or edit exceptions on the
+                    entertainment type.
                   </p>
                 ) : null}
               </>

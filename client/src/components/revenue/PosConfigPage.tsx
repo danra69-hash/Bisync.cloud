@@ -3,6 +3,7 @@ import {
   api,
   type PosConfigType,
   type PosConfigTypeKind,
+  type Product,
   type UpsertPosConfigTypePayload,
 } from '../../api'
 import { inputCls } from '../../data/countries'
@@ -75,9 +76,19 @@ function configTabTitle(tab: TabId): string {
   return isConfigTypeTab(tab) ? TAB_TITLE[tab] : 'Type'
 }
 
+function formatExceptionSummary(row: PosConfigType): string {
+  const groups = row.exceptionGroups ?? []
+  const products = row.exceptionProductIds ?? []
+  const parts: string[] = []
+  if (groups.length > 0) parts.push(`${groups.length} group${groups.length === 1 ? '' : 's'}`)
+  if (products.length > 0) parts.push(`${products.length} product${products.length === 1 ? '' : 's'}`)
+  return parts.length > 0 ? parts.join(' · ') : 'Required — none set'
+}
+
 export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const [tab, setTab] = useState<TabId>('payment')
   const [rows, setRows] = useState<PosConfigType[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -100,6 +111,15 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
     }
   }, [])
 
+  const loadProducts = useCallback(async (companyId: number) => {
+    try {
+      const list = await api.products(companyId)
+      setProducts(list.filter(p => p.active !== false && !p.isSubProduct))
+    } catch {
+      setProducts([])
+    }
+  }, [])
+
   useEffect(() => {
     if (!selectedCompanyId || !isConfigTypeTab(tab)) {
       setRows([])
@@ -108,9 +128,30 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
     void load(selectedCompanyId, tab)
   }, [selectedCompanyId, tab, load])
 
+  useEffect(() => {
+    if (!selectedCompanyId || (tab !== 'entertainment' && tab !== 'discount')) {
+      return
+    }
+    void loadProducts(selectedCompanyId)
+  }, [selectedCompanyId, tab, loadProducts])
+
   const sorted = useMemo(
     () => [...rows].sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name)),
     [rows],
+  )
+
+  const productGroups = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of products) {
+      const g = (p.group || '').trim()
+      if (g) set.add(g)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [products])
+
+  const sortedProducts = useMemo(
+    () => [...products].sort((a, b) => a.name.localeCompare(b.name)),
+    [products],
   )
 
   function openAdd() {
@@ -166,9 +207,15 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
       active: draft.active,
     }
     if (tab === 'entertainment' || tab === 'discount') {
-      payload.includeAll = draft.includeAll
-      payload.exceptionGroups = draft.exceptionGroups
-      payload.exceptionProductIds = draft.exceptionProductIds
+      const groups = draft.exceptionGroups.map(g => g.trim()).filter(Boolean)
+      const productIds = draft.exceptionProductIds.filter(id => id > 0)
+      if (groups.length === 0 && productIds.length === 0) {
+        setError('Select at least one Exception Product Group or Product (multi-select).')
+        return
+      }
+      payload.includeAll = false
+      payload.exceptionGroups = groups
+      payload.exceptionProductIds = productIds
     }
     if (tab === 'discount') {
       const pct = Number.parseFloat(draft.percentage)
@@ -354,6 +401,105 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
                   </label>
                 ) : null}
               </div>
+
+              {tab === 'entertainment' || tab === 'discount' ? (
+                <div className="space-y-3 rounded-md border border-border bg-muted/10 p-3">
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Exceptions (required)</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Tick Product Groups and/or Products that POS must not apply this{' '}
+                      {tab === 'discount' ? 'discount' : 'entertainment'} to. Multi-select with
+                      checkboxes — at least one group or product is required.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Product groups
+                      </p>
+                      <div className="max-h-44 overflow-y-auto rounded-md border border-border bg-background p-2 space-y-1">
+                        {productGroups.length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground px-1 py-2">
+                            No product groups found for this company.
+                          </p>
+                        ) : (
+                          productGroups.map(group => {
+                            const checked = draft.exceptionGroups.some(
+                              g => g.trim().toLowerCase() === group.toLowerCase(),
+                            )
+                            return (
+                              <label
+                                key={group}
+                                className="flex items-center gap-2 text-xs text-foreground cursor-pointer px-1 py-0.5 rounded hover:bg-muted/40"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-border"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setDraft(d => {
+                                      const next = checked
+                                        ? d.exceptionGroups.filter(
+                                          g => g.trim().toLowerCase() !== group.toLowerCase(),
+                                        )
+                                        : [...d.exceptionGroups, group]
+                                      return { ...d, includeAll: false, exceptionGroups: next }
+                                    })
+                                  }}
+                                />
+                                <span>{group}</span>
+                              </label>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Products
+                      </p>
+                      <div className="max-h-44 overflow-y-auto rounded-md border border-border bg-background p-2 space-y-1">
+                        {sortedProducts.length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground px-1 py-2">
+                            No products found for this company.
+                          </p>
+                        ) : (
+                          sortedProducts.map(product => {
+                            const checked = draft.exceptionProductIds.includes(product.id)
+                            return (
+                              <label
+                                key={product.id}
+                                className="flex items-center gap-2 text-xs text-foreground cursor-pointer px-1 py-0.5 rounded hover:bg-muted/40"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-border"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setDraft(d => {
+                                      const next = checked
+                                        ? d.exceptionProductIds.filter(id => id !== product.id)
+                                        : [...d.exceptionProductIds, product.id]
+                                      return { ...d, includeAll: false, exceptionProductIds: next }
+                                    })
+                                  }}
+                                />
+                                <span className="truncate">
+                                  {product.name}
+                                  {product.group ? (
+                                    <span className="text-muted-foreground"> · {product.group}</span>
+                                  ) : null}
+                                </span>
+                              </label>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="flex justify-end">
                 <button
                   type="button"
@@ -378,8 +524,10 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
                   <ColGroup
                     widths={
                       tab === 'discount'
-                        ? ['24%', '16%', '12%', '12%', '12%', '24%']
-                        : ['28%', '18%', '12%', '12%', '30%']
+                        ? ['18%', '12%', '10%', '10%', '18%', '12%', '20%']
+                        : tab === 'entertainment'
+                          ? ['20%', '14%', '10%', '22%', '12%', '22%']
+                          : ['28%', '18%', '12%', '12%', '30%']
                     }
                   />
                   <thead>
@@ -390,6 +538,9 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
                       {tab === 'discount' ? (
                         <th className="px-2 py-2 font-semibold">%</th>
                       ) : null}
+                      {tab === 'entertainment' || tab === 'discount' ? (
+                        <th className="px-2 py-2 font-semibold">Exceptions</th>
+                      ) : null}
                       <th className="px-2 py-2 font-semibold">Active</th>
                       <th className="px-2 py-2 font-semibold text-right">Actions</th>
                     </tr>
@@ -398,7 +549,9 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
                     {sorted.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={tab === 'discount' ? 6 : 5}
+                          colSpan={
+                            tab === 'discount' ? 7 : tab === 'entertainment' ? 6 : 5
+                          }
                           className="px-2 py-6 text-muted-foreground"
                         >
                           No {configTabTitle(tab).toLowerCase()}s yet. Add one to get started.
@@ -413,6 +566,11 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
                           {tab === 'discount' ? (
                             <td className="px-2 py-2 text-muted-foreground tabular-nums">
                               {row.percentage ?? 0}
+                            </td>
+                          ) : null}
+                          {tab === 'entertainment' || tab === 'discount' ? (
+                            <td className="px-2 py-2 text-muted-foreground">
+                              {formatExceptionSummary(row)}
                             </td>
                           ) : null}
                           <td className="px-2 py-2">
