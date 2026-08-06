@@ -29,13 +29,13 @@ type Props = {
   onSelectLine?: (line: CartLine) => void
   onOpenHistory: () => void
   onOpenPickup?: () => void
-  onAction: (action: 'save' | 'print' | 'payment' | 'cancel' | 'prepaid') => void
+  onAction: (
+    action: 'ok' | 'print' | 'payment' | 'cancel' | 'changeTable' | 'moveProduct',
+  ) => void
   /** Opened floor table label (Cancel discards unsaved edits only). */
   activeTableLabel?: string | null
   /** True while a payment charge is in flight. */
   paymentBusy?: boolean
-  /** Show Pre-paid redeem action when prepaid packages exist for the location. */
-  prepaidAvailable?: boolean
   /** Floor-plan tables for the location (replaces demo T1/T5 list). */
   tableOptions?: Array<{ id: string; label: string }>
 }
@@ -64,7 +64,6 @@ export function OrderPanel({
   onAction,
   activeTableLabel = null,
   paymentBusy = false,
-  prepaidAvailable = false,
   tableOptions = [],
 }: Props) {
   const byId = new Map(products.map((p) => [p.id, p]))
@@ -299,7 +298,41 @@ export function OrderPanel({
       <div className="order-panel__actions">
         <button
           type="button"
-          className="btn btn--danger"
+          className="btn btn--change-table"
+          disabled={paymentBusy}
+          title="Move this check to another table"
+          onClick={() => onAction('changeTable')}
+        >
+          Change Table
+        </button>
+        <button
+          type="button"
+          className="btn btn--move-product"
+          disabled={!hasItems || paymentBusy}
+          title="Move the selected product to another table"
+          onClick={() => onAction('moveProduct')}
+        >
+          Move Product
+        </button>
+        <button
+          type="button"
+          className="btn btn--payment"
+          disabled={!hasItems || paymentBusy}
+          onClick={() => onAction('payment')}
+        >
+          {paymentBusy ? 'Paying…' : 'Payment'}
+        </button>
+        <button
+          type="button"
+          className="btn btn--print"
+          disabled={!hasItems || paymentBusy}
+          onClick={() => onAction('print')}
+        >
+          Print
+        </button>
+        <button
+          type="button"
+          className="btn btn--cancel"
           title={
             activeTableLabel
               ? `Discard unsaved edits and leave ${activeTableLabel}`
@@ -311,36 +344,11 @@ export function OrderPanel({
         </button>
         <button
           type="button"
-          className="btn btn--ghost"
+          className="btn btn--ok"
           disabled={!hasItems || paymentBusy}
-          onClick={() => onAction('save')}
+          onClick={() => onAction('ok')}
         >
-          Save
-        </button>
-        <button
-          type="button"
-          className="btn btn--navy"
-          disabled={!hasItems || paymentBusy}
-          onClick={() => onAction('print')}
-        >
-          Print
-        </button>
-        <button
-          type="button"
-          className="btn btn--ghost"
-          disabled={!prepaidAvailable || paymentBusy}
-          title="Redeem a customer's pre-paid package"
-          onClick={() => onAction('prepaid')}
-        >
-          Pre-paid
-        </button>
-        <button
-          type="button"
-          className="btn btn--primary"
-          disabled={!hasItems || paymentBusy}
-          onClick={() => onAction('payment')}
-        >
-          {paymentBusy ? 'Paying…' : 'Payment'}
+          OK
         </button>
       </div>
     </aside>

@@ -26,6 +26,7 @@ import {
   loadFloorPlan,
   markFloorTableOrdered,
   releaseFloorTable,
+  setActiveRegisterSession,
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
 import { loadFloorPlanLocal, persistFloorTablePatch } from '../../order/domain/floorPlanSync'
@@ -1201,6 +1202,195 @@ export function RegisterPage() {
     setPaymentOpen(true)
   }
 
+  function pickDestinationTable(
+    title: string,
+    excludeTableId?: string | null,
+  ): { id: string; label: string } | null {
+    const choices = tableOptions.filter(t => t.id && t.id !== (excludeTableId ?? ''))
+    if (choices.length === 0) {
+      flash('No other tables available on this floor.')
+      return null
+    }
+    const list = choices.map((t, i) => `${i + 1}. ${t.label}`).join('\n')
+    const raw = window.prompt(`${title}\n\n${list}\n\nEnter number or table name:`)
+    if (raw == null) return null
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    const byIndex = Number(trimmed)
+    if (Number.isFinite(byIndex) && byIndex >= 1 && byIndex <= choices.length) {
+      return choices[byIndex - 1]
+    }
+    const lower = trimmed.toLowerCase()
+    const match = choices.find(
+      t => t.label.toLowerCase() === lower
+        || t.label.toLowerCase().includes(lower)
+        || t.id.toLowerCase() === lower,
+    )
+    if (!match) {
+      flash(`Table “${trimmed}” not found.`)
+      return null
+    }
+    return match
+  }
+
+  /** Move the entire open check / cart to another floor table. */
+  function handleChangeTable() {
+    const fromId = activeTableSession?.tableId || table
+    const fromLabel = activeTableSession?.tableLabel || (table ? `Table ${table}` : 'current table')
+    const dest = pickDestinationTable('Change Table — choose destination', fromId)
+    if (!dest) return
+    if (dest.id === fromId) {
+      flash(`Already on ${dest.label}.`)
+      return
+    }
+    const occupying = loadOpenCheckForTable(dest.id)
+    if (occupying && occupying.lines.length > 0) {
+      flash(`${dest.label} already has an open check. Clear or pay it first.`)
+      return
+    }
+
+    const orderId = `chk-${checkNumber}`
+    const nextSession: ActiveRegisterSession = {
+      tableId: dest.id,
+      tableLabel: dest.label,
+      openedAt: activeTableSession?.openedAt ?? new Date().toISOString(),
+    }
+
+    if (fromId) {
+      const existing = loadOpenCheckForTable(fromId)
+      const hasCart = lines.length > 0
+      const hasExisting = Boolean(existing && existing.lines.length > 0)
+      if (hasCart || hasExisting) {
+        if (existing) removeOpenCheckForTable(fromId)
+        upsertOpenCheck({
+          tableId: dest.id,
+          tableLabel: dest.label,
+          orderId: existing?.orderId ?? orderId,
+          checkNumber: existing?.checkNumber ?? checkNumber,
+          lines: hasCart ? lines : (existing?.lines ?? []),
+          charges: hasCart ? charges : (existing?.charges ?? { ...EMPTY_OPEN_CHARGES }),
+          dining: hasCart ? (dining || 'dine-in') : (existing?.dining ?? 'dine-in'),
+          cover: hasCart ? cover : (existing?.cover ?? 1),
+          firedQtyByLine: hasCart ? firedQtyByLine : (existing?.firedQtyByLine ?? {}),
+          firedAtByLine: hasCart ? firedAtByLine : (existing?.firedAtByLine ?? {}),
+          updatedAt: new Date().toISOString(),
+        })
+      }
+
+      if (session?.companyId && session.locationId) {
+        void persistFloorTablePatch(session.companyId, session.locationId, fromId, {
+          status: 'open',
+          pax: undefined,
+          openedAt: undefined,
+          orderId: undefined,
+          serverName: undefined,
+        })
+        void persistFloorTablePatch(session.companyId, session.locationId, dest.id, tableRow => ({
+          status: hasCart || hasExisting ? 'ordered' : 'open',
+          orderId: hasCart || hasExisting ? (existing?.orderId ?? orderId) : undefined,
+          openedAt: tableRow.openedAt || nextSession.openedAt,
+          pax: cover || undefined,
+        }))
+      } else {
+        releaseFloorTable(fromId)
+        if (hasCart || hasExisting) {
+          markFloorTableOrdered(dest.id, existing?.orderId ?? orderId)
+        }
+      }
+    }
+
+    setActiveRegisterSession(nextSession)
+    setActiveTableSession(nextSession)
+    setTable(dest.id)
+    hydratedTableIdRef.current = dest.id
+    flash(`Changed table · ${fromLabel} → ${dest.label}`)
+  }
+
+  /** Move the selected cart line onto another table’s open check. */
+  function handleMoveProduct() {
+    if (lines.length === 0) {
+      flash('Add items before moving a product.')
+      return
+    }
+    if (!selectedLineKey) {
+      flash('Select a product line first, then tap Move Product.')
+      return
+    }
+    const line = lines.find(l => lineSelectionKey(l) === selectedLineKey)
+    if (!line) {
+      flash('Select a product line first, then tap Move Product.')
+      return
+    }
+    const fromId = activeTableSession?.tableId || table
+    const dest = pickDestinationTable('Move Product — choose destination table', fromId)
+    if (!dest) return
+
+    const product = catalogForFilter.find(p => p.id === line.productId)
+    const productName = product?.name ?? `Item ${line.productId}`
+    const lineId = lineIdentity(line)
+
+    setLines(prev => prev.filter(l => lineSelectionKey(l) !== selectedLineKey))
+    setFiredQtyByLine(prev => {
+      const next = { ...prev }
+      delete next[lineId]
+      return next
+    })
+    setFiredAtByLine(prev => {
+      const next = { ...prev }
+      delete next[lineId]
+      return next
+    })
+    setSelectedLineKey(null)
+
+    const destCheck = loadOpenCheckForTable(dest.id)
+    const movedFiredQty = firedQtyByLine[lineId] ?? 0
+    const movedFiredAt = firedAtByLine[lineId]
+    if (destCheck) {
+      upsertOpenCheck({
+        ...destCheck,
+        lines: [...destCheck.lines, line],
+        firedQtyByLine: {
+          ...destCheck.firedQtyByLine,
+          ...(movedFiredQty > 0 ? { [lineId]: movedFiredQty } : {}),
+        },
+        firedAtByLine: {
+          ...(destCheck.firedAtByLine ?? {}),
+          ...(movedFiredAt ? { [lineId]: movedFiredAt } : {}),
+        },
+        updatedAt: new Date().toISOString(),
+      })
+    } else {
+      const newCheckNumber = nextPosCheckNumber()
+      upsertOpenCheck({
+        tableId: dest.id,
+        tableLabel: dest.label,
+        orderId: `chk-${newCheckNumber}`,
+        checkNumber: newCheckNumber,
+        lines: [line],
+        charges: { ...EMPTY_OPEN_CHARGES },
+        dining: dining || 'dine-in',
+        cover: 1,
+        firedQtyByLine: movedFiredQty > 0 ? { [lineId]: movedFiredQty } : {},
+        firedAtByLine: movedFiredAt ? { [lineId]: movedFiredAt } : {},
+        updatedAt: new Date().toISOString(),
+      })
+    }
+
+    if (session?.companyId && session.locationId) {
+      void persistFloorTablePatch(session.companyId, session.locationId, dest.id, tableRow => ({
+        status: 'ordered',
+        orderId: destCheck?.orderId ?? `chk-${checkNumber}`,
+        openedAt: tableRow.openedAt || new Date().toISOString(),
+      }))
+    } else {
+      markFloorTableOrdered(dest.id, destCheck?.orderId ?? `chk-${checkNumber}`)
+    }
+
+    flash(`Moved ${productName} → ${dest.label}`)
+  }
+
+  // Pre-paid redeem modal kept for package sales flow; toolbar Pre-paid button removed.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function openPrepaidDeplete() {
     if (!session?.companyId || !session.locationId) {
       flash('POS session is not ready.')
@@ -1230,6 +1420,7 @@ export function RegisterPage() {
       setPrepaidDepleteBusy(false)
     }
   }
+  void openPrepaidDeplete
 
   async function confirmPrepaidDeplete(payload: {
     purchaseId: number
@@ -1633,7 +1824,6 @@ export function RegisterPage() {
         }}
         activeTableLabel={activeTableSession?.tableLabel ?? null}
         paymentBusy={charging}
-        prepaidAvailable={prepaidPromotions.length > 0}
         tableOptions={tableOptions}
         onAction={action => {
           if (!requireDuty()) return
@@ -1641,7 +1831,7 @@ export function RegisterPage() {
             handleCancelEdits()
             return
           }
-          if (action === 'save') {
+          if (action === 'ok') {
             handleSaveOrder()
             return
           }
@@ -1649,8 +1839,12 @@ export function RegisterPage() {
             openPayment()
             return
           }
-          if (action === 'prepaid') {
-            void openPrepaidDeplete()
+          if (action === 'changeTable') {
+            handleChangeTable()
+            return
+          }
+          if (action === 'moveProduct') {
+            handleMoveProduct()
             return
           }
           flash('Printing…')

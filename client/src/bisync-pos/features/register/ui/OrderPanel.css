@@ -337,19 +337,21 @@
 .order-panel__actions {
   margin-top: var(--space-2);
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: var(--space-1);
   flex-shrink: 0;
 }
 
 .btn {
-  height: calc(32px * var(--pos-ui-scale));
+  height: calc(36px * var(--pos-ui-scale));
   border-radius: var(--radius-sm);
   font: inherit;
-  font-size: var(--pos-font-sm);
+  font-size: var(--pos-font-xs);
   font-weight: 700;
   cursor: pointer;
   border: 1px solid transparent;
+  line-height: 1.15;
+  padding: 0 0.35rem;
 }
 
 .btn:disabled {
@@ -357,13 +359,15 @@
   cursor: not-allowed;
 }
 
-.btn--navy {
-  background: var(--color-navy);
+.btn--navy,
+.btn--print {
+  background: #1e3a5f;
   color: #fff;
 }
 
-.btn--navy:hover:not(:disabled) {
-  background: var(--color-navy-hover);
+.btn--navy:hover:not(:disabled),
+.btn--print:hover:not(:disabled) {
+  background: #152a45;
 }
 
 .btn--ghost {
@@ -372,32 +376,55 @@
   color: var(--color-ink);
 }
 
-.btn--primary {
-  background: var(--color-primary);
+.btn--primary,
+.btn--payment {
+  background: #2563eb;
   color: #fff;
 }
 
-.btn--primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
+.btn--primary:hover:not(:disabled),
+.btn--payment:hover:not(:disabled) {
+  background: #1d4ed8;
 }
 
-.btn--danger {
-  background: #fff;
-  border-color: #dc2626;
-  color: #b91c1c;
-}
-
-.btn--danger:hover:not(:disabled) {
-  background: #fef2f2;
-}
-
-.btn--success {
-  background: var(--color-success);
+.btn--danger,
+.btn--cancel {
+  background: #dc2626;
   color: #fff;
 }
 
-.btn--success:hover:not(:disabled) {
-  background: var(--color-success-hover);
+.btn--danger:hover:not(:disabled),
+.btn--cancel:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btn--success,
+.btn--ok {
+  background: #15803d;
+  color: #fff;
+}
+
+.btn--success:hover:not(:disabled),
+.btn--ok:hover:not(:disabled) {
+  background: #166534;
+}
+
+.btn--change-table {
+  background: #0f766e;
+  color: #fff;
+}
+
+.btn--change-table:hover:not(:disabled) {
+  background: #0d9488;
+}
+
+.btn--move-product {
+  background: #c2410c;
+  color: #fff;
+}
+
+.btn--move-product:hover:not(:disabled) {
+  background: #ea580c;
 }
 
 @media (max-width: 900px) {
