@@ -1335,7 +1335,7 @@ export interface PosModifierGroup {
   attachments: PosModifierAttachment[];
 }
 
-export type PosConfigTypeKind = 'payment' | 'entertainment' | 'discount';
+export type PosConfigTypeKind = 'payment' | 'entertainment' | 'discount' | 'device';
 
 export interface PosConfigType {
   id: number;

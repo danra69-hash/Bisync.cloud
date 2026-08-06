@@ -28,7 +28,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'devices', label: 'Device Set up' },
 ]
 
-const TAB_TITLE: Record<Exclude<TabId, 'devices'>, string> = {
+const TAB_TITLE: Record<ConfigTypeTab, string> = {
   payment: 'Payment Type',
   entertainment: 'Entertainment Type',
   discount: 'Discount Type',
@@ -65,8 +65,14 @@ function suggestCode(name: string): string {
     .slice(0, 40)
 }
 
-function isConfigTypeTab(tab: TabId): tab is PosConfigTypeKind {
+type ConfigTypeTab = 'payment' | 'entertainment' | 'discount'
+
+function isConfigTypeTab(tab: TabId): tab is ConfigTypeTab {
   return tab === 'payment' || tab === 'entertainment' || tab === 'discount'
+}
+
+function configTabTitle(tab: TabId): string {
+  return isConfigTypeTab(tab) ? TAB_TITLE[tab] : 'Type'
 }
 
 export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props) {
@@ -80,7 +86,7 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [showForm, setShowForm] = useState(false)
   const [codeTouched, setCodeTouched] = useState(false)
 
-  const load = useCallback(async (companyId: number, kind: PosConfigTypeKind) => {
+  const load = useCallback(async (companyId: number, kind: ConfigTypeTab) => {
     setLoading(true)
     setError(null)
     try {
@@ -231,7 +237,7 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
             className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
             onClick={openAdd}
           >
-            Add {TAB_TITLE[tab]}
+            Add {configTabTitle(tab)}
           </button>
         ) : null}
       </div>
@@ -265,7 +271,7 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
             <div className="mt-3 rounded-lg border border-border bg-card p-3 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs font-semibold text-foreground">
-                  {editingId != null ? `Edit ${TAB_TITLE[tab]}` : `New ${TAB_TITLE[tab]}`}
+                  {editingId != null ? `Edit ${configTabTitle(tab)}` : `New ${configTabTitle(tab)}`}
                 </h3>
                 <button
                   type="button"
@@ -289,7 +295,7 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
                         code: codeTouched ? d.code : suggestCode(name),
                       }))
                     }}
-                    placeholder={`${TAB_TITLE[tab]} name`}
+                    placeholder={`${configTabTitle(tab)} name`}
                   />
                 </label>
                 <label className="text-xs text-muted-foreground space-y-1">
@@ -395,7 +401,7 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
                           colSpan={tab === 'discount' ? 6 : 5}
                           className="px-2 py-6 text-muted-foreground"
                         >
-                          No {TAB_TITLE[tab].toLowerCase()}s yet. Add one to get started.
+                          No {configTabTitle(tab).toLowerCase()}s yet. Add one to get started.
                         </td>
                       </tr>
                     ) : (

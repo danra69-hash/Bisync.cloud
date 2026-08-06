@@ -630,6 +630,25 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
         var device = await db.PosDevices.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
         if (device is null)
             return NotFound(new { message = "Device not found." });
+
+        if (request.Active)
+        {
+            var resolved = await ResolveConfiguredDeviceTypeAsync(
+                device.CompanyId,
+                device.DeviceType,
+                requireActive: true,
+                cancellationToken);
+            if (resolved is null)
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "Device type must match an active Device Type in POS Config → Device Set up before this device can be enabled.",
+                });
+            }
+            device.DeviceType = resolved;
+        }
+
         device.Active = request.Active;
         device.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
@@ -662,9 +681,17 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
         if (string.IsNullOrWhiteSpace(name))
             return (null, "Device name is required.");
 
-        var deviceType = NormalizeDeviceType(request.DeviceType);
+        var deviceType = await ResolveConfiguredDeviceTypeAsync(
+            request.CompanyId,
+            request.DeviceType,
+            requireActive: request.Active,
+            cancellationToken);
         if (deviceType is null)
-            return (null, "Select a valid device type.");
+        {
+            return (null, request.Active
+                ? "Device type must match an active Device Type in POS Config → Device Set up."
+                : "Select a valid device type from POS Config → Device Set up.");
+        }
 
         var connection = (request.ConnectionType ?? "ethernet").Trim().ToLowerInvariant();
         if (!ConnectionTypes.Contains(connection))
@@ -734,12 +761,57 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
         return (device, null);
     }
 
-    static string? NormalizeDeviceType(string? raw)
+    /// <summary>
+    /// Resolves a device type against POS Config Device Types for the company.
+    /// Built-in keys remain accepted as a fallback when the catalog has not been seeded yet.
+    /// </summary>
+    async Task<string?> ResolveConfiguredDeviceTypeAsync(
+        int companyId,
+        string? raw,
+        bool requireActive,
+        CancellationToken cancellationToken)
     {
         var value = (raw ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(value))
             return null;
-        // Accept labels with spaces from UI.
+
+        await EnsureDefaultDeviceTypesAsync(companyId, cancellationToken);
+
+        var q = db.PosConfigTypes.AsNoTracking()
+            .Where(r => r.CompanyId == companyId && r.Kind == "device");
+        if (requireActive)
+            q = q.Where(r => r.Active);
+
+        var catalog = await q
+            .Select(r => new { r.Code, r.Name, r.Active })
+            .ToListAsync(cancellationToken);
+
+        if (catalog.Count == 0)
+            return NormalizeBuiltinDeviceType(value);
+
+        var compact = value.Replace(" ", "", StringComparison.OrdinalIgnoreCase);
+        foreach (var row in catalog)
+        {
+            if (string.Equals(row.Code, value, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(row.Code, compact, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(row.Name, value, StringComparison.OrdinalIgnoreCase))
+                return row.Code;
+        }
+
+        // Heuristic map only when it lands on an active catalog code.
+        var heuristic = NormalizeBuiltinDeviceType(value);
+        if (heuristic is null)
+            return null;
+        var matched = catalog.FirstOrDefault(r =>
+            string.Equals(r.Code, heuristic, StringComparison.OrdinalIgnoreCase));
+        return matched?.Code;
+    }
+
+    static string? NormalizeBuiltinDeviceType(string? raw)
+    {
+        var value = (raw ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
         var compact = value.Replace(" ", "", StringComparison.OrdinalIgnoreCase);
         foreach (var type in DeviceTypes)
         {
@@ -751,14 +823,56 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
         return value switch
         {
             _ when value.Contains("cashier", StringComparison.OrdinalIgnoreCase)
-                || value.Contains("main", StringComparison.OrdinalIgnoreCase) => "posMain",
+                || (value.Contains("main", StringComparison.OrdinalIgnoreCase)
+                    && value.Contains("pos", StringComparison.OrdinalIgnoreCase)) => "posMain",
             _ when value.Contains("order", StringComparison.OrdinalIgnoreCase) => "posOrderStation",
             _ when value.Contains("kitchen", StringComparison.OrdinalIgnoreCase) => "kitchenDisplay",
-            _ when value.Contains("bar", StringComparison.OrdinalIgnoreCase) => "barDisplay",
+            _ when value.Contains("bar", StringComparison.OrdinalIgnoreCase)
+                && value.Contains("display", StringComparison.OrdinalIgnoreCase) => "barDisplay",
             _ when value.Contains("kiosk", StringComparison.OrdinalIgnoreCase) => "kiosk",
             _ when value.Contains("printer", StringComparison.OrdinalIgnoreCase) => "printer",
             _ => null,
         };
+    }
+
+    static string? NormalizeDeviceType(string? raw) => NormalizeBuiltinDeviceType(raw);
+
+    async Task EnsureDefaultDeviceTypesAsync(int companyId, CancellationToken cancellationToken)
+    {
+        var hasAny = await db.PosConfigTypes.AsNoTracking()
+            .AnyAsync(r => r.CompanyId == companyId && r.Kind == "device", cancellationToken);
+        if (hasAny)
+            return;
+
+        var now = DateTime.UtcNow;
+        (string Code, string Name, int Seq)[] defaults =
+        [
+            ("posMain", "POS Main (with Cashier Feature)", 10),
+            ("posOrderStation", "POS Order Station", 20),
+            ("kitchenDisplay", "Kitchen Display Unit", 30),
+            ("barDisplay", "Bar Display Unit", 40),
+            ("kiosk", "Kiosk", 50),
+            ("printer", "Printer", 60),
+        ];
+        foreach (var (code, name, seq) in defaults)
+        {
+            db.PosConfigTypes.Add(new PosConfigType
+            {
+                CompanyId = companyId,
+                Kind = "device",
+                Code = code,
+                Name = name,
+                Sequence = seq,
+                Active = true,
+                IncludeAll = false,
+                ExceptionGroupsJson = "[]",
+                ExceptionProductIdsJson = "[]",
+                Percentage = 0,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     static int DefaultPortFor(string deviceType) =>

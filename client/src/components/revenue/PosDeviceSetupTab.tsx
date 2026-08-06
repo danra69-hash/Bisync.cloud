@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   api,
+  type PosConfigType,
   type PosDevice,
   type PosDeviceSetupRule,
   type Product,
+  type UpsertPosConfigTypePayload,
   type UpsertPosDeviceSetupRulePayload,
 } from '../../api'
 import { inputCls } from '../../data/countries'
-import { deviceTypeLabel } from '../../data/posDevices'
+import { deviceTypeLabel, suggestDeviceTypeCode } from '../../data/posDevices'
 import { productMatchesPosGroupFilter } from '../../data/posCatalog'
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement'
 import { ToggleSwitch } from '../admin/ToggleSwitch'
@@ -63,18 +65,35 @@ function parseOptionalId(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+type DeviceTypeDraft = {
+  name: string
+  code: string
+  sequence: string
+  active: boolean
+}
+
+function emptyDeviceTypeDraft(): DeviceTypeDraft {
+  return { name: '', code: '', sequence: '0', active: true }
+}
+
 export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Props) {
   const [locations, setLocations] = useState<LocationOpt[]>([])
   const [filterLocationId, setFilterLocationId] = useState(selectedLocationIds[0] ?? '')
   const [rules, setRules] = useState<PosDeviceSetupRule[]>([])
   const [devices, setDevices] = useState<PosDevice[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [deviceTypes, setDeviceTypes] = useState<PosConfigType[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(selectedLocationIds[0] ?? ''))
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [deviceTypeDraft, setDeviceTypeDraft] = useState<DeviceTypeDraft>(emptyDeviceTypeDraft)
+  const [editingDeviceTypeId, setEditingDeviceTypeId] = useState<number | null>(null)
+  const [showDeviceTypeForm, setShowDeviceTypeForm] = useState(false)
+  const [deviceTypeCodeTouched, setDeviceTypeCodeTouched] = useState(false)
+  const [savingDeviceType, setSavingDeviceType] = useState(false)
 
   const loadLocations = useCallback(async () => {
     try {
@@ -98,21 +117,24 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
     setLoading(true)
     setError(null)
     try {
-      const [ruleRows, deviceRows, productRows] = await Promise.all([
+      const [ruleRows, deviceRows, productRows, typeRows] = await Promise.all([
         api.posDeviceSetupRules(selectedCompanyId, {
           locationExternalId: filterLocationId || undefined,
           includeInactive: true,
         }),
         api.posDevices(selectedCompanyId, filterLocationId || undefined),
         api.products(selectedCompanyId),
+        api.posConfigTypes(selectedCompanyId, { kind: 'device', includeInactive: true }),
       ])
       setRules(ruleRows)
       setDevices(deviceRows.filter(d => d.active !== false))
       setProducts(productRows.filter(p => p.active !== false && !p.isSubProduct))
+      setDeviceTypes(typeRows)
     } catch (e) {
       setRules([])
       setDevices([])
       setProducts([])
+      setDeviceTypes([])
       setError(e instanceof Error ? e.message : 'Failed to load device set up.')
     } finally {
       setLoading(false)
@@ -173,10 +195,99 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
     [rules],
   )
 
+  const sortedDeviceTypes = useMemo(
+    () => [...deviceTypes].sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name)),
+    [deviceTypes],
+  )
+
   function closeForm() {
     setShowForm(false)
     setEditingId(null)
     setDraft(emptyDraft(filterLocationId))
+  }
+
+  function closeDeviceTypeForm() {
+    setShowDeviceTypeForm(false)
+    setEditingDeviceTypeId(null)
+    setDeviceTypeDraft(emptyDeviceTypeDraft())
+    setDeviceTypeCodeTouched(false)
+  }
+
+  function openAddDeviceType() {
+    setEditingDeviceTypeId(null)
+    setDeviceTypeDraft(emptyDeviceTypeDraft())
+    setDeviceTypeCodeTouched(false)
+    setShowDeviceTypeForm(true)
+  }
+
+  function openEditDeviceType(row: PosConfigType) {
+    setEditingDeviceTypeId(row.id)
+    setDeviceTypeDraft({
+      name: row.name,
+      code: row.code,
+      sequence: String(row.sequence ?? 0),
+      active: row.active !== false,
+    })
+    setDeviceTypeCodeTouched(true)
+    setShowDeviceTypeForm(true)
+  }
+
+  async function submitDeviceTypeForm() {
+    const name = deviceTypeDraft.name.trim()
+    const code = (deviceTypeDraft.code.trim() || suggestDeviceTypeCode(name)).trim()
+    if (!name) {
+      setError('Device type name is required.')
+      return
+    }
+    if (!code) {
+      setError('Device type code is required.')
+      return
+    }
+    const sequence = Number.parseInt(deviceTypeDraft.sequence, 10)
+    const payload: UpsertPosConfigTypePayload = {
+      companyId: selectedCompanyId,
+      kind: 'device',
+      name,
+      code,
+      sequence: Number.isFinite(sequence) ? Math.max(0, sequence) : 0,
+      active: deviceTypeDraft.active,
+    }
+    setSavingDeviceType(true)
+    setError(null)
+    try {
+      if (editingDeviceTypeId != null) {
+        await api.updatePosConfigType(editingDeviceTypeId, payload)
+      } else {
+        await api.createPosConfigType(payload)
+      }
+      closeDeviceTypeForm()
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save device type.')
+    } finally {
+      setSavingDeviceType(false)
+    }
+  }
+
+  async function toggleDeviceTypeActive(row: PosConfigType, active: boolean) {
+    setError(null)
+    try {
+      await api.setPosConfigTypeActive(row.id, active)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update device type.')
+    }
+  }
+
+  async function removeDeviceType(row: PosConfigType) {
+    if (!window.confirm(`Delete device type “${row.name}”?`)) return
+    setError(null)
+    try {
+      await api.deletePosConfigType(row.id)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed.')
+    }
   }
 
   function openAdd() {
@@ -282,10 +393,161 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div className="max-w-2xl">
+            <h3 className="text-sm font-semibold text-foreground">Device Type</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Standard device names for this company. A device in POS Device Management can only be
+              enabled when its type code matches an active Device Type listed here.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            onClick={openAddDeviceType}
+          >
+            Add Device Type
+          </button>
+        </div>
+
+        {showDeviceTypeForm ? (
+          <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-xs font-semibold text-foreground">
+                {editingDeviceTypeId != null ? 'Edit device type' : 'New device type'}
+              </h4>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={closeDeviceTypeForm}
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-xs text-muted-foreground space-y-1 sm:col-span-2">
+                <span>Name</span>
+                <input
+                  className={inputCls}
+                  value={deviceTypeDraft.name}
+                  onChange={e => {
+                    const name = e.target.value
+                    setDeviceTypeDraft(d => ({
+                      ...d,
+                      name,
+                      code: deviceTypeCodeTouched ? d.code : suggestDeviceTypeCode(name),
+                    }))
+                  }}
+                  placeholder="e.g. Expo Printer"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground space-y-1">
+                <span>Code</span>
+                <input
+                  className={`${inputCls} font-mono`}
+                  value={deviceTypeDraft.code}
+                  onChange={e => {
+                    setDeviceTypeCodeTouched(true)
+                    setDeviceTypeDraft(d => ({ ...d, code: e.target.value }))
+                  }}
+                  placeholder="expoPrinter"
+                />
+              </label>
+              <label className="text-xs text-muted-foreground space-y-1">
+                <span>Sequence</span>
+                <input
+                  className={inputCls}
+                  type="number"
+                  min={0}
+                  value={deviceTypeDraft.sequence}
+                  onChange={e => setDeviceTypeDraft(d => ({ ...d, sequence: e.target.value }))}
+                />
+              </label>
+              <label className="text-xs text-muted-foreground flex items-end gap-2 pb-2">
+                <ToggleSwitch
+                  checked={deviceTypeDraft.active}
+                  onChange={active => setDeviceTypeDraft(d => ({ ...d, active }))}
+                  label="Active device type"
+                />
+                <span>Active</span>
+              </label>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={savingDeviceType}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                onClick={() => void submitDeviceTypeForm()}
+              >
+                {savingDeviceType ? 'Saving…' : editingDeviceTypeId != null ? 'Save changes' : 'Create'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <TableScrollContainer>
+          <table className="w-full text-xs">
+            <ColGroup widths={['36%', '24%', '12%', '12%', '16%']} />
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-2 py-2 font-semibold">Name</th>
+                <th className="px-2 py-2 font-semibold">Code</th>
+                <th className="px-2 py-2 font-semibold">Sequence</th>
+                <th className="px-2 py-2 font-semibold">Active</th>
+                <th className="px-2 py-2 font-semibold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedDeviceTypes.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-2 py-6 text-muted-foreground">
+                    No device types yet. Add the standard names used when registering POS devices.
+                  </td>
+                </tr>
+              ) : (
+                sortedDeviceTypes.map(row => (
+                  <tr key={row.id} className="border-b border-border/70 hover:bg-muted/30">
+                    <td className="px-2 py-2 font-medium text-foreground">{row.name}</td>
+                    <td className="px-2 py-2 font-mono text-muted-foreground">{row.code}</td>
+                    <td className="px-2 py-2 text-muted-foreground">{row.sequence}</td>
+                    <td className="px-2 py-2">
+                      <ToggleSwitch
+                        checked={row.active}
+                        onChange={v => void toggleDeviceTypeActive(row, v)}
+                        label={`Active ${row.name}`}
+                      />
+                    </td>
+                    <td className="px-2 py-2 text-right space-x-2 whitespace-nowrap">
+                      <button
+                        type="button"
+                        className="text-primary hover:underline"
+                        onClick={() => openEditDeviceType(row)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="text-destructive hover:underline"
+                        onClick={() => void removeDeviceType(row)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </TableScrollContainer>
+      </section>
+
+      <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div className="max-w-2xl">
-          <p className="text-xs text-muted-foreground">
+          <h3 className="text-sm font-semibold text-foreground">Device routes</h3>
+          <p className="text-xs text-muted-foreground mt-1">
             Route orders by product category, group, or product.
             Primary receives the order (kitchen printer, KDS, bar printer, etc.).
             Secondary is used when primary is unavailable.
@@ -542,6 +804,7 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
           </table>
         </TableScrollContainer>
       )}
+      </section>
     </div>
   )
 }

@@ -10,7 +10,7 @@ namespace Bisync.Api.Controllers;
 [Route("api/pos-config-types")]
 public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
 {
-    public static readonly string[] ValidKinds = ["payment", "entertainment", "discount"];
+    public static readonly string[] ValidKinds = ["payment", "entertainment", "discount", "device"];
 
     static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -76,7 +76,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             return BadRequest(new { message = error });
 
         var kind = body.Kind.Trim().ToLowerInvariant();
-        var code = NormalizeCode(body.Code);
+        var code = NormalizeCode(body.Code, kind);
         var name = body.Name.Trim();
 
         var clash = await db.PosConfigTypes.AnyAsync(
@@ -122,7 +122,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             return BadRequest(new { message = "companyId mismatch." });
 
         var kind = body.Kind.Trim().ToLowerInvariant();
-        var code = NormalizeCode(body.Code);
+        var code = NormalizeCode(body.Code, kind);
         var name = body.Name.Trim();
 
         var clash = await db.PosConfigTypes.AnyAsync(
@@ -232,7 +232,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             return "name is required.";
         if (string.IsNullOrWhiteSpace(body.Code))
             return "code is required.";
-        var code = NormalizeCode(body.Code);
+        var code = NormalizeCode(body.Code, kind);
         if (code.Length is < 1 or > 40)
             return "code must be 1–40 characters.";
         if (!code.All(c => char.IsLetterOrDigit(c) || c is '-' or '_'))
@@ -242,8 +242,17 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
         return null;
     }
 
-    static string NormalizeCode(string? code) =>
-        (code ?? string.Empty).Trim().ToUpperInvariant();
+    /// <summary>
+    /// Device type codes keep their original casing (e.g. posMain) so they match PosDevices.DeviceType.
+    /// Other kinds stay uppercase catalog codes.
+    /// </summary>
+    static string NormalizeCode(string? code, string? kind = null)
+    {
+        var trimmed = (code ?? string.Empty).Trim();
+        if (string.Equals(kind, "device", StringComparison.OrdinalIgnoreCase))
+            return trimmed;
+        return trimmed.ToUpperInvariant();
+    }
 
     static string[] ParseStringArray(string? json)
     {
@@ -361,6 +370,16 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             ("AMOUNT", "Fixed Amount", 20, 0),
             ("VIP", "VIP Discount", 30, 15),
             ("SENIOR", "Senior Citizen", 40, 20),
+        ]);
+        // Codes must match PosDevices.DeviceType keys used by POS Device Management.
+        Seed("device",
+        [
+            ("posMain", "POS Main (with Cashier Feature)", 10, 0),
+            ("posOrderStation", "POS Order Station", 20, 0),
+            ("kitchenDisplay", "Kitchen Display Unit", 30, 0),
+            ("barDisplay", "Bar Display Unit", 40, 0),
+            ("kiosk", "Kiosk", 50, 0),
+            ("printer", "Printer", 60, 0),
         ]);
 
         if (toAdd.Count == 0) return;

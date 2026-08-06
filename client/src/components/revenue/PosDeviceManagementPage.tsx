@@ -11,11 +11,11 @@ import { inputCls } from '../../data/countries'
 import {
   PAPER_WIDTH_OPTIONS,
   POS_CONNECTION_TYPES,
-  POS_DEVICE_TYPES,
   defaultPortForDeviceType,
   deviceTypeLabel,
+  mergePosDeviceTypeOptions,
   type PosConnectionType,
-  type PosDeviceType,
+  type PosDeviceTypeOption,
 } from '../../data/posDevices'
 import { getPrinterSdkAdapter } from '../../bisync-pos/core/printing/PrinterSdkRegistry'
 import { pageShellClass } from '../layout/pageLayout'
@@ -38,7 +38,7 @@ type LocationOpt = { externalId: string; name: string }
 
 type Draft = {
   name: string
-  deviceType: PosDeviceType
+  deviceType: string
   connectionType: PosConnectionType
   locationExternalId: string
   hostAddress: string
@@ -140,20 +140,27 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
     }
   }, [selectedCompanyId])
 
+  const [deviceTypeOptions, setDeviceTypeOptions] = useState<PosDeviceTypeOption[]>(() =>
+    mergePosDeviceTypeOptions([]),
+  )
+
   const loadDevices = useCallback(async () => {
     if (!selectedCompanyId) {
       setDevices([])
+      setDeviceTypeOptions(mergePosDeviceTypeOptions([]))
       return
     }
     setLoading(true)
     setError(null)
     try {
-      const [deviceRows, sdkRows] = await Promise.all([
+      const [deviceRows, sdkRows, typeRows] = await Promise.all([
         api.posDevices(selectedCompanyId, filterLocationId || undefined),
         api.posPrinterSdks(),
+        api.posConfigTypes(selectedCompanyId, { kind: 'device', includeInactive: false }),
       ])
       setDevices(deviceRows)
       setSdks(sdkRows)
+      setDeviceTypeOptions(mergePosDeviceTypeOptions(typeRows))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setDevices([])
@@ -214,7 +221,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
     setProbeResult(null)
     setDraft({
       name: device.name,
-      deviceType: (device.deviceType as PosDeviceType) || 'posMain',
+      deviceType: device.deviceType || deviceTypeOptions[0]?.value || 'posMain',
       connectionType: (device.connectionType as PosConnectionType) || 'ethernet',
       locationExternalId: device.locationExternalId,
       hostAddress: device.hostAddress || '',
@@ -475,7 +482,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
                   devices.map(device => (
                     <tr key={device.id} className="border-b border-border/70">
                       <td className="py-2 pr-2 font-medium">{device.name}</td>
-                      <td className="py-2 pr-2">{device.deviceTypeLabel || deviceTypeLabel(device.deviceType)}</td>
+                      <td className="py-2 pr-2">{device.deviceTypeLabel || deviceTypeLabel(device.deviceType, deviceTypeOptions)}</td>
                       <td className="py-2 pr-2 font-mono text-[10px] text-muted-foreground">
                         {device.hostAddress
                           ? `${device.hostAddress}${device.port ? `:${device.port}` : ''}`
@@ -643,7 +650,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
                   className={inputCls}
                   value={draft.deviceType}
                   onChange={e => {
-                    const deviceType = e.target.value as PosDeviceType
+                    const deviceType = e.target.value
                     setDraft(d => ({
                       ...d,
                       deviceType,
@@ -651,10 +658,13 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
                     }))
                   }}
                 >
-                  {POS_DEVICE_TYPES.map(t => (
+                  {deviceTypeOptions.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
+                <span className="block text-[10px] text-muted-foreground">
+                  Types come from POS Config → Device Set up. Only matching active types can be enabled.
+                </span>
               </label>
               <label className="space-y-1 text-xs">
                 <span className="text-muted-foreground uppercase tracking-wide text-[10px]">Connection</span>

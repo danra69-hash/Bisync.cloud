@@ -490,6 +490,12 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
         dbName: 'PosFloorPlans.LayoutJson → floors[]',
       },
       {
+        term: 'Device Type',
+        meaning:
+          'Standard device name configured under POS Config → Device Set up. A registered POS device can only be enabled when its type code matches an active Device Type.',
+        dbName: 'PosConfigTypes (kind=device) / PosDevices.DeviceType',
+      },
+      {
         term: 'POS Device',
         meaning: 'Registered printer, KDS, bar display, or POS station.',
         dbName: 'PosDevices',
