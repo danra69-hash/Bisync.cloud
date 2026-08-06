@@ -120,6 +120,8 @@ public class CompanyOperationalDbProvisioner(
         registry.ArchiveDatabaseName = archiveDatabaseName;
         registry.ConnectionString = operationalCs;
         registry.ArchiveConnectionString = archiveCs;
+        registry.PlacementMode = TenantPlacementMode.Dedicated;
+        registry.ShardId = 0;
         registry.IsActive = true;
         registry.UpdatedAt = DateTime.UtcNow;
         await control.SaveChangesAsync(ct);

@@ -113,6 +113,8 @@ builder.Services.AddScoped<CreditNoteService>();
 builder.Services.AddScoped<CentralStoreService>();
 builder.Services.AddScoped<LocationPartitionService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
+builder.Services.AddScoped<TenantPlacementService>();
+builder.Services.AddScoped<TenantSchemaMigrationService>();
 builder.Services.AddScoped<TenantRollupService>();
 builder.Services.AddScoped<LocationSubscriptionService>();
 builder.Services.AddScoped<VendorRatingService>();

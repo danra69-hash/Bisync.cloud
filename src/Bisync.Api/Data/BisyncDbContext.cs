@@ -112,6 +112,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<DevConsoleSession> DevConsoleSessions => Set<DevConsoleSession>();
     public DbSet<DevConsolePasswordTicket> DevConsolePasswordTickets => Set<DevConsolePasswordTicket>();
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
+    public DbSet<IntegrationOutboxMessage> IntegrationOutbox => Set<IntegrationOutboxMessage>();
     public DbSet<TenantRollupSnapshot> TenantRollupSnapshots => Set<TenantRollupSnapshot>();
     public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
@@ -397,6 +398,19 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.ConnectionString).HasMaxLength(2000);
             e.Property(x => x.ArchiveDatabaseName).HasMaxLength(128);
             e.Property(x => x.ArchiveConnectionString).HasMaxLength(2000);
+            e.Property(x => x.PlacementMode).HasMaxLength(32);
+            e.HasIndex(x => x.PlacementMode);
+            e.HasIndex(x => new { x.ShardId, x.PlacementMode });
+        });
+        modelBuilder.Entity<IntegrationOutboxMessage>(e =>
+        {
+            e.ToTable("IntegrationOutbox");
+            e.HasIndex(x => new { x.Status, x.AvailableAt, x.Id });
+            e.HasIndex(x => new { x.CompanyId, x.CreatedAt });
+            e.Property(x => x.LocationExternalId).HasMaxLength(100);
+            e.Property(x => x.EventType).HasMaxLength(120);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.LastError).HasMaxLength(2000);
         });
         modelBuilder.Entity<WastageEntry>(e =>
         {
