@@ -85,8 +85,20 @@ public static class IngredientUomBridge
 
     /// <summary>
     /// Converts a received delivery-package quantity into Principal Component Unit for stock posting.
-    /// Formula: <c>stockQty = packages × tagged principal-per-package</c>,
-    /// <c>stockPrice = deliveryUnitPrice ÷ principal-per-package</c> (4dp).
+    /// <para>
+    /// Step 1 (component detail tag): <c>stockQty = deliveryPackages × principalPerPackage</c>
+    /// (e.g. 6 tub × 3790 Gr = 22,740 Gr).
+    /// </para>
+    /// <para>
+    /// Step 2: <c>stockUnitPrice = (deliveryPackages × PO delivery unit price) ÷ stockQty</c>
+    /// i.e. Vendor Product PO line amount ÷ total Principal Component qty
+    /// (e.g. RM 750 ÷ 22,740 = 0.03298153… → 0.0330 at 4dp).
+    /// </para>
+    /// <para>
+    /// Step 3: unit price is persisted at 4 decimal places (5th digit AwayFromZero).
+    /// Any residual vs PO line amount (qty × rounded price ≠ PO total) is report-level only —
+    /// never adjusted operationally on the stock card / inventory row.
+    /// </para>
     /// Falls back to inventory↔recipe conversion when no vendor tag exists.
     /// </summary>
     public static (decimal Quantity, string Uom, decimal UnitPrice) ToInboundPrincipal(
@@ -125,8 +137,6 @@ public static class IngredientUomBridge
                 return (quantity, recipeLabel, DecimalRounding.ToDb(unitPrice));
             }
 
-            // Source already labeled as PCU but qty still looks like package count → convert.
-            // Also convert when source is delivery UOM / inventory / unknown.
             var principalInRecipe = ResolvePrincipalInRecipeUom(
                 ingredient,
                 principalPerPackage,
@@ -137,11 +147,11 @@ public static class IngredientUomBridge
 
             if (principalInRecipe > 0)
             {
-                var stockQty = DecimalRounding.ToDb(quantity * principalInRecipe);
-                var stockPrice = principalInRecipe > 0
-                    ? DecimalRounding.ToDb(unitPrice / principalInRecipe)
-                    : DecimalRounding.ToDb(unitPrice);
-                return (stockQty, recipeLabel, stockPrice);
+                return ConvertDeliveryPackagesToPrincipal(
+                    deliveryPackages: quantity,
+                    deliveryUnitPrice: unitPrice,
+                    principalPerPackage: principalInRecipe,
+                    recipeUomLabel: recipeLabel);
             }
         }
 
@@ -155,7 +165,9 @@ public static class IngredientUomBridge
             var (convertedQty, convertedUom) = ToRecipePreferred(ingredient, quantity, sourceUom);
             if (convertedQty > 0 && quantity > 0 && ConvertedAwayFromSource(quantity, convertedQty, selected, UomCanonical.Normalize(convertedUom)))
             {
-                var stockPrice = DecimalRounding.ToDb(unitPrice * (quantity / convertedQty));
+                // Preserve PO line amount: (packages × packagePrice) / principalQty.
+                var lineAmount = quantity * unitPrice;
+                var stockPrice = DecimalRounding.ToDb(lineAmount / convertedQty);
                 return (convertedQty, convertedUom, stockPrice);
             }
             return (convertedQty, convertedUom, DecimalRounding.ToDb(unitPrice));
@@ -174,6 +186,27 @@ public static class IngredientUomBridge
 
         var (fallbackQty, fallbackUom) = ToRecipePreferred(ingredient, quantity, sourceUom);
         return (fallbackQty, fallbackUom, DecimalRounding.ToDb(unitPrice));
+    }
+
+    /// <summary>
+    /// Core Step 1 conversion used by receive / heal / stock card inbound.
+    /// <c>stockQty = packages × principal</c>;
+    /// <c>stockUnitPrice = round4(PO line amount ÷ stockQty)</c>.
+    /// </summary>
+    public static (decimal Quantity, string Uom, decimal UnitPrice) ConvertDeliveryPackagesToPrincipal(
+        decimal deliveryPackages,
+        decimal deliveryUnitPrice,
+        decimal principalPerPackage,
+        string recipeUomLabel)
+    {
+        if (deliveryPackages <= 0 || principalPerPackage <= 0)
+            return (deliveryPackages, recipeUomLabel, DecimalRounding.ToDb(deliveryUnitPrice));
+
+        // Keep full precision on qty; round only the derived unit price (4dp).
+        var stockQty = deliveryPackages * principalPerPackage;
+        var poLineAmount = deliveryPackages * deliveryUnitPrice;
+        var stockUnitPrice = DecimalRounding.ToDb(poLineAmount / stockQty);
+        return (stockQty, recipeUomLabel, stockUnitPrice);
     }
 
     /// <summary>
@@ -199,12 +232,13 @@ public static class IngredientUomBridge
             || principal <= 1.0000001m)
             return false;
 
-        var expectedQty = DecimalRounding.ToDb(deliveryPackageQty * principal);
-        var expectedPrice = deliveryUnitPrice > 0
-            ? DecimalRounding.ToDb(deliveryUnitPrice / principal)
+        var expectedQty = deliveryPackageQty * principal;
+        var poLineAmount = deliveryPackageQty * deliveryUnitPrice;
+        var expectedPrice = expectedQty > 0
+            ? DecimalRounding.ToDb(poLineAmount / expectedQty)
             : 0m;
 
-        // Already correct.
+        // Already correct (qty + rounded principal unit price).
         if (NearlyEqual(postedQty, expectedQty)
             && (expectedPrice <= 0 || NearlyEqual(postedUnitPrice, expectedPrice)))
             return false;
