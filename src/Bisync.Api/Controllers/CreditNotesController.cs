@@ -96,6 +96,10 @@ public class CreditNotesController(
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = $"Failed to save credit note: {ex.Message}" });
+        }
     }
 
     [HttpPatch("{id:int}")]

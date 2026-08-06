@@ -129,29 +129,52 @@ public class CreditNoteService(
                 .AsNoTracking()
                 .FirstOrDefaultAsync(i => i.ComponentId == item.ComponentId, cancellationToken);
 
-        decimal stockQty = quantity;
-        var stockUom = deliveryUom;
-        var stockUnitPrice = deliveryUnitPrice;
-        if (ingredient is not null)
+        // Credit qty is entered in Delivery UOM. Prefer the same stock qty/UOM that was
+        // actually posted for this PO line so outbound matches on-hand layers.
+        decimal stockQty;
+        string stockUom;
+        decimal stockUnitPrice;
+        var postedPurchases = await db.InventoryPurchases.AsNoTracking()
+            .Where(p => p.PurchaseOrderItemId == item.Id)
+            .Where(p => p.CompanyId == null || p.CompanyId == companyId)
+            .ToListAsync(cancellationToken);
+        var postedQty = postedPurchases.Sum(p => p.Quantity);
+        if (postedPurchases.Count > 0 && delivered > 0 && postedQty > 0)
         {
+            stockQty = quantity * (postedQty / delivered);
+            stockUom = string.IsNullOrWhiteSpace(postedPurchases[0].Uom)
+                ? deliveryUom
+                : postedPurchases[0].Uom.Trim();
+            stockUnitPrice = stockQty > 0
+                ? StockCardFifoEngine.RoundUnitPrice(amount / stockQty)
+                : deliveryUnitPrice;
+        }
+        else if (ingredient is not null)
+        {
+            // Quantity is in delivery UOM — convert to Principal Component Unit for stock.
             (stockQty, stockUom, stockUnitPrice) = IngredientUomBridge.ToInboundPrincipal(
                 ingredient,
                 quantity,
-                string.IsNullOrWhiteSpace(item.ComponentUom) ? deliveryUom : item.ComponentUom,
+                deliveryUom,
                 deliveryUnitPrice,
                 item.VendorProductId,
                 deliveryUom);
+            stockUnitPrice = stockQty > 0
+                ? StockCardFifoEngine.RoundUnitPrice(amount / stockQty)
+                : stockUnitPrice;
         }
-
-        stockUnitPrice = stockQty > 0
-            ? StockCardFifoEngine.RoundUnitPrice(amount / stockQty)
-            : stockUnitPrice;
+        else
+        {
+            stockQty = quantity;
+            stockUom = deliveryUom;
+            stockUnitPrice = deliveryUnitPrice;
+        }
 
         var onHand = await componentStock.GetOnHandAsync(
             item.ComponentId, location, stockUom, cancellationToken);
         if (stockQty > onHand + StockCardFifoEngine.QtyEpsilon)
             throw new InvalidOperationException(
-                $"Insufficient stock on hand ({onHand:0.####} {stockUom}) to post credit note outbound.");
+                $"Insufficient stock on hand ({onHand:0.####} {stockUom}) to post credit note outbound of {stockQty:0.####} {stockUom}.");
 
         var entry = new CreditNote
         {

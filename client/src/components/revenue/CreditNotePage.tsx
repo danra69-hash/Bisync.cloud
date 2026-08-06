@@ -146,7 +146,18 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
   }
 
   async function saveCreditNote() {
-    if (!selectedCompanyId || !selectedPo || !selectedItem) return;
+    if (!selectedCompanyId) {
+      setFormError('Select a company first.');
+      return;
+    }
+    if (!selectedPo) {
+      setFormError('Select a purchase order.');
+      return;
+    }
+    if (!selectedItem) {
+      setFormError('Select a vendor product from the PO.');
+      return;
+    }
     const qty = parseFloat(creditQty);
     if (!Number.isFinite(qty) || qty <= 0) {
       setFormError('Enter a credit quantity greater than zero.');
@@ -154,6 +165,10 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
     }
     if (qty > (selectedItem.deliveredQuantity || 0) + 0.0001) {
       setFormError(`Credit qty cannot exceed delivered qty (${selectedItem.deliveredQuantity}).`);
+      return;
+    }
+    if (!creditNoteDate.trim()) {
+      setFormError('Credit note date is required.');
       return;
     }
 
@@ -173,6 +188,9 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
           || undefined,
       });
       setCreateOpen(false);
+      setSelectedPo(null);
+      setSelectedItem(null);
+      setCreditQty('');
       await load();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to save credit note.');
@@ -199,8 +217,8 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
         selectedCompanyId,
         editNumber.trim(),
       );
-      setDetailRow(updated);
       setRows(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+      setDetailRow(null);
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : 'Failed to update credit note number.');
     } finally {
@@ -222,8 +240,8 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
         cancelPoNumber: cancelPoNumber.trim(),
         cancelDoOrInvoiceNumber: cancelDoOrInvoice.trim(),
       });
-      setDetailRow(updated);
       setRows(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+      setDetailRow(null);
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : 'Failed to cancel credit note.');
     } finally {
@@ -327,321 +345,378 @@ export function CreditNotePage({ selectedCompanyId, selectedLocationIds }: Props
 
       {createOpen
         ? createPortal(
-            <div className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}>
-              <div className={`${DETAIL_PANEL_SHELL_ELEVATED_CLS} max-w-2xl w-full p-4 space-y-4 max-h-[90vh] overflow-y-auto`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">Create credit note</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Search a received PO, select the vendor product, and confirm the short qty.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCreateOpen(false)}
-                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    aria-label="Close"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
+            <>
+              <div
+                className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}
+                onClick={() => {
+                  if (!saving) setCreateOpen(false);
+                }}
+              />
+              <aside
+                className={DETAIL_PANEL_SHELL_ELEVATED_CLS}
+                role="dialog"
+                aria-label="Create credit note"
+                onClick={e => e.stopPropagation()}
+              >
+                <form
+                  className="flex h-full min-h-0 flex-col"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    void saveCreditNote();
+                  }}
+                >
+                  <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 shrink-0">
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">Create credit note</h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Search a received PO, select the vendor product, and confirm the short qty.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => !saving && setCreateOpen(false)}
+                      className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                      aria-label="Close"
+                    >
+                      <X size={16} />
+                    </button>
+                  </header>
 
-                <div>
-                  <label className={labelCls}>Search PO by number or vendor</label>
-                  <div className="relative">
-                    <Search size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
-                    <input
-                      className={`${fieldCls} pl-8`}
-                      value={poQuery}
-                      onChange={e => {
-                        setPoQuery(e.target.value);
-                        setSelectedPo(null);
-                        setSelectedItem(null);
-                      }}
-                      placeholder="PO number or vendor name"
-                    />
-                  </div>
-                  {!selectedPo ? (
-                    <div className="mt-2 max-h-40 overflow-y-auto rounded-md border border-border">
-                      {poSearching ? (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">Searching…</p>
-                      ) : poResults.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">
-                          No received POs matched.
-                        </p>
+                  <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+                    <div>
+                      <label className={labelCls}>Search PO by number or vendor</label>
+                      <div className="relative">
+                        <Search size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
+                        <input
+                          className={`${fieldCls} pl-8`}
+                          value={poQuery}
+                          onChange={e => {
+                            setPoQuery(e.target.value);
+                            setSelectedPo(null);
+                            setSelectedItem(null);
+                          }}
+                          placeholder="PO number or vendor name"
+                        />
+                      </div>
+                      {!selectedPo ? (
+                        <div className="mt-2 max-h-40 overflow-y-auto rounded-md border border-border">
+                          {poSearching ? (
+                            <p className="px-3 py-2 text-xs text-muted-foreground">Searching…</p>
+                          ) : poResults.length === 0 ? (
+                            <p className="px-3 py-2 text-xs text-muted-foreground">
+                              No received POs matched.
+                            </p>
+                          ) : (
+                            poResults.map(po => (
+                              <button
+                                key={po.id}
+                                type="button"
+                                onClick={() => selectPo(po)}
+                                className="flex w-full items-start justify-between gap-2 border-b border-border/70 px-3 py-2 text-left text-xs hover:bg-muted/50 last:border-0"
+                              >
+                                <span>
+                                  <span className="font-medium font-sans text-foreground">{po.poNumber}</span>
+                                  <span className="text-muted-foreground"> · {po.vendorName}</span>
+                                </span>
+                                <span className="text-muted-foreground font-sans">{po.orderDate}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
                       ) : (
-                        poResults.map(po => (
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+                          <span>
+                            <span className="font-medium font-sans">{selectedPo.poNumber}</span>
+                            <span className="text-muted-foreground"> · {selectedPo.vendorName}</span>
+                          </span>
                           <button
-                            key={po.id}
                             type="button"
-                            onClick={() => selectPo(po)}
-                            className="flex w-full items-start justify-between gap-2 border-b border-border/70 px-3 py-2 text-left text-xs hover:bg-muted/50 last:border-0"
+                            className="text-primary hover:underline"
+                            onClick={() => {
+                              setSelectedPo(null);
+                              setSelectedItem(null);
+                            }}
                           >
-                            <span>
-                              <span className="font-medium font-sans text-foreground">{po.poNumber}</span>
-                              <span className="text-muted-foreground"> · {po.vendorName}</span>
-                            </span>
-                            <span className="text-muted-foreground font-sans">{po.orderDate}</span>
+                            Change
                           </button>
-                        ))
+                        </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
-                      <span>
-                        <span className="font-medium font-sans">{selectedPo.poNumber}</span>
-                        <span className="text-muted-foreground"> · {selectedPo.vendorName}</span>
-                      </span>
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => {
-                          setSelectedPo(null);
-                          setSelectedItem(null);
-                        }}
-                      >
-                        Change
-                      </button>
-                    </div>
-                  )}
-                </div>
 
-                {selectedPo ? (
-                  <div>
-                    <label className={labelCls}>Vendor product (from PO)</label>
-                    <select
-                      className={filterSelectCls}
-                      value={selectedItem?.id ?? ''}
-                      onChange={e => {
-                        const id = Number(e.target.value);
-                        const item = selectedPo.items.find(i => i.id === id) ?? null;
-                        if (item) selectItem(item);
-                      }}
+                    {selectedPo ? (
+                      <div>
+                        <label className={labelCls}>Vendor product (from PO)</label>
+                        <select
+                          className={filterSelectCls}
+                          value={selectedItem?.id ?? ''}
+                          onChange={e => {
+                            const id = Number(e.target.value);
+                            const item = selectedPo.items.find(i => i.id === id) ?? null;
+                            if (item) selectItem(item);
+                          }}
+                        >
+                          <option value="">Select product…</option>
+                          {selectedPo.items.map(item => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                              {item.vendorProductId ? ` (${item.vendorProductId})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    {selectedItem ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-md border border-border p-3">
+                        <div>
+                          <p className={labelCls}>Delivery UOM</p>
+                          <p className="text-sm text-foreground">{selectedItem.unit || '—'}</p>
+                        </div>
+                        <div>
+                          <p className={labelCls}>Delivered qty</p>
+                          <p className="text-sm font-sans text-foreground">
+                            {formatNumber(selectedItem.deliveredQuantity)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className={labelCls}>Unit price</p>
+                          <p className="text-sm font-sans text-foreground">{rm(selectedItem.unitPrice)}</p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {selectedItem ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className={labelCls}>Credit qty ({selectedItem.unit || 'UOM'})</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            className={inlineNumberCls}
+                            value={creditQty}
+                            onChange={e => setCreditQty(e.target.value)}
+                            placeholder="Qty to credit"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className={labelCls}>Amount credited</label>
+                          <p className="rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-sm font-sans">
+                            {rm(creditedAmount)}
+                          </p>
+                        </div>
+                        <div>
+                          <label className={labelCls}>Credit note number</label>
+                          <input
+                            className={fieldCls}
+                            value={creditNoteNumber}
+                            onChange={e => setCreditNoteNumber(e.target.value)}
+                            placeholder="Optional — can add later"
+                          />
+                        </div>
+                        <div>
+                          <label className={labelCls}>Date</label>
+                          <input
+                            type="date"
+                            className={fieldCls}
+                            value={creditNoteDate}
+                            onChange={e => setCreditNoteDate(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {formError ? (
+                      <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+                        {formError}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <footer className="shrink-0 flex justify-end gap-2 border-t border-border px-4 py-3 bg-card">
+                    <button
+                      type="button"
+                      onClick={() => setCreateOpen(false)}
+                      disabled={saving}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs disabled:opacity-50"
                     >
-                      <option value="">Select product…</option>
-                      {selectedPo.items.map(item => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                          {item.vendorProductId ? ` (${item.vendorProductId})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-
-                {selectedItem ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-md border border-border p-3">
-                    <div>
-                      <p className={labelCls}>Delivery UOM</p>
-                      <p className="text-sm text-foreground">{selectedItem.unit || '—'}</p>
-                    </div>
-                    <div>
-                      <p className={labelCls}>Delivered qty</p>
-                      <p className="text-sm font-sans text-foreground">
-                        {formatNumber(selectedItem.deliveredQuantity)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className={labelCls}>Unit price</p>
-                      <p className="text-sm font-sans text-foreground">{rm(selectedItem.unitPrice)}</p>
-                    </div>
-                  </div>
-                ) : null}
-
-                {selectedItem ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className={labelCls}>Credit qty</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        className={inlineNumberCls}
-                        value={creditQty}
-                        onChange={e => setCreditQty(e.target.value)}
-                        placeholder="Qty to credit"
-                      />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Amount credited</label>
-                      <p className="rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-sm font-sans">
-                        {rm(creditedAmount)}
-                      </p>
-                    </div>
-                    <div>
-                      <label className={labelCls}>Credit note number</label>
-                      <input
-                        className={fieldCls}
-                        value={creditNoteNumber}
-                        onChange={e => setCreditNoteNumber(e.target.value)}
-                        placeholder="Optional — can add later"
-                      />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Date</label>
-                      <input
-                        type="date"
-                        className={fieldCls}
-                        value={creditNoteDate}
-                        onChange={e => setCreditNoteDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
-                {formError ? <p className="text-xs text-destructive">{formError}</p> : null}
-
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setCreateOpen(false)}
-                    className="rounded-md border border-border px-3 py-1.5 text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void saveCreditNote()}
-                    disabled={saving || !selectedItem}
-                    className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
-                  >
-                    <FileText size={14} />
-                    {saving ? 'Saving…' : 'Save credit note'}
-                  </button>
-                </div>
-              </div>
-            </div>,
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={saving || !selectedItem}
+                      className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                    >
+                      <FileText size={14} />
+                      {saving ? 'Saving…' : 'Save credit note'}
+                    </button>
+                  </footer>
+                </form>
+              </aside>
+            </>,
             document.body,
           )
         : null}
 
       {detailRow
         ? createPortal(
-            <div className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}>
-              <div className={`${DETAIL_PANEL_SHELL_ELEVATED_CLS} max-w-lg w-full p-4 space-y-4 max-h-[90vh] overflow-y-auto`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">Credit note detail</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {detailRow.poNumber} · {detailRow.productName}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDetailRow(null)}
-                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    aria-label="Close"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <p className={labelCls}>Status</p>
-                    <p className="capitalize text-foreground">{detailRow.status}</p>
-                  </div>
-                  <div>
-                    <p className={labelCls}>Date</p>
-                    <p className="font-sans">{formatDate(detailRow.creditNoteDate)}</p>
-                  </div>
-                  <div>
-                    <p className={labelCls}>Vendor</p>
-                    <p>{detailRow.vendorName}</p>
-                  </div>
-                  <div>
-                    <p className={labelCls}>Qty / UOM</p>
-                    <p className="font-sans">
-                      {formatNumber(detailRow.quantity)} {detailRow.deliveryUom}
-                    </p>
-                  </div>
-                  <div>
-                    <p className={labelCls}>Unit price</p>
-                    <p className="font-sans">{rm(detailRow.deliveryUnitPrice)}</p>
-                  </div>
-                  <div>
-                    <p className={labelCls}>Amount</p>
-                    <p className="font-sans">{rm(detailRow.amount)}</p>
-                  </div>
-                </div>
-
-                {detailRow.status === 'confirmed' ? (
-                  <>
+            <>
+              <div
+                className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}
+                onClick={() => {
+                  if (!savingNumber && !cancelling) setDetailRow(null);
+                }}
+              />
+              <aside
+                className={DETAIL_PANEL_SHELL_ELEVATED_CLS}
+                role="dialog"
+                aria-label="Credit note detail"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex h-full min-h-0 flex-col">
+                  <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 shrink-0">
                     <div>
-                      <label className={labelCls}>Credit note number</label>
-                      <div className="flex gap-2">
-                        <input
-                          className={fieldCls}
-                          value={editNumber}
-                          onChange={e => setEditNumber(e.target.value)}
-                          placeholder="Enter vendor CN number"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void saveNumber()}
-                          disabled={savingNumber}
-                          className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs disabled:opacity-50"
-                        >
-                          {savingNumber ? 'Saving…' : 'Update'}
-                        </button>
-                      </div>
+                      <h2 className="text-sm font-semibold text-foreground">Credit note detail</h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {detailRow.poNumber} · {detailRow.productName}
+                      </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailRow(null)}
+                      className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                      aria-label="Close"
+                    >
+                      <X size={16} />
+                    </button>
+                  </header>
 
-                    <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
                       <div>
-                        <p className="text-xs font-medium text-foreground">Cancel credit note</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          After the vendor sends a free replacement, receive it at 0 cost on a PO,
-                          then cancel here with that PO and DO/invoice. Stock qty is not restored —
-                          only zero-cost units are revalued to this credit note&apos;s unit price.
+                        <p className={labelCls}>Status</p>
+                        <p className="capitalize text-foreground">{detailRow.status}</p>
+                      </div>
+                      <div>
+                        <p className={labelCls}>Date</p>
+                        <p className="font-sans">{formatDate(detailRow.creditNoteDate)}</p>
+                      </div>
+                      <div>
+                        <p className={labelCls}>Vendor</p>
+                        <p>{detailRow.vendorName}</p>
+                      </div>
+                      <div>
+                        <p className={labelCls}>Qty / UOM</p>
+                        <p className="font-sans">
+                          {formatNumber(detailRow.quantity)} {detailRow.deliveryUom}
                         </p>
                       </div>
                       <div>
-                        <label className={labelCls}>Replacement PO number</label>
-                        <input
-                          className={fieldCls}
-                          value={cancelPoNumber}
-                          onChange={e => setCancelPoNumber(e.target.value)}
-                          placeholder="PO number"
-                        />
+                        <p className={labelCls}>Unit price</p>
+                        <p className="font-sans">{rm(detailRow.deliveryUnitPrice)}</p>
                       </div>
                       <div>
-                        <label className={labelCls}>DO or invoice number</label>
-                        <input
-                          className={fieldCls}
-                          value={cancelDoOrInvoice}
-                          onChange={e => setCancelDoOrInvoice(e.target.value)}
-                          placeholder="Vendor DO or invoice #"
-                        />
+                        <p className={labelCls}>Amount</p>
+                        <p className="font-sans">{rm(detailRow.amount)}</p>
                       </div>
+                    </div>
+
+                    {detailRow.status === 'confirmed' ? (
+                      <>
+                        <div>
+                          <label className={labelCls}>Credit note number</label>
+                          <input
+                            className={fieldCls}
+                            value={editNumber}
+                            onChange={e => setEditNumber(e.target.value)}
+                            placeholder="Enter vendor CN number"
+                          />
+                        </div>
+
+                        <div className="space-y-3 rounded-md border border-border p-3">
+                          <div>
+                            <p className="text-xs font-medium text-foreground">Cancel credit note</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              After the vendor sends a free replacement, receive it at 0 cost on a PO,
+                              then cancel here with that PO and DO/invoice. Stock qty is not restored —
+                              only zero-cost units are revalued to this credit note&apos;s unit price.
+                            </p>
+                          </div>
+                          <div>
+                            <label className={labelCls}>Replacement PO number</label>
+                            <input
+                              className={fieldCls}
+                              value={cancelPoNumber}
+                              onChange={e => setCancelPoNumber(e.target.value)}
+                              placeholder="PO number"
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>DO or invoice number</label>
+                            <input
+                              className={fieldCls}
+                              value={cancelDoOrInvoice}
+                              onChange={e => setCancelDoOrInvoice(e.target.value)}
+                              placeholder="Vendor DO or invoice #"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void cancelCreditNote()}
+                            disabled={cancelling}
+                            className="rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive disabled:opacity-50"
+                          >
+                            {cancelling ? 'Cancelling…' : 'Cancel credit note'}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-md border border-border bg-muted/30 p-3 text-xs space-y-1">
+                        <p>
+                          Cancelled against PO{' '}
+                          <span className="font-sans font-medium">{detailRow.cancelPoNumber || '—'}</span>
+                        </p>
+                        <p>
+                          DO / Invoice{' '}
+                          <span className="font-sans">
+                            {detailRow.cancelDoOrInvoiceNumber || '—'}
+                          </span>
+                        </p>
+                      </div>
+                    )}
+
+                    {detailError ? (
+                      <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+                        {detailError}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {detailRow.status === 'confirmed' ? (
+                    <footer className="shrink-0 flex justify-end gap-2 border-t border-border px-4 py-3 bg-card">
                       <button
                         type="button"
-                        onClick={() => void cancelCreditNote()}
-                        disabled={cancelling}
-                        className="rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive disabled:opacity-50"
+                        onClick={() => setDetailRow(null)}
+                        disabled={savingNumber}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs disabled:opacity-50"
                       >
-                        {cancelling ? 'Cancelling…' : 'Cancel credit note'}
+                        Close
                       </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="rounded-md border border-border bg-muted/30 p-3 text-xs space-y-1">
-                    <p>
-                      Cancelled against PO{' '}
-                      <span className="font-sans font-medium">{detailRow.cancelPoNumber || '—'}</span>
-                    </p>
-                    <p>
-                      DO / Invoice{' '}
-                      <span className="font-sans">
-                        {detailRow.cancelDoOrInvoiceNumber || '—'}
-                      </span>
-                    </p>
-                  </div>
-                )}
-
-                {detailError ? <p className="text-xs text-destructive">{detailError}</p> : null}
-              </div>
-            </div>,
+                      <button
+                        type="button"
+                        onClick={() => void saveNumber()}
+                        disabled={savingNumber}
+                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                      >
+                        {savingNumber ? 'Saving…' : 'Save'}
+                      </button>
+                    </footer>
+                  ) : null}
+                </div>
+              </aside>
+            </>,
             document.body,
           )
         : null}
