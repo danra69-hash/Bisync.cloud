@@ -1510,6 +1510,11 @@ public static class SchemaPatcher
             """);
         await TryCreateIndexAsync(db, "IX_StoreRequisitions_CompanyId", "StoreRequisitions", "\"CompanyId\"");
         await TryCreateIndexAsync(db, "IX_StoreRequisitions_Status", "StoreRequisitions", "\"Status\"");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "Kind", "TEXT NOT NULL DEFAULT 'production'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "RequestedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "ReceivedAt", "timestamp with time zone NULL");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "ReceivedBy", "TEXT NOT NULL DEFAULT ''");
+        await TryCreateIndexAsync(db, "IX_StoreRequisitions_Kind", "StoreRequisitions", "\"Kind\"");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "StoreRequisitionLines" (

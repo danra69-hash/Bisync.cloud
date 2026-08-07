@@ -11,6 +11,8 @@ public class CentralStoreService(
 {
     public const string RefStoreIssue = "store_issue";
     public const string RefStoreHoldIn = "store_hold_in";
+    public const string RefStoreRequisitionIssue = "store_req_issue";
+    public const string RefStoreRequisitionReceive = "store_req_receive";
 
     public async Task<CentralStoreConfig?> GetConfigAsync(
         int companyId,
@@ -116,6 +118,7 @@ public class CentralStoreService(
         var entry = new StoreRequisition
         {
             CompanyId = product.CompanyId,
+            Kind = StoreRequisition.KindProduction,
             ProductId = product.Id,
             ProductName = product.Name ?? product.ProductId ?? $"Product {product.Id}",
             IsSubProduct = product.IsSubProduct,
@@ -136,6 +139,67 @@ public class CentralStoreService(
         return entry;
     }
 
+    public async Task<StoreRequisition> CreateOutletRequisitionAsync(
+        int companyId,
+        string requesterLocationExternalId,
+        string? requestedBy,
+        IReadOnlyList<(string ComponentId, string ComponentName, string Uom, decimal Qty)> lines,
+        CancellationToken cancellationToken = default)
+    {
+        var config = await GetActiveConfigAsync(companyId, cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Central Store is not active. Activate a store location under Operation → Production → Central Store.");
+
+        var dest = (requesterLocationExternalId ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(dest))
+            throw new InvalidOperationException("Requester location is required.");
+
+        var prepared = lines
+            .Where(l => !string.IsNullOrWhiteSpace(l.ComponentId) && l.Qty > 0)
+            .GroupBy(l => l.ComponentId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new StoreRequisitionLine
+                {
+                    ComponentId = first.ComponentId.Trim(),
+                    ComponentName = string.IsNullOrWhiteSpace(first.ComponentName)
+                        ? first.ComponentId.Trim()
+                        : first.ComponentName.Trim(),
+                    Uom = string.IsNullOrWhiteSpace(first.Uom) ? "PCU" : first.Uom.Trim(),
+                    RequiredQty = DecimalRounding.ToDb(g.Sum(x => x.Qty)),
+                };
+            })
+            .ToList();
+
+        if (prepared.Count == 0)
+            throw new InvalidOperationException("Enter at least one component quantity.");
+
+        var entry = new StoreRequisition
+        {
+            CompanyId = companyId,
+            Kind = StoreRequisition.KindOutlet,
+            ProductId = 0,
+            ProductName = "Store Requisition",
+            IsSubProduct = false,
+            BatchQty = 0,
+            StoreLocationExternalId = config.StoreLocationExternalId,
+            KitchenLocationExternalId = dest,
+            Status = StoreRequisition.StatusPending,
+            RequestedAt = DateTime.UtcNow,
+            RequestedBy = (requestedBy ?? string.Empty).Trim(),
+            CreatedAt = DateTime.UtcNow,
+            Lines = prepared,
+        };
+
+        db.StoreRequisitions.Add(entry);
+        await db.SaveChangesAsync(cancellationToken);
+
+        entry.RequisitionNumber = $"OR-{DateTime.UtcNow:yyyyMMdd}-{entry.Id}";
+        await db.SaveChangesAsync(cancellationToken);
+        return entry;
+    }
+
     public async Task<StoreRequisition> IssueAsync(
         int requisitionId,
         int companyId,
@@ -150,6 +214,149 @@ public class CentralStoreService(
         if (!string.Equals(req.Status, StoreRequisition.StatusPending, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Only pending requisitions can be issued.");
 
+        if (req.IsOutletKind)
+            return await ConfirmOutletIssueAsync(req, companyId, issuedBy, cancellationToken);
+
+        return await IssueProductionAsync(req, companyId, issuedBy, cancellationToken);
+    }
+
+    async Task<StoreRequisition> ConfirmOutletIssueAsync(
+        StoreRequisition req,
+        int companyId,
+        string? issuedBy,
+        CancellationToken cancellationToken)
+    {
+        var store = req.StoreLocationExternalId;
+        var asOf = DateTime.UtcNow;
+
+        foreach (var line in req.Lines)
+        {
+            if (line.RequiredQty <= 0) continue;
+
+            var onHand = await componentStock.GetOnHandAsync(
+                line.ComponentId, store, line.Uom, cancellationToken);
+            if (line.RequiredQty > onHand + StockCardFifoEngine.QtyEpsilon)
+                throw new InvalidOperationException(
+                    $"Insufficient store stock for {line.ComponentName}: need {line.RequiredQty:0.####} {line.Uom}, have {onHand:0.####}.");
+
+            var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
+                line.ComponentId,
+                store,
+                line.Uom,
+                line.RequiredQty,
+                companyId,
+                asOf,
+                cancellationToken);
+
+            line.IssuedQty = line.RequiredQty;
+            line.UnitPrice = StockCardFifoEngine.RoundUnitPrice(unitPrice);
+        }
+
+        req.Status = StoreRequisition.StatusIssued;
+        req.IssuedAt = asOf;
+        req.IssuedBy = (issuedBy ?? string.Empty).Trim();
+        await db.SaveChangesAsync(cancellationToken);
+        return req;
+    }
+
+    public async Task<StoreRequisition> ReceiveOutletAsync(
+        int requisitionId,
+        int companyId,
+        string? receivedBy,
+        CancellationToken cancellationToken = default)
+    {
+        var req = await db.StoreRequisitions
+            .Include(r => r.Lines)
+            .FirstOrDefaultAsync(r => r.Id == requisitionId && r.CompanyId == companyId, cancellationToken)
+            ?? throw new InvalidOperationException("Store requisition not found.");
+
+        if (!req.IsOutletKind)
+            throw new InvalidOperationException("Only outlet store requisitions can be received.");
+
+        if (!string.Equals(req.Status, StoreRequisition.StatusIssued, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only issued requisitions can be received.");
+
+        var store = req.StoreLocationExternalId;
+        var dest = req.KitchenLocationExternalId;
+        var asOf = DateTime.UtcNow;
+
+        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            foreach (var line in req.Lines)
+            {
+                var qty = line.IssuedQty > 0 ? line.IssuedQty : line.RequiredQty;
+                if (qty <= 0) continue;
+
+                var onHand = await componentStock.GetOnHandAsync(
+                    line.ComponentId, store, line.Uom, cancellationToken);
+                if (qty > onHand + StockCardFifoEngine.QtyEpsilon)
+                    throw new InvalidOperationException(
+                        $"Insufficient store stock for {line.ComponentName}: need {qty:0.####} {line.Uom}, have {onHand:0.####}.");
+
+                var unitPrice = line.UnitPrice > 0
+                    ? line.UnitPrice
+                    : await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
+                        line.ComponentId,
+                        store,
+                        line.Uom,
+                        qty,
+                        companyId,
+                        asOf,
+                        cancellationToken);
+
+                await componentStock.RecordDeductionAsync(
+                    line.ComponentId,
+                    line.ComponentName,
+                    store,
+                    qty,
+                    line.Uom,
+                    $"Store requisition issue — {req.RequisitionNumber}",
+                    RefStoreRequisitionIssue,
+                    req.Id,
+                    companyId,
+                    cancellationToken,
+                    createdAt: asOf,
+                    unitPriceOverride: unitPrice);
+
+                componentStock.RecordAddition(
+                    line.ComponentId,
+                    line.ComponentName,
+                    dest,
+                    qty,
+                    line.Uom,
+                    $"Store requisition receive — {req.RequisitionNumber}",
+                    RefStoreRequisitionReceive,
+                    req.Id,
+                    companyId,
+                    createdAt: asOf,
+                    unitPrice: unitPrice);
+
+                line.IssuedQty = qty;
+                line.UnitPrice = StockCardFifoEngine.RoundUnitPrice(unitPrice);
+            }
+
+            req.Status = StoreRequisition.StatusReceived;
+            req.ReceivedAt = asOf;
+            req.ReceivedBy = (receivedBy ?? string.Empty).Trim();
+            await db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
+
+        return req;
+    }
+
+    async Task<StoreRequisition> IssueProductionAsync(
+        StoreRequisition req,
+        int companyId,
+        string? issuedBy,
+        CancellationToken cancellationToken)
+    {
         var store = req.StoreLocationExternalId;
         var kitchen = req.KitchenLocationExternalId;
         var asOf = DateTime.UtcNow;
@@ -323,6 +530,7 @@ public class CentralStoreService(
         id = r.Id,
         companyId = r.CompanyId,
         requisitionNumber = r.RequisitionNumber,
+        kind = string.IsNullOrWhiteSpace(r.Kind) ? StoreRequisition.KindProduction : r.Kind,
         productId = r.ProductId,
         productName = r.ProductName,
         isSubProduct = r.IsSubProduct,
@@ -331,9 +539,15 @@ public class CentralStoreService(
         kitchenLocationExternalId = r.KitchenLocationExternalId,
         status = r.Status,
         requestedAt = r.RequestedAt,
+        requestedBy = r.RequestedBy,
         issuedAt = r.IssuedAt,
         issuedBy = r.IssuedBy,
+        receivedAt = r.ReceivedAt,
+        receivedBy = r.ReceivedBy,
         createdAt = r.CreatedAt,
+        canIssue = string.Equals(r.Status, StoreRequisition.StatusPending, StringComparison.OrdinalIgnoreCase),
+        canReceive = r.IsOutletKind
+            && string.Equals(r.Status, StoreRequisition.StatusIssued, StringComparison.OrdinalIgnoreCase),
         lines = r.Lines.Select(l => new
         {
             id = l.Id,

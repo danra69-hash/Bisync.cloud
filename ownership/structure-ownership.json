@@ -323,6 +323,16 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.active-requisition",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ActiveRequisitionPage.tsx",
+      "symbol": "ActiveRequisitionPage",
+      "route": "/revenue/order?tab=requisition",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-07"
+    },
+    {
       "id": "dr.page.order-template",
       "kind": "client-page",
       "path": "client/src/components/revenue/OrderTemplatePage.tsx",
