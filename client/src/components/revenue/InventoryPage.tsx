@@ -49,7 +49,7 @@ import {
 } from './stockCardPeriod';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
-const TABLE_COL_COUNT = 12;
+const TABLE_COL_COUNT = 14;
 const HISTORY_TABLE_COL_COUNT = 13;
 const INVENTORY_TABS = [
   { id: 'count', label: 'Count' },
@@ -75,6 +75,8 @@ type CountSortColumn =
   | 'principalUom'
   | 'alternateUom'
   | 'totalQty'
+  | 'qtyVariance'
+  | 'varianceValue'
   | 'area'
   | 'storage';
 
@@ -93,18 +95,20 @@ type HistorySortColumn =
   | 'varianceValue';
 
 const COUNT_TABLE_COLUMNS: SortableColumnDef<string>[] = [
-  { key: 'type', label: 'Type', ...tableColWidth('7%') },
-  { key: 'group', label: 'Group', ...tableColWidth('8%') },
-  { key: 'name', label: 'Name', ...tableColWidth('14%') },
-  { key: 'uom', label: 'UOM', ...tableColWidth('6%') },
-  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const, ...tableColWidth('9%') },
-  { key: 'principalQty', label: 'QTY', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
-  { key: 'alternateUom', label: 'Alternate Component UOM', align: 'right' as const, ...tableColWidth('9%') },
-  { key: 'alternateQty', label: 'QTY', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
+  { key: 'type', label: 'Type', ...tableColWidth('6%') },
+  { key: 'group', label: 'Group', ...tableColWidth('7%') },
+  { key: 'name', label: 'Name', ...tableColWidth('12%') },
+  { key: 'uom', label: 'UOM', ...tableColWidth('5%') },
+  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth('7%') },
+  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const, ...tableColWidth('8%') },
+  { key: 'principalQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
+  { key: 'alternateUom', label: 'Alternate Component UOM', align: 'right' as const, ...tableColWidth('8%') },
+  { key: 'alternateQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
   { key: 'totalQty', label: 'Total QTY (PCU)', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'area', label: 'Area', ...tableColWidth('8%') },
-  { key: 'storage', label: 'Storage', ...tableColWidth('9%') },
+  { key: 'qtyVariance', label: 'QTY Variance', align: 'right' as const, ...tableColWidth('7%') },
+  { key: 'varianceValue', label: 'Variance Value', align: 'right' as const, ...tableColWidth('8%') },
+  { key: 'area', label: 'Area', ...tableColWidth('6%') },
+  { key: 'storage', label: 'Storage', ...tableColWidth('7%') },
 ] ;
 
 const HISTORY_TABLE_COLUMNS: SortableColumnDef<string>[] = [
@@ -201,6 +205,24 @@ function parseQty(value: string): number | null {
 function fmtMoney(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return '—';
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** FIFO on-hand average COGS in Principal Component Unit (fallback to outbound average). */
+function rowPcuUnitPrice(row: StockCardListRow): number {
+  if (Number.isFinite(row.onHandAverageCogs) && row.onHandAverageCogs > 0) return row.onHandAverageCogs;
+  if (Number.isFinite(row.averageCogs) && row.averageCogs > 0) return row.averageCogs;
+  return 0;
+}
+
+function rowQtyVariance(totalQty: number | null, onHand: number): number | null {
+  if (totalQty == null || !Number.isFinite(totalQty)) return null;
+  return totalQty - onHand;
+}
+
+/** Variance Value = QTY Variance × FIFO PCU unit price (same basis as inventory history). */
+function rowVarianceValue(qtyVariance: number | null, unitPrice: number): number | null {
+  if (qtyVariance == null || !Number.isFinite(qtyVariance) || unitPrice <= 0) return null;
+  return Math.round(qtyVariance * unitPrice * 100) / 100;
 }
 
 function formatDateTime(iso: string) {
@@ -583,6 +605,17 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
         principalUom: row => row.recipeUom || row.uom || '',
         alternateUom: row => rowConversion(row).alternateUom || '',
         totalQty: row => rowTotalQty(row) ?? -1,
+        qtyVariance: row => {
+          const total = rowTotalQty(row);
+          const onHand = displayOnHandQty(row, uomMode, rowConversion(row));
+          return rowQtyVariance(total, onHand) ?? Number.NEGATIVE_INFINITY;
+        },
+        varianceValue: row => {
+          const total = rowTotalQty(row);
+          const onHand = displayOnHandQty(row, uomMode, rowConversion(row));
+          const variance = rowQtyVariance(total, onHand);
+          return rowVarianceValue(variance, rowPcuUnitPrice(row)) ?? Number.NEGATIVE_INFINITY;
+        },
         area: row => row.sortArea,
         storage: row => row.sortStorage,
       },
@@ -940,6 +973,9 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
                 const hasAlternate = isComponent && Boolean(conv.alternateUom);
                 const totalQty = rowTotalQty(row);
                 const onHand = displayOnHandQty(row, uomMode, conv);
+                const qtyVariance = rowQtyVariance(totalQty, onHand);
+                const pcuPrice = rowPcuUnitPrice(row);
+                const varianceValue = rowVarianceValue(qtyVariance, pcuPrice);
 
                 return (
                   <tr key={key} className="border-b border-border/60 hover:bg-muted/40">
@@ -958,7 +994,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
                         placeholder="0"
                         disabled={isReadOnly || !isComponent}
                         className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
-                        aria-label={`Principal component quantity for ${row.name}`}
+                        aria-label={`Principal QTY Counted for ${row.name}`}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right text-muted-foreground">{alternateUom}</td>
@@ -971,11 +1007,20 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
                         placeholder="0"
                         disabled={isReadOnly || (isComponent && !hasAlternate)}
                         className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
-                        aria-label={`Alternate component quantity for ${row.name}`}
+                        aria-label={`Alternate QTY Counted for ${row.name}`}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">
                       {totalQty != null ? fmtQty(totalQty, countryCode) : '—'}
+                    </td>
+                    <td className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(qtyVariance)}`}>
+                      {fmtVarianceQty(qtyVariance, countryCode)}
+                    </td>
+                    <td
+                      className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(varianceValue)}`}
+                      title={pcuPrice > 0 ? `FIFO PCU price ${fmtMoney(pcuPrice)}` : undefined}
+                    >
+                      {varianceValue != null ? fmtVarianceQty(varianceValue, countryCode) : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.areaLabel}</td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.storageLabel}</td>
