@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Briefcase,
   ClipboardList,
+  Home,
   LogOut,
   MessageSquare,
   Package,
@@ -38,7 +39,7 @@ import { TeamOrderPage, TeamStockPage } from './TeamStockPage';
 import { TeamScreenshotShare } from './TeamScreenshotShare';
 import './TeamPortal.css';
 
-/** Permanent Team shell tabs (chats is landing; bottom nav is the other four). */
+/** Permanent Team shell tabs. Bottom nav: Home (chats) · My Work · RMS · Order · Stock. */
 export type TeamShellTab = 'chats' | 'my-work' | 'rms' | 'order' | 'stock';
 
 interface TeamPortalProps {
@@ -979,7 +980,15 @@ export default function TeamPortal({
             ) : null}
           </main>
 
-          <nav className="team-bottom-nav team-bottom-nav-4" aria-label="Team">
+          <nav className="team-bottom-nav team-bottom-nav-5" aria-label="Team">
+            <button
+              type="button"
+              className={shellTab === 'chats' ? 'is-active' : ''}
+              onClick={() => { setShellTab('chats'); setOpenChatId(null); }}
+            >
+              <Home />
+              <span>Home</span>
+            </button>
             <button
               type="button"
               className={shellTab === 'my-work' ? 'is-active' : ''}
