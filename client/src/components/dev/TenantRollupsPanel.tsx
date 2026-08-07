@@ -26,6 +26,7 @@ function toDateInputValue(value?: string | null): string {
 
 function statusTone(status?: string, locked?: boolean): string {
   if (locked || status === 'locked') return 'text-destructive';
+  if (status === 'deactivated') return 'text-muted-foreground';
   if (status === 'subscribed' || status === 'renewed') return 'text-emerald-700 dark:text-emerald-400';
   return 'text-amber-800 dark:text-amber-300';
 }
@@ -482,7 +483,7 @@ export function TenantRollupsPanel() {
             Tenant rollups
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Trial and subscription status by company location.
+            Trial and subscription status by active company location. Deactivated locations are omitted.
             {data?.generatedAt ? (
               <> Last generated {new Date(data.generatedAt).toLocaleString()}.</>
             ) : null}

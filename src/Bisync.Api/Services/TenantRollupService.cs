@@ -166,6 +166,7 @@ public class TenantRollupService(
 
         var companyRows = new List<TenantRollupCompanyRow>();
         var locationRows = new List<TenantRollupLocationRow>();
+        var inactiveLocations = new List<(int CompanyId, string LocationExternalId)>();
 
         foreach (var company in companies)
         {
@@ -187,12 +188,14 @@ public class TenantRollupService(
                 if (provisioned)
                 {
                     await using var ops = CreateDb(conn!.ConnectionString);
-                    await FillCompanyCountsAsync(ops, company.Id, row, locationRows, filterByCompany: false, ct);
+                    await FillCompanyCountsAsync(
+                        ops, company.Id, row, locationRows, inactiveLocations, filterByCompany: false, ct);
                 }
                 else
                 {
                     await using var shared = CreateDb(resolver.DefaultOperationalConnection);
-                    await FillCompanyCountsAsync(shared, company.Id, row, locationRows, filterByCompany: true, ct);
+                    await FillCompanyCountsAsync(
+                        shared, company.Id, row, locationRows, inactiveLocations, filterByCompany: true, ct);
                 }
             }
             catch (Exception ex)
@@ -213,6 +216,10 @@ public class TenantRollupService(
         {
             await LocationSubscriptionService.EnsureSchemaAsync(control, ct);
             await subscriptions.EnsureDefaultsForAllAsync(control, ct);
+            // Platform-config deactivated locations (e.g. Weissbrau Pavilion) → Current status Deactivated
+            // and excluded from ByLocation above; keep subscription rows aligned for history/audit.
+            if (inactiveLocations.Count > 0)
+                await subscriptions.SyncInactiveLocationStatusesAsync(control, inactiveLocations, ct);
             await subscriptions.ApplyExpiryLocksAsync(control, null, ct);
 
             var companyRegistered = await control.Companies.AsNoTracking()
@@ -320,6 +327,7 @@ public class TenantRollupService(
         int companyId,
         TenantRollupCompanyRow row,
         List<TenantRollupLocationRow> locationRows,
+        List<(int CompanyId, string LocationExternalId)> inactiveLocations,
         bool filterByCompany,
         CancellationToken ct)
     {
@@ -328,9 +336,13 @@ public class TenantRollupService(
             locsQ = locsQ.Where(l => l.CompanyId == companyId);
 
         var locs = await locsQ
-            .Select(l => new { l.ExternalId, l.Name, l.CompanyId })
+            .Select(l => new { l.ExternalId, l.Name, l.CompanyId, l.Active })
             .ToListAsync(ct);
-        row.Locations = locs.Count;
+        var activeLocs = locs.Where(l => l.Active).ToList();
+        row.Locations = activeLocs.Count;
+
+        foreach (var loc in locs.Where(l => !l.Active && !string.IsNullOrWhiteSpace(l.ExternalId)))
+            inactiveLocations.Add((companyId, loc.ExternalId.Trim()));
 
         if (filterByCompany)
         {
@@ -354,7 +366,7 @@ public class TenantRollupService(
             row.ActiveUsers = await ops.AppUsers.CountAsync(u => u.Active, ct);
         }
 
-        var locKeys = locs.Select(l => l.ExternalId).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        var locKeys = activeLocs.Select(l => l.ExternalId).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
         Dictionary<string, int> moveByLoc;
         if (locKeys.Count == 0)
         {
@@ -377,7 +389,7 @@ public class TenantRollupService(
                 .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         }
 
-        foreach (var loc in locs)
+        foreach (var loc in activeLocs)
         {
             moveByLoc.TryGetValue(loc.ExternalId, out var moves);
             locationRows.Add(new TenantRollupLocationRow

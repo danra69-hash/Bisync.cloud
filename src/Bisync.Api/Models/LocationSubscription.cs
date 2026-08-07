@@ -9,6 +9,8 @@ public class LocationSubscription
     public const string StatusSubscribed = "subscribed";
     public const string StatusRenewed = "renewed";
     public const string StatusLocked = "locked";
+    /// <summary>Location was deactivated in Platform Config (not a billing lock).</summary>
+    public const string StatusDeactivated = "deactivated";
 
     public const string PaymentCheck = "check";
     public const string PaymentBankTransfer = "bank-transfer";
@@ -17,7 +19,7 @@ public class LocationSubscription
     public int CompanyId { get; set; }
     public string LocationExternalId { get; set; } = string.Empty;
 
-    /// <summary>free-trial | subscribed | renewed | locked</summary>
+    /// <summary>free-trial | subscribed | renewed | locked | deactivated</summary>
     public string Status { get; set; } = StatusFreeTrial;
 
     /// <summary>When the current status was last set.</summary>
