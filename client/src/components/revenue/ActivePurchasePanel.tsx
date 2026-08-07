@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
-import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { InfiniteScrollDivSentinel, InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
@@ -14,6 +14,7 @@ import {
 import { ReceiveLineDetailModal } from './ReceiveLineDetailModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { orgRequiresHalalCertOnReceive } from '../../data/vendorPolicyRules';
 import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { applyVendorProductPriceUpdates } from '../../data/vendorProductPrices';
@@ -163,6 +164,8 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
 export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }: Props) {
   const { rm } = useCountryFormatters();
   const { currentUser } = useCurrentUser();
+  /** Stack line items as cards below Tailwind `sm` (640px) — wide PO tables do not fit phones. */
+  const isCompactLines = useMediaQuery('(max-width: 639px)');
   const orgPolicyTags = useOrgVendorPolicy(order.companyId, order.locationExternalIds ?? []);
   const requiresHalalCert = orgRequiresHalalCertOnReceive(orgPolicyTags);
   const access = useMemo(
@@ -621,27 +624,29 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
         className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}
         onClick={() => !saving && !showAddProduct && !detailLineKey && onClose()}
       />
-      <aside className={DETAIL_PANEL_SHELL_ELEVATED_CLS}>
-        <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
-          <div>
+      <aside
+        className={`${DETAIL_PANEL_SHELL_ELEVATED_CLS} max-sm:inset-x-0 max-sm:left-0 max-sm:right-0 max-sm:w-full max-sm:max-w-none`}
+      >
+        <div className="px-5 max-sm:px-3 py-4 border-b border-border flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">
               {isPurchaseRequest ? 'Purchase Request' : 'Purchase Order'}
             </p>
-            <h2 className="text-base font-semibold mt-1">{title}</h2>
-            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+            <h2 className="text-base font-semibold mt-1 break-words">{title}</h2>
+            <p className="text-xs text-muted-foreground mt-1 max-sm:leading-snug">{subtitle}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="p-2 rounded-md hover:bg-muted text-muted-foreground"
+            className="p-2 rounded-md hover:bg-muted text-muted-foreground shrink-0"
             aria-label="Close"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div ref={panelScrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div ref={panelScrollRef} className="flex-1 overflow-y-auto px-5 max-sm:px-3 py-4 space-y-4">
           {order.isPreCommitted ? (
             <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-800 dark:text-teal-300">
               <p className="font-semibold">Pre-committed PO</p>
@@ -854,136 +859,136 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                 </button>
               ) : null}
             </div>
-            <TableScrollContainer ref={scrollRootRef} className="max-h-[min(42vh,24rem)] overflow-y-auto">
-              <table className="w-full text-xs">
-                <ColGroup widths={lineColWidths} />
-                <thead>
-                  <tr className="border-b border-border">
-                    {lineHeaders.map(h => (
-                      <th key={h} className="text-left px-3 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedLines.map(line => {
-                    const orderedQty = parseFloat(line.orderedQuantity) || 0;
-                    const qty = parseFloat(line.quantity) || 0;
-                    const orderedPrice = parseFloat(line.orderedUnitPrice) || 0;
-                    const price = parseFloat(line.unitPrice) || 0;
-                    const tax = parseFloat(line.taxAmount) || 0;
-                    const qtyVariance = qty - orderedQty;
-                    const priceVariance = price - orderedPrice;
-                    const lineTotal = qty * price + tax;
-                    return (
-                      <tr key={line.clientKey} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2">
-                          <p className="font-medium">{line.componentName}</p>
-                          <p className="text-[10px] font-sans text-muted-foreground">{line.componentId || '—'}</p>
-                        </td>
-                        <td className="px-3 py-2">
-                          <p className="font-medium">{line.productName}</p>
-                          <p className="text-[10px] font-sans text-muted-foreground">
-                            Vendor Product ID: {line.vendorProductId || '—'}
-                          </p>
-                          {line.isExtra ? (
-                            <div className="mt-1 flex items-center gap-2">
-                              <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                                Not ordered · freebie / replacement
-                              </span>
-                              {canEditReceived ? (
-                                <button
-                                  type="button"
-                                  onClick={() => removeExtraLine(line.clientKey)}
-                                  className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-destructive"
-                                  title="Remove added product"
-                                >
-                                  <Trash2 size={10} />
-                                  Remove
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </td>
-                        {showCommitmentColumns ? (
-                          <>
-                            <td className="px-3 py-2 font-sans tabular-nums">{line.orderedQuantity}</td>
-                            <td className="px-3 py-2 font-sans tabular-nums text-muted-foreground">
-                              {order.items.find(i => i.id === line.itemId)?.drawnQuantity ?? 0}
-                            </td>
-                            <td className="px-3 py-2 font-sans tabular-nums">
-                              {order.items.find(i => i.id === line.itemId)?.consolidatedQuantity ?? 0}
-                            </td>
-                            <td className="px-3 py-2 font-sans tabular-nums">
-                              {order.items.find(i => i.id === line.itemId)?.remainingCommitmentQuantity
-                                ?? order.items.find(i => i.id === line.itemId)?.remainingQuantity
-                                ?? line.remainingQuantity}
-                            </td>
-                          </>
-                        ) : showOrderedReceivedColumns ? (
-                          <>
-                            <td className="px-3 py-2">
-                              <span className="font-sans text-muted-foreground">{line.orderedQuantity}</span>
-                            </td>
-                            {showPartialDeliveryColumns ? (
-                              <>
-                                <td className="px-3 py-2 font-sans tabular-nums text-muted-foreground">
-                                  {line.deliveredQuantity}
-                                </td>
-                                <td className="px-3 py-2 font-sans tabular-nums">
-                                  {line.remainingQuantity}
-                                </td>
-                              </>
+            {isCompactLines ? (
+              <div
+                ref={scrollRootRef}
+                className="max-h-[min(55vh,28rem)] overflow-y-auto divide-y divide-border"
+              >
+                {pagedLines.map(line => {
+                  const orderedQty = parseFloat(line.orderedQuantity) || 0;
+                  const qty = parseFloat(line.quantity) || 0;
+                  const orderedPrice = parseFloat(line.orderedUnitPrice) || 0;
+                  const price = parseFloat(line.unitPrice) || 0;
+                  const tax = parseFloat(line.taxAmount) || 0;
+                  const qtyVariance = qty - orderedQty;
+                  const priceVariance = price - orderedPrice;
+                  const lineTotal = qty * price + tax;
+                  const poItem = order.items.find(i => i.id === line.itemId);
+                  const hasDetail = Boolean(
+                    line.productExpiryDate.trim() || line.receivedTemperature.trim(),
+                  );
+                  const detailLabel = canEditReceived
+                    ? (hasDetail ? 'Edit Detail' : 'Add Detail')
+                    : (hasDetail ? 'View Detail' : 'Detail');
+                  return (
+                    <article key={line.clientKey} className="px-3 py-3 space-y-2.5 bg-background">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-snug break-words">{line.productName}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 break-words">
+                          {line.componentName}
+                          {line.componentId ? ` · ${line.componentId}` : ''}
+                        </p>
+                        <p className="text-[10px] font-sans text-muted-foreground mt-0.5">
+                          Vendor Product ID: {line.vendorProductId || '—'}
+                        </p>
+                        {line.isExtra ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                              Not ordered · freebie / replacement
+                            </span>
+                            {canEditReceived ? (
+                              <button
+                                type="button"
+                                onClick={() => removeExtraLine(line.clientKey)}
+                                className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-destructive"
+                                title="Remove added product"
+                              >
+                                <Trash2 size={10} />
+                                Remove
+                              </button>
                             ) : null}
-                            <td className="px-3 py-2">
-                              {canEditReceived ? (
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={line.quantity}
-                                  onChange={e => updateLine(line.clientKey, {
-                                    quantity: sanitizeReceiveQtyPriceInput(e.target.value),
-                                  })}
-                                  className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
-                                  title="Up to 5 digits and 2 decimals"
-                                />
-                              ) : (
-                                <span className="font-sans">{line.quantity}</span>
-                              )}
-                            </td>
-                          </>
-                        ) : (
-                          <td className="px-3 py-2">
-                            {readOnly ? (
-                              <span className="font-sans">{line.quantity}</span>
-                            ) : (
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <p className="text-[11px] text-muted-foreground">
+                        <span className="uppercase tracking-wide text-[10px]">Delivery unit</span>
+                        {' · '}
+                        <span className="text-foreground" title={line.deliveryPackage || undefined}>
+                          {line.deliveryPackage || '—'}
+                        </span>
+                      </p>
+
+                      {showCommitmentColumns ? (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Committed</p>
+                            <p className="font-sans tabular-nums mt-0.5">{line.orderedQuantity}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Issued (drawn)</p>
+                            <p className="font-sans tabular-nums mt-0.5 text-muted-foreground">
+                              {poItem?.drawnQuantity ?? 0}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Received &amp; consolidated</p>
+                            <p className="font-sans tabular-nums mt-0.5">{poItem?.consolidatedQuantity ?? 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Remaining to order</p>
+                            <p className="font-sans tabular-nums mt-0.5">
+                              {poItem?.remainingCommitmentQuantity
+                                ?? poItem?.remainingQuantity
+                                ?? line.remainingQuantity}
+                            </p>
+                          </div>
+                        </div>
+                      ) : showOrderedReceivedColumns ? (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">QTY Ordered</p>
+                            <p className="font-sans tabular-nums mt-0.5 text-muted-foreground">{line.orderedQuantity}</p>
+                          </div>
+                          {showPartialDeliveryColumns ? (
+                            <>
+                              <div>
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Delivered</p>
+                                <p className="font-sans tabular-nums mt-0.5 text-muted-foreground">{line.deliveredQuantity}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Remaining</p>
+                                <p className="font-sans tabular-nums mt-0.5">{line.remainingQuantity}</p>
+                              </div>
+                            </>
+                          ) : null}
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                              {showPartialDeliveryColumns ? 'QTY This shipment' : 'QTY Received'}
+                            </p>
+                            {canEditReceived ? (
                               <input
-                                type="number"
-                                min="0"
-                                step="any"
+                                type="text"
+                                inputMode="decimal"
                                 value={line.quantity}
-                                onChange={e => updateLine(line.clientKey, { quantity: e.target.value })}
-                                className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
+                                onChange={e => updateLine(line.clientKey, {
+                                  quantity: sanitizeReceiveQtyPriceInput(e.target.value),
+                                })}
+                                className="mt-0.5 w-full max-w-[8rem] rounded border border-border bg-background px-2 py-1.5 font-sans text-xs"
+                                title="Up to 5 digits and 2 decimals"
                               />
+                            ) : (
+                              <p className="font-sans tabular-nums mt-0.5">{line.quantity}</p>
                             )}
-                          </td>
-                        )}
-                        <td className="px-3 py-2">
-                          <span className="text-xs" title={line.deliveryPackage || undefined}>
-                            {line.deliveryPackage || '—'}
-                          </span>
-                        </td>
-                        {!hidePrices && mode === 'reconcile' && (
-                          <td className="px-3 py-2 font-sans text-muted-foreground">{rm(line.issuedUnitPrice)}</td>
-                        )}
-                        {showOrderedReceivedColumns ? (
-                          <>
-                            {!hidePrices && (
-                              <td className="px-3 py-2">
-                                <span className="font-sans text-muted-foreground">{rm(orderedPrice)}</span>
-                              </td>
-                            )}
-                            {!hidePrices && (
-                              <td className="px-3 py-2">
+                          </div>
+                          {!hidePrices ? (
+                            <>
+                              <div>
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Unit Price</p>
+                                <p className="font-sans tabular-nums mt-0.5 text-muted-foreground">{rm(orderedPrice)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Unit Price Received</p>
                                 {canEditReceived ? (
                                   <input
                                     type="text"
@@ -992,32 +997,52 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                                     onChange={e => updateLine(line.clientKey, {
                                       unitPrice: sanitizeReceiveQtyPriceInput(e.target.value),
                                     })}
-                                    className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                    className="mt-0.5 w-full max-w-[8rem] rounded border border-border bg-background px-2 py-1.5 font-sans text-xs"
                                     title="Up to 5 digits and 2 decimals"
                                   />
                                 ) : (
-                                  <span className="font-sans">{rm(price)}</span>
+                                  <p className="font-sans tabular-nums mt-0.5">{rm(price)}</p>
                                 )}
-                              </td>
+                              </div>
+                            </>
+                          ) : null}
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">QTY Variance</p>
+                            <p className={`font-sans tabular-nums mt-0.5 ${qtyVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                              {qtyVariance === 0 ? '0' : (qtyVariance > 0 ? `+${qtyVariance}` : String(qtyVariance))}
+                            </p>
+                          </div>
+                          {!hidePrices ? (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Unit Price Variance</p>
+                              <p className={`font-sans tabular-nums mt-0.5 ${priceVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                                {priceVariance === 0 ? rm(0) : `${priceVariance > 0 ? '+' : ''}${rm(priceVariance)}`}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Qty</p>
+                            {readOnly ? (
+                              <p className="font-sans tabular-nums mt-0.5">{line.quantity}</p>
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={line.quantity}
+                                onChange={e => updateLine(line.clientKey, { quantity: e.target.value })}
+                                className="mt-0.5 w-full max-w-[8rem] rounded border border-border bg-background px-2 py-1.5 font-sans text-xs"
+                              />
                             )}
-                            <td className="px-3 py-2 font-sans">
-                              <span className={qtyVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
-                                {qtyVariance === 0 ? '0' : (qtyVariance > 0 ? `+${qtyVariance}` : String(qtyVariance))}
-                              </span>
-                            </td>
-                            {!hidePrices && (
-                              <td className="px-3 py-2 font-sans">
-                                <span className={priceVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
-                                  {priceVariance === 0 ? rm(0) : `${priceVariance > 0 ? '+' : ''}${rm(priceVariance)}`}
-                                </span>
-                              </td>
-                            )}
-                          </>
-                        ) : (
-                          !hidePrices ? (
-                            <td className="px-3 py-2">
+                          </div>
+                          {!hidePrices ? (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Unit price</p>
                               {readOnly ? (
-                                <span className="font-sans">{rm(price)}</span>
+                                <p className="font-sans tabular-nums mt-0.5">{rm(price)}</p>
                               ) : (
                                 <input
                                   type="number"
@@ -1025,14 +1050,24 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                                   step="0.01"
                                   value={line.unitPrice}
                                   onChange={e => updateLine(line.clientKey, { unitPrice: e.target.value })}
-                                  className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
+                                  className="mt-0.5 w-full max-w-[8rem] rounded border border-border bg-background px-2 py-1.5 font-sans text-xs"
                                 />
                               )}
-                            </td>
-                          ) : null
-                        )}
-                        {!hidePrices && showTaxColumn && (
-                          <td className="px-3 py-2">
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {!hidePrices && mode === 'reconcile' ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          Issued price · <span className="font-sans text-foreground">{rm(line.issuedUnitPrice)}</span>
+                        </p>
+                      ) : null}
+
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                        {!hidePrices && showTaxColumn ? (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tax</p>
                             {mode === 'receive' && !readOnly ? (
                               <input
                                 type="text"
@@ -1042,74 +1077,331 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                                   taxAmount: sanitizeReceiveQtyPriceInput(e.target.value),
                                 })}
                                 placeholder="0.00"
-                                className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                className="mt-0.5 w-full max-w-[8rem] rounded border border-border bg-background px-2 py-1.5 font-sans text-xs"
                                 title="Up to 5 digits and 2 decimals"
                               />
                             ) : (
-                              <span className="font-sans">{tax > 0 ? rm(tax) : '—'}</span>
+                              <p className="font-sans tabular-nums mt-0.5">{tax > 0 ? rm(tax) : '—'}</p>
                             )}
-                          </td>
-                        )}
-                        {showHalalCertColumn && (
-                          <td className="px-3 py-2">
+                          </div>
+                        ) : null}
+                        {!hidePrices ? (
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Line total</p>
+                            <p className="font-sans tabular-nums mt-0.5 font-medium">{rm(lineTotal)}</p>
+                          </div>
+                        ) : null}
+                        {showHalalCertColumn ? (
+                          <div className="col-span-2">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Halal cert no.</p>
                             {readOnly || mode !== 'receive' ? (
-                              <span>{line.halalCertNo || '—'}</span>
+                              <p className="mt-0.5 break-words">{line.halalCertNo || '—'}</p>
                             ) : (
                               <input
                                 type="text"
                                 value={line.halalCertNo}
                                 onChange={e => updateLine(line.clientKey, { halalCertNo: e.target.value })}
                                 placeholder="Optional"
-                                className="w-32 rounded border border-border bg-background px-2 py-1"
+                                className="mt-0.5 w-full rounded border border-border bg-background px-2 py-1.5 text-xs"
                               />
                             )}
-                          </td>
-                        )}
-                        {!hidePrices && (
-                          <td className="px-3 py-2 font-sans">{rm(lineTotal)}</td>
-                        )}
-                        {showLineDetailColumn && (
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {showLineDetailColumn ? (
+                        <button
+                          type="button"
+                          onClick={() => setDetailLineKey(line.clientKey)}
+                          className={`inline-flex w-full items-center justify-center px-2 py-2 rounded-md border text-[11px] font-semibold ${
+                            hasDetail
+                              ? 'border-primary/40 text-primary bg-primary/5 hover:bg-primary/10'
+                              : 'border-border text-foreground hover:bg-muted/50'
+                          }`}
+                          title={hasDetail
+                            ? [
+                                line.productExpiryDate.trim()
+                                  ? `Expiry: ${line.productExpiryDate}`
+                                  : null,
+                                line.receivedTemperature.trim()
+                                  ? `Temp: ${line.receivedTemperature}°C`
+                                  : null,
+                              ].filter(Boolean).join(' · ')
+                            : 'Add expiry date and temperature'}
+                        >
+                          {detailLabel}
+                        </button>
+                      ) : null}
+                    </article>
+                  );
+                })}
+                <InfiniteScrollDivSentinel
+                  hasMore={hasMore}
+                  onLoadMore={loadMore}
+                  nextPageSize={nextPageSize}
+                  sentinelRef={sentinelRef}
+                  totalCount={totalCount}
+                  visibleCount={visibleCount}
+                />
+              </div>
+            ) : (
+              <TableScrollContainer ref={scrollRootRef} className="max-h-[min(42vh,24rem)] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <ColGroup widths={lineColWidths} />
+                  <thead>
+                    <tr className="border-b border-border">
+                      {lineHeaders.map(h => (
+                        <th key={h} className="text-left px-3 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedLines.map(line => {
+                      const orderedQty = parseFloat(line.orderedQuantity) || 0;
+                      const qty = parseFloat(line.quantity) || 0;
+                      const orderedPrice = parseFloat(line.orderedUnitPrice) || 0;
+                      const price = parseFloat(line.unitPrice) || 0;
+                      const tax = parseFloat(line.taxAmount) || 0;
+                      const qtyVariance = qty - orderedQty;
+                      const priceVariance = price - orderedPrice;
+                      const lineTotal = qty * price + tax;
+                      return (
+                        <tr key={line.clientKey} className="border-b border-border last:border-0">
                           <td className="px-3 py-2">
-                            {(() => {
-                              const hasDetail = Boolean(
-                                line.productExpiryDate.trim() || line.receivedTemperature.trim(),
-                              );
-                              const label = canEditReceived
-                                ? (hasDetail ? 'Edit Detail' : 'Add Detail')
-                                : (hasDetail ? 'View Detail' : 'Detail');
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={() => setDetailLineKey(line.clientKey)}
-                                  className={`inline-flex items-center justify-center px-2 py-1 rounded-md border text-[11px] font-semibold whitespace-nowrap ${
-                                    hasDetail
-                                      ? 'border-primary/40 text-primary bg-primary/5 hover:bg-primary/10'
-                                      : 'border-border text-foreground hover:bg-muted/50'
-                                  }`}
-                                  title={hasDetail
-                                    ? [
-                                        line.productExpiryDate.trim()
-                                          ? `Expiry: ${line.productExpiryDate}`
-                                          : null,
-                                        line.receivedTemperature.trim()
-                                          ? `Temp: ${line.receivedTemperature}°C`
-                                          : null,
-                                      ].filter(Boolean).join(' · ')
-                                    : 'Add expiry date and temperature'}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })()}
+                            <p className="font-medium">{line.componentName}</p>
+                            <p className="text-[10px] font-sans text-muted-foreground">{line.componentId || '—'}</p>
                           </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                  <InfiniteScrollTableSentinel colSpan={lineColSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
-                </tbody>
-              </table>
-            </TableScrollContainer>
+                          <td className="px-3 py-2">
+                            <p className="font-medium">{line.productName}</p>
+                            <p className="text-[10px] font-sans text-muted-foreground">
+                              Vendor Product ID: {line.vendorProductId || '—'}
+                            </p>
+                            {line.isExtra ? (
+                              <div className="mt-1 flex items-center gap-2">
+                                <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                                  Not ordered · freebie / replacement
+                                </span>
+                                {canEditReceived ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeExtraLine(line.clientKey)}
+                                    className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-destructive"
+                                    title="Remove added product"
+                                  >
+                                    <Trash2 size={10} />
+                                    Remove
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </td>
+                          {showCommitmentColumns ? (
+                            <>
+                              <td className="px-3 py-2 font-sans tabular-nums">{line.orderedQuantity}</td>
+                              <td className="px-3 py-2 font-sans tabular-nums text-muted-foreground">
+                                {order.items.find(i => i.id === line.itemId)?.drawnQuantity ?? 0}
+                              </td>
+                              <td className="px-3 py-2 font-sans tabular-nums">
+                                {order.items.find(i => i.id === line.itemId)?.consolidatedQuantity ?? 0}
+                              </td>
+                              <td className="px-3 py-2 font-sans tabular-nums">
+                                {order.items.find(i => i.id === line.itemId)?.remainingCommitmentQuantity
+                                  ?? order.items.find(i => i.id === line.itemId)?.remainingQuantity
+                                  ?? line.remainingQuantity}
+                              </td>
+                            </>
+                          ) : showOrderedReceivedColumns ? (
+                            <>
+                              <td className="px-3 py-2">
+                                <span className="font-sans text-muted-foreground">{line.orderedQuantity}</span>
+                              </td>
+                              {showPartialDeliveryColumns ? (
+                                <>
+                                  <td className="px-3 py-2 font-sans tabular-nums text-muted-foreground">
+                                    {line.deliveredQuantity}
+                                  </td>
+                                  <td className="px-3 py-2 font-sans tabular-nums">
+                                    {line.remainingQuantity}
+                                  </td>
+                                </>
+                              ) : null}
+                              <td className="px-3 py-2">
+                                {canEditReceived ? (
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={line.quantity}
+                                    onChange={e => updateLine(line.clientKey, {
+                                      quantity: sanitizeReceiveQtyPriceInput(e.target.value),
+                                    })}
+                                    className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                    title="Up to 5 digits and 2 decimals"
+                                  />
+                                ) : (
+                                  <span className="font-sans">{line.quantity}</span>
+                                )}
+                              </td>
+                            </>
+                          ) : (
+                            <td className="px-3 py-2">
+                              {readOnly ? (
+                                <span className="font-sans">{line.quantity}</span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={line.quantity}
+                                  onChange={e => updateLine(line.clientKey, { quantity: e.target.value })}
+                                  className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
+                                />
+                              )}
+                            </td>
+                          )}
+                          <td className="px-3 py-2">
+                            <span className="text-xs" title={line.deliveryPackage || undefined}>
+                              {line.deliveryPackage || '—'}
+                            </span>
+                          </td>
+                          {!hidePrices && mode === 'reconcile' && (
+                            <td className="px-3 py-2 font-sans text-muted-foreground">{rm(line.issuedUnitPrice)}</td>
+                          )}
+                          {showOrderedReceivedColumns ? (
+                            <>
+                              {!hidePrices && (
+                                <td className="px-3 py-2">
+                                  <span className="font-sans text-muted-foreground">{rm(orderedPrice)}</span>
+                                </td>
+                              )}
+                              {!hidePrices && (
+                                <td className="px-3 py-2">
+                                  {canEditReceived ? (
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={line.unitPrice}
+                                      onChange={e => updateLine(line.clientKey, {
+                                        unitPrice: sanitizeReceiveQtyPriceInput(e.target.value),
+                                      })}
+                                      className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                      title="Up to 5 digits and 2 decimals"
+                                    />
+                                  ) : (
+                                    <span className="font-sans">{rm(price)}</span>
+                                  )}
+                                </td>
+                              )}
+                              <td className="px-3 py-2 font-sans">
+                                <span className={qtyVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
+                                  {qtyVariance === 0 ? '0' : (qtyVariance > 0 ? `+${qtyVariance}` : String(qtyVariance))}
+                                </span>
+                              </td>
+                              {!hidePrices && (
+                                <td className="px-3 py-2 font-sans">
+                                  <span className={priceVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
+                                    {priceVariance === 0 ? rm(0) : `${priceVariance > 0 ? '+' : ''}${rm(priceVariance)}`}
+                                  </span>
+                                </td>
+                              )}
+                            </>
+                          ) : (
+                            !hidePrices ? (
+                              <td className="px-3 py-2">
+                                {readOnly ? (
+                                  <span className="font-sans">{rm(price)}</span>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={line.unitPrice}
+                                    onChange={e => updateLine(line.clientKey, { unitPrice: e.target.value })}
+                                    className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
+                                  />
+                                )}
+                              </td>
+                            ) : null
+                          )}
+                          {!hidePrices && showTaxColumn && (
+                            <td className="px-3 py-2">
+                              {mode === 'receive' && !readOnly ? (
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={line.taxAmount}
+                                  onChange={e => updateLine(line.clientKey, {
+                                    taxAmount: sanitizeReceiveQtyPriceInput(e.target.value),
+                                  })}
+                                  placeholder="0.00"
+                                  className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                  title="Up to 5 digits and 2 decimals"
+                                />
+                              ) : (
+                                <span className="font-sans">{tax > 0 ? rm(tax) : '—'}</span>
+                              )}
+                            </td>
+                          )}
+                          {showHalalCertColumn && (
+                            <td className="px-3 py-2">
+                              {readOnly || mode !== 'receive' ? (
+                                <span>{line.halalCertNo || '—'}</span>
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={line.halalCertNo}
+                                  onChange={e => updateLine(line.clientKey, { halalCertNo: e.target.value })}
+                                  placeholder="Optional"
+                                  className="w-32 rounded border border-border bg-background px-2 py-1"
+                                />
+                              )}
+                            </td>
+                          )}
+                          {!hidePrices && (
+                            <td className="px-3 py-2 font-sans">{rm(lineTotal)}</td>
+                          )}
+                          {showLineDetailColumn && (
+                            <td className="px-3 py-2">
+                              {(() => {
+                                const hasDetail = Boolean(
+                                  line.productExpiryDate.trim() || line.receivedTemperature.trim(),
+                                );
+                                const label = canEditReceived
+                                  ? (hasDetail ? 'Edit Detail' : 'Add Detail')
+                                  : (hasDetail ? 'View Detail' : 'Detail');
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailLineKey(line.clientKey)}
+                                    className={`inline-flex items-center justify-center px-2 py-1 rounded-md border text-[11px] font-semibold whitespace-nowrap ${
+                                      hasDetail
+                                        ? 'border-primary/40 text-primary bg-primary/5 hover:bg-primary/10'
+                                        : 'border-border text-foreground hover:bg-muted/50'
+                                    }`}
+                                    title={hasDetail
+                                      ? [
+                                          line.productExpiryDate.trim()
+                                            ? `Expiry: ${line.productExpiryDate}`
+                                            : null,
+                                          line.receivedTemperature.trim()
+                                            ? `Temp: ${line.receivedTemperature}°C`
+                                            : null,
+                                        ].filter(Boolean).join(' · ')
+                                      : 'Add expiry date and temperature'}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })()}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                    <InfiniteScrollTableSentinel colSpan={lineColSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                  </tbody>
+                </table>
+              </TableScrollContainer>
+            )}
           </div>
 
           {showVendorRatingInputs && (
