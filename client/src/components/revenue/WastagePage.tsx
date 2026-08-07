@@ -22,6 +22,8 @@ import { fromApiUom } from '../../data/componentForm';
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  /** Drop outer page padding when embedded in Team Stock. */
+  embedded?: boolean;
 };
 
 type ItemKind = 'component' | 'product' | 'sub-product';
@@ -148,7 +150,7 @@ const fieldCls =
   'w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary/40';
 const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted-foreground mb-1';
 
-export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
+export function WastagePage({ selectedCompanyId, selectedLocationIds, embedded = false }: Props) {
   const orgReady = !!selectedCompanyId && selectedLocationIds.length > 0;
   const primaryLocation = selectedLocationIds[0] ?? '';
   const { rm } = useCountryFormatters();
@@ -420,7 +422,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
 
   if (!orgReady) {
     return (
-      <div className={pageShellClass()}>
+      <div className={pageShellClass({ embedded })}>
         <p className="text-sm text-muted-foreground">Select a company and location to manage wastage.</p>
       </div>
     );
@@ -432,7 +434,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
       : wasteTypeFilter;
 
   return (
-    <div className={pageShellClass({ spacing: 'loose' })}>
+    <div className={pageShellClass({ embedded, spacing: 'loose' })}>
       <PageStickyFilters opaque className="py-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>

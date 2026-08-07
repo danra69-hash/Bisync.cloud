@@ -975,7 +975,7 @@ export default function TeamPortal({
               <TeamOrderPage employeeName={teamEmp.name} />
             ) : null}
             {shellTab === 'stock' ? (
-              <TeamStockPage />
+              <TeamStockPage employeeName={teamEmp.name} />
             ) : null}
           </main>
 
