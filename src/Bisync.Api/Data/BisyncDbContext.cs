@@ -123,6 +123,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<StoreRequisition> StoreRequisitions => Set<StoreRequisition>();
     public DbSet<StoreRequisitionLine> StoreRequisitionLines => Set<StoreRequisitionLine>();
     public DbSet<ProductionStockHold> ProductionStockHolds => Set<ProductionStockHold>();
+    public DbSet<TeamConversation> TeamConversations => Set<TeamConversation>();
+    public DbSet<TeamConversationMember> TeamConversationMembers => Set<TeamConversationMember>();
+    public DbSet<TeamChatMessage> TeamChatMessages => Set<TeamChatMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -834,6 +837,37 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.PaymentMethod).HasMaxLength(32);
             e.Property(x => x.PaymentReference).HasMaxLength(128);
             e.Property(x => x.BankName).HasMaxLength(128);
+        });
+        modelBuilder.Entity<TeamConversation>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Type });
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.Title).HasMaxLength(200);
+        });
+        modelBuilder.Entity<TeamConversationMember>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.EmployeeId }).IsUnique();
+            e.HasOne(x => x.Conversation)
+                .WithMany(c => c.Members)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Employee)
+                .WithMany()
+                .HasForeignKey(x => x.EmployeeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<TeamChatMessage>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            e.HasOne(x => x.Conversation)
+                .WithMany(c => c.Messages)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Sender)
+                .WithMany()
+                .HasForeignKey(x => x.SenderEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.AttachmentContentType).HasMaxLength(128);
         });
     }
 }

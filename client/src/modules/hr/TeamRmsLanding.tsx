@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ClipboardList, PackageCheck, Layers } from 'lucide-react';
+import { ChevronRight, ClipboardList, PackageCheck, Layers, BadgeCheck } from 'lucide-react';
 import { api, type PurchaseOrder } from '../../api';
 import { resolvePurchaseOrderStatusLabel } from '../../data/purchaseOrderStatus';
 import { dateKeyInRange, formatTeamDate, rmsListDateWindow } from './teamRmsDates';
 
-type ListKind = 'active' | 'received' | 'consolidated';
+type ListKind = 'to-approve' | 'active' | 'received' | 'consolidated';
 
 type Props = {
-  onBackToTeam: () => void;
+  onBackToTeam?: () => void;
+  showBack?: boolean;
 };
 
 function statusTone(status: string): string {
@@ -30,8 +31,12 @@ function orderSortDate(order: PurchaseOrder, kind: ListKind): string {
 
 function matchesKind(order: PurchaseOrder, kind: ListKind): boolean {
   const status = (order.status || '').trim();
+  if (kind === 'to-approve') {
+    return status === 'Pending Approval' || order.canApprove === true;
+  }
   if (kind === 'active') {
     if (order.isPreCommitted) return false;
+    if (status === 'Pending Approval') return false;
     return ![
       'Received',
       'Reconciled',
@@ -51,11 +56,17 @@ function matchesKind(order: PurchaseOrder, kind: ListKind): boolean {
 function inWindow(order: PurchaseOrder, kind: ListKind, from: string, to: string): boolean {
   const primary = orderSortDate(order, kind);
   if (dateKeyInRange(primary, from, to)) return true;
-  // Also accept orders whose order date falls in the window even if receive/reconcile dates differ.
   return dateKeyInRange(order.orderDate, from, to);
 }
 
-export function TeamRmsLanding({ onBackToTeam }: Props) {
+function listTitle(kind: ListKind): string {
+  if (kind === 'to-approve') return 'To Approve';
+  if (kind === 'active') return 'Active Order';
+  if (kind === 'received') return 'Received';
+  return 'Consolidated';
+}
+
+export function TeamRmsLanding({ onBackToTeam, showBack = true }: Props) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +80,6 @@ export function TeamRmsLanding({ onBackToTeam }: Props) {
     setError(null);
     void (async () => {
       try {
-        // Prefer full history so Received / Consolidated can appear; fall back to active.
         let list: PurchaseOrder[] = [];
         try {
           list = await api.purchaseOrders();
@@ -99,18 +109,14 @@ export function TeamRmsLanding({ onBackToTeam }: Props) {
     rows.sort((a, b) => {
       const da = orderSortDate(a, listKind);
       const db = orderSortDate(b, listKind);
-      if (listKind === 'active') return da.localeCompare(db); // old → new
-      return db.localeCompare(da); // new → old
+      if (listKind === 'active' || listKind === 'to-approve') return da.localeCompare(db);
+      return db.localeCompare(da);
     });
     return rows;
   }, [orders, listKind, window.from, window.to]);
 
   if (listKind) {
-    const title = listKind === 'active'
-      ? 'Active Order'
-      : listKind === 'received'
-        ? 'Received'
-        : 'Consolidated';
+    const title = listTitle(listKind);
     return (
       <section className="team-card">
         <div className="team-panel-head">
@@ -123,7 +129,7 @@ export function TeamRmsLanding({ onBackToTeam }: Props) {
         <p className="team-muted" style={{ margin: '0 0 8px', fontSize: 11 }}>
           {formatTeamDate(window.from)} – {formatTeamDate(window.to)}
           {' · '}
-          {listKind === 'active' ? 'Oldest first' : 'Newest first'}
+          {listKind === 'active' || listKind === 'to-approve' ? 'Oldest first' : 'Newest first'}
         </p>
         {loading ? <p className="team-muted">Loading…</p> : null}
         {error ? <p className="team-inline-error">{error}</p> : null}
@@ -155,12 +161,14 @@ export function TeamRmsLanding({ onBackToTeam }: Props) {
 
   return (
     <section className="team-card team-landing-box">
-      <div className="team-panel-head">
-        <button type="button" className="team-back-btn" onClick={onBackToTeam}>
-          <ChevronRight style={{ transform: 'rotate(180deg)' }} size={16} />
-          Team home
-        </button>
-      </div>
+      {showBack && onBackToTeam ? (
+        <div className="team-panel-head">
+          <button type="button" className="team-back-btn" onClick={onBackToTeam}>
+            <ChevronRight style={{ transform: 'rotate(180deg)' }} size={16} />
+            Chats
+          </button>
+        </div>
+      ) : null}
       <header className="team-landing-box-head">
         <h3>Revenue Management</h3>
       </header>
@@ -169,6 +177,15 @@ export function TeamRmsLanding({ onBackToTeam }: Props) {
         {' · '}
         {formatTeamDate(window.from)} – {formatTeamDate(window.to)}
       </p>
+
+      <button type="button" className="team-landing-row" onClick={() => setListKind('to-approve')}>
+        <span className="team-landing-icon"><BadgeCheck size={16} /></span>
+        <span className="team-landing-copy">
+          <strong>To Approve</strong>
+          <em>Pending approval · oldest first</em>
+        </span>
+        <ChevronRight size={16} className="team-landing-chevron" />
+      </button>
 
       <button type="button" className="team-landing-row" onClick={() => setListKind('active')}>
         <span className="team-landing-icon"><ClipboardList size={16} /></span>

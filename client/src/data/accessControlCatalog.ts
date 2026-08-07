@@ -190,6 +190,7 @@ function hrmRows(): AccessControlRow[] {
       'Check In Out',
       'Scan POS QR',
       'Manage Team PIN',
+      'Send Company Announcement',
     ]),
     labelTasks('Employee Portal', [
       'Open Employee Portal',
