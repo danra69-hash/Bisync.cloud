@@ -969,7 +969,7 @@ export default function TeamPortal({
               />
             ) : null}
             {shellTab === 'rms' ? (
-              <TeamRmsLanding showBack={false} />
+              <TeamRmsLanding showBack={false} employeeName={teamEmp.name} />
             ) : null}
             {shellTab === 'order' ? (
               <TeamOrderPage employeeName={teamEmp.name} />

@@ -388,7 +388,7 @@ export function TeamHomeLanding({
       );
     }
 
-    return <TeamRmsLanding onBackToTeam={() => onModeChange('landing')} />;
+    return <TeamRmsLanding onBackToTeam={() => onModeChange('landing')} employeeName={employee.name} />;
   }
 
   // Landing
