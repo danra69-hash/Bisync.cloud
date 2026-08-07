@@ -11,6 +11,7 @@ import {
   ReceiveAddProductModal,
   type ReceiveAddProductSelection,
 } from './ReceiveAddProductModal';
+import { ReceiveLineDetailModal } from './ReceiveLineDetailModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { orgRequiresHalalCertOnReceive } from '../../data/vendorPolicyRules';
@@ -33,7 +34,11 @@ import {
   copyVendorOrderShareLink,
 } from '../../data/vendorOrderShare';
 import { isPurchaseOrderVendorAccepted, resolvePurchaseOrderStatusLabel } from '../../data/purchaseOrderStatus';
-import { qtyPriceWidthCls } from '../layout/formControls';
+import {
+  qtyPriceWidthCls,
+  receiveQtyPriceWidthCls,
+  sanitizeReceiveQtyPriceInput,
+} from '../layout/formControls';
 
 type Props = {
   order: PurchaseOrder;
@@ -206,6 +211,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const [shareToken, setShareToken] = useState(order.vendorShareToken?.trim() ?? '');
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [detailLineKey, setDetailLineKey] = useState<string | null>(null);
   const vendorRatingRef = useRef<HTMLDivElement>(null);
   const panelScrollRef = useRef<HTMLDivElement>(null);
 
@@ -222,6 +228,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     setShareToken(order.vendorShareToken?.trim() ?? '');
     setShareLinkCopied(false);
     setShowAddProduct(false);
+    setDetailLineKey(null);
   }, [order, mode]);
 
   useEffect(() => {
@@ -284,8 +291,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const showHalalCertColumn = !showCommitmentColumns
     && (requiresHalalCert || lines.some(line => line.halalCertNo.trim()))
     && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const showExpiryColumn = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const showTempColumn = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+  /** Expiry / temp live in Add Detail popup (not as table columns). */
+  const showLineDetailColumn = !showCommitmentColumns
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   const showReceiveDocs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   const showVendorRatingInputs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   /** Receive / reconcile / view: ordered vs received qty & price + variances. */
@@ -311,9 +319,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     !hidePrices && showOrderedReceivedColumns ? 'Unit Price Variance' : null,
     !hidePrices && showTaxColumn ? 'Tax' : null,
     showHalalCertColumn ? 'Halal cert no.' : null,
-    showExpiryColumn ? 'Expiry date' : null,
-    showTempColumn ? 'Temp °C' : null,
     !hidePrices ? 'Line total' : null,
+    showLineDetailColumn ? 'Detail' : null,
   ].filter(Boolean) as string[];
   const lineColSpan = lineHeaders.length;
   const lineColWidths = lineHeaders.map(header => {
@@ -326,10 +333,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         return '8%';
       case 'Halal cert no.':
         return '9%';
-      case 'Expiry date':
-        return '8%';
-      case 'Temp °C':
-        return '5%';
+      case 'Detail':
+        return '7%';
       case 'Line total':
         return '8%';
       case 'Tax':
@@ -338,9 +343,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         return '9%';
       case 'Remaining to order':
         return '8%';
+      case 'QTY Received':
+      case 'QTY This shipment':
+        return '5%';
       case 'Unit Price Received':
+        return '5%';
       case 'Unit Price Variance':
-        return '8%';
+        return '7%';
       default:
         return '7%';
     }
@@ -596,7 +605,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     <>
       <div
         className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}
-        onClick={() => !saving && !showAddProduct && onClose()}
+        onClick={() => !saving && !showAddProduct && !detailLineKey && onClose()}
       />
       <aside className={DETAIL_PANEL_SHELL_ELEVATED_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
@@ -914,12 +923,14 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             <td className="px-3 py-2">
                               {canEditReceived ? (
                                 <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={line.quantity}
-                                  onChange={e => updateLine(line.clientKey, { quantity: e.target.value })}
-                                  className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
+                                  onChange={e => updateLine(line.clientKey, {
+                                    quantity: sanitizeReceiveQtyPriceInput(e.target.value),
+                                  })}
+                                  className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                  title="Up to 5 digits and 2 decimals"
                                 />
                               ) : (
                                 <span className="font-sans">{line.quantity}</span>
@@ -961,12 +972,14 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                               <td className="px-3 py-2">
                                 {canEditReceived ? (
                                   <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
+                                    type="text"
+                                    inputMode="decimal"
                                     value={line.unitPrice}
-                                    onChange={e => updateLine(line.clientKey, { unitPrice: e.target.value })}
-                                    className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
+                                    onChange={e => updateLine(line.clientKey, {
+                                      unitPrice: sanitizeReceiveQtyPriceInput(e.target.value),
+                                    })}
+                                    className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                    title="Up to 5 digits and 2 decimals"
                                   />
                                 ) : (
                                   <span className="font-sans">{rm(price)}</span>
@@ -1036,41 +1049,43 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             )}
                           </td>
                         )}
-                        {showExpiryColumn && (
-                          <td className="px-3 py-2">
-                            {readOnly || mode !== 'receive' ? (
-                              <span className="font-sans">{line.productExpiryDate || '—'}</span>
-                            ) : (
-                              <input
-                                type="date"
-                                value={line.productExpiryDate}
-                                onChange={e => updateLine(line.clientKey, { productExpiryDate: e.target.value })}
-                                className="w-36 rounded border border-border bg-background px-2 py-1 font-sans"
-                              />
-                            )}
-                          </td>
-                        )}
-                        {showTempColumn && (
-                          <td className="px-3 py-2">
-                            {canEditReceived ? (
-                              <input
-                                type="number"
-                                step="0.1"
-                                value={line.receivedTemperature}
-                                onChange={e => updateLine(line.clientKey, { receivedTemperature: e.target.value })}
-                                placeholder="—"
-                                title="Optional temperature check (°C)"
-                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
-                              />
-                            ) : (
-                              <span className="font-sans">
-                                {line.receivedTemperature.trim() ? `${line.receivedTemperature}°C` : '—'}
-                              </span>
-                            )}
-                          </td>
-                        )}
                         {!hidePrices && (
                           <td className="px-3 py-2 font-sans">{rm(lineTotal)}</td>
+                        )}
+                        {showLineDetailColumn && (
+                          <td className="px-3 py-2">
+                            {(() => {
+                              const hasDetail = Boolean(
+                                line.productExpiryDate.trim() || line.receivedTemperature.trim(),
+                              );
+                              const label = canEditReceived
+                                ? (hasDetail ? 'Edit Detail' : 'Add Detail')
+                                : (hasDetail ? 'View Detail' : 'Detail');
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setDetailLineKey(line.clientKey)}
+                                  className={`inline-flex items-center justify-center px-2 py-1 rounded-md border text-[11px] font-semibold whitespace-nowrap ${
+                                    hasDetail
+                                      ? 'border-primary/40 text-primary bg-primary/5 hover:bg-primary/10'
+                                      : 'border-border text-foreground hover:bg-muted/50'
+                                  }`}
+                                  title={hasDetail
+                                    ? [
+                                        line.productExpiryDate.trim()
+                                          ? `Expiry: ${line.productExpiryDate}`
+                                          : null,
+                                        line.receivedTemperature.trim()
+                                          ? `Temp: ${line.receivedTemperature}°C`
+                                          : null,
+                                      ].filter(Boolean).join(' · ')
+                                    : 'Add expiry date and temperature'}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })()}
+                          </td>
                         )}
                       </tr>
                     );
@@ -1292,6 +1307,21 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
           onSelect={handleAddReceiveProduct}
         />
       ) : null}
+      {detailLineKey ? (() => {
+        const detailLine = lines.find(line => line.clientKey === detailLineKey);
+        if (!detailLine) return null;
+        return (
+          <ReceiveLineDetailModal
+            productName={detailLine.productName}
+            componentName={detailLine.componentName}
+            productExpiryDate={detailLine.productExpiryDate}
+            receivedTemperature={detailLine.receivedTemperature}
+            readOnly={!canEditReceived}
+            onClose={() => setDetailLineKey(null)}
+            onSave={next => updateLine(detailLine.clientKey, next)}
+          />
+        );
+      })() : null}
     </>,
     document.body,
   );
