@@ -151,6 +151,7 @@ export const en = {
       accountMapping: 'Account Mapping',
       vendorListProducts: 'Vendor List & Products',
       comparePrice: 'Compare Price',
+      vendorRatingConfig: 'Vendor Rating Config',
       products: 'Products',
       productAudit: 'Product Audit',
       externalPosMapping: 'External POS Mapping',

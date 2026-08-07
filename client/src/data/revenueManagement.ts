@@ -68,6 +68,7 @@ export const revMgmtNav: RevMgmtSection[] = [
         items: [
           { label: 'Vendor List & Products' },
           { label: 'Compare Price' },
+          { label: 'Vendor Rating Config' },
           { label: 'Account Mapping' },
         ],
       },

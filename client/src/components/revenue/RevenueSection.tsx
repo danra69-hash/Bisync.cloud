@@ -8,6 +8,7 @@ import { CustomerListPage } from './CustomerListPage';
 import { ActiveSalesOrderPage } from './ActiveSalesOrderPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
+import { VendorRatingConfigPage } from './VendorRatingConfigPage';
 import { OrderPage } from './OrderPage';
 import { CashPurchasePage } from './CashPurchasePage';
 import { OrderTemplatePage } from './OrderTemplatePage';
@@ -138,6 +139,13 @@ function renderRevMgmtContent(
       return <VendorListPage selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />;
     case 'Compare Price':
       return <ComparePricePage selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />;
+    case 'Vendor Rating Config':
+      return (
+        <VendorRatingConfigPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'My Order':
       return (
         <OrderPage

@@ -153,6 +153,7 @@ export const it = {
       accountMapping: 'Mappatura conti',
       vendorListProducts: 'Elenco fornitori e prodotti',
       comparePrice: 'Confronta prezzi',
+      vendorRatingConfig: 'Config. valutazione fornitori',
       products: 'Prodotti',
       productAudit: 'Product Audit',
       externalPosMapping: 'Mappatura POS esterno',

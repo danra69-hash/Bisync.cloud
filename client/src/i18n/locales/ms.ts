@@ -153,6 +153,7 @@ export const ms = {
       accountMapping: 'Pemetaan Akaun',
       vendorListProducts: 'Senarai Vendor & Produk',
       comparePrice: 'Banding Harga',
+      vendorRatingConfig: 'Konfigurasi Penilaian Vendor',
       products: 'Produk',
       productAudit: 'Product Audit',
       externalPosMapping: 'Pemetaan POS Luaran',

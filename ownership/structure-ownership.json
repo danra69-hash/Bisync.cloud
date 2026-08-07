@@ -250,7 +250,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-24",
-      "notes": "Revenue Management / Products — month-filtered product field and BOM change audit"
+      "notes": "Revenue Management / Products \u2014 month-filtered product field and BOM change audit"
     },
     {
       "id": "dr.page.product-list",
@@ -363,6 +363,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.vendor-rating-config",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/VendorRatingConfigPage.tsx",
+      "symbol": "VendorRatingConfigPage",
+      "route": "/revenue/vendor-rating-config",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-07",
+      "notes": "RMS Vendors \u00b7 Vendor Rating Config (after Compare Price) \u2014 rating model + vendor ratings overview"
+    },
+    {
       "id": "dr.page.vendor-list",
       "kind": "client-page",
       "path": "client/src/components/revenue/VendorListPage.tsx",
@@ -422,7 +433,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-24",
-      "notes": "Revenue Management / Sales — Active + Create Promotion tabs; RRP applied on B2B sales orders"
+      "notes": "Revenue Management / Sales \u2014 Active + Create Promotion tabs; RRP applied on B2B sales orders"
     },
     {
       "id": "dr.page.b2b-active-order",
@@ -534,7 +545,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-05",
-      "notes": "Production tab — components issued from Central Store awaiting produce"
+      "notes": "Production tab \u2014 components issued from Central Store awaiting produce"
     },
     {
       "id": "dr.page.cogs-audit",
@@ -555,7 +566,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "RMS Reports — itemized sales summary by product for selected month"
+      "notes": "RMS Reports \u2014 itemized sales summary by product for selected month"
     },
     {
       "id": "dr.page.inventory-summary-report",
@@ -566,7 +577,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "RMS Reports — inventory on-hand and movement summary"
+      "notes": "RMS Reports \u2014 inventory on-hand and movement summary"
     },
     {
       "id": "dr.page.ops-expenses-analysis-report",
@@ -577,7 +588,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-06",
-      "notes": "RMS Reports — Ops Expenses analysis by week/month with covers and checks"
+      "notes": "RMS Reports \u2014 Ops Expenses analysis by week/month with covers and checks"
     },
     {
       "id": "dr.page.detailed-purchase-summary-report",
@@ -588,7 +599,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "RMS Reports — purchase order line detail for selected month"
+      "notes": "RMS Reports \u2014 purchase order line detail for selected month"
     },
     {
       "id": "dr.page.production-report",
@@ -599,7 +610,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "RMS Reports — production batch log for selected month"
+      "notes": "RMS Reports \u2014 production batch log for selected month"
     },
     {
       "id": "dr.page.wastage-report",
@@ -610,7 +621,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "RMS Reports — wastage lines and reason roll-up"
+      "notes": "RMS Reports \u2014 wastage lines and reason roll-up"
     },
     {
       "id": "dr.page.bcg-matrix-report",
@@ -621,7 +632,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "RMS Reports — BCG product portfolio chart (margin % vs sales) with category/group filters"
+      "notes": "RMS Reports \u2014 BCG product portfolio chart (margin % vs sales) with category/group filters"
     },
     {
       "id": "dr.page.system-configuration",
@@ -729,7 +740,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "POS QR Order board — guest scan QR plus incoming e-menu orders to send to BDS/KDS"
+      "notes": "POS QR Order board \u2014 guest scan QR plus incoming e-menu orders to send to BDS/KDS"
     },
     {
       "id": "dr.page.accounting",
@@ -750,7 +761,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — POS Test after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
+      "notes": "Point-of-Sales bar \u2014 POS Test after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
     },
     {
       "id": "dr.page.pos-menu",
@@ -761,7 +772,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — POS Menu of company/location B2C products with POS enabled and RRP"
+      "notes": "Point-of-Sales bar \u2014 POS Menu of company/location B2C products with POS enabled and RRP"
     },
     {
       "id": "dr.page.pos-promotion-scheduler",
@@ -772,7 +783,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — Promotion Scheduler with date/time/day repeat, category/group filters, RRP/RPP discount table"
+      "notes": "Point-of-Sales bar \u2014 Promotion Scheduler with date/time/day repeat, category/group filters, RRP/RPP discount table"
     },
     {
       "id": "dr.page.pos-config",
@@ -783,7 +794,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-03",
-      "notes": "Point-of-Sales bar — POS Config after Promotion Scheduler; Payment / Entertainment / Discount type tables plus Device Set up routing"
+      "notes": "Point-of-Sales bar \u2014 POS Config after Promotion Scheduler; Payment / Entertainment / Discount type tables plus Device Set up routing"
     },
     {
       "id": "dr.api.pos-config-types",
@@ -794,7 +805,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-03",
-      "notes": "POS Config lookup CRUD — payment, entertainment, and discount types per company"
+      "notes": "POS Config lookup CRUD \u2014 payment, entertainment, and discount types per company"
     },
     {
       "id": "dr.api.pos-device-setup",
@@ -805,7 +816,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-06",
-      "notes": "POS Config Device Set up — product category/group/product routes to primary, secondary, and concurrent devices"
+      "notes": "POS Config Device Set up \u2014 product category/group/product routes to primary, secondary, and concurrent devices"
     },
     {
       "id": "dr.api.pos-tax-service-config",
@@ -827,7 +838,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "POS Promotion Scheduler CRUD — schedule windows, weekday repeat, per-product RRP/RPP lines"
+      "notes": "POS Promotion Scheduler CRUD \u2014 schedule windows, weekday repeat, per-product RRP/RPP lines"
     },
     {
       "id": "dr.api.pos-prepaid",
@@ -849,7 +860,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-29",
-      "notes": "Point-of-Sales bar — Device Management for stations/displays/kiosks/printers with network assistant and printer SDK setup"
+      "notes": "Point-of-Sales bar \u2014 Device Management for stations/displays/kiosks/printers with network assistant and printer SDK setup"
     },
     {
       "id": "dr.api.pos-devices",
@@ -860,7 +871,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-29",
-      "notes": "POS Device Management CRUD — network probe, printer SDK repository, paper/alignment setup"
+      "notes": "POS Device Management CRUD \u2014 network probe, printer SDK repository, paper/alignment setup"
     },
     {
       "id": "dr.page.pos-modifier-group",
@@ -871,7 +882,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-02",
-      "notes": "Point-of-Sales bar — POS Modifier Group for Compulsory / Food / Beverage / Component SWAP with attach by group or product"
+      "notes": "Point-of-Sales bar \u2014 POS Modifier Group for Compulsory / Food / Beverage / Component SWAP with attach by group or product"
     },
     {
       "id": "dr.api.pos-modifier-groups",
@@ -882,7 +893,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-02",
-      "notes": "POS Modifier Group CRUD — options, attachments, stock catalog, Component SWAP inherit from RMS"
+      "notes": "POS Modifier Group CRUD \u2014 options, attachments, stock catalog, Component SWAP inherit from RMS"
     },
     {
       "id": "dr.module.hr",
@@ -893,7 +904,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15",
-      "notes": "HR Management — includes Team tab (TeamPortal) before Employee Portal: today/month schedule, message box, POS QR check-in/out, outstanding leave with carry-forward, leave request"
+      "notes": "HR Management \u2014 includes Team tab (TeamPortal) before Employee Portal: today/month schedule, message box, POS QR check-in/out, outstanding leave with carry-forward, leave request"
     },
     {
       "id": "dr.api.auth",
@@ -1217,7 +1228,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15",
-      "notes": "Includes Holdout reserve, Delivery Order issue, and confirm-receipt → sold"
+      "notes": "Includes Holdout reserve, Delivery Order issue, and confirm-receipt \u2192 sold"
     },
     {
       "id": "dr.api.promotions",
@@ -1280,7 +1291,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "POS Test operational APIs — open/closed checks, payments, voids, EOD sessions"
+      "notes": "POS Test operational APIs \u2014 open/closed checks, payments, voids, EOD sessions"
     },
     {
       "id": "dr.api.pos-eod",

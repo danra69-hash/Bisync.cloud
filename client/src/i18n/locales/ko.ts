@@ -153,6 +153,7 @@ export const ko = {
       accountMapping: '계정 매핑',
       vendorListProducts: '공급업체 및 제품 목록',
       comparePrice: '가격 비교',
+      vendorRatingConfig: '공급업체 평가 설정',
       products: '제품',
       productAudit: 'Product Audit',
       externalPosMapping: '외부 POS 매핑',

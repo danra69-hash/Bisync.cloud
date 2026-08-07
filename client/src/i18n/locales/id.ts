@@ -153,6 +153,7 @@ export const id = {
       accountMapping: 'Pemetaan Akun',
       vendorListProducts: 'Daftar Vendor & Produk',
       comparePrice: 'Bandingkan Harga',
+      vendorRatingConfig: 'Konfigurasi Peringkat Vendor',
       products: 'Produk',
       productAudit: 'Product Audit',
       externalPosMapping: 'Pemetaan POS Eksternal',

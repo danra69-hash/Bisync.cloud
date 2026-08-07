@@ -153,6 +153,7 @@ export const th = {
       accountMapping: 'การแมปบัญชี',
       vendorListProducts: 'รายชื่อผู้จำหน่ายและสินค้า',
       comparePrice: 'เปรียบเทียบราคา',
+      vendorRatingConfig: 'ตั้งค่าการให้คะแนนผู้ขาย',
       products: 'สินค้า',
       productAudit: 'Product Audit',
       externalPosMapping: 'การแมป POS ภายนอก',
