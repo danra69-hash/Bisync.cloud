@@ -141,8 +141,102 @@ public class LocationSubscriptionService(
             LocationSubscription.StatusSubscribed => "Subscribed",
             LocationSubscription.StatusRenewed => yearsRenewed > 0 ? $"Renewed ({yearsRenewed}y)" : "Renewed",
             LocationSubscription.StatusLocked => "Locked",
+            LocationSubscription.StatusDeactivated => "Deactivated",
             _ => "Free Trial",
         };
+    }
+
+    /// <summary>
+    /// Keep LocationSubscriptions in sync when a location is activated/deactivated in Platform Config.
+    /// Deactivated locations must show Current status = Deactivated (and leave Tenant Rollups).
+    /// </summary>
+    public async Task SyncLocationActiveStatusAsync(
+        int companyId,
+        string locationExternalId,
+        bool locationActive,
+        CancellationToken ct = default)
+    {
+        await using var db = CreateControlDb();
+        await EnsureSchemaAsync(db, ct);
+        await SyncLocationActiveStatusCoreAsync(db, companyId, locationExternalId, locationActive, ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Backfill: any inactive location row gets Status=deactivated on its subscription.
+    /// </summary>
+    public async Task SyncInactiveLocationStatusesAsync(
+        BisyncDbContext db,
+        IEnumerable<(int CompanyId, string LocationExternalId)> inactiveLocations,
+        CancellationToken ct = default)
+    {
+        await EnsureSchemaAsync(db, ct);
+        foreach (var (companyId, externalId) in inactiveLocations)
+        {
+            if (string.IsNullOrWhiteSpace(externalId)) continue;
+            await SyncLocationActiveStatusCoreAsync(db, companyId, externalId, locationActive: false, ct);
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    async Task SyncLocationActiveStatusCoreAsync(
+        BisyncDbContext db,
+        int companyId,
+        string locationExternalId,
+        bool locationActive,
+        CancellationToken ct)
+    {
+        var key = (locationExternalId ?? string.Empty).Trim();
+        if (companyId <= 0 || string.IsNullOrWhiteSpace(key)) return;
+
+        var sub = await db.LocationSubscriptions
+            .FirstOrDefaultAsync(s => s.CompanyId == companyId && s.LocationExternalId == key, ct);
+
+        if (!locationActive)
+        {
+            if (sub is null)
+            {
+                db.LocationSubscriptions.Add(new LocationSubscription
+                {
+                    CompanyId = companyId,
+                    LocationExternalId = key,
+                    Status = LocationSubscription.StatusDeactivated,
+                    StatusDate = DateTime.UtcNow,
+                    Active = false,
+                    UpdatedAt = DateTime.UtcNow,
+                });
+                return;
+            }
+
+            if (!string.Equals(sub.Status, LocationSubscription.StatusDeactivated, StringComparison.OrdinalIgnoreCase)
+                || sub.Active)
+            {
+                sub.Status = LocationSubscription.StatusDeactivated;
+                sub.StatusDate = DateTime.UtcNow;
+                sub.Active = false;
+                sub.UpdatedAt = DateTime.UtcNow;
+            }
+            return;
+        }
+
+        // Reactivated location: leave billing statuses alone; only lift deactivated → free trial.
+        if (sub is null)
+        {
+            await EnsureDefaultsForCompanyAsync(db, companyId, ct);
+            return;
+        }
+
+        if (string.Equals(sub.Status, LocationSubscription.StatusDeactivated, StringComparison.OrdinalIgnoreCase))
+        {
+            var trialStart = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+            sub.Status = LocationSubscription.StatusFreeTrial;
+            sub.StatusDate = DateTime.UtcNow;
+            sub.ExpiryDate = trialStart.AddMonths(DefaultTrialMonths);
+            sub.RenewalDate = sub.ExpiryDate;
+            sub.Active = true;
+            sub.UpdatedAt = DateTime.UtcNow;
+        }
     }
 
     public async Task<CompanySubscriptionPanel?> GetCompanyPanelAsync(int companyId, CancellationToken ct = default)
@@ -159,34 +253,45 @@ public class LocationSubscriptionService(
             .Where(l => l.CompanyId == companyId)
             .OrderBy(l => l.Name)
             .ToListAsync(ct);
+
+        // Keep subscription Current status aligned with Platform Config Active flag.
+        foreach (var loc in locations.Where(l => !l.Active))
+            await SyncLocationActiveStatusCoreAsync(db, companyId, loc.ExternalId, locationActive: false, ct);
+        await db.SaveChangesAsync(ct);
+
         var subs = await db.LocationSubscriptions.AsNoTracking()
             .Where(s => s.CompanyId == companyId)
             .ToListAsync(ct);
         var byLoc = subs.ToDictionary(s => s.LocationExternalId, StringComparer.OrdinalIgnoreCase);
 
-        var details = locations.Select(loc =>
-        {
-            byLoc.TryGetValue(loc.ExternalId, out var sub);
-            var status = sub?.Status ?? LocationSubscription.StatusFreeTrial;
-            var years = sub?.YearsRenewed ?? 0;
-            return new LocationSubscriptionDetail
+        // Tenant Rollups / Edit status only manage active locations; deactivated stay out of billing UI.
+        var details = locations
+            .Where(loc => loc.Active)
+            .Select(loc =>
             {
-                LocationExternalId = loc.ExternalId,
-                LocationName = loc.Name,
-                Status = status,
-                StatusLabel = FormatStatusLabel(status, years),
-                StatusDate = sub?.StatusDate,
-                ExpiryDate = sub?.ExpiryDate ?? sub?.RenewalDate,
-                RegisteredAt = company.RegisteredAt,
-                YearsRenewed = years,
-                Locked = string.Equals(status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase),
-                PaymentMethod = sub?.PaymentMethod,
-                PaymentReference = sub?.PaymentReference,
-                BankName = sub?.BankName,
-                Amount = sub?.Amount,
-                Currency = sub?.Currency,
-            };
-        }).ToList();
+                byLoc.TryGetValue(loc.ExternalId, out var sub);
+                var status = sub?.Status ?? LocationSubscription.StatusFreeTrial;
+                if (string.Equals(status, LocationSubscription.StatusDeactivated, StringComparison.OrdinalIgnoreCase))
+                    status = LocationSubscription.StatusFreeTrial;
+                var years = sub?.YearsRenewed ?? 0;
+                return new LocationSubscriptionDetail
+                {
+                    LocationExternalId = loc.ExternalId,
+                    LocationName = loc.Name,
+                    Status = status,
+                    StatusLabel = FormatStatusLabel(status, years),
+                    StatusDate = sub?.StatusDate,
+                    ExpiryDate = sub?.ExpiryDate ?? sub?.RenewalDate,
+                    RegisteredAt = company.RegisteredAt,
+                    YearsRenewed = years,
+                    Locked = string.Equals(status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase),
+                    PaymentMethod = sub?.PaymentMethod,
+                    PaymentReference = sub?.PaymentReference,
+                    BankName = sub?.BankName,
+                    Amount = sub?.Amount,
+                    Currency = sub?.Currency,
+                };
+            }).ToList();
 
         return new CompanySubscriptionPanel
         {
@@ -304,6 +409,9 @@ public class LocationSubscriptionService(
             if (expiry.Value.Date >= now) continue;
             if (string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase))
                 continue;
+            // Platform-config deactivation is not a billing expiry lock.
+            if (string.Equals(sub.Status, LocationSubscription.StatusDeactivated, StringComparison.OrdinalIgnoreCase))
+                continue;
             if (string.Equals(sub.Status, LocationSubscription.StatusFreeTrial, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(sub.Status, LocationSubscription.StatusSubscribed, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(sub.Status, LocationSubscription.StatusRenewed, StringComparison.OrdinalIgnoreCase)
@@ -360,7 +468,7 @@ public class LocationSubscriptionService(
 
         var locations = await db.Locations.AsNoTracking()
             .Where(l => l.CompanyId == companyId)
-            .Select(l => l.ExternalId)
+            .Select(l => new { l.ExternalId, l.Active })
             .ToListAsync(ct);
         var existing = await db.LocationSubscriptions
             .Where(s => s.CompanyId == companyId)
@@ -371,27 +479,33 @@ public class LocationSubscriptionService(
         var trialStart = DateTime.UtcNow.Date;
         trialStart = DateTime.SpecifyKind(trialStart, DateTimeKind.Utc);
         var added = false;
-        foreach (var externalId in locations)
+        foreach (var loc in locations)
         {
-            if (string.IsNullOrWhiteSpace(externalId) || existingSet.Contains(externalId))
+            if (string.IsNullOrWhiteSpace(loc.ExternalId) || existingSet.Contains(loc.ExternalId))
                 continue;
-            var key = externalId.Trim();
+            var key = loc.ExternalId.Trim();
             existingSet.Add(key);
             db.LocationSubscriptions.Add(new LocationSubscription
             {
                 CompanyId = companyId,
                 LocationExternalId = key,
-                Status = LocationSubscription.StatusFreeTrial,
+                Status = loc.Active
+                    ? LocationSubscription.StatusFreeTrial
+                    : LocationSubscription.StatusDeactivated,
                 StatusDate = trialStart,
-                ExpiryDate = trialStart.AddMonths(DefaultTrialMonths),
-                RenewalDate = trialStart.AddMonths(DefaultTrialMonths),
-                Active = true,
+                ExpiryDate = loc.Active ? trialStart.AddMonths(DefaultTrialMonths) : null,
+                RenewalDate = loc.Active ? trialStart.AddMonths(DefaultTrialMonths) : null,
+                Active = loc.Active,
                 UpdatedAt = DateTime.UtcNow,
             });
             added = true;
         }
 
-        if (added)
+        // Backfill: inactive Platform Config locations must show Deactivated, not a stale trial/paid status.
+        foreach (var loc in locations.Where(l => !l.Active && !string.IsNullOrWhiteSpace(l.ExternalId)))
+            await SyncLocationActiveStatusCoreAsync(db, companyId, loc.ExternalId, locationActive: false, ct);
+
+        if (added || locations.Any(l => !l.Active))
             await db.SaveChangesAsync(ct);
     }
 
@@ -440,8 +554,9 @@ public class LocationSubscriptionService(
         var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
         if (company is null) return;
 
+        // Billing lock only considers Platform Config–active locations.
         var locIds = await db.Locations.AsNoTracking()
-            .Where(l => l.CompanyId == companyId)
+            .Where(l => l.CompanyId == companyId && l.Active)
             .Select(l => l.ExternalId)
             .ToListAsync(ct);
         if (locIds.Count == 0) return;

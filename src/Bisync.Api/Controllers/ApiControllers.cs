@@ -376,6 +376,7 @@ public class LocationsController(
 
         var loc = await db.Locations.FindAsync(id);
         if (loc is null) return NotFound();
+        var previousActive = loc.Active;
         loc.CompanyId = body.CompanyId;
         loc.Name = body.Name;
         loc.Active = body.Active;
@@ -409,6 +410,23 @@ public class LocationsController(
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
         await db.SaveChangesAsync();
+
+        // Keep Tenant Rollups Current status aligned with Platform Config Active.
+        if (previousActive != body.Active || !body.Active)
+        {
+            try
+            {
+                await locationSubscriptions.SyncLocationActiveStatusAsync(
+                    body.CompanyId.Value,
+                    loc.ExternalId,
+                    body.Active);
+            }
+            catch
+            {
+                // Best-effort: rollup refresh also backfills deactivated status.
+            }
+        }
+
         var saved = await LoadLocationConfigAsync(loc.Id);
         return saved is null ? Ok(new { loc.Id, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
     }
