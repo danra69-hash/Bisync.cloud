@@ -1021,13 +1021,15 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           <td className="px-3 py-2">
                             {mode === 'receive' && !readOnly ? (
                               <input
-                                type="number"
-                                min="0"
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
                                 value={line.taxAmount}
-                                onChange={e => updateLine(line.clientKey, { taxAmount: e.target.value })}
+                                onChange={e => updateLine(line.clientKey, {
+                                  taxAmount: sanitizeReceiveQtyPriceInput(e.target.value),
+                                })}
                                 placeholder="0.00"
-                                className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
+                                className={`${receiveQtyPriceWidthCls} rounded border border-border bg-background px-1.5 py-1 font-sans text-xs`}
+                                title="Up to 5 digits and 2 decimals"
                               />
                             ) : (
                               <span className="font-sans">{tax > 0 ? rm(tax) : '—'}</span>
