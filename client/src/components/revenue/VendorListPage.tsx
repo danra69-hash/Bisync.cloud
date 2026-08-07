@@ -111,6 +111,8 @@ export function VendorListPage({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'engaged' | 'available'>('all');
+  const [stateFilter, setStateFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [productVendorFilter, setProductVendorFilter] = useState('');
   const [productGroupFilter, setProductGroupFilter] = useState('');
@@ -193,10 +195,43 @@ export function VendorListPage({
 
   useEffect(() => {
     resetSort();
-  }, [search, filter, resetSort]);
+  }, [search, filter, stateFilter, cityFilter, resetSort]);
+
+  const policyVendors = useMemo(
+    () => vendors.filter(v => vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v)),
+    [vendors, orgPolicyTags],
+  );
+
+  const stateOptions = useMemo(() => {
+    const states = new Set<string>();
+    for (const v of policyVendors) {
+      const state = (v.state || '').trim();
+      if (state) states.add(state);
+    }
+    return [...states].sort((a, b) => a.localeCompare(b));
+  }, [policyVendors]);
+
+  const cityOptions = useMemo(() => {
+    const selectedState = stateFilter.trim().toLowerCase();
+    const cities = new Set<string>();
+    for (const v of policyVendors) {
+      if (selectedState && (v.state || '').trim().toLowerCase() !== selectedState) continue;
+      const city = (v.city || '').trim();
+      if (city) cities.add(city);
+    }
+    return [...cities].sort((a, b) => a.localeCompare(b));
+  }, [policyVendors, stateFilter]);
+
+  useEffect(() => {
+    if (cityFilter && !cityOptions.some(c => c.toLowerCase() === cityFilter.trim().toLowerCase())) {
+      setCityFilter('');
+    }
+  }, [cityOptions, cityFilter]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const selectedState = stateFilter.trim().toLowerCase();
+    const selectedCity = cityFilter.trim().toLowerCase();
     return vendors.filter(v => {
       if (!vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v)) return false;
       const matchSearch = !query || [
@@ -204,13 +239,16 @@ export function VendorListPage({
         v.products,
         v.address,
         v.city,
+        v.state,
         v.mobile,
         v.email,
       ].some(value => value.toLowerCase().includes(query));
       const matchFilter = filter === 'all' || (filter === 'engaged' ? v.engaged : !v.engaged);
-      return matchSearch && matchFilter;
+      const matchState = !selectedState || (v.state || '').trim().toLowerCase() === selectedState;
+      const matchCity = !selectedCity || (v.city || '').trim().toLowerCase() === selectedCity;
+      return matchSearch && matchFilter && matchState && matchCity;
     });
-  }, [vendors, search, filter, orgPolicyTags]);
+  }, [vendors, search, filter, stateFilter, cityFilter, orgPolicyTags]);
 
   const vendorSortAccessors = useMemo(
     () => ({
@@ -569,6 +607,32 @@ export function VendorListPage({
             className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
+        <select
+          value={stateFilter}
+          onChange={e => {
+            setStateFilter(e.target.value);
+            setCityFilter('');
+          }}
+          className={`${filterSelectCls} min-w-[140px]`}
+          aria-label="Filter by state"
+        >
+          <option value="">All States</option>
+          {stateOptions.map(state => (
+            <option key={state} value={state}>{state}</option>
+          ))}
+        </select>
+        <select
+          value={cityFilter}
+          onChange={e => setCityFilter(e.target.value)}
+          className={`${filterSelectCls} min-w-[140px]`}
+          aria-label="Filter by city"
+          disabled={cityOptions.length === 0}
+        >
+          <option value="">All Cities</option>
+          {cityOptions.map(city => (
+            <option key={city} value={city}>{city}</option>
+          ))}
+        </select>
         {(['all', 'engaged', 'available'] as const).map(f => (
           <button
             key={f}
