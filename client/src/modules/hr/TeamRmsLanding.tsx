@@ -110,6 +110,21 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: 
     void refreshOrders();
   }, [refreshOrders]);
 
+  const groupCounts = useMemo(() => {
+    const counts: Record<ListKind, number> = {
+      'to-approve': 0,
+      active: 0,
+      received: 0,
+      consolidated: 0,
+    };
+    for (const kind of Object.keys(counts) as ListKind[]) {
+      counts[kind] = orders.filter(
+        o => matchesKind(o, kind) && inWindow(o, kind, window.from, window.to),
+      ).length;
+    }
+    return counts;
+  }, [orders, window.from, window.to]);
+
   const listed = useMemo(() => {
     if (!listKind) return [];
     const rows = orders.filter(
@@ -153,6 +168,7 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: 
 
   if (listKind) {
     const title = listTitle(listKind);
+    const count = groupCounts[listKind];
     return (
       <>
         <section className="team-card">
@@ -161,10 +177,17 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: 
               <ChevronRight style={{ transform: 'rotate(180deg)' }} size={16} />
               RMS home
             </button>
-            <h3>{title}</h3>
+            <h3>
+              {title}
+              <span className="team-rms-group-count" aria-label={`${count} purchase orders`}>
+                {loading ? '…' : count}
+              </span>
+            </h3>
           </div>
           <p className="team-muted" style={{ margin: '0 0 8px', fontSize: 11 }}>
             {formatTeamDate(window.from)} – {formatTeamDate(window.to)}
+            {' · '}
+            {loading ? '…' : `${count} PO${count === 1 ? '' : 's'}`}
             {' · '}
             {listKind === 'active' || listKind === 'to-approve' ? 'Oldest first' : 'Newest first'}
             {' · '}
@@ -250,6 +273,12 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: 
           <strong>To Approve</strong>
           <em>Pending approval · tap to open</em>
         </span>
+        <span
+          className={`team-landing-badge${groupCounts['to-approve'] === 0 ? ' is-zero' : ''}`}
+          aria-label={`${loading ? 'Loading' : groupCounts['to-approve']} to approve`}
+        >
+          {loading ? '…' : groupCounts['to-approve']}
+        </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>
 
@@ -258,6 +287,12 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: 
         <span className="team-landing-copy">
           <strong>Active Order</strong>
           <em>Open orders · receive from detail</em>
+        </span>
+        <span
+          className={`team-landing-badge${groupCounts.active === 0 ? ' is-zero' : ''}`}
+          aria-label={`${loading ? 'Loading' : groupCounts.active} active orders`}
+        >
+          {loading ? '…' : groupCounts.active}
         </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>
@@ -268,6 +303,12 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: 
           <strong>Received</strong>
           <em>Consolidate from detail</em>
         </span>
+        <span
+          className={`team-landing-badge${groupCounts.received === 0 ? ' is-zero' : ''}`}
+          aria-label={`${loading ? 'Loading' : groupCounts.received} received`}
+        >
+          {loading ? '…' : groupCounts.received}
+        </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>
 
@@ -276,6 +317,12 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: 
         <span className="team-landing-copy">
           <strong>Consolidated</strong>
           <em>View reconciled orders</em>
+        </span>
+        <span
+          className={`team-landing-badge${groupCounts.consolidated === 0 ? ' is-zero' : ''}`}
+          aria-label={`${loading ? 'Loading' : groupCounts.consolidated} consolidated`}
+        >
+          {loading ? '…' : groupCounts.consolidated}
         </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>
