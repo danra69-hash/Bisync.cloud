@@ -699,7 +699,38 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                   Company-level commitment — only these outlets may draw down remaining quantity.
                 </p>
               </div>
-            ) : null}
+            ) : (
+              <div className="sm:col-span-2">
+                <p className="text-muted-foreground">Delivery location</p>
+                {order.deliveryLocation ? (
+                  <>
+                    <p className="font-medium mt-0.5">{order.deliveryLocation.name}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                      {[
+                        order.deliveryLocation.addressLine1,
+                        order.deliveryLocation.addressLine2,
+                        [
+                          order.deliveryLocation.city,
+                          order.deliveryLocation.stateProvince,
+                          order.deliveryLocation.postcode,
+                        ].filter(Boolean).join(', '),
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-0.5 leading-relaxed">
+                      {(order.locationExternalIds?.length)
+                        ? order.locationExternalIds.join(', ')
+                        : '—'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Outlet location (no alternate delivery location selected)
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
             <div>
               <p className="text-muted-foreground">Initiated by</p>
               <p className="mt-0.5">{order.initiatedBy || '—'}</p>

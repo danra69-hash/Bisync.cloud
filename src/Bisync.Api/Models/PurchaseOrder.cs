@@ -19,6 +19,11 @@ public class PurchaseOrder
     /// For pre-committed masters: locations allowed to draw down from this company-level commitment.
     /// </summary>
     public string LocationIdsJson { get; set; } = "[]";
+    /// <summary>
+    /// Optional ship-to <see cref="DeliveryLocation.ExternalId"/>. When set, PO/PDF show this
+    /// address instead of the outlet <see cref="Location"/> address. Stock still uses LocationIdsJson.
+    /// </summary>
+    public string DeliveryLocationExternalId { get; set; } = string.Empty;
     public string InitiatedBy { get; set; } = string.Empty;
     public string ApprovedBy { get; set; } = string.Empty;
     public DateTime? ApprovedAt { get; set; }

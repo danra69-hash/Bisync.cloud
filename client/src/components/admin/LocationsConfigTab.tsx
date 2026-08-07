@@ -7,7 +7,7 @@ import { SortableTableHeaderRow, TableColGroup, ColGroup, tableColWidth, type So
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { ImagePlus, Plus, X } from 'lucide-react';
-import { api, type Company, type LocationConfig, type AppUser } from '../../api';
+import { api, type Company, type DeliveryLocation, type LocationConfig, type AppUser } from '../../api';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
 import type { AddressParts } from '../../utils/countryFormat';
@@ -278,6 +278,20 @@ function LocationPanel({
   const [deliveryPeriods, setDeliveryPeriods] = useState<DeliveryAllowPeriod[]>(() =>
     parseDeliveryAllowPeriodsJson(location.deliveryAllowPeriodsJson),
   );
+  const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>([]);
+  const [deliveryLocationsLoading, setDeliveryLocationsLoading] = useState(false);
+  const [deliveryFormOpen, setDeliveryFormOpen] = useState(false);
+  const [editingDeliveryId, setEditingDeliveryId] = useState<number | null>(null);
+  const [deliveryForm, setDeliveryForm] = useState({
+    name: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    stateProvince: '',
+    postcode: '',
+  });
+  const [deliverySaving, setDeliverySaving] = useState(false);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [overlayCloseArmed, setOverlayCloseArmed] = useState(false);
@@ -303,6 +317,126 @@ function LocationPanel({
     const timer = window.setTimeout(() => setOverlayCloseArmed(true), 300);
     return () => window.clearTimeout(timer);
   }, [location.id, isNew]);
+
+  useEffect(() => {
+    if (isNew || !location.externalId) {
+      setDeliveryLocations([]);
+      setDeliveryFormOpen(false);
+      setEditingDeliveryId(null);
+      return;
+    }
+    let cancelled = false;
+    setDeliveryLocationsLoading(true);
+    setDeliveryError(null);
+    void api.locationDeliveryLocations(location.externalId, { includeInactive: true })
+      .then(rows => {
+        if (!cancelled) setDeliveryLocations(Array.isArray(rows) ? rows.filter(r => r.active !== false) : []);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setDeliveryLocations([]);
+          setDeliveryError(err instanceof Error ? err.message : 'Unable to load delivery locations.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDeliveryLocationsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isNew, location.externalId, location.id]);
+
+  function openNewDeliveryForm() {
+    setEditingDeliveryId(null);
+    setDeliveryForm({
+      name: '',
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      stateProvince: '',
+      postcode: '',
+    });
+    setDeliveryError(null);
+    setDeliveryFormOpen(true);
+  }
+
+  function openEditDeliveryForm(row: DeliveryLocation) {
+    setEditingDeliveryId(row.id);
+    setDeliveryForm({
+      name: row.name ?? '',
+      addressLine1: row.addressLine1 ?? '',
+      addressLine2: row.addressLine2 ?? '',
+      city: row.city ?? '',
+      stateProvince: row.stateProvince ?? '',
+      postcode: row.postcode ?? '',
+    });
+    setDeliveryError(null);
+    setDeliveryFormOpen(true);
+  }
+
+  async function saveDeliveryLocation() {
+    if (!location.externalId) return;
+    const name = deliveryForm.name.trim();
+    if (!name) {
+      setDeliveryError('Name of Delivery Location is required.');
+      return;
+    }
+    const addressError = getAddressValidationError(country.code, {
+      addressLine1: deliveryForm.addressLine1,
+      addressLine2: deliveryForm.addressLine2,
+      city: deliveryForm.city,
+      stateProvince: deliveryForm.stateProvince,
+      postcode: deliveryForm.postcode,
+    });
+    if (addressError) {
+      setDeliveryError(addressError);
+      return;
+    }
+    setDeliverySaving(true);
+    setDeliveryError(null);
+    const payload = {
+      name,
+      addressLine1: deliveryForm.addressLine1.trim(),
+      addressLine2: deliveryForm.addressLine2.trim(),
+      city: deliveryForm.city.trim(),
+      stateProvince: deliveryForm.stateProvince.trim(),
+      postcode: deliveryForm.postcode.trim(),
+      active: true,
+    };
+    try {
+      if (editingDeliveryId != null) {
+        const updated = await api.updateDeliveryLocation(editingDeliveryId, payload);
+        setDeliveryLocations(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+      } else {
+        const created = await api.createDeliveryLocation(location.externalId, payload);
+        setDeliveryLocations(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+      setDeliveryFormOpen(false);
+      setEditingDeliveryId(null);
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Failed to save delivery location.');
+    } finally {
+      setDeliverySaving(false);
+    }
+  }
+
+  async function removeDeliveryLocation(row: DeliveryLocation) {
+    if (!window.confirm(`Remove delivery location “${row.name}”?`)) return;
+    setDeliverySaving(true);
+    setDeliveryError(null);
+    try {
+      await api.deleteDeliveryLocation(row.id);
+      setDeliveryLocations(prev => prev.filter(r => r.id !== row.id));
+      if (editingDeliveryId === row.id) {
+        setDeliveryFormOpen(false);
+        setEditingDeliveryId(null);
+      }
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Failed to remove delivery location.');
+    } finally {
+      setDeliverySaving(false);
+    }
+  }
 
   useEffect(() => {
     setForm({
@@ -1247,6 +1381,150 @@ function LocationPanel({
                   Add period
                 </button>
               </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground">Delivery locations</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                  Alternate ship-to addresses for purchase orders. When selected on a PO, the delivery
+                  location is shown instead of this outlet address.
+                </p>
+              </div>
+              {!isNew && location.externalId ? (
+                <button
+                  type="button"
+                  onClick={openNewDeliveryForm}
+                  disabled={deliverySaving}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold border border-border hover:bg-muted shrink-0 disabled:opacity-50"
+                >
+                  <Plus size={12} />
+                  Add Delivery location
+                </button>
+              ) : null}
+            </div>
+
+            {isNew ? (
+              <p className="text-[11px] text-muted-foreground">
+                Save the location first, then add delivery locations.
+              </p>
+            ) : null}
+
+            {deliveryLocationsLoading ? (
+              <p className="text-[11px] text-muted-foreground">Loading delivery locations…</p>
+            ) : null}
+
+            {!isNew && !deliveryLocationsLoading && deliveryLocations.length === 0 && !deliveryFormOpen ? (
+              <p className="text-[11px] text-muted-foreground">No delivery locations yet.</p>
+            ) : null}
+
+            {deliveryLocations.length > 0 ? (
+              <ul className="space-y-2">
+                {deliveryLocations.map(row => (
+                  <li
+                    key={row.id}
+                    className="rounded-md border border-border bg-muted/10 px-3 py-2 flex items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground">{row.name}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                        {[row.addressLine1, row.addressLine2, [row.city, row.stateProvince, row.postcode].filter(Boolean).join(', ')]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEditDeliveryForm(row)}
+                        disabled={deliverySaving}
+                        className="px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeDeliveryLocation(row)}
+                        disabled={deliverySaving}
+                        className="px-2 py-1 rounded-md border border-destructive/30 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {deliveryFormOpen ? (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-3">
+                <p className="text-xs font-semibold text-foreground">
+                  {editingDeliveryId != null ? 'Edit Delivery location' : 'Add Delivery location'}
+                </p>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Name of Delivery Location
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    value={deliveryForm.name}
+                    onChange={e => setDeliveryForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g. Weissbrau Store"
+                    disabled={deliverySaving}
+                  />
+                </div>
+                <CountryAddressFields
+                  countryCode={country.code}
+                  value={{
+                    addressLine1: deliveryForm.addressLine1,
+                    addressLine2: deliveryForm.addressLine2,
+                    city: deliveryForm.city,
+                    stateProvince: deliveryForm.stateProvince,
+                    postcode: deliveryForm.postcode,
+                  }}
+                  onChange={(next: AddressParts) => setDeliveryForm(prev => ({
+                    ...prev,
+                    addressLine1: next.addressLine1,
+                    addressLine2: next.addressLine2,
+                    city: next.city,
+                    stateProvince: next.stateProvince,
+                    postcode: next.postcode,
+                  }))}
+                  showErrors={Boolean(deliveryError)}
+                  layout="compact"
+                />
+                {deliveryError ? (
+                  <p className="text-xs text-destructive" role="alert">{deliveryError}</p>
+                ) : null}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryFormOpen(false);
+                      setEditingDeliveryId(null);
+                      setDeliveryError(null);
+                    }}
+                    disabled={deliverySaving}
+                    className="text-xs font-sans border border-border rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveDeliveryLocation()}
+                    disabled={deliverySaving}
+                    className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-1.5 disabled:opacity-50"
+                  >
+                    {deliverySaving ? 'Saving…' : editingDeliveryId != null ? 'Save Delivery location' : 'Add Delivery location'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {deliveryError && !deliveryFormOpen ? (
+              <p className="text-xs text-destructive" role="alert">{deliveryError}</p>
             ) : null}
           </div>
 

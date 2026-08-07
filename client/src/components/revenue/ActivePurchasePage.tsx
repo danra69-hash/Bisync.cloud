@@ -8,7 +8,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_COL_ACTION } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { RefreshCw } from 'lucide-react';
-import { api, type PurchaseOrder } from '../../api';
+import { api, type DeliveryLocation, type PurchaseOrder } from '../../api';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { ActivePurchasePanel } from './ActivePurchasePanel';
@@ -17,6 +17,7 @@ import {
   resolvePurchaseOrderStatusLabel,
 } from '../../data/purchaseOrderStatus';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+import { filterSelectCls } from '../layout/formControls';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -37,6 +38,7 @@ type ActivePurchaseSortColumn =
   | 'type'
   | 'number'
   | 'vendor'
+  | 'shipTo'
   | 'ordered'
   | 'delivery'
   | 'items'
@@ -45,16 +47,26 @@ type ActivePurchaseSortColumn =
   | 'action';
 
 const ACTIVE_PURCHASE_TABLE_COLUMNS: SortableColumnDef<ActivePurchaseSortColumn>[] = [
-  { key: 'type', label: 'Type', ...tableColWidth('8%') },
-  { key: 'number', label: 'Number', ...tableColWidth('12%') },
-  { key: 'vendor', label: 'Vendor', ...tableColWidth('16%') },
-  { key: 'ordered', label: 'Ordered', ...tableColWidth('11%') },
-  { key: 'delivery', label: 'Delivery', ...tableColWidth('11%') },
-  { key: 'items', label: 'Items', align: 'right', ...tableColWidth('7%') },
-  { key: 'total', label: 'Total', align: 'right', ...tableColWidth('10%') },
-  { key: 'status', label: 'Status', ...tableColWidth('12%') },
+  { key: 'type', label: 'Type', ...tableColWidth('7%') },
+  { key: 'number', label: 'Number', ...tableColWidth('11%') },
+  { key: 'vendor', label: 'Vendor', ...tableColWidth('13%') },
+  { key: 'shipTo', label: 'Delivery location', ...tableColWidth('14%') },
+  { key: 'ordered', label: 'Ordered', ...tableColWidth('9%') },
+  { key: 'delivery', label: 'Delivery', ...tableColWidth('9%') },
+  { key: 'items', label: 'Items', align: 'right', ...tableColWidth('6%') },
+  { key: 'total', label: 'Total', align: 'right', ...tableColWidth('9%') },
+  { key: 'status', label: 'Status', ...tableColWidth('11%') },
   { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
 ];
+
+function shipToLabel(order: PurchaseOrder, outletsById: Map<string, string>): string {
+  if (order.deliveryLocation?.name?.trim()) return order.deliveryLocation.name.trim();
+  const ids = order.locationExternalIds ?? [];
+  if (ids.length === 0) return '—';
+  const names = ids.map(id => outletsById.get(id) || id);
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1}`;
+}
 
 const SUMMARY_BOXES: {
   id: SummaryBucket;
@@ -147,13 +159,20 @@ export function resolveActivePurchaseBucket(order: PurchaseOrder): SummaryBucket
   return null;
 }
 
-export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Props) {
+export function ActivePurchasePage({
+  selectedCompanyId,
+  selectedLocationIds = [],
+  embedded = false,
+}: Props) {
   const { rm } = useCountryFormatters();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<SummaryBucket | null>(null);
+  const [deliveryLocationFilter, setDeliveryLocationFilter] = useState('');
+  const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>([]);
+  const [outletNameById, setOutletNameById] = useState<Map<string, string>>(() => new Map());
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ActivePurchaseSortColumn>();
 
   const loadOrders = useCallback(async () => {
@@ -176,6 +195,45 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
   }, [loadOrders]);
 
   useEffect(() => {
+    if (!selectedCompanyId) {
+      setDeliveryLocations([]);
+      setOutletNameById(new Map());
+      setDeliveryLocationFilter('');
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      api.deliveryLocations({
+        companyId: selectedCompanyId,
+        locationExternalIds: selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
+      }),
+      api.locations(),
+    ])
+      .then(([dls, locs]) => {
+        if (cancelled) return;
+        setDeliveryLocations(Array.isArray(dls) ? dls : []);
+        const map = new Map<string, string>();
+        for (const loc of Array.isArray(locs) ? locs : []) {
+          if (loc.companyId != null && loc.companyId !== selectedCompanyId) continue;
+          map.set(loc.externalId, loc.name);
+        }
+        setOutletNameById(map);
+        setDeliveryLocationFilter(prev => (
+          prev && (Array.isArray(dls) ? dls : []).some(d => d.externalId === prev) ? prev : ''
+        ));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDeliveryLocations([]);
+          setOutletNameById(new Map());
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId, selectedLocationIds]);
+
+  useEffect(() => {
     function handleVisibilityRefresh() {
       if (document.visibilityState === 'visible') {
         void loadOrders();
@@ -196,9 +254,14 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     setSelectedOrderId(null);
   }, [selectedCompanyId, resetSort]);
 
+  const filteredOrders = useMemo(() => {
+    if (!deliveryLocationFilter) return orders;
+    return orders.filter(o => o.deliveryLocationExternalId === deliveryLocationFilter);
+  }, [orders, deliveryLocationFilter]);
+
   const selectedOrder = useMemo(
-    () => orders.find(o => o.id === selectedOrderId) ?? null,
-    [orders, selectedOrderId],
+    () => filteredOrders.find(o => o.id === selectedOrderId) ?? orders.find(o => o.id === selectedOrderId) ?? null,
+    [filteredOrders, orders, selectedOrderId],
   );
 
   const bucketed = useMemo(() => {
@@ -209,12 +272,12 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
       reconciled: [],
       pre_committed: [],
     };
-    for (const order of orders) {
+    for (const order of filteredOrders) {
       const bucket = resolveActivePurchaseBucket(order);
       if (bucket) map[bucket].push(order);
     }
     return map;
-  }, [orders]);
+  }, [filteredOrders]);
 
   const summaryOrders = useMemo(
     () => (selectedBucket ? bucketed[selectedBucket] : []),
@@ -231,6 +294,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
           type: o => documentTypeLabel(o),
           number: o => o.poNumber,
           vendor: o => o.vendorName,
+          shipTo: o => shipToLabel(o, outletNameById),
           ordered: o => o.orderDate,
           delivery: o => o.deliveryDate,
           items: o => o.items.length,
@@ -239,7 +303,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         },
         { tieBreaker: (a, b) => compareSortValues(a.poNumber, b.poNumber) },
       ),
-    [summaryOrders, sortColumn, sortDirection],
+    [summaryOrders, sortColumn, sortDirection, outletNameById],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -281,7 +345,26 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
   return (
     <div className={pageShellClass({ embedded })}>
       <PageStickyFilters opaque className="py-2">
-        <div className="flex items-start justify-end gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-[12rem] max-w-xs flex-1">
+            <label htmlFor="active-po-delivery-location-filter" className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+              Delivery location
+            </label>
+            <select
+              id="active-po-delivery-location-filter"
+              value={deliveryLocationFilter}
+              onChange={e => setDeliveryLocationFilter(e.target.value)}
+              disabled={!selectedCompanyId}
+              className={`${filterSelectCls} mt-1 w-full`}
+            >
+              <option value="">All (outlet or delivery)</option>
+              {deliveryLocations.map(dl => (
+                <option key={dl.externalId} value={dl.externalId}>
+                  {dl.name}{dl.city ? ` · ${dl.city}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             type="button"
             onClick={() => void loadOrders()}
@@ -353,10 +436,10 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
               </thead>
               <tbody>
                 {loading && summaryOrders.length === 0 ? (
-                  <TableLoadingRow colSpan={9} label="Loading…" />
+                  <TableLoadingRow colSpan={10} label="Loading…" />
                 ) : summaryOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
                       {activeBox.empty}
                     </td>
                   </tr>
@@ -370,6 +453,16 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                       <td className={tdCls}>{documentTypeLabel(order)}</td>
                       <td className={`${tdCls} font-sans text-primary`}>{order.poNumber}</td>
                       <td className={tdCls}>{order.vendorName}</td>
+                      <td className={tdCls}>
+                        <p className="font-medium">{shipToLabel(order, outletNameById)}</p>
+                        {order.deliveryLocation ? (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {[order.deliveryLocation.city, order.deliveryLocation.postcode].filter(Boolean).join(' · ') || 'Delivery location'}
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Outlet</p>
+                        )}
+                      </td>
                       <td className={`${tdCls} font-sans text-muted-foreground`}>{order.orderDate}</td>
                       <td className={`${tdCls} font-sans text-muted-foreground`}>{order.deliveryDate}</td>
                       <td className={tdCls}>{order.items.length}</td>
@@ -382,7 +475,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                   ))
                 )}
                 <InfiniteScrollTableSentinel
-                  colSpan={9}
+                  colSpan={10}
                   hasMore={hasMore}
                   onLoadMore={loadMore}
                   nextPageSize={nextPageSize}
