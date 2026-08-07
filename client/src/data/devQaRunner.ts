@@ -110,6 +110,10 @@ export type PowerQaContext = {
   b2bCustomerExternalId?: string;
   b2bSalesOrderId?: number;
   promotionId?: number;
+  /** Delivery location under restaurant outlet (ship-to). */
+  deliveryLocationId?: number;
+  deliveryLocationExternalId?: string;
+  storeRequisitionId?: number;
 };
 
 type TaskUpdate = (patch: Partial<QaTaskResult>) => void;
@@ -229,6 +233,17 @@ function deliveryJson(orderUnit = 'Kg', orderQty = 1): string {
   });
 }
 
+/** Default Alternate Component UOM used by QA seeds (1 Bag = 10 Kg PCU). */
+const QA_ALT_RECIPE_UNITS = [{ unit: 'Bag', fromQty: '1', qty: '10' }] as const;
+
+const VENDOR_LOCALITIES = [
+  { city: 'Kuala Lumpur', state: 'Wilayah Persekutuan' },
+  { city: 'Kuala Lumpur', state: 'Wilayah Persekutuan' },
+  { city: 'Shah Alam', state: 'Selangor' },
+  { city: 'Petaling Jaya', state: 'Selangor' },
+  { city: 'George Town', state: 'Pulau Pinang' },
+] as const;
+
 function tagDetailJson(opts: {
   catalogId: string;
   vendorName: string;
@@ -240,6 +255,7 @@ function tagDetailJson(opts: {
   const uom = opts.uom ?? 'Kg';
   return serializeDetailConfig({
     ...EMPTY_COMPONENT_DETAIL_CONFIG,
+    altRecipeUnits: [...QA_ALT_RECIPE_UNITS],
     taggedVendorProductIds: [opts.catalogId],
     vendorProductPrincipalQty: { [opts.catalogId]: '1' },
     vendorProductLossYield: { [opts.catalogId]: '0' },
@@ -274,6 +290,8 @@ async function createOneComponentBundle(
   const unitPrice = 4 + index; // 4..8
   const catalogName = `${COMPONENT_NAMES[index]} Pack`;
 
+  const locality = VENDOR_LOCALITIES[index] ?? VENDOR_LOCALITIES[0];
+
   const ingredient = await api.createIngredient({
     componentId: '',
     name,
@@ -287,7 +305,10 @@ async function createOneComponentBundle(
     orderFreqDays: 7,
     storageJson: JSON.stringify(['Dry Store']),
     storageNote: 'QA automated component',
-    detailConfigJson: serializeDetailConfig(EMPTY_COMPONENT_DETAIL_CONFIG),
+    detailConfigJson: serializeDetailConfig({
+      ...EMPTY_COMPONENT_DETAIL_CONFIG,
+      altRecipeUnits: [...QA_ALT_RECIPE_UNITS],
+    }),
     attachedProducts: 0,
     attachedVendors: 0,
     active: true,
@@ -300,8 +321,8 @@ async function createOneComponentBundle(
     type: 'offline',
     brn: `QA${suffix}`,
     products: catalogName,
-    city: 'Kuala Lumpur',
-    state: 'Wilayah Persekutuan',
+    city: locality.city,
+    state: locality.state,
     postcode: '50000',
     address: `${index + 1} QA Industrial Park`,
     contactPerson: `${VENDOR_SUFFIX[index]} Contact`,
@@ -1494,7 +1515,7 @@ const BASE_TASKS: TaskDef[] = [
 
       const stockRows = await api.stockCards(ctx.companyId, locIds, {
         itemType: 'component',
-        uomMode: 'inventory',
+        uomMode: 'recipe',
         period,
       });
       const qaComponentIds = new Set(ctx.components.map(c => c.componentId));
@@ -1517,7 +1538,7 @@ const BASE_TASKS: TaskDef[] = [
         companyId: ctx.companyId,
         locationIds: locIds.join(','),
         periodMonth: period,
-        uomMode: 'inventory',
+        uomMode: 'recipe',
         itemTypeFilter: 'component',
         groupFilter: 'All',
         countDate: todayIso(),
@@ -1536,7 +1557,7 @@ const BASE_TASKS: TaskDef[] = [
 
       const summary = await api.cogsAuditSummary(ctx.companyId, locIds, {
         period,
-        uomMode: 'inventory',
+        uomMode: 'recipe',
         itemType: 'component',
       });
       const history = await api.cogsAuditSystemHistory(50);

@@ -108,6 +108,16 @@ const GUIDES: Record<string, QaIssueGuide> = {
     ],
     checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
   },
+  'sysconfig-delivery-locations': {
+    area: "System Configuration",
+    expected: "Create delivery location under restaurant outlet completes and lists under the outlet.",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Check Locations → Delivery Locations API and restaurant outlet external id.',
+      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
+    ],
+    checks: ['Delivery location id/externalId set', 'Listed under restaurant outlet', 'Facts populated'],
+  },
   'create-first-component-vendor': {
     area: "Component \u00b7 My Component",
     expected: "Add Component + Vendor + Vendor Product (seed #1) completes without error and records verification facts.",
@@ -130,23 +140,23 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'component-download-template': {
     area: "Component \u00b7 My Component",
-    expected: "Download My Component CSV template (export) completes without error and records verification facts.",
+    expected: "CSV template exports Principal Component + Alternate Component Unit headers and no legacy Inventory UOM column.",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
+      'Check SMART_COMPONENT_TEMPLATE_HEADERS / My Component export.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Principal Component header present', 'Alternate Component Unit 1 present', 'No Inventory UOM header'],
   },
   'component-upload-import': {
     area: "Component \u00b7 My Component",
-    expected: "Upload / import My Component CSV (create via plan) completes without error and records verification facts.",
+    expected: "CSV import creates a component with Principal Component Unit and Alternate Component UOM (Bag).",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
+      'Check CSV parse/import plan and altRecipeUnits persistence.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Import plan create exists', 'Alternate Bag parsed', 'Component created'],
   },
   'component-edit-par-stock': {
     area: "Component \u00b7 My Component",
@@ -167,6 +177,36 @@ const GUIDES: Record<string, QaIssueGuide> = {
       'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
     ],
     checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+  },
+  'component-alternate-uoms': {
+    area: "Component \u00b7 My Component",
+    expected: "Seeded components expose Principal Component Unit plus Alternate Component UOMs (Bag/Tin), with no Inventory UOM model.",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Check ingredient detailConfigJson.altRecipeUnits and My Component UOM editor.',
+      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
+    ],
+    checks: ['Bag alternate present (1=10 Kg)', 'Tin alternate persisted', 'Facts populated'],
+  },
+  'component-tag-suggestions': {
+    area: "Component \u00b7 My Component",
+    expected: "Tag suggestions counts/list APIs respond with minProbability ≥ 50% for a seeded component name.",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Check /api/tag-suggestions and rebuild job for empty suggestion corpus.',
+      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
+    ],
+    checks: ['Counts response valid', 'minProbability ≥ 0.5', 'Suggestions array present (may be empty)'],
+  },
+  'vendor-listings-state-city-filter': {
+    area: "Vendors",
+    expected: "QA vendors span ≥2 states/cities and State→City cascade filtering matches Vendor Listings behavior.",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Confirm vendor address city/state on seeded vendors and Vendor Listings filters.',
+      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
+    ],
+    checks: ['≥2 states and cities among QA vendors', 'Selangor filter returns rows', 'City cascade non-empty'],
   },
   'vendor-compare-price': {
     area: "Vendors",
@@ -328,6 +368,36 @@ const GUIDES: Record<string, QaIssueGuide> = {
     ],
     checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
   },
+  'order-with-delivery-location': {
+    area: "Operation \u00b7 Order",
+    expected: "PO created with ship-to deliveryLocationExternalId matching the restaurant delivery location.",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Check createPurchaseOrders deliveryLocationExternalId and prior delivery-location step.',
+      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
+    ],
+    checks: ['PO created', 'Ship-to matches delivery location', 'Facts populated'],
+  },
+  'order-store-requisition-flow': {
+    area: "Operation \u00b7 Order",
+    expected: "Central Store activated; outlet Store Requisition created, issued, and received (Active Requisition).",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Check Central Store activation and /api/central-store/requisitions issue/receive.',
+      'Ensure store location has stock from prior PO receive steps.',
+    ],
+    checks: ['Central Store active', 'Status becomes received', 'Listed under outlet requisitions'],
+  },
+  'team-rms-po-counts': {
+    area: "Operation \u00b7 Order",
+    expected: "Team RMS PO bucket counts (to-approve / active / received) reconcile against QA purchase orders.",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Compare Team RMS landing counts with /api/purchaseorders statuses.',
+      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
+    ],
+    checks: ['QA PO ids found', 'Bucket totals match', 'Facts populated'],
+  },
   'verify-stock-after-po': {
     area: "Operation \u00b7 Inventory",
     expected: "Verify STOCK CARD after PO receipts completes without error and records verification facts.",
@@ -380,13 +450,13 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'inventory-adjustment': {
     area: "Operation \u00b7 Inventory",
-    expected: "Stock Card inventory adjustment completes without error and records verification facts.",
+    expected: "Stock Card adjustment completes in Principal Component Unit mode (uomMode=recipe).",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
+      'Confirm Stock Card / adjustment APIs use Principal Component Unit, not legacy Inventory UOM.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Adjustment accepted', 'uomMode recipe', 'Facts populated'],
   },
   'produce-and-pos-sales': {
     area: "Operation \u00b7 Production",
