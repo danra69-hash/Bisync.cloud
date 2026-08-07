@@ -5,6 +5,7 @@ import { api } from '../../api';
 import {
   applyVendorProductOverrides,
   formatDeliveryUnitPath,
+  refreshVendorProductCatalog,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
 import { resolveTaggedProductsForComponent } from '../../data/createOrder';
@@ -33,6 +34,18 @@ type Props = {
 
 type Option = ReceiveAddProductSelection & { lineKey: string };
 
+function vendorMatches(
+  product: VendorProductCatalogItem,
+  vendorExternalId: string,
+  vendorName: string,
+): boolean {
+  const id = vendorExternalId.trim().toLowerCase();
+  if (id && product.vendorExternalId.trim().toLowerCase() === id) return true;
+  const name = vendorName.trim().toLowerCase();
+  if (name && product.vendorName.trim().toLowerCase() === name) return true;
+  return false;
+}
+
 export function ReceiveAddProductModal({
   companyId,
   vendorExternalId,
@@ -47,6 +60,7 @@ export function ReceiveAddProductModal({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [options, setOptions] = useState<Option[]>([]);
+  const [resolvedVendorId, setResolvedVendorId] = useState(vendorExternalId.trim());
 
   useEffect(() => {
     let cancelled = false;
@@ -54,34 +68,63 @@ export function ReceiveAddProductModal({
     setError(null);
     void (async () => {
       try {
-        const ingredients = await api.ingredients(
-          companyId ?? undefined,
-          locationIds.length > 0 ? locationIds : undefined,
-        );
-        if (cancelled) return;
-        const catalog = applyVendorProductOverrides();
-        const rows = ingredients.map(ingredientToRow);
-        const next: Option[] = [];
-        for (const component of rows) {
-          const tagged = resolveTaggedProductsForComponent(component, catalog, {
-            vendorExternalId: vendorExternalId || undefined,
-            locationIds,
-          });
-          const detail = resolveDetailConfigForRow(component);
-          for (const product of tagged) {
-            const componentUom = detail.vendorProductComponentUom[product.id]
-              || fromApiUom(component.recipeUOM)
-              || component.inventoryUOM
-              || '';
-            next.push({
-              lineKey: `${component.componentId}::${product.id}`,
-              product,
-              componentId: component.componentId,
-              componentName: component.name,
-              componentUom,
-            });
+        let vendorId = vendorExternalId.trim();
+        if (!vendorId && vendorName.trim()) {
+          try {
+            const vendors = await api.vendors();
+            const match = vendors.find(
+              v => v.name.trim().toLowerCase() === vendorName.trim().toLowerCase(),
+            );
+            if (match?.externalId) vendorId = match.externalId.trim();
+          } catch {
+            // Catalog can still filter by vendor name.
           }
         }
+        if (!cancelled) setResolvedVendorId(vendorId);
+
+        const [ingredients] = await Promise.all([
+          api.ingredients(
+            companyId ?? undefined,
+            locationIds.length > 0 ? locationIds : undefined,
+          ),
+          refreshVendorProductCatalog(),
+        ]);
+        if (cancelled) return;
+
+        const catalog = applyVendorProductOverrides().filter(p =>
+          vendorMatches(p, vendorId, vendorName),
+        );
+        const rows = ingredients.map(ingredientToRow);
+        const next: Option[] = [];
+        const pushTagged = (scopeLocationIds: string[]) => {
+          for (const component of rows) {
+            const tagged = resolveTaggedProductsForComponent(component, catalog, {
+              vendorExternalId: vendorId || undefined,
+              locationIds: scopeLocationIds.length > 0 ? scopeLocationIds : undefined,
+            }).filter(p => vendorMatches(p, vendorId, vendorName));
+            const detail = resolveDetailConfigForRow(component);
+            for (const product of tagged) {
+              const lineKey = `${component.componentId}::${product.id}`;
+              if (next.some(o => o.lineKey === lineKey)) continue;
+              const componentUom = detail.vendorProductComponentUom[product.id]
+                || fromApiUom(component.recipeUOM)
+                || component.inventoryUOM
+                || '';
+              next.push({
+                lineKey,
+                product,
+                componentId: component.componentId,
+                componentName: component.name,
+                componentUom,
+              });
+            }
+          }
+        };
+
+        // Prefer location-scoped tags; if none, fall back to any tag for this vendor.
+        pushTagged(locationIds);
+        if (next.length === 0) pushTagged([]);
+
         next.sort((a, b) =>
           a.product.productName.localeCompare(b.product.productName)
           || a.componentName.localeCompare(b.componentName),
@@ -97,7 +140,7 @@ export function ReceiveAddProductModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [companyId, vendorExternalId, locationIds.join('|')]);
+  }, [companyId, vendorExternalId, vendorName, locationIds.join('|')]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -114,9 +157,22 @@ export function ReceiveAddProductModal({
     });
   }, [options, search]);
 
+  const hasVendorIdentity = Boolean(resolvedVendorId || vendorName.trim());
+
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40">
-      <div className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl overflow-hidden flex flex-col max-h-[min(90vh,36rem)]">
+    // Above elevated receive panel (z-132/133) so the picker is visible and clickable.
+    <div
+      className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/40"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl overflow-hidden flex flex-col max-h-[min(90vh,36rem)]"
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add product to receive"
+      >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -127,7 +183,7 @@ export function ReceiveAddProductModal({
               Freebies or credit-note replacements from {vendorName || 'this vendor'} that were not on the original order.
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Only tagged vendor products for this vendor at the PO locations are listed. Unit price defaults to 0.
+              Only tagged vendor products for this vendor are listed. Unit price defaults to 0.
             </p>
           </div>
           <button
@@ -148,6 +204,7 @@ export function ReceiveAddProductModal({
               onChange={e => setSearch(e.target.value)}
               placeholder="Search Vendor Product ID, name, or component…"
               className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              autoFocus
             />
           </div>
         </div>
@@ -161,9 +218,9 @@ export function ReceiveAddProductModal({
             <p className="px-5 py-10 text-xs text-red-600 text-center">{error}</p>
           ) : filtered.length === 0 ? (
             <p className="px-5 py-10 text-xs text-muted-foreground text-center">
-              {vendorExternalId
-                ? 'No tagged vendor products for this vendor at the PO locations.'
-                : 'This PO has no vendor id — cannot list catalog products.'}
+              {!hasVendorIdentity
+                ? 'This PO has no vendor — cannot list catalog products.'
+                : 'No tagged vendor products for this vendor. Tag a vendor product to a smart component first, then retry.'}
             </p>
           ) : (
             filtered.map(opt => {

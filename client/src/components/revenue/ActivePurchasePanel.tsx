@@ -594,7 +594,10 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
 
   return createPortal(
     <>
-      <div className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS} onClick={() => !saving && onClose()} />
+      <div
+        className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}
+        onClick={() => !saving && !showAddProduct && onClose()}
+      />
       <aside className={DETAIL_PANEL_SHELL_ELEVATED_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
           <div>
@@ -815,9 +818,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                 <button
                   type="button"
                   onClick={() => setShowAddProduct(true)}
-                  disabled={saving || !order.vendorExternalId}
+                  disabled={saving || !(order.vendorExternalId || order.vendorName)}
                   className="inline-flex items-center gap-1 shrink-0 px-2.5 py-1.5 rounded-md border border-border bg-background text-[11px] font-semibold hover:bg-muted disabled:opacity-50"
-                  title={order.vendorExternalId ? 'Add unordered vendor product' : 'PO has no vendor id'}
+                  title={
+                    order.vendorExternalId || order.vendorName
+                      ? 'Add unordered vendor product (freebie / CN replacement)'
+                      : 'PO has no vendor'
+                  }
                 >
                   <Plus size={12} />
                   Add product
