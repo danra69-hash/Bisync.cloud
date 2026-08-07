@@ -12,6 +12,7 @@ import { Bisync101Button } from '../bisync101/Bisync101Button';
 import { BrandEngineLockup } from './BrandEngineLockup';
 import { NotificationBell } from './NotificationBell';
 import { HeaderOrgClock } from './HeaderOrgClock';
+import { PlatformScreenshotShare } from './PlatformScreenshotShare';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 const optionStyle = { color: '#1a1a1a', background: '#ffffff' };
@@ -142,6 +143,8 @@ export function Header({
         )}
 
         <NotificationBell />
+
+        <PlatformScreenshotShare />
 
         <LanguageSelector />
 

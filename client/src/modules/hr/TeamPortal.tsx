@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  CalendarDays,
-  CheckSquare,
-  ChevronLeft,
-  ChevronRight,
-  Home,
+  Briefcase,
+  ClipboardList,
   LogOut,
   MessageSquare,
   Package,
   Send,
   ShoppingCart,
-  Square,
-  Umbrella,
   X,
 } from 'lucide-react';
 import { hrApi } from './api';
@@ -36,8 +31,15 @@ import {
 } from './teamPin';
 import { punchHrAttendance } from './attendancePunch';
 import { resolveOfficeHoursForDate } from '../../data/companyBusinessHours';
-import { TeamHomeLanding, type TeamAppMode, type HrTab, type RmsTab } from './TeamHomeLanding';
+import { TeamChatsLanding } from './TeamChatsLanding';
+import { TeamMyWorkPage } from './TeamMyWorkPage';
+import { TeamRmsLanding } from './TeamRmsLanding';
+import { TeamOrderPage, TeamStockPage } from './TeamStockPage';
+import { TeamScreenshotShare } from './TeamScreenshotShare';
 import './TeamPortal.css';
+
+/** Permanent Team shell tabs (chats is landing; bottom nav is the other four). */
+export type TeamShellTab = 'chats' | 'my-work' | 'rms' | 'order' | 'stock';
 
 interface TeamPortalProps {
   employees: Employee[];
@@ -57,9 +59,6 @@ interface TeamPortalProps {
 }
 
 type DayInfo = { type: string; label: string };
-type TeamTodo = { id: string; text: string; done: boolean };
-type TeamMessage = { id: string; from: string; body: string; at: string; read: boolean };
-
 type LoginMode = 'password' | 'pin';
 type PortalStep = 'login' | 'change-password' | 'app' | 'settings';
 
@@ -94,63 +93,8 @@ function findEmployee(employees: Employee[], identity: string): Employee | null 
   return employees.find(e => normalizeIdentity(e.employeeCode) === key) ?? null;
 }
 
-function todosKey(employeeId: number) {
-  return `bisync-team-todos-${employeeId}`;
-}
-function messagesKey(employeeId: number) {
-  return `bisync-team-messages-${employeeId}`;
-}
 function pwChangedKey(employeeId: number) {
   return `bisync-team-pw-changed-${employeeId}`;
-}
-
-function loadTodos(employeeId: number): TeamTodo[] {
-  try {
-    const raw = localStorage.getItem(todosKey(employeeId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as TeamTodo[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveTodos(employeeId: number, todos: TeamTodo[]) {
-  localStorage.setItem(todosKey(employeeId), JSON.stringify(todos));
-}
-
-function loadMessages(employeeId: number, employeeName: string): TeamMessage[] {
-  try {
-    const raw = localStorage.getItem(messagesKey(employeeId));
-    if (raw) {
-      const parsed = JSON.parse(raw) as TeamMessage[];
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    /* seed */
-  }
-  const seeded: TeamMessage[] = [
-    {
-      id: 'seed-1',
-      from: 'HR Desk',
-      body: `Welcome to Team, ${employeeName.split(' ')[0]}. Check in by scanning the POS QR when you start your shift.`,
-      at: new Date().toISOString(),
-      read: false,
-    },
-    {
-      id: 'seed-2',
-      from: 'Operations',
-      body: 'Please confirm your leave balance before submitting any new leave request this month.',
-      at: new Date(Date.now() - 86_400_000).toISOString(),
-      read: false,
-    },
-  ];
-  localStorage.setItem(messagesKey(employeeId), JSON.stringify(seeded));
-  return seeded;
-}
-
-function saveMessages(employeeId: number, messages: TeamMessage[]) {
-  localStorage.setItem(messagesKey(employeeId), JSON.stringify(messages));
 }
 
 function parsePosQr(payload: string): { outletInitial: string; date: string; time: string } | null {
@@ -184,9 +128,8 @@ export default function TeamPortal({
   const [settingsError, setSettingsError] = useState('');
   const [settingsBusy, setSettingsBusy] = useState(false);
 
-  const [appMode, setAppMode] = useState<TeamAppMode>('landing');
-  const [hrTab, setHrTab] = useState<HrTab>('home');
-  const [rmsTab, setRmsTab] = useState<RmsTab>('home');
+  const [shellTab, setShellTab] = useState<TeamShellTab>('chats');
+  const [openChatId, setOpenChatId] = useState<number | null>(null);
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [toast, setToast] = useState('');
@@ -198,11 +141,6 @@ export default function TeamPortal({
   const [leaveReason, setLeaveReason] = useState('');
   const [leaveStart, setLeaveStart] = useState(fmt(new Date()));
   const [leaveEnd, setLeaveEnd] = useState(fmt(new Date()));
-
-  const [todos, setTodos] = useState<TeamTodo[]>([]);
-  const [newTodo, setNewTodo] = useState('');
-  const [messages, setMessages] = useState<TeamMessage[]>([]);
-  const [messageTab, setMessageTab] = useState<'todo' | 'inbox'>('todo');
 
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
   const [checkBusy, setCheckBusy] = useState(false);
@@ -239,9 +177,8 @@ export default function TeamPortal({
     setLoginPin('');
     setAuthError('');
     setStep('app');
-    setAppMode('landing');
-    setHrTab('home');
-    setRmsTab('home');
+    setShellTab('chats');
+    setOpenChatId(null);
   };
 
   const doLogin = async (e?: FormEvent) => {
@@ -439,15 +376,12 @@ export default function TeamPortal({
     setAuthError('');
     setLoginMode(loadPinEnrollment() ? 'pin' : 'password');
     setBiometricReady(canShowBiometricLogin());
-    setAppMode('landing');
-    setHrTab('home');
-    setRmsTab('home');
+    setShellTab('chats');
+    setOpenChatId(null);
   };
 
   useEffect(() => {
     if (step !== 'app' || !teamEmp) return;
-    setTodos(loadTodos(teamEmp.id));
-    setMessages(loadMessages(teamEmp.id, teamEmp.name));
     void hrApi.attendance.list(TODAY, TODAY, teamEmp.id)
       .then(rows => setTodayAttendance(rows[0] ?? null))
       .catch(() => setTodayAttendance(null));
@@ -602,37 +536,6 @@ export default function TeamPortal({
   };
 
   useEffect(() => () => stopScanner(), []);
-
-  const addTodo = () => {
-    if (!teamEmp) return;
-    const text = newTodo.trim();
-    if (!text) return;
-    const next = [...todos, { id: `${Date.now()}`, text, done: false }];
-    setTodos(next);
-    saveTodos(teamEmp.id, next);
-    setNewTodo('');
-  };
-
-  const toggleTodo = (id: string) => {
-    if (!teamEmp) return;
-    const next = todos.map(t => (t.id === id ? { ...t, done: !t.done } : t));
-    setTodos(next);
-    saveTodos(teamEmp.id, next);
-  };
-
-  const removeTodo = (id: string) => {
-    if (!teamEmp) return;
-    const next = todos.filter(t => t.id !== id);
-    setTodos(next);
-    saveTodos(teamEmp.id, next);
-  };
-
-  const markMessageRead = (id: string) => {
-    if (!teamEmp) return;
-    const next = messages.map(m => (m.id === id ? { ...m, read: true } : m));
-    setMessages(next);
-    saveMessages(teamEmp.id, next);
-  };
 
   const handleSubmitLeave = async () => {
     if (!teamEmp || submitting) return;
@@ -991,8 +894,6 @@ export default function TeamPortal({
   if (step === 'app' && teamEmp && todayInfo) {
     const monthCells = getMonthCells();
     const monthLabel = new Date(calYear, calMonth, 1).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' });
-    const unread = messages.filter(m => !m.read).length;
-    const openTodos = todos.filter(t => !t.done).length;
 
     return (
       <div className="team-app">
@@ -1000,10 +901,26 @@ export default function TeamPortal({
 
         <div className="team-shell">
           <header className="team-topbar">
-            <img className="team-brand" src="/bisync-logo-white.png" alt="Bisync" />
+            <button
+              type="button"
+              className="team-brand-btn"
+              onClick={() => { setShellTab('chats'); setOpenChatId(null); }}
+              aria-label="Open chats"
+            >
+              <img className="team-brand" src="/bisync-logo-white.png" alt="Bisync" />
+            </button>
             <button type="button" className="team-topbar-meta team-topbar-meta-btn" onClick={openSettings}>
               <strong>{teamEmp.name}</strong>
               <span>{teamEmp.position} · {teamEmp.department}</span>
+            </button>
+            <button
+              type="button"
+              className={`team-topbar-chats${shellTab === 'chats' ? ' is-active' : ''}`}
+              onClick={() => { setShellTab('chats'); setOpenChatId(null); }}
+              aria-label="Chats"
+              title="Chats"
+            >
+              <MessageSquare size={16} />
             </button>
             <button type="button" className="team-topbar-logout" onClick={doLogout}>
               <LogOut size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 4 }} />
@@ -1012,22 +929,17 @@ export default function TeamPortal({
           </header>
 
           <main className="team-main">
-            {todayInfo ? (
-              <TeamHomeLanding
-                mode={appMode}
-                onModeChange={(mode) => {
-                  setAppMode(mode);
-                  if (mode === 'hr') setHrTab('home');
-                  if (mode === 'rms') setRmsTab('home');
-                }}
-                hrTab={hrTab}
-                onHrTabChange={setHrTab}
-                rmsTab={rmsTab}
-                onRmsTabChange={setRmsTab}
+            {shellTab === 'chats' ? (
+              <TeamChatsLanding
+                employeeId={teamEmp.id}
+                employeeName={teamEmp.name}
+                initialConversationId={openChatId}
+                onConversationOpened={(id) => setOpenChatId(id)}
+              />
+            ) : null}
+            {shellTab === 'my-work' ? (
+              <TeamMyWorkPage
                 employee={teamEmp}
-                todayLabel={new Date(`${TODAY}T00:00:00`).toLocaleDateString('en-MY', {
-                  weekday: 'long', day: 'numeric', month: 'short',
-                })}
                 todayInfo={todayInfo}
                 todayAttendance={todayAttendance}
                 nowLabel={nowLabel}
@@ -1037,254 +949,79 @@ export default function TeamPortal({
                 leaveBalance={balance}
                 carryForward={carryForward}
                 leaveRequests={leaveRequests}
-                announcements={messages}
-                onOpenSchedule={() => {
-                  setAppMode('hr');
-                  setHrTab('schedule');
+                onOpenLeaveRequest={() => setShowLeaveModal(true)}
+                calYear={calYear}
+                calMonth={calMonth}
+                onCalPrev={() => {
+                  if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
+                  else setCalMonth(m => m - 1);
                 }}
-                onOpenMessages={() => {
-                  setAppMode('hr');
-                  setMessageTab('inbox');
-                  setHrTab('messages');
+                onCalNext={() => {
+                  if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
+                  else setCalMonth(m => m + 1);
                 }}
-                onOpenLeave={() => {
-                  setAppMode('hr');
-                  setHrTab('leave');
-                }}
-                onMarkAnnouncementRead={markMessageRead}
-                scheduleSlot={(
-                  <section className="team-card">
-                    <div className="team-panel-head">
-                      <button
-                        type="button"
-                        className="team-back-btn"
-                        onClick={() => setAppMode('landing')}
-                      >
-                        <ChevronLeft size={16} />
-                        Team home
-                      </button>
-                    </div>
-                    <div className="team-month-head">
-                      <h3>Month schedule</h3>
-                      <div className="team-month-nav">
-                        <button
-                          type="button"
-                          aria-label="Previous month"
-                          onClick={() => {
-                            if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
-                            else setCalMonth(m => m - 1);
-                          }}
-                        >
-                          <ChevronLeft size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Next month"
-                          onClick={() => {
-                            if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
-                            else setCalMonth(m => m + 1);
-                          }}
-                        >
-                          <ChevronRight size={14} />
-                        </button>
-                      </div>
-                    </div>
-                    <p className="team-muted" style={{ margin: '0 0 8px', fontWeight: 700 }}>{monthLabel}</p>
-                    <div className="team-month-dows">
-                      {DOW_LABELS.map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
-                    </div>
-                    <div className="team-month-grid">
-                      {monthCells.map((cell, idx) => {
-                        if (!cell) return <div key={idx} className="team-month-cell is-empty" />;
-                        const dateStr = fmt(cell);
-                        const info = getDayInfo(dateStr, teamEmp);
-                        const isToday = dateStr === TODAY;
-                        return (
-                          <div key={idx} className={`team-month-cell${isToday ? ' is-today' : ''}`}>
-                            <span className="day">{cell.getDate()}</span>
-                            <span className="shift">{info.label}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                )}
-                leaveSlot={(
-                  <section className="team-card">
-                    <div className="team-panel-head">
-                      <button
-                        type="button"
-                        className="team-back-btn"
-                        onClick={() => setAppMode('landing')}
-                      >
-                        <ChevronLeft size={16} />
-                        Team home
-                      </button>
-                    </div>
-                    <h3>Outstanding leave — {new Date().getFullYear()}</h3>
-                    <div className="team-leave-row">
-                      <span>Annual leave</span>
-                      <strong>
-                        {balance?.alBalance ?? 0}
-                        {carryForward > 0 ? <em> ({carryForward})</em> : null}
-                      </strong>
-                    </div>
-                    {carryForward > 0 ? (
-                      <p className="team-muted" style={{ margin: '0 0 6px', fontSize: 10 }}>Bracket = carry-forward from previous year</p>
-                    ) : null}
-                    <div className="team-leave-row">
-                      <span>RDO</span>
-                      <strong style={{ fontSize: 15 }}>{balance?.rdoBalance ?? 0}</strong>
-                    </div>
-                    <div className="team-leave-row">
-                      <span>RPH</span>
-                      <strong style={{ fontSize: 15 }}>{balance?.rphBalance ?? 0}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="team-btn team-btn-primary"
-                      style={{ marginTop: 12 }}
-                      onClick={() => setShowLeaveModal(true)}
-                    >
-                      Leave request
-                    </button>
-                  </section>
-                )}
-                messagesSlot={(
-                  <section className="team-card">
-                    <div className="team-panel-head">
-                      <button
-                        type="button"
-                        className="team-back-btn"
-                        onClick={() => {
-                          setHrTab('home');
-                        }}
-                      >
-                        <ChevronLeft size={16} />
-                        HR home
-                      </button>
-                    </div>
-                    <h3>Message box</h3>
-                    <div className="team-msg-tabs">
-                      <button type="button" className={messageTab === 'todo' ? 'is-active' : ''} onClick={() => setMessageTab('todo')}>
-                        To Do{openTodos > 0 ? ` (${openTodos})` : ''}
-                      </button>
-                      <button type="button" className={messageTab === 'inbox' ? 'is-active' : ''} onClick={() => setMessageTab('inbox')}>
-                        Messages{unread > 0 ? ` (${unread})` : ''}
-                      </button>
-                    </div>
-                    {messageTab === 'todo' ? (
-                      <>
-                        <div className="team-add-row">
-                          <input
-                            value={newTodo}
-                            onChange={e => setNewTodo(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && addTodo()}
-                            placeholder="Add a to-do for today…"
-                          />
-                          <button type="button" className="team-btn team-btn-primary" style={{ width: 'auto' }} onClick={addTodo}>Add</button>
-                        </div>
-                        {todos.length === 0 ? (
-                          <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No to-dos yet.</p>
-                        ) : todos.map(t => (
-                          <div key={t.id} className={`team-todo-row${t.done ? ' is-done' : ''}`}>
-                            <button type="button" className="team-btn-ghost" onClick={() => toggleTodo(t.id)} aria-label="Toggle">
-                              {t.done ? <CheckSquare size={16} /> : <Square size={16} />}
-                            </button>
-                            <span style={{ flex: 1 }}>{t.text}</span>
-                            <button type="button" className="team-btn-ghost" onClick={() => removeTodo(t.id)} aria-label="Remove">
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      messages.length === 0 ? (
-                        <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No messages.</p>
-                      ) : messages.map(m => (
-                        <button
-                          key={m.id}
-                          type="button"
-                          className="team-inbox-row"
-                          style={{ width: '100%', background: m.read ? 'transparent' : 'color-mix(in srgb, var(--team-primary-soft) 55%, transparent)', border: 0, textAlign: 'left', cursor: 'pointer' }}
-                          onClick={() => markMessageRead(m.id)}
-                        >
-                          <MessageSquare size={14} style={{ marginTop: 2, color: 'var(--team-primary)' }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                              <strong style={{ fontSize: 12 }}>{m.from}</strong>
-                              <span className="team-muted" style={{ fontSize: 10 }}>
-                                {new Date(m.at).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--team-muted-fg)' }}>{m.body}</p>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </section>
-                )}
+                monthLabel={monthLabel}
+                monthCells={monthCells}
+                getDayInfo={getDayInfo}
+                todayKey={TODAY}
+                fmt={fmt}
+                dowLabels={DOW_LABELS}
               />
+            ) : null}
+            {shellTab === 'rms' ? (
+              <TeamRmsLanding showBack={false} />
+            ) : null}
+            {shellTab === 'order' ? (
+              <TeamOrderPage employeeName={teamEmp.name} />
+            ) : null}
+            {shellTab === 'stock' ? (
+              <TeamStockPage />
             ) : null}
           </main>
 
-          {appMode === 'hr' ? (
-            <nav className="team-bottom-nav" aria-label="HR">
-              <button
-                type="button"
-                className={hrTab === 'home' ? 'is-active' : ''}
-                onClick={() => setHrTab('home')}
-              >
-                <Home />
-                <span>Home</span>
-              </button>
-              <button
-                type="button"
-                className={hrTab === 'schedule' ? 'is-active' : ''}
-                onClick={() => setHrTab('schedule')}
-              >
-                <CalendarDays />
-                <span>Schedule</span>
-              </button>
-              <button
-                type="button"
-                className={hrTab === 'leave' ? 'is-active' : ''}
-                onClick={() => setHrTab('leave')}
-              >
-                <Umbrella />
-                <span>Leave Request</span>
-              </button>
-            </nav>
-          ) : null}
+          <nav className="team-bottom-nav team-bottom-nav-4" aria-label="Team">
+            <button
+              type="button"
+              className={shellTab === 'my-work' ? 'is-active' : ''}
+              onClick={() => setShellTab('my-work')}
+            >
+              <Briefcase />
+              <span>My Work</span>
+            </button>
+            <button
+              type="button"
+              className={shellTab === 'rms' ? 'is-active' : ''}
+              onClick={() => setShellTab('rms')}
+            >
+              <ClipboardList />
+              <span>RMS</span>
+            </button>
+            <button
+              type="button"
+              className={shellTab === 'order' ? 'is-active' : ''}
+              onClick={() => setShellTab('order')}
+            >
+              <ShoppingCart />
+              <span>Order</span>
+            </button>
+            <button
+              type="button"
+              className={shellTab === 'stock' ? 'is-active' : ''}
+              onClick={() => setShellTab('stock')}
+            >
+              <Package />
+              <span>Stock</span>
+            </button>
+          </nav>
 
-          {appMode === 'rms' ? (
-            <nav className="team-bottom-nav" aria-label="Revenue Management">
-              <button
-                type="button"
-                className={rmsTab === 'home' ? 'is-active' : ''}
-                onClick={() => setRmsTab('home')}
-              >
-                <Home />
-                <span>New Home</span>
-              </button>
-              <button
-                type="button"
-                className={rmsTab === 'order' ? 'is-active' : ''}
-                onClick={() => setRmsTab('order')}
-              >
-                <ShoppingCart />
-                <span>Order</span>
-              </button>
-              <button
-                type="button"
-                className={rmsTab === 'stock' ? 'is-active' : ''}
-                onClick={() => setRmsTab('stock')}
-              >
-                <Package />
-                <span>STOCK</span>
-              </button>
-            </nav>
-          ) : null}
+          <TeamScreenshotShare
+            employeeId={teamEmp.id}
+            onToast={showToast}
+            onShared={(conversationId) => {
+              setShellTab('chats');
+              setOpenChatId(conversationId);
+            }}
+          />
         </div>
 
         {showLeaveModal ? (

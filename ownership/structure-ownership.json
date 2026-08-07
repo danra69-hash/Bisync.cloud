@@ -1334,6 +1334,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.api.team-chat",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/TeamChatController.cs",
+      "symbol": "TeamChatController",
+      "route": "api/team-chat",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-07",
+      "notes": "Internal Team chat: direct DMs, company announcement channel, screenshot attachments"
+    },
+    {
       "id": "dr.api.access-control",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/AccessControlController.cs",

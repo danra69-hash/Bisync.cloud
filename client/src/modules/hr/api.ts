@@ -5,6 +5,11 @@ import type {
   IncomeTaxYear, IncomeTaxYearPreview, IncomeTaxYearRequest,
   LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, PublicHolidayRequest, ScheduleType, ShiftSchedule,
 } from './types';
+import type {
+  TeamChatConversationsResponse,
+  TeamChatDirectoryPerson,
+  TeamChatMessagesResponse,
+} from './teamChatTypes';
 
 function formatHttpError(status: number, statusText: string, body: string): string {
   const trimmed = body.trim();
@@ -275,6 +280,48 @@ export const hrApi = {
       http<IncomeTaxYear>(`/income-tax/${companyId}/${year}`, { method: 'PUT', body: JSON.stringify(body) }),
     preview: (companyId: number, year: number) =>
       http<IncomeTaxYearPreview>(`/income-tax/${companyId}/${year}/preview`),
+  },
+  teamChat: {
+    directory: (employeeId: number) =>
+      http<TeamChatDirectoryPerson[]>(`/team-chat/directory?employeeId=${employeeId}`),
+    conversations: (employeeId: number) =>
+      http<TeamChatConversationsResponse>(`/team-chat/conversations?employeeId=${employeeId}`),
+    messages: (conversationId: number, employeeId: number, afterId?: number) => {
+      const params = new URLSearchParams({ employeeId: String(employeeId) });
+      if (afterId != null && afterId > 0) params.set('afterId', String(afterId));
+      return http<TeamChatMessagesResponse>(`/team-chat/conversations/${conversationId}/messages?${params}`);
+    },
+    startDirect: (employeeId: number, peerEmployeeId: number) =>
+      http<{ id: number; type: string; title: string; created: boolean }>('/team-chat/conversations/direct', {
+        method: 'POST',
+        body: JSON.stringify({ employeeId, peerEmployeeId }),
+      }),
+    postMessage: (
+      conversationId: number,
+      body: {
+        employeeId: number;
+        body?: string;
+        attachmentBase64?: string;
+        attachmentContentType?: string;
+      },
+    ) =>
+      http<{
+        id: number;
+        conversationId: number;
+        senderEmployeeId: number;
+        body: string;
+        hasAttachment: boolean;
+        attachmentContentType?: string | null;
+        createdAt: string;
+        mine: boolean;
+      }>(`/team-chat/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    capabilities: (employeeId: number) =>
+      http<{ companyId: number; canSendAnnouncement: boolean }>(
+        `/team-chat/capabilities?employeeId=${employeeId}`,
+      ),
   },
 };
 
