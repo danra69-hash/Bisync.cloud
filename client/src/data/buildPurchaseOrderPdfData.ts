@@ -1,4 +1,4 @@
-import type { Company, LocationConfig, Vendor } from '../api';
+import type { Company, DeliveryLocation, LocationConfig, Vendor } from '../api';
 import type { OrderCartItem, OrderCartVendorGroup } from './createOrder';
 import {
   DEFAULT_TAX_RATE,
@@ -10,11 +10,18 @@ import {
 import type { PurchaseOrderPdfData } from './generatePurchaseOrderPdf';
 import type { PurchaseDocumentKind } from './purchaseOrderSignatories';
 
+type PdfShipToLocation =
+  | LocationConfig
+  | (Pick<DeliveryLocation, 'name' | 'addressLine1' | 'addressLine2' | 'city' | 'stateProvince' | 'postcode'> & {
+      logoBase64?: string;
+      logoContentType?: string;
+    });
+
 export function buildPurchaseOrderPdfData(params: {
   poNumber: string;
   group: OrderCartVendorGroup;
   company: Company;
-  deliveryLocations: LocationConfig[];
+  deliveryLocations: PdfShipToLocation[];
   vendor: Vendor | null;
   orderDateLabel: string;
   deliveryDateLabel: string;

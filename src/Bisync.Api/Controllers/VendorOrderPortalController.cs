@@ -145,6 +145,14 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 .Where(l => locationExternalIds.Contains(l.ExternalId))
                 .ToListAsync();
 
+        DeliveryLocation? shipTo = null;
+        var deliveryLocationExternalId = (order.DeliveryLocationExternalId ?? string.Empty).Trim();
+        if (deliveryLocationExternalId.Length > 0)
+        {
+            shipTo = await db.DeliveryLocations.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.ExternalId == deliveryLocationExternalId && d.Active);
+        }
+
         var vendor = await db.Vendors.AsNoTracking()
             .FirstOrDefaultAsync(v =>
                 (!string.IsNullOrWhiteSpace(order.VendorExternalId) && v.ExternalId == order.VendorExternalId)
@@ -153,6 +161,35 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         var documentKind = string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePr, StringComparison.OrdinalIgnoreCase)
             ? "purchase_request"
             : "purchase_order";
+
+        var deliveryLocations = shipTo is not null
+            ? new object[]
+            {
+                new
+                {
+                    shipTo.Name,
+                    ExternalId = shipTo.ExternalId,
+                    addressLine1 = shipTo.AddressLine1,
+                    AddressLine2 = shipTo.AddressLine2,
+                    shipTo.City,
+                    stateProvince = shipTo.StateProvince,
+                    shipTo.Postcode,
+                    logoContentType = string.Empty,
+                    logoBase64 = string.Empty,
+                },
+            }
+            : locations.Select(l => (object)new
+            {
+                l.Name,
+                l.ExternalId,
+                addressLine1 = string.IsNullOrWhiteSpace(l.AddressLine1) ? l.Address : l.AddressLine1,
+                l.AddressLine2,
+                l.City,
+                stateProvince = l.StateProvince,
+                l.Postcode,
+                logoContentType = l.LogoContentType ?? string.Empty,
+                logoBase64 = string.IsNullOrWhiteSpace(l.LogoBase64) ? string.Empty : l.LogoBase64,
+            }).ToArray();
 
         return new
         {
@@ -201,18 +238,7 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 mobile = vendor?.Mobile ?? string.Empty,
                 email = vendor?.Email ?? string.Empty,
             },
-            deliveryLocations = locations.Select(l => new
-            {
-                l.Name,
-                l.ExternalId,
-                addressLine1 = string.IsNullOrWhiteSpace(l.AddressLine1) ? l.Address : l.AddressLine1,
-                l.AddressLine2,
-                l.City,
-                stateProvince = l.StateProvince,
-                l.Postcode,
-                logoContentType = l.LogoContentType ?? string.Empty,
-                logoBase64 = string.IsNullOrWhiteSpace(l.LogoBase64) ? string.Empty : l.LogoBase64,
-            }),
+            deliveryLocations,
             items = order.Items.Select(i => new
             {
                 i.Id,

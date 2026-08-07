@@ -6,6 +6,7 @@ namespace Bisync.Api.Data;
 public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbContext(options)
 {
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<DeliveryLocation> DeliveryLocations => Set<DeliveryLocation>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<Employee> Employees => Set<Employee>();
@@ -129,6 +130,12 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<DeliveryLocation>(e =>
+        {
+            e.HasIndex(d => d.ExternalId).IsUnique();
+            e.HasIndex(d => new { d.LocationExternalId, d.Active });
+            e.HasIndex(d => new { d.CompanyId, d.Active });
+        });
         modelBuilder.Entity<Location>(e =>
         {
             e.HasIndex(l => l.ExternalId).IsUnique();

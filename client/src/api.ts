@@ -89,6 +89,33 @@ export interface Location {
   conceptSortOrder?: number;
 }
 
+/** Ship-to address under an outlet location (System Config → Location detail). */
+export interface DeliveryLocation {
+  id: number;
+  externalId: string;
+  locationExternalId: string;
+  companyId?: number | null;
+  name: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateProvince: string;
+  postcode: string;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DeliveryLocationUpsertPayload {
+  name: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  stateProvince: string;
+  postcode: string;
+  active?: boolean;
+}
+
 export interface LocationConfig {
   id: number;
   externalId: string;
@@ -1774,6 +1801,9 @@ export interface PurchaseOrder {
   status: string;
   companyId?: number | null;
   locationExternalIds?: string[];
+  /** Ship-to delivery location when set (shown instead of outlet address). */
+  deliveryLocationExternalId?: string | null;
+  deliveryLocation?: DeliveryLocation | null;
   initiatedBy?: string;
   approvedBy?: string;
   approvedAt?: string | null;
@@ -1840,6 +1870,8 @@ export interface CreatePurchaseOrderPayload {
 export interface CreatePurchaseOrdersBatchPayload {
   companyId?: number;
   locationExternalIds?: string[];
+  /** Optional ship-to delivery location under a selected outlet. */
+  deliveryLocationExternalId?: string;
   initiatedBy?: string;
   approvedBy?: string;
   orders: CreatePurchaseOrderPayload[];
@@ -3573,6 +3605,36 @@ export const api = {
     }>('/api/locations/config', 'POST', data),
   updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
     fetchJsonWithMethod<LocationConfig>(`/api/locations/${id}/config`, 'PUT', data),
+  deliveryLocations: (opts?: {
+    companyId?: number | null;
+    locationExternalIds?: string[];
+    includeInactive?: boolean;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts?.companyId != null) params.set('companyId', String(opts.companyId));
+    if (opts?.locationExternalIds?.length) {
+      params.set('locationExternalIds', opts.locationExternalIds.join(','));
+    }
+    if (opts?.includeInactive) params.set('includeInactive', 'true');
+    const q = params.toString();
+    return fetchJson<DeliveryLocation[]>(`/api/locations/delivery-locations${q ? `?${q}` : ''}`);
+  },
+  locationDeliveryLocations: (locationExternalId: string, opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<DeliveryLocation[]>(
+      `/api/locations/${encodeURIComponent(locationExternalId)}/delivery-locations${q}`,
+    );
+  },
+  createDeliveryLocation: (locationExternalId: string, data: DeliveryLocationUpsertPayload) =>
+    fetchJsonWithMethod<DeliveryLocation>(
+      `/api/locations/${encodeURIComponent(locationExternalId)}/delivery-locations`,
+      'POST',
+      data,
+    ),
+  updateDeliveryLocation: (id: number, data: DeliveryLocationUpsertPayload) =>
+    fetchJsonWithMethod<DeliveryLocation>(`/api/locations/delivery-locations/${id}`, 'PUT', data),
+  deleteDeliveryLocation: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/locations/delivery-locations/${id}`, 'DELETE'),
   companies: (opts?: { includeInactive?: boolean }) => {
     const q = opts?.includeInactive ? '?includeInactive=true' : '';
     return fetchJson<Company[]>(`/api/companies${q}`);

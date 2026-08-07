@@ -756,11 +756,31 @@ public class CreatePurchaseOrdersBatchRequest
 {
     public int? CompanyId { get; set; }
     public List<string> LocationExternalIds { get; set; } = [];
+    /// <summary>Optional ship-to delivery location (under one of the selected outlets).</summary>
+    [MaxLength(120)]
+    public string? DeliveryLocationExternalId { get; set; }
     [MaxLength(200)]
     public string? InitiatedBy { get; set; }
     [MaxLength(200)]
     public string? ApprovedBy { get; set; }
     public List<CreatePurchaseOrderRequest> Orders { get; set; } = [];
+}
+
+public class DeliveryLocationUpsertRequest
+{
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string AddressLine1 { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? AddressLine2 { get; set; }
+    [MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string StateProvince { get; set; } = string.Empty;
+    [MaxLength(32)]
+    public string Postcode { get; set; } = string.Empty;
+    public bool? Active { get; set; }
 }
 
 public class ApprovePurchaseOrderRequest

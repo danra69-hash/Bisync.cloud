@@ -443,6 +443,166 @@ public class LocationsController(
         var loc = await db.Locations.FirstOrDefaultAsync(l => l.ExternalId == externalId);
         return loc is null ? NotFound() : Ok(loc);
     }
+
+    static object MapDeliveryLocation(DeliveryLocation d) => new
+    {
+        d.Id,
+        externalId = d.ExternalId,
+        locationExternalId = d.LocationExternalId,
+        companyId = d.CompanyId,
+        name = d.Name,
+        addressLine1 = d.AddressLine1,
+        addressLine2 = d.AddressLine2,
+        city = d.City,
+        stateProvince = d.StateProvince,
+        postcode = d.Postcode,
+        active = d.Active,
+        createdAt = d.CreatedAt,
+        updatedAt = d.UpdatedAt,
+    };
+
+    async Task<string> GenerateUniqueDeliveryExternalIdAsync(string locationExternalId, string name)
+    {
+        var baseSlug = $"{locationExternalId}-dl-{SlugifyLocationName(name)}";
+        var candidate = baseSlug;
+        var suffix = 2;
+        while (await db.DeliveryLocations.AnyAsync(d => d.ExternalId == candidate))
+        {
+            candidate = $"{baseSlug}-{suffix}";
+            suffix++;
+        }
+        return candidate;
+    }
+
+    static string? ValidateDeliveryLocationRequest(DeliveryLocationUpsertRequest body)
+    {
+        if (string.IsNullOrWhiteSpace(body.Name))
+            return "Name of Delivery Location is required.";
+        if (string.IsNullOrWhiteSpace(body.AddressLine1))
+            return "Address Line 1 is required.";
+        if (string.IsNullOrWhiteSpace(body.City))
+            return "City is required.";
+        if (string.IsNullOrWhiteSpace(body.StateProvince))
+            return "State is required.";
+        if (string.IsNullOrWhiteSpace(body.Postcode))
+            return "PostCode is required.";
+        return null;
+    }
+
+    /// <summary>List delivery locations for a company and/or parent outlet(s) — used by PO filters.</summary>
+    [HttpGet("delivery-locations")]
+    public async Task<ActionResult<IEnumerable<object>>> ListDeliveryLocations(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalIds = null,
+        [FromQuery] bool includeInactive = false)
+    {
+        var query = db.DeliveryLocations.AsNoTracking().AsQueryable();
+        if (companyId is int cid)
+            query = query.Where(d => d.CompanyId == cid);
+        var outletIds = (locationExternalIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (outletIds.Count > 0)
+            query = query.Where(d => outletIds.Contains(d.LocationExternalId));
+        if (!includeInactive)
+            query = query.Where(d => d.Active);
+
+        var rows = await query
+            .OrderBy(d => d.Name)
+            .ThenBy(d => d.Id)
+            .ToListAsync();
+        return Ok(rows.Select(MapDeliveryLocation));
+    }
+
+    [HttpGet("{externalId}/delivery-locations")]
+    public async Task<ActionResult<IEnumerable<object>>> ListDeliveryLocationsForOutlet(
+        string externalId,
+        [FromQuery] bool includeInactive = false)
+    {
+        var outlet = await db.Locations.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.ExternalId == externalId);
+        if (outlet is null) return NotFound(new { message = "Location not found." });
+
+        var query = db.DeliveryLocations.AsNoTracking()
+            .Where(d => d.LocationExternalId == outlet.ExternalId);
+        if (!includeInactive)
+            query = query.Where(d => d.Active);
+
+        var rows = await query.OrderBy(d => d.Name).ThenBy(d => d.Id).ToListAsync();
+        return Ok(rows.Select(MapDeliveryLocation));
+    }
+
+    [HttpPost("{externalId}/delivery-locations")]
+    public async Task<ActionResult<object>> CreateDeliveryLocation(
+        string externalId,
+        [FromBody] DeliveryLocationUpsertRequest body)
+    {
+        var outlet = await db.Locations.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.ExternalId == externalId);
+        if (outlet is null) return NotFound(new { message = "Location not found." });
+
+        var validationError = ValidateDeliveryLocationRequest(body);
+        if (validationError is not null)
+            return BadRequest(new { message = validationError });
+
+        var now = DateTime.UtcNow;
+        var row = new DeliveryLocation
+        {
+            ExternalId = await GenerateUniqueDeliveryExternalIdAsync(outlet.ExternalId, body.Name),
+            LocationExternalId = outlet.ExternalId,
+            CompanyId = outlet.CompanyId,
+            Name = body.Name.Trim(),
+            AddressLine1 = body.AddressLine1.Trim(),
+            AddressLine2 = (body.AddressLine2 ?? string.Empty).Trim(),
+            City = body.City.Trim(),
+            StateProvince = body.StateProvince.Trim(),
+            Postcode = body.Postcode.Trim(),
+            Active = body.Active ?? true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.DeliveryLocations.Add(row);
+        await db.SaveChangesAsync();
+        return Ok(MapDeliveryLocation(row));
+    }
+
+    [HttpPut("delivery-locations/{id:int}")]
+    public async Task<ActionResult<object>> UpdateDeliveryLocation(
+        int id,
+        [FromBody] DeliveryLocationUpsertRequest body)
+    {
+        var row = await db.DeliveryLocations.FirstOrDefaultAsync(d => d.Id == id);
+        if (row is null) return NotFound(new { message = "Delivery location not found." });
+
+        var validationError = ValidateDeliveryLocationRequest(body);
+        if (validationError is not null)
+            return BadRequest(new { message = validationError });
+
+        row.Name = body.Name.Trim();
+        row.AddressLine1 = body.AddressLine1.Trim();
+        row.AddressLine2 = (body.AddressLine2 ?? string.Empty).Trim();
+        row.City = body.City.Trim();
+        row.StateProvince = body.StateProvince.Trim();
+        row.Postcode = body.Postcode.Trim();
+        if (body.Active is bool active)
+            row.Active = active;
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Ok(MapDeliveryLocation(row));
+    }
+
+    [HttpDelete("delivery-locations/{id:int}")]
+    public async Task<IActionResult> DeleteDeliveryLocation(int id)
+    {
+        var row = await db.DeliveryLocations.FirstOrDefaultAsync(d => d.Id == id);
+        if (row is null) return NotFound(new { message = "Delivery location not found." });
+        row.Active = false;
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
 }
 
 [ApiController]
@@ -1453,6 +1613,25 @@ public class PurchaseOrdersController(
 
         var locationAbbr = PurchaseOrderNumberService.ResolveLocationAbbreviation(locationExternalIds, matchedLocations);
         var locationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(locationExternalIds);
+        var deliveryLocationExternalId = (request.DeliveryLocationExternalId ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(deliveryLocationExternalId))
+        {
+            var deliveryLoc = await db.DeliveryLocations.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.ExternalId == deliveryLocationExternalId && d.Active);
+            if (deliveryLoc is null)
+                return BadRequest(new { message = "Selected delivery location was not found." });
+            if (locationExternalIds.Count > 0
+                && !locationExternalIds.Contains(deliveryLoc.LocationExternalId, StringComparer.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = "Delivery location must belong to one of the selected outlets." });
+            }
+            if (request.CompanyId is int batchCompanyId
+                && deliveryLoc.CompanyId is int deliveryCompanyId
+                && deliveryCompanyId != batchCompanyId)
+            {
+                return BadRequest(new { message = "Delivery location does not belong to the selected company." });
+            }
+        }
         var initiatedBy = request.InitiatedBy?.Trim() ?? string.Empty;
         var approvedBy = request.ApprovedBy?.Trim() ?? string.Empty;
         var primaryLocationState = matchedLocations
@@ -1533,6 +1712,7 @@ public class PurchaseOrdersController(
                 Status = status,
                 CompanyId = request.CompanyId,
                 LocationIdsJson = locationIdsJson,
+                DeliveryLocationExternalId = deliveryLocationExternalId,
                 InitiatedBy = initiatedBy,
                 ApprovedBy = approvedBy,
                 ApprovedAt = documentType == PurchaseOrderWorkflow.DocumentTypePo
@@ -2029,11 +2209,30 @@ public class PurchaseOrdersController(
         var consolidatedByMaster = await ResolveConsolidatedByMasterItemAsync(
             orders.Where(o => o.IsPreCommitted).Select(o => o.Id).ToList());
 
+        var deliveryIds = orders
+            .Select(o => (o.DeliveryLocationExternalId ?? string.Empty).Trim())
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var deliveryByExternalId = deliveryIds.Count == 0
+            ? new Dictionary<string, DeliveryLocation>(StringComparer.OrdinalIgnoreCase)
+            : await db.DeliveryLocations.AsNoTracking()
+                .Where(d => deliveryIds.Contains(d.ExternalId))
+                .ToDictionaryAsync(d => d.ExternalId, StringComparer.OrdinalIgnoreCase);
+
         return orders
-            .Select(o => PurchaseOrderWorkflow.MapOrder(
-                o,
-                flags.GetValueOrDefault(o.Id),
-                consolidatedByMaster.GetValueOrDefault(o.Id)))
+            .Select(o =>
+            {
+                DeliveryLocation? delivery = null;
+                var deliveryId = (o.DeliveryLocationExternalId ?? string.Empty).Trim();
+                if (deliveryId.Length > 0)
+                    deliveryByExternalId.TryGetValue(deliveryId, out delivery);
+                return PurchaseOrderWorkflow.MapOrder(
+                    o,
+                    flags.GetValueOrDefault(o.Id),
+                    consolidatedByMaster.GetValueOrDefault(o.Id),
+                    delivery);
+            })
             .Cast<object>()
             .ToList();
     }

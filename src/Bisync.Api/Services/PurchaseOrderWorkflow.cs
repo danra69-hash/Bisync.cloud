@@ -145,10 +145,12 @@ public static class PurchaseOrderWorkflow
     /// <param name="consolidatedByItemId">
     /// For pre-committed masters: qty received &amp; consolidated on linked release POs, keyed by master item id.
     /// </param>
+    /// <param name="deliveryLocation">Optional resolved ship-to address when DeliveryLocationExternalId is set.</param>
     public static object MapOrder(
         PurchaseOrder order,
         bool allowPartialDelivery = false,
-        IReadOnlyDictionary<int, decimal>? consolidatedByItemId = null)
+        IReadOnlyDictionary<int, decimal>? consolidatedByItemId = null,
+        DeliveryLocation? deliveryLocation = null)
     {
         var documentType = IsPendingApprovalStatus(order.Status)
             ? DocumentTypePr
@@ -186,6 +188,25 @@ public static class PurchaseOrderWorkflow
             status,
             companyId = order.CompanyId,
             locationExternalIds = DeserializeLocationIds(order.LocationIdsJson),
+            deliveryLocationExternalId = string.IsNullOrWhiteSpace(order.DeliveryLocationExternalId)
+                ? null
+                : order.DeliveryLocationExternalId.Trim(),
+            deliveryLocation = deliveryLocation is null
+                ? null
+                : new
+                {
+                    deliveryLocation.Id,
+                    externalId = deliveryLocation.ExternalId,
+                    locationExternalId = deliveryLocation.LocationExternalId,
+                    companyId = deliveryLocation.CompanyId,
+                    name = deliveryLocation.Name,
+                    addressLine1 = deliveryLocation.AddressLine1,
+                    addressLine2 = deliveryLocation.AddressLine2,
+                    city = deliveryLocation.City,
+                    stateProvince = deliveryLocation.StateProvince,
+                    postcode = deliveryLocation.Postcode,
+                    active = deliveryLocation.Active,
+                },
             initiatedBy = order.InitiatedBy,
             approvedBy = order.ApprovedBy,
             approvedAt = order.ApprovedAt,
