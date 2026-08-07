@@ -584,7 +584,7 @@ export function VendorProductTagModal({
 
                         <p className="text-xs text-muted-foreground font-sans mt-0.5">
 
-                          {row.componentId} · {row.category} · {row.group} · {fromApiUom(row.recipeUOM)} / {fromApiUom(row.inventoryUOM)}
+                          {row.componentId} · {row.category} · {row.group} · {fromApiUom(row.recipeUOM)}
 
                         </p>
 

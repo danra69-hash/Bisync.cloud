@@ -36,9 +36,8 @@ function patchCreate(
   patch: Partial<SmartComponentImportDraft> & {
     altRecipeUnit1?: string;
     altRecipeConversion1?: string;
-    altInventoryUnit1?: string;
-    altInventoryConversion1?: string;
-    principalInventoryConversion?: string;
+    altRecipeUnit2?: string;
+    altRecipeConversion2?: string;
     templateParStock?: number;
     parStockUom?: string;
     storageText?: string;
@@ -46,39 +45,28 @@ function patchCreate(
 ): EditableImportCreate {
   const next: EditableImportCreate = { ...row, ...patch };
 
-  if (patch.altRecipeUnit1 !== undefined || patch.altRecipeConversion1 !== undefined) {
-    const unit = patch.altRecipeUnit1 ?? row.altRecipeUnits[0]?.unit ?? '';
-    const conversion = patch.altRecipeConversion1 ?? row.altRecipeUnits[0]?.qty ?? '';
-    next.altRecipeUnits = unit.trim()
-      ? [{ unit, fromQty: '1', qty: conversion }]
-      : [];
-  }
-
-  if (patch.altInventoryUnit1 !== undefined || patch.altInventoryConversion1 !== undefined) {
-    const unit = patch.altInventoryUnit1 ?? row.altInventoryUnits[0]?.unit ?? '';
-    const conversion = patch.altInventoryConversion1 ?? row.altInventoryUnits[0]?.qty ?? '';
-    next.altInventoryUnits = unit.trim()
-      ? [{ unit, fromQty: '1', qty: conversion }]
-      : [];
+  if (
+    patch.altRecipeUnit1 !== undefined
+    || patch.altRecipeConversion1 !== undefined
+    || patch.altRecipeUnit2 !== undefined
+    || patch.altRecipeConversion2 !== undefined
+  ) {
+    const unit1 = patch.altRecipeUnit1 ?? row.altRecipeUnits[0]?.unit ?? '';
+    const conversion1 = patch.altRecipeConversion1 ?? row.altRecipeUnits[0]?.qty ?? '';
+    const unit2 = patch.altRecipeUnit2 ?? row.altRecipeUnits[1]?.unit ?? '';
+    const conversion2 = patch.altRecipeConversion2 ?? row.altRecipeUnits[1]?.qty ?? '';
+    const alts = [];
+    if (unit1.trim()) alts.push({ unit: unit1, fromQty: '1', qty: conversion1 });
+    if (unit2.trim()) alts.push({ unit: unit2, fromQty: '1', qty: conversion2 });
+    next.altRecipeUnits = alts;
+    next.altInventoryUnits = [];
+    next.inventoryUom = next.recipeUom;
+    next.convertFromInventoryQty = '1';
+    next.convertToRecipeQty = '1';
   }
 
   if (patch.storageText !== undefined) {
     next.storage = patch.storageText.split(/[;|]/).map(value => value.trim()).filter(Boolean);
-  }
-
-  if (patch.principalInventoryConversion !== undefined) {
-    const conv = patch.principalInventoryConversion.trim();
-    if (!conv) {
-      next.convertFromInventoryQty = '1';
-      next.convertToRecipeQty = '1';
-    } else if (conv.includes('=')) {
-      const [left, right] = conv.split('=').map(part => part.trim());
-      next.convertFromInventoryQty = left || '1';
-      next.convertToRecipeQty = right || '1';
-    } else {
-      next.convertFromInventoryQty = '1';
-      next.convertToRecipeQty = conv;
-    }
   }
 
   if (patch.templateParStock !== undefined || patch.parStockUom !== undefined) {
@@ -146,12 +134,10 @@ export function SmartComponentImportNewComponentsPanel({
                     <TableHeaderCell>Group</TableHeaderCell>
                     <TableHeaderCell>Name</TableHeaderCell>
                     <TableHeaderCell>Principal Component</TableHeaderCell>
-                    <TableHeaderCell>Unit Alternate Component Unit 1</TableHeaderCell>
+                    <TableHeaderCell>Alternate Component Unit 1</TableHeaderCell>
                     <TableHeaderCell>Conversion 1</TableHeaderCell>
-                    <TableHeaderCell>Principal Inventory Unit</TableHeaderCell>
-                    <TableHeaderCell>Principal inventory Conversion</TableHeaderCell>
-                    <TableHeaderCell>Alt Inventory 1</TableHeaderCell>
-                    <TableHeaderCell>Inv Conversion 1</TableHeaderCell>
+                    <TableHeaderCell>Alternate Component Unit 2</TableHeaderCell>
+                    <TableHeaderCell>Conversion 2</TableHeaderCell>
                     <TableHeaderCell>Par Stock</TableHeaderCell>
                     <TableHeaderCell>Par Stock UOM</TableHeaderCell>
                     <TableHeaderCell>Area</TableHeaderCell>
@@ -223,29 +209,15 @@ export function SmartComponentImportNewComponentsPanel({
                       <td className="px-2 py-2">
                         <input
                           className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.inventoryUom}
-                          onChange={e => updateRow(row.clientKey, { inventoryUom: e.target.value })}
+                          value={row.altRecipeUnits[1]?.unit ?? ''}
+                          onChange={e => updateRow(row.clientKey, { altRecipeUnit2: e.target.value })}
                         />
                       </td>
                       <td className="px-2 py-2">
                         <input
                           className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.convertToRecipeQty === '1' ? '' : (row.convertFromInventoryQty === '1' ? row.convertToRecipeQty : `${row.convertFromInventoryQty} = ${row.convertToRecipeQty}`)}
-                          onChange={e => updateRow(row.clientKey, { principalInventoryConversion: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.altInventoryUnits[0]?.unit ?? ''}
-                          onChange={e => updateRow(row.clientKey, { altInventoryUnit1: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.altInventoryUnits[0]?.qty ?? ''}
-                          onChange={e => updateRow(row.clientKey, { altInventoryConversion1: e.target.value })}
+                          value={row.altRecipeUnits[1]?.qty ?? ''}
+                          onChange={e => updateRow(row.clientKey, { altRecipeConversion2: e.target.value })}
                         />
                       </td>
                       <td className="px-2 py-2">

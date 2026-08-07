@@ -20,7 +20,12 @@ import {
 } from './stockCardPeriod';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
-import { fromApiUom } from '../../data/componentForm';
+import {
+  fromApiUom,
+  getComponentUomChoices,
+  migrateInventoryUomsIntoComponentAlts,
+  parseDetailConfigJson,
+} from '../../data/componentForm';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
@@ -109,9 +114,16 @@ function productUoms(p: Product): string[] {
 }
 
 function componentUoms(ing: Ingredient): string[] {
-  const inventory = fromApiUom(ing.inventoryUom || '');
-  const recipe = fromApiUom(ing.recipeUom || '');
-  return uniqueUoms([inventory], [recipe]);
+  const detail = parseDetailConfigJson(ing.detailConfigJson);
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: fromApiUom(ing.recipeUom || ''),
+    inventoryUnit: fromApiUom(ing.inventoryUom || ''),
+    altRecipeUnits: detail.altRecipeUnits,
+    altInventoryUnits: detail.altInventoryUnits,
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  return getComponentUomChoices(migrated.recipeUnit, migrated.altRecipeUnits);
 }
 
 function formatTransferDate(iso: string) {

@@ -312,7 +312,7 @@ export function StockCardDetailPanel({
 
   onClose,
 
-  onUomModeChange,
+  onUomModeChange: _onUomModeChange,
 
   onAdjusted,
 
@@ -480,21 +480,9 @@ export function StockCardDetailPanel({
 
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
 
-              <select
-
-                value={uomMode}
-
-                onChange={e => onUomModeChange(e.target.value as 'inventory' | 'recipe')}
-
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm font-sans min-w-[160px]"
-
-              >
-
-                <option value="inventory">Inventory UOM</option>
-
-                <option value="recipe">Principal Component Unit</option>
-
-              </select>
+              <div className="h-9 rounded-md border border-border bg-background px-3 text-sm font-sans min-w-[160px] flex items-center text-muted-foreground">
+                Principal Component Unit
+              </div>
 
             </div>
 
