@@ -6,7 +6,8 @@ import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
 type ProductEditorRequest =
   | { mode: 'new' }
-  | { mode: 'edit'; id: number };
+  | { mode: 'edit'; id: number }
+  | { mode: 'copy'; id: number };
 
 type Props = {
   selectedCompanyId: number | null;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil, X } from 'lucide-react';
+import { Copy, Pencil, X } from 'lucide-react';
 import { api, type PatchProductPayload, type Product } from '../../api';
 import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
 import {
@@ -23,6 +23,10 @@ import { ProductionMethodModal } from './ProductionMethodModal';
 import { ProductsPage } from './ProductsPage';
 import { productKeyFromParts } from '../../data/productProductionMethod';
 
+type EditorRequest =
+  | { mode: 'edit'; id: number }
+  | { mode: 'copy'; id: number };
+
 type Props = {
   product: Product;
   companyId: number | null;
@@ -39,7 +43,7 @@ export function ProductDetailPanel({
   onUpdated,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
-  const [editorRequest, setEditorRequest] = useState<{ mode: 'edit'; id: number } | null>(null);
+  const [editorRequest, setEditorRequest] = useState<EditorRequest | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rrpDraft, setRrpDraft] = useState(product.rrp > 0 ? String(product.rrp) : '');
@@ -52,6 +56,8 @@ export function ProductDetailPanel({
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
   const [productionMethodOpen, setProductionMethodOpen] = useState(false);
 
+  const isCopying = editorRequest?.mode === 'copy';
+
   useEffect(() => {
     setIsEditing(false);
     setEditorRequest(null);
@@ -60,6 +66,17 @@ export function ProductDetailPanel({
 
   function startEditing() {
     setEditorRequest({ mode: 'edit', id: product.id });
+    setIsEditing(true);
+  }
+
+  function startCopying() {
+    const confirmed = window.confirm(
+      `Copy “${product.name}” as a new product?\n\n`
+      + 'The copy keeps the same details and components. Name will be blank so you can fill it in, '
+      + 'then readjust components and save as a new product with a new ID.',
+    );
+    if (!confirmed) return;
+    setEditorRequest({ mode: 'copy', id: product.id });
     setIsEditing(true);
   }
 
@@ -273,7 +290,11 @@ export function ProductDetailPanel({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={isEditing ? `Edit product: ${product.name}` : `Product details: ${product.name}`}
+        aria-label={
+          isEditing
+            ? (isCopying ? `Copy product: ${product.name}` : `Edit product: ${product.name}`)
+            : `Product details: ${product.name}`
+        }
         className={`${MODAL_SHELL_CLS} ${
           isEditing ? 'w-[min(98vw,1100px)]' : 'w-[min(96vw,920px)]'
         } max-h-[var(--app-modal-max-h)] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden`}
@@ -282,10 +303,14 @@ export function ProductDetailPanel({
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4 shrink-0">
           <div className="min-w-0">
             <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">
-              {isEditing ? 'Edit product' : 'Product details'}
+              {isEditing ? (isCopying ? 'Copy product' : 'Edit product') : 'Product details'}
             </p>
-            <h2 className="text-base font-semibold mt-1 truncate">{product.name}</h2>
-            <p className="text-[11px] text-muted-foreground mt-1 font-mono">{product.productId}</p>
+            <h2 className="text-base font-semibold mt-1 truncate">
+              {isCopying ? 'New product (from copy)' : product.name}
+            </h2>
+            <p className="text-[11px] text-muted-foreground mt-1 font-mono">
+              {isCopying ? 'New ID after you enter a name and save' : product.productId}
+            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {!isEditing ? (
@@ -299,15 +324,26 @@ export function ProductDetailPanel({
                   {saving ? 'Saving…' : 'Save'}
                 </button>
                 {companyId ? (
-                  <button
-                    type="button"
-                    onClick={startEditing}
-                    disabled={saving}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/50 disabled:opacity-50"
-                  >
-                    <Pencil size={12} />
-                    Edit
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={startCopying}
+                      disabled={saving}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/50 disabled:opacity-50"
+                    >
+                      <Copy size={12} />
+                      Copy Product
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startEditing}
+                      disabled={saving}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/50 disabled:opacity-50"
+                    >
+                      <Pencil size={12} />
+                      Edit
+                    </button>
+                  </>
                 ) : null}
               </>
             ) : null}
