@@ -65,6 +65,14 @@ export default defineConfig({
           /^\/health(?:\/|$)/i,
         ],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
+        // Lazy PDF/canvas chunks are optional and change hash every deploy — do not
+        // precache them or offline SW will request stale jspdf-*.js after rollout.
+        globIgnores: [
+          '**/jspdf*.js',
+          '**/html2canvas*.js',
+          '**/purify.es*.js',
+          '**/index.es-*.js',
+        ],
         // Main SPA chunk is large; still precache so POS installs offline-capable.
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [

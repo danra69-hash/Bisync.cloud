@@ -7,6 +7,7 @@ import {
   type ProductionMethodImage,
 } from './productProductionMethod';
 import { triggerBlobDownload } from './generatePurchaseOrderPdf';
+import { loadJsPDF } from './loadJsPdf';
 
 export type ProductionMethodPdfData = {
   category: string;
@@ -21,11 +22,6 @@ export type ProductionMethodPdfData = {
 };
 
 type JsPDFDoc = import('jspdf').jsPDF;
-
-async function loadJsPDF() {
-  const { jsPDF } = await import('jspdf');
-  return jsPDF;
-}
 
 function safeFilename(name: string): string {
   const cleaned = name.replace(/[^a-zA-Z0-9-_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');

@@ -1,5 +1,6 @@
 import { getPurchaseDocumentLabels } from './purchaseOrderSignatories';
 import { formatCountryCurrency } from '../utils/numberFormat';
+import { loadJsPDF } from './loadJsPdf';
 
 export type PurchaseOrderPdfParty = {
   name: string;
@@ -61,11 +62,6 @@ const PAGE_CONTENT_BOTTOM = 268;
 const FOOTER_Y = 287;
 
 let cachedPoweredByLogoDataUrl: string | null | undefined;
-
-async function loadJsPDF() {
-  const { jsPDF } = await import('jspdf');
-  return jsPDF;
-}
 
 function normalizeLogoBase64(raw?: string | null): string {
   const value = (raw ?? '').trim();
