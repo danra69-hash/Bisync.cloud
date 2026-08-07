@@ -334,7 +334,7 @@ function PrincipalAlternateUomBlock({
         principalUnit === referencePrincipalUom ? (
           <div className="mb-4 rounded-md border border-border bg-muted/20 p-3">
             <p className="text-xs text-muted-foreground">
-              Inventory UOM matches principal component UOM — no conversion required.
+              Selected unit matches the principal component UOM — no conversion required.
             </p>
           </div>
         ) : (
@@ -343,7 +343,7 @@ function PrincipalAlternateUomBlock({
             Principal Conversion Reference
           </p>
           <p className="text-xs text-muted-foreground mb-2">
-            Define how inventory UOM converts to principal component UOM (auto-filled when known).
+            Define how this unit converts to the principal component UOM (auto-filled when known).
           </p>
           <UomConversionLine
             unit={principalUnit}

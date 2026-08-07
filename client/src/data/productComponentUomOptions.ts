@@ -115,10 +115,11 @@ function priceForComponentOption(component: ComponentRow, selectedUnit: string):
 }
 
 export function componentComponentUomOptions(component: ComponentRow): ProductComponentUomOption[] {
-  const recipeUnit = fromApiUom(component.recipeUOM);
-  const inventoryUnit = fromApiUom(component.inventoryUOM);
   const detail = resolveDetailConfigForRow(component);
-  const choices = getComponentUomChoices(recipeUnit, detail.altRecipeUnits)
+  const choices = getComponentUomChoices(
+    fromApiUom(component.recipeUOM),
+    detail.altRecipeUnits,
+  )
     .map(unit => fromApiUom(unit) || unit)
     .filter(Boolean);
 
@@ -128,17 +129,6 @@ export function componentComponentUomOptions(component: ComponentRow): ProductCo
     options.push({
       label: unit,
       price: priceForComponentOption(component, unit),
-    });
-  }
-
-  // Inventory UOM is a first-class selectable recipe unit when it differs from principal.
-  if (
-    inventoryUnit
-    && !options.some(option => sameUom(option.label, inventoryUnit))
-  ) {
-    options.push({
-      label: inventoryUnit,
-      price: priceForComponentOption(component, inventoryUnit),
     });
   }
 

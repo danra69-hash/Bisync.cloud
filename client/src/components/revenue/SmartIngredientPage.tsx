@@ -79,7 +79,7 @@ const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
   { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
 ];
 
-type UomFilterMode = 'principal' | 'inventory' | string;
+type UomFilterMode = 'principal' | string;
 
 function FilterSelect({ label, value, options, onChange }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
@@ -118,7 +118,7 @@ function uomSourceForRow(row: ComponentRow): ComponentUomSource {
 
 function displayUomForRow(row: ComponentRow, mode: UomFilterMode): string {
   const source = uomSourceForRow(row);
-  if (mode === 'principal' || mode === 'inventory') return source.recipeUom;
+  if (mode === 'principal') return source.recipeUom;
   return mode || source.recipeUom;
 }
 

@@ -71,8 +71,8 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
           <p className="font-medium text-foreground truncate">{form.name.trim() || '—'}</p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Inventory UOM</p>
-          <p className="font-medium text-foreground">{form.inventoryUnit}</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Principal Component UOM</p>
+          <p className="font-medium text-foreground">{form.recipeUnit || form.inventoryUnit}</p>
         </div>
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">QTY</p>
@@ -87,11 +87,10 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
             />
             <select
               className={`${selectCls} w-28`}
-              value={splitUse.qtyBasis}
+              value={splitUse.qtyBasis === 'inventory' ? 'recipe' : splitUse.qtyBasis}
               onChange={e => patchSplitUse({ qtyBasis: e.target.value as 'inventory' | 'recipe' })}
             >
-              <option value="inventory">{form.inventoryUnit}</option>
-              <option value="recipe">{form.recipeUnit}</option>
+              <option value="recipe">{form.recipeUnit || form.inventoryUnit}</option>
             </select>
           </div>
         </div>
@@ -104,7 +103,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
             <tr className="border-b border-border bg-muted/20">
               <TableHeaderCell>Sub-component Name</TableHeaderCell>
               <TableHeaderCell>QTY</TableHeaderCell>
-              <TableHeaderCell>Inventory UOM</TableHeaderCell>
+              <TableHeaderCell>Component UOM</TableHeaderCell>
               <TableHeaderCell headerAlign="right">Value Assigned %</TableHeaderCell>
               <TableHeaderCell headerAlign="right">Calculated Value</TableHeaderCell>
               <TableHeaderCell headerAlign="center">Waste</TableHeaderCell>

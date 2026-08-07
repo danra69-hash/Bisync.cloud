@@ -17,7 +17,12 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
-import { fromApiUom } from '../../data/componentForm';
+import {
+  fromApiUom,
+  getComponentUomChoices,
+  migrateInventoryUomsIntoComponentAlts,
+  parseDetailConfigJson,
+} from '../../data/componentForm';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -99,10 +104,16 @@ function productUoms(p: Product): string[] {
 }
 
 function componentUoms(ing: Ingredient): string[] {
-  const inventory = fromApiUom(ing.inventoryUom || '');
-  const recipe = fromApiUom(ing.recipeUom || '');
-  // Prefer inventory UOM first — stock cards default to inventory units.
-  return uniqueUoms([inventory], [recipe]);
+  const detail = parseDetailConfigJson(ing.detailConfigJson);
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: fromApiUom(ing.recipeUom || ''),
+    inventoryUnit: fromApiUom(ing.inventoryUom || ''),
+    altRecipeUnits: detail.altRecipeUnits,
+    altInventoryUnits: detail.altInventoryUnits,
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  return getComponentUomChoices(migrated.recipeUnit, migrated.altRecipeUnits);
 }
 
 function formatWastedDate(iso: string) {

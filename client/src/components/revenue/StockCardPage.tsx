@@ -133,7 +133,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [search, setSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('recipe');
+  const uomMode: 'recipe' = 'recipe';
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
   const [listVersion, setListVersion] = useState(0);
@@ -350,14 +350,9 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           <FilterSelect label="Group" value={groupFilter} options={groups} onChange={setGroupFilter} />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-            <select
-              value={uomMode}
-              onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-              className={`${filterSelectCls} min-w-[160px]`}
-            >
-              <option value="inventory">Inventory UOM</option>
-              <option value="recipe">Principal Component Unit</option>
-            </select>
+            <div className={`${filterSelectCls} min-w-[160px] flex items-center text-muted-foreground`}>
+              Principal Component Unit
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
@@ -489,7 +484,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           uomMode={uomMode}
           selectedMonth={selectedMonth}
           onClose={() => setSelectedRow(null)}
-          onUomModeChange={setUomMode}
+          onUomModeChange={() => undefined}
           onAdjusted={() => setListVersion(v => v + 1)}
         />
       ) : null}

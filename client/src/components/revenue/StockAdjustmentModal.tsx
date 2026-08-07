@@ -74,8 +74,8 @@ export function StockAdjustmentModal({
   const countryCode = useOrgCountryCode();
   const { uomPrice } = useCountryFormatters();
   const uomOptions = useMemo(
-    () => [...new Set([inventoryUom, recipeUom].map(u => u.trim()).filter(Boolean))],
-    [inventoryUom, recipeUom],
+    () => [...new Set([recipeUom, inventoryUom].map(u => u.trim()).filter(Boolean))],
+    [recipeUom, inventoryUom],
   );
   const canChooseUom = uomOptions.length > 1;
 

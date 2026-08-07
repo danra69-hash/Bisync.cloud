@@ -73,7 +73,7 @@ type CountSortColumn =
   | 'uom'
   | 'onHand'
   | 'principalUom'
-  | 'inventoryUom'
+  | 'alternateUom'
   | 'totalQty'
   | 'area'
   | 'storage';
@@ -100,9 +100,9 @@ const COUNT_TABLE_COLUMNS: SortableColumnDef<string>[] = [
   { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth('8%') },
   { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const, ...tableColWidth('9%') },
   { key: 'principalQty', label: 'QTY', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
-  { key: 'inventoryUom', label: 'Inventory UOM', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'inventoryQty', label: 'QTY', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
-  { key: 'totalQty', label: 'Total QTY', align: 'right' as const, ...tableColWidth('7%') },
+  { key: 'alternateUom', label: 'Alternate Component UOM', align: 'right' as const, ...tableColWidth('9%') },
+  { key: 'alternateQty', label: 'QTY', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
+  { key: 'totalQty', label: 'Total QTY (PCU)', align: 'right' as const, ...tableColWidth('7%') },
   { key: 'area', label: 'Area', ...tableColWidth('8%') },
   { key: 'storage', label: 'Storage', ...tableColWidth('9%') },
 ] ;
@@ -286,7 +286,8 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
+  /** Count totals are always expressed in Principal Component Unit. */
+  const uomMode: 'recipe' = 'recipe';
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [countDate, setCountDate] = useState(todayIsoDate);
   const [inventoryMode, setInventoryMode] = useState<InventoryCountSessionType>('spot');
@@ -415,7 +416,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
       const [stockRows, session, ingredients, products] = await Promise.all([
         api.stockCards(selectedCompanyId, countLocationIds, {
           itemType: itemTypeFilterParam(itemTypeFilter),
-          uomMode: 'inventory',
+          uomMode: 'recipe',
           period: selectedMonth,
         }),
         api.activeInventoryCount(inventoryMode, selectedCompanyId, countLocationIds, selectedMonth, uomMode),
@@ -451,8 +452,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
           if (line.countedQty == null) continue;
           const key = `${line.itemType}-${line.itemKey}`;
           const qty = fmtQty(line.countedQty, countryCode);
-          if (uomMode === 'recipe') nextRecipe[key] = qty;
-          else nextInventory[key] = qty;
+          nextRecipe[key] = qty;
         }
       }
       setRecipeQtyByKey(nextRecipe);
@@ -581,7 +581,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
         uom: row => displayUomForRow(row, uomMode),
         onHand: row => row.onHandQty,
         principalUom: row => row.recipeUom || row.uom || '',
-        inventoryUom: row => row.inventoryUom || row.uom || '',
+        alternateUom: row => rowConversion(row).alternateUom || '',
         totalQty: row => rowTotalQty(row) ?? -1,
         area: row => row.sortArea,
         storage: row => row.sortStorage,
@@ -804,14 +804,9 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
                 />
                 <div className="flex flex-col gap-1 shrink-0">
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-                  <select
-                    value={uomMode}
-                    onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-                    className={`${filterSelectCls} min-w-[130px]`}
-                  >
-                    <option value="inventory">Inventory UOM</option>
-                    <option value="recipe">Component UOM</option>
-                  </select>
+                  <div className={`${filterSelectCls} min-w-[160px] flex items-center text-muted-foreground`}>
+                    Principal Component Unit
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 shrink-0">
                   <span className="text-xs font-sans text-transparent uppercase tracking-wider select-none" aria-hidden="true">
@@ -941,7 +936,8 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
                 const isComponent = row.itemType === 'component';
                 const conv = rowConversion(row);
                 const principalUom = isComponent ? row.recipeUom || row.uom : '—';
-                const inventoryUom = isComponent ? row.inventoryUom || row.uom : row.uom;
+                const alternateUom = isComponent ? (conv.alternateUom || '—') : row.uom;
+                const hasAlternate = isComponent && Boolean(conv.alternateUom);
                 const totalQty = rowTotalQty(row);
                 const onHand = displayOnHandQty(row, uomMode, conv);
 
@@ -965,7 +961,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
                         aria-label={`Principal component quantity for ${row.name}`}
                       />
                     </td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground">{inventoryUom}</td>
+                    <td className="px-3 py-2.5 text-right text-muted-foreground">{alternateUom}</td>
                     <td className="px-3 py-2.5 text-right">
                       <input
                         type="text"
@@ -973,9 +969,9 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
                         value={inventoryQtyByKey[key] ?? ''}
                         onChange={e => updateInventoryQty(key, e.target.value)}
                         placeholder="0"
-                        disabled={isReadOnly}
+                        disabled={isReadOnly || (isComponent && !hasAlternate)}
                         className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
-                        aria-label={`Inventory quantity for ${row.name}`}
+                        aria-label={`Alternate component quantity for ${row.name}`}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">

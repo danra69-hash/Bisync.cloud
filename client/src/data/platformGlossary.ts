@@ -131,8 +131,8 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
         dbName: 'Ingredients.LastPriceRecipe',
       },
       {
-        term: 'Last Price (Inventory)',
-        meaning: 'Latest unit cost expressed in the inventory receiving unit.',
+        term: 'Last Price (Alternate / Delivery)',
+        meaning: 'Latest unit cost in a delivery or alternate component unit (legacy field LastPriceInventory).',
         dbName: 'Ingredients.LastPriceInventory',
       },
       {

@@ -55,7 +55,7 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
   const money = (value: number) => formatPriceOrHidden(hidePrices, () => fmt2(value, countryCode));
   const [screen, setScreen] = useState<Screen>('summary');
   const [period, setPeriod] = useState(currentStockCardMonth);
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
+  const uomMode: 'recipe' = 'recipe';
   const [search, setSearch] = useState('');
   const [summary, setSummary] = useState<CogsAuditSummaryResult | null>(null);
   const [detail, setDetail] = useState<CogsAuditDetailResult | null>(null);
@@ -325,14 +325,9 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
         {!isSystemHistoryView && (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-            <select
-              value={uomMode}
-              onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-              className={`${filterSelectCls} min-w-[120px]`}
-            >
-              <option value="inventory">Inventory</option>
-              <option value="recipe">Recipe</option>
-            </select>
+            <div className={`${filterSelectCls} min-w-[160px] flex items-center text-muted-foreground`}>
+              Principal Component Unit
+            </div>
           </div>
         )}
         <div className="relative min-w-[200px] flex-1">

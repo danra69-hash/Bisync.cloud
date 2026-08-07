@@ -875,7 +875,7 @@ export function OperatorStockNewPage() {
                 <div className="inventory-count-qty-grid">
                   <label className="inventory-count-qty">
                     <span>
-                      Recipe UOM
+                      Principal Component UOM
                       {row.recipeUnit ? ` (${row.recipeUnit})` : ''}
                     </span>
                     <input
@@ -889,7 +889,7 @@ export function OperatorStockNewPage() {
                   </label>
                   <label className="inventory-count-qty">
                     <span>
-                      Inventory UOM
+                      Alternate Component UOM
                       {row.inventoryUnit ? ` (${row.inventoryUnit})` : ''}
                     </span>
                     <input
@@ -905,7 +905,7 @@ export function OperatorStockNewPage() {
 
                 <div className="inventory-count-footer">
                   <span className="muted">
-                    Inventory qty: {formatQty(parseNum(qty.inventory))}{' '}
+                    Alternate qty: {formatQty(parseNum(qty.inventory))}{' '}
                     {row.inventoryUnit || ''}
                   </span>
                   <span
@@ -1300,7 +1300,7 @@ export function OperatorStockNewPage() {
                   <div className="inventory-count-qty-grid">
                     <label className="inventory-count-qty">
                       <span>
-                        Recipe UOM
+                        Principal Component UOM
                         {row.recipeUnit ? ` (${row.recipeUnit})` : ''}
                       </span>
                       <input
@@ -1314,7 +1314,7 @@ export function OperatorStockNewPage() {
                     </label>
                     <label className="inventory-count-qty">
                       <span>
-                        Inventory UOM
+                        Alternate Component UOM
                         {row.inventoryUnit ? ` (${row.inventoryUnit})` : ''}
                       </span>
                       <input
@@ -1330,7 +1330,7 @@ export function OperatorStockNewPage() {
 
                   <div className="inventory-count-footer">
                     <span className="muted">
-                      Inventory qty: {formatQty(parseNum(qty.inventory))}{' '}
+                      Alternate qty: {formatQty(parseNum(qty.inventory))}{' '}
                       {row.inventoryUnit || ''}
                     </span>
                     <span
