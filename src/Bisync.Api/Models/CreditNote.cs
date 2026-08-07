@@ -31,7 +31,18 @@ public class CreditNote
     public string DeliveryUom { get; set; } = string.Empty;
     public decimal DeliveryUnitPrice { get; set; }
     public decimal Quantity { get; set; }
+    /// <summary>Delivery-side credit amount (document authority), e.g. 1 tub × RM 125 = 125.00.</summary>
     public decimal Amount { get; set; }
+
+    /// <summary>
+    /// Same as <see cref="Amount"/> when created; kept so Stock Card can show document authority
+    /// separately from PCU extended (qty × 4dp unit price).
+    /// </summary>
+    public decimal DocumentAmount { get; set; }
+    /// <summary>
+    /// Extended@4dp − DocumentAmount (e.g. +0.07 when 3790 × 0.0330 = 125.07 vs credit 125.00).
+    /// </summary>
+    public decimal RoundingResidual { get; set; }
 
     /// <summary>Quantity / UOM / unit price written to stock card (inventory preferred).</summary>
     public decimal StockQuantity { get; set; }

@@ -1465,6 +1465,8 @@ public static class SchemaPatcher
         await TryCreateIndexAsync(db, "IX_CreditNotes_CompanyId_CreditNoteDate", "CreditNotes", "\"CompanyId\", \"CreditNoteDate\"");
         await TryCreateIndexAsync(db, "IX_CreditNotes_PurchaseOrderItemId", "CreditNotes", "\"PurchaseOrderItemId\"");
         await TryCreateIndexAsync(db, "IX_CreditNotes_Status", "CreditNotes", "\"Status\"");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "CreditNotes", "DocumentAmount", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "CreditNotes", "RoundingResidual", "NUMERIC NOT NULL DEFAULT 0");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "CentralStoreConfigs" (

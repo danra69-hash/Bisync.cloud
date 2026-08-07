@@ -11,6 +11,7 @@ const focused = [
   'scripts/fifo-batch-pcu-sync.test.mjs',
   'scripts/stockcard-credit-note-outbound.test.mjs',
   'scripts/stock-inbound-step1-bbq.mjs',
+  'scripts/credit-note-outbound-residual.mjs',
 ]
 
 for (const rel of focused) {

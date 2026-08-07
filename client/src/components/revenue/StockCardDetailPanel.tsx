@@ -265,7 +265,9 @@ function LedgerEntryRow({
             title={
               entry.extendedAtUnitPrice && entry.extendedAtUnitPrice > 0
                 ? `PCU extended ${rm(entry.extendedAtUnitPrice)} at 4dp unit price; document ${rm(entry.documentAmount ?? entry.subtotal)}`
-                : 'UOM conversion rounding residual (document amount is authority)'
+                : entry.entryType === 'credit_note'
+                  ? 'UOM rounding residual — credit note document amount is authority'
+                  : 'UOM conversion rounding residual (document amount is authority)'
             }
           >
             Residual {(entry.roundingResidual ?? 0) > 0 ? '+' : ''}

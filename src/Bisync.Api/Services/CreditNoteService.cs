@@ -186,6 +186,12 @@ public class CreditNoteService(
             stockUnitPrice = deliveryUnitPrice;
         }
 
+        // Document authority = delivery credit amount; residual discloses 4dp PCU extended variance.
+        var extendedAtUnitPrice = stockQty > 0 && stockUnitPrice > 0
+            ? DecimalRounding.ToDb(stockQty * stockUnitPrice)
+            : amount;
+        var roundingResidual = DecimalRounding.ToDb(extendedAtUnitPrice - amount);
+
         var onHand = await componentStock.GetOnHandAsync(
             item.ComponentId, location, stockUom, cancellationToken);
         if (stockQty > onHand + StockCardFifoEngine.QtyEpsilon)
@@ -212,6 +218,8 @@ public class CreditNoteService(
             DeliveryUnitPrice = StockCardFifoEngine.RoundUnitPrice(deliveryUnitPrice),
             Quantity = DecimalRounding.ToDb(quantity),
             Amount = amount,
+            DocumentAmount = amount,
+            RoundingResidual = roundingResidual,
             StockQuantity = DecimalRounding.ToDb(stockQty),
             StockUom = stockUom.Trim(),
             StockUnitPrice = stockUnitPrice,
@@ -666,6 +674,9 @@ public class CreditNoteService(
         deliveryUnitPrice = c.DeliveryUnitPrice,
         quantity = c.Quantity,
         amount = c.Amount,
+        documentAmount = ResolveDocumentAmount(c),
+        roundingResidual = ResolveRoundingResidual(c),
+        extendedAtUnitPrice = ResolveExtendedAtUnitPrice(c),
         stockQuantity = c.StockQuantity,
         stockUom = c.StockUom,
         stockUnitPrice = c.StockUnitPrice,
@@ -678,4 +689,26 @@ public class CreditNoteService(
         createdAt = c.CreatedAt,
         updatedAt = c.UpdatedAt,
     };
+
+    /// <summary>CN document amount (delivery credit) — falls back to Amount for legacy rows.</summary>
+    public static decimal ResolveDocumentAmount(CreditNote c)
+    {
+        if (c.DocumentAmount > 0 || Math.Abs(c.RoundingResidual) > 0.00005m)
+            return DecimalRounding.ToDb(c.DocumentAmount > 0 ? c.DocumentAmount : c.Amount);
+        return DecimalRounding.ToDb(c.Amount);
+    }
+
+    public static decimal ResolveExtendedAtUnitPrice(CreditNote c)
+    {
+        if (c.StockQuantity > 0 && c.StockUnitPrice > 0)
+            return DecimalRounding.ToDb(c.StockQuantity * c.StockUnitPrice);
+        return ResolveDocumentAmount(c);
+    }
+
+    public static decimal ResolveRoundingResidual(CreditNote c)
+    {
+        if (Math.Abs(c.RoundingResidual) > 0.00005m)
+            return DecimalRounding.ToDb(c.RoundingResidual);
+        return DecimalRounding.ToDb(ResolveExtendedAtUnitPrice(c) - ResolveDocumentAmount(c));
+    }
 }

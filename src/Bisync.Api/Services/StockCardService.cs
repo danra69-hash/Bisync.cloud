@@ -845,14 +845,20 @@ public class StockCardService(
         var unitPrice = StockCardFifoEngine.RoundUnitPrice(enriched.UnitPrice);
         var quantity = enriched.Event.Quantity;
         var pcuExtended = quantity > 0 && unitPrice > 0 ? RoundLineSubtotal(quantity, unitPrice) : 0m;
-        var documentAmount = enriched.Event.DocumentAmount > 0
-            ? enriched.Event.DocumentAmount
+        var hasDocumentAuthority = enriched.Event.DocumentAmount > 0
+            || Math.Abs(enriched.Event.RoundingResidual) > 0.00005m;
+        var documentAmount = hasDocumentAuthority
+            ? DecimalRounding.ToDb(enriched.Event.DocumentAmount)
             : pcuExtended;
         var roundingResidual = enriched.Event.RoundingResidual;
-        // Inbound financial subtotal = document amount (PO/cash authority).
+        // Inbound + credit-note outbound: financial subtotal = document amount (PO/CN authority).
         var isInbound = enriched.Event.SignedQty > 0
             && enriched.Event.EntryType is "purchase" or "cash_purchase" or "split_use_in" or "inbound" or "transfer_in" or "adjustment_in" or "balance_forward";
-        var subtotal = isInbound && documentAmount > 0 ? documentAmount : pcuExtended;
+        var isCreditNoteOutbound = enriched.Event.SignedQty < 0
+            && enriched.Event.EntryType == "credit_note";
+        var subtotal = hasDocumentAuthority && (isInbound || isCreditNoteOutbound)
+            ? documentAmount
+            : pcuExtended;
 
         return new StockCardLedgerEntry
         {
@@ -1343,6 +1349,21 @@ public class StockCardService(
         var productionProducts = productionProductsOverride
             ?? await LoadProductionProductsForMovementsAsync(movements, cancellationToken);
 
+        var creditNoteIds = movements
+            .Where(m => string.Equals(
+                (m.ReferenceType ?? string.Empty).Trim(),
+                CreditNoteService.ReferenceType,
+                StringComparison.OrdinalIgnoreCase)
+                && m.ReferenceId > 0)
+            .Select(m => m.ReferenceId)
+            .Distinct()
+            .ToList();
+        var creditNotesById = creditNoteIds.Count == 0
+            ? new Dictionary<int, CreditNote>()
+            : await db.CreditNotes.AsNoTracking()
+                .Where(c => creditNoteIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, cancellationToken);
+
         foreach (var movement in movements)
         {
             if (!TryNormalizeStockQty(
@@ -1358,6 +1379,26 @@ public class StockCardService(
             var entryType = ClassifyMovementEntryType(movement);
             var signedQty = movement.QtyDelta < 0 ? -convertedAbsQty : convertedAbsQty;
             var productionProduct = TryResolveProductionProduct(movement, productionProducts);
+
+            decimal documentAmount = 0m;
+            decimal roundingResidual = 0m;
+            var reason = FormatMovementReason(movement, productionProduct);
+            if (entryType == "credit_note"
+                && movement.ReferenceId > 0
+                && creditNotesById.TryGetValue(movement.ReferenceId, out var creditNote))
+            {
+                documentAmount = CreditNoteService.ResolveDocumentAmount(creditNote);
+                roundingResidual = CreditNoteService.ResolveRoundingResidual(creditNote);
+                var extended = CreditNoteService.ResolveExtendedAtUnitPrice(creditNote);
+                var residualNote = IngredientUomBridge.FormatRoundingResidualNote(
+                    roundingResidual,
+                    documentAmount,
+                    extended,
+                    creditNote.StockUnitPrice > 0 ? creditNote.StockUnitPrice : convertedPrice);
+                if (!string.IsNullOrWhiteSpace(residualNote))
+                    reason = $"{reason} · {residualNote}";
+            }
+
             events.Add(new FifoEvent
             {
                 Id = movement.Id,
@@ -1373,9 +1414,11 @@ public class StockCardService(
                         : entryType is "adjustment_in"
                             ? 0
                             : ResolveComponentFallbackPrice(ingredient, displayUom),
-                Reason = FormatMovementReason(movement, productionProduct),
+                Reason = reason,
                 ReferenceNumber = ResolveMovementReferenceNumber(movement, productionProduct),
                 SourceLabel = entryType,
+                DocumentAmount = documentAmount,
+                RoundingResidual = roundingResidual,
             });
         }
 

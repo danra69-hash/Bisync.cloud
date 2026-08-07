@@ -275,7 +275,11 @@ function StockCardItemCard({
                         {entry.unitPrice > 0 ? (
                           <>
                             {uomPrice(entry.unitPrice)}
-                            {/prepaid/i.test(entry.reason ?? '') ? (
+                            {entry.entryType === 'credit_note' && entry.subtotal > 0 ? (
+                              <span className="text-muted-foreground">
+                                {' '}· {rm(entry.subtotal)}
+                              </span>
+                            ) : /prepaid/i.test(entry.reason ?? '') ? (
                               <span className="text-muted-foreground">
                                 {' '}· val {rm(entry.unitPrice * entry.quantity)}
                               </span>
@@ -283,6 +287,20 @@ function StockCardItemCard({
                           </>
                         ) : '—'}
                       </p>
+                      {entry.entryType === 'credit_note'
+                        && Math.abs(entry.roundingResidual ?? 0) > 0.00005 ? (
+                        <p
+                          className="mt-0.5 text-[10px] text-muted-foreground"
+                          title={
+                            entry.extendedAtUnitPrice && entry.extendedAtUnitPrice > 0
+                              ? `PCU extended ${rm(entry.extendedAtUnitPrice)} at 4dp; document ${rm(entry.documentAmount ?? entry.subtotal)}`
+                              : 'UOM rounding residual — credit note document amount is authority'
+                          }
+                        >
+                          Residual {(entry.roundingResidual ?? 0) > 0 ? '+' : ''}
+                          {rm(entry.roundingResidual ?? 0)}
+                        </p>
+                      ) : null}
                       {entry.entryType === 'credit_note' && entry.referenceNumber ? (
                         <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
                           {entry.referenceNumber}
