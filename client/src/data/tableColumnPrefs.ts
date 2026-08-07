@@ -64,6 +64,14 @@ export function saveTableColumnWidths(tableId: string, widths: TableColumnWidthM
   writeStore(store);
 }
 
+export function clearTableColumnWidths(tableId: string) {
+  if (!tableId) return;
+  const store = readStore();
+  if (!(tableId in store)) return;
+  delete store[tableId];
+  writeStore(store);
+}
+
 export function mergeTableColumnWidth(
   tableId: string,
   columnKey: string,

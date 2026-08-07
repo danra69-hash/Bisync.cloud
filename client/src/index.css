@@ -149,7 +149,7 @@
     position: relative;
   }
 
-  /* Column resize affordance — drag the right edge of any header cell. */
+  /* Column resize affordance — only while Adjust column mode is active. */
   [data-table-scroll][data-column-resize='true'] thead th::after {
     content: '';
     position: absolute;
@@ -159,6 +159,25 @@
     height: 100%;
     cursor: col-resize;
     z-index: 2;
+    background: linear-gradient(
+      to right,
+      transparent 0,
+      transparent 3px,
+      color-mix(in srgb, var(--primary) 45%, transparent) 3px,
+      color-mix(in srgb, var(--primary) 45%, transparent) 5px,
+      transparent 5px
+    );
+  }
+
+  [data-table-scroll][data-column-resize='true'] thead th:hover::after {
+    background: linear-gradient(
+      to right,
+      transparent 0,
+      transparent 2px,
+      var(--primary) 2px,
+      var(--primary) 6px,
+      transparent 6px
+    );
   }
 
   [data-table-scroll].is-col-resize-hover,
