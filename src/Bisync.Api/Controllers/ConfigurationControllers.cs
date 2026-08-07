@@ -652,5 +652,11 @@ public record LocationConfigCreate(
     int? ConceptSortOrder = null,
     string? LogoFileName = null,
     string? LogoContentType = null,
-    string? LogoBase64 = null
+    string? LogoBase64 = null,
+    /// <summary>When set with at least one copy flag, catalog items are inherited into the new location.</summary>
+    int? InheritFromCompanyId = null,
+    string? InheritFromLocationExternalId = null,
+    bool CopyComponents = false,
+    bool CopyVendorsAndVendorProducts = false,
+    bool CopyProducts = false
 );

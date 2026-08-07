@@ -3554,8 +3554,23 @@ export const api = {
     const q = opts?.includeInactive ? '?includeInactive=true' : '';
     return fetchJson<LocationConfig[]>(`/api/locations/config${q}`);
   },
-  createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
-    fetchJsonWithMethod<LocationConfig>('/api/locations/config', 'POST', data),
+  createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'> & {
+    inheritFromCompanyId?: number | null;
+    inheritFromLocationExternalId?: string | null;
+    copyComponents?: boolean;
+    copyVendorsAndVendorProducts?: boolean;
+    copyProducts?: boolean;
+  }) =>
+    fetchJsonWithMethod<LocationConfig & {
+      inheritance?: {
+        componentsCopied: number;
+        vendorsCopied: number;
+        vendorProductsCopied: number;
+        productsCopied: number;
+        mode: string;
+      };
+      inheritanceError?: string;
+    }>('/api/locations/config', 'POST', data),
   updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
     fetchJsonWithMethod<LocationConfig>(`/api/locations/${id}/config`, 'PUT', data),
   companies: (opts?: { includeInactive?: boolean }) => {
