@@ -618,7 +618,15 @@ export function ProductManagementPage({
     visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(displayRows, { scrollRootRef });
 
   function replaceProduct(updated: Product) {
-    setProducts(prev => prev.map(p => (p.id === updated.id ? updated : p)));
+    setProducts(prev => {
+      const index = prev.findIndex(p => p.id === updated.id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = updated;
+        return next;
+      }
+      return [...prev, updated];
+    });
     setDetailProduct(prev => (prev?.id === updated.id ? updated : prev));
   }
 

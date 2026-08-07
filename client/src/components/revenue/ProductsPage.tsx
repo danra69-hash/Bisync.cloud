@@ -136,7 +136,7 @@ type Props = {
   embedded?: boolean;
   /** Compact chrome for embedding inside the Product List detail popup. */
   popupMode?: boolean;
-  editorRequest?: { mode: 'new' } | { mode: 'edit'; id: number } | null;
+  editorRequest?: { mode: 'new' } | { mode: 'edit'; id: number } | { mode: 'copy'; id: number } | null;
   onEditorRequestConsumed?: () => void;
   onClose?: () => void;
   /** Called after a successful create/update (popup returns to the list). */
@@ -710,7 +710,7 @@ export function ProductsPage({
       return;
     }
 
-    const key = `edit:${editorRequest.id}`;
+    const key = `${editorRequest.mode}:${editorRequest.id}`;
     const product = savedProducts.find(p => p.id === editorRequest.id);
     if (!product) return;
 
@@ -719,8 +719,12 @@ export function ProductsPage({
       return;
     }
 
-    loadProduct(product);
-    setIsEditing(true);
+    if (editorRequest.mode === 'copy') {
+      copyProductAsNew(product);
+    } else {
+      loadProduct(product);
+      setIsEditing(true);
+    }
     appliedEditorRequestKeyRef.current = key;
     onEditorRequestConsumed?.();
   }, [editorRequest, savedProducts, onEditorRequestConsumed]);
@@ -1061,6 +1065,34 @@ export function ProductsPage({
       parsedB2bSales.principal.rrp = String(product.rrp);
     }
     setB2bSalesConfig(parsedB2bSales);
+    setError(null);
+  }
+
+  /** Clone an existing product into the create editor: same BOM/config, blank name, new ID on save. */
+  function copyProductAsNew(product: Product) {
+    loadProduct(product);
+    setSelectedProductId('');
+    setName('');
+    setProductId('');
+    const stamp = Date.now();
+    setLines(
+      mapProductItemsToLines(product.items, subProductCatalog).map((line, index) => ({
+        ...line,
+        key: `copy-line-${stamp}-${index}`,
+      })),
+    );
+    setPackagingLines(
+      mapProductItemsToLines(product.packagingItems, subProductCatalog).map((line, index) => ({
+        ...line,
+        key: `copy-pack-${stamp}-${index}`,
+      })),
+    );
+    setAliases(prev => prev.map((alias, index) => ({
+      ...alias,
+      id: undefined,
+      key: `copy-alias-${stamp}-${index}`,
+    })));
+    setIsEditing(true);
     setError(null);
   }
 
