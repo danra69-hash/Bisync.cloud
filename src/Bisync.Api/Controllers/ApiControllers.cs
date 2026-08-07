@@ -6,13 +6,18 @@ using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class LocationsController(BisyncDbContext db, LocationSubscriptionService locationSubscriptions) : ControllerBase
+public class LocationsController(
+    BisyncDbContext db,
+    LocationSubscriptionService locationSubscriptions,
+    LocationCatalogInheritanceService catalogInheritance,
+    LocationPartitionService locationPartitions) : ControllerBase
 {
     static object MapLocationConfig(Location l)
     {
@@ -183,6 +188,29 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (logoError is not null)
             return BadRequest(new { message = logoError });
 
+        var inheritRequested = body.CopyComponents
+            || body.CopyVendorsAndVendorProducts
+            || body.CopyProducts;
+        int? inheritSourceCompanyId = null;
+        string? inheritSourceLocationExternalId = null;
+        if (inheritRequested)
+        {
+            if (body.InheritFromCompanyId is not int sourceCompanyId || sourceCompanyId <= 0)
+                return BadRequest(new { message = "Inheritance requires a source company." });
+            if (string.IsNullOrWhiteSpace(body.InheritFromLocationExternalId))
+                return BadRequest(new { message = "Inheritance requires a source location." });
+
+            var sourceLocId = body.InheritFromLocationExternalId.Trim();
+            var sourceOk = await db.Locations.AsNoTracking().AnyAsync(l =>
+                l.CompanyId == sourceCompanyId
+                && l.ExternalId.ToLower() == sourceLocId.ToLower());
+            if (!sourceOk)
+                return BadRequest(new { message = "Source location was not found for the selected company." });
+
+            inheritSourceCompanyId = sourceCompanyId;
+            inheritSourceLocationExternalId = sourceLocId;
+        }
+
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Locations");
 
         var externalId = await GenerateUniqueExternalIdAsync(body.Name);
@@ -220,6 +248,38 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
 
         try
         {
+            await locationPartitions.EnsurePartitionsForLocationAsync(loc.ExternalId);
+        }
+        catch
+        {
+            // Best-effort: inventory writes also ensure partitions.
+        }
+
+        LocationCatalogInheritanceResult? inheritanceResult = null;
+        string? inheritanceError = null;
+        if (inheritRequested
+            && inheritSourceCompanyId is int validatedSourceCompanyId
+            && !string.IsNullOrWhiteSpace(inheritSourceLocationExternalId))
+        {
+            try
+            {
+                inheritanceResult = await catalogInheritance.ApplyAsync(
+                    loc,
+                    new LocationCatalogInheritanceRequest(
+                        validatedSourceCompanyId,
+                        inheritSourceLocationExternalId,
+                        body.CopyComponents,
+                        body.CopyVendorsAndVendorProducts,
+                        body.CopyProducts));
+            }
+            catch (Exception ex)
+            {
+                inheritanceError = ex.Message;
+            }
+        }
+
+        try
+        {
             if (loc.CompanyId is int companyId)
                 await locationSubscriptions.ActivateFreeTrialForCompanyAsync(companyId);
         }
@@ -229,7 +289,39 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         }
 
         var saved = await LoadLocationConfigAsync(loc.Id);
-        return saved is null ? Ok(new { loc.Id, loc.ExternalId, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
+        if (saved is null)
+        {
+            return Ok(new
+            {
+                loc.Id,
+                loc.ExternalId,
+                loc.Name,
+                loc.CompanyId,
+                inheritance = inheritanceResult,
+                inheritanceError,
+            });
+        }
+
+        var mapped = MapLocationConfig(saved);
+        if (inheritanceResult is null && inheritanceError is null)
+            return Ok(mapped);
+
+        // Attach inheritance summary without changing the core LocationConfig shape for clients.
+        var json = JsonSerializer.SerializeToNode(mapped) as JsonObject ?? new JsonObject();
+        if (inheritanceResult is not null)
+        {
+            json["inheritance"] = JsonSerializer.SerializeToNode(new
+            {
+                componentsCopied = inheritanceResult.ComponentsCopied,
+                vendorsCopied = inheritanceResult.VendorsCopied,
+                vendorProductsCopied = inheritanceResult.VendorProductsCopied,
+                productsCopied = inheritanceResult.ProductsCopied,
+                mode = inheritanceResult.Mode,
+            });
+        }
+        if (inheritanceError is not null)
+            json["inheritanceError"] = inheritanceError;
+        return Ok(json);
     }
 
     [HttpPut("{id:int}/config")]

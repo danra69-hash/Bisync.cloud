@@ -219,12 +219,13 @@ function blankLocation(companyId: number | null = null): LocationConfig {
 }
 
 function LocationPanel({
-  location, isNew, companies, users, onClose, onSave,
+  location, isNew, companies, users, locations, onClose, onSave,
 }: {
   location: LocationConfig;
   isNew: boolean;
   companies: Company[];
   users: AppUser[];
+  locations: LocationConfig[];
   onClose: () => void;
   onSave: (saved: LocationConfig) => void;
 }) {
@@ -238,6 +239,14 @@ function LocationPanel({
   }));
   const locationActive = form.active !== false;
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [inheritanceEnabled, setInheritanceEnabled] = useState(false);
+  const [inheritFromCompanyId, setInheritFromCompanyId] = useState<number | null>(
+    () => location.companyId ?? null,
+  );
+  const [inheritFromLocationExternalId, setInheritFromLocationExternalId] = useState('');
+  const [copyComponents, setCopyComponents] = useState(false);
+  const [copyVendorsAndVendorProducts, setCopyVendorsAndVendorProducts] = useState(false);
+  const [copyProducts, setCopyProducts] = useState(false);
   const initialCompany = companies.find(c => c.id === location.companyId);
   const [inheritsCompanyProfile, setInheritsCompanyProfile] = useState(
     () => isNew || location.profileOverridden !== true,
@@ -335,6 +344,21 @@ function LocationPanel({
     setVendorPolicyTags(profile.vendorPolicyTags);
     setModules(locationModulesFromCompany(selectedCompany));
   }, [form.companyId, inheritsCompanyProfile, companies]);
+
+  useEffect(() => {
+    if (!isNew || inheritanceEnabled) return;
+    if (form.companyId && inheritFromCompanyId == null) {
+      setInheritFromCompanyId(form.companyId);
+    }
+  }, [isNew, form.companyId, inheritanceEnabled, inheritFromCompanyId]);
+
+  const inheritSourceLocations = useMemo(
+    () => locations
+      .filter(l => l.companyId === inheritFromCompanyId && l.active !== false)
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [locations, inheritFromCompanyId],
+  );
 
   useEffect(() => {
     if (!company || inheritsCompanyProfile) return;
@@ -579,6 +603,21 @@ function LocationPanel({
         return;
       }
 
+      if (isNew && inheritanceEnabled) {
+        if (!inheritFromCompanyId) {
+          showError('Inheritance: select a source company.');
+          return;
+        }
+        if (!inheritFromLocationExternalId.trim()) {
+          showError('Inheritance: select a source location.');
+          return;
+        }
+        if (!copyComponents && !copyVendorsAndVendorProducts && !copyProducts) {
+          showError('Inheritance: tick at least one copy option.');
+          return;
+        }
+      }
+
       const addressError = getAddressValidationError(company?.countryCode ?? form.countryCode, addressParts);
       if (addressError) {
         showError(addressError);
@@ -660,12 +699,24 @@ function LocationPanel({
         conceptLabel: (form.conceptLabel ?? '').trim(),
         conceptSortOrder: Number(form.conceptSortOrder) || 0,
         ...logo,
+        ...(isNew && inheritanceEnabled
+          ? {
+              inheritFromCompanyId,
+              inheritFromLocationExternalId: inheritFromLocationExternalId.trim(),
+              copyComponents,
+              copyVendorsAndVendorProducts,
+              copyProducts,
+            }
+          : {}),
       };
 
       setSaving(true);
       const saved = isNew
         ? await api.createLocationConfig(payload)
         : await api.updateLocationConfig(form.id, payload);
+      const inheritanceError = isNew && saved && 'inheritanceError' in saved
+        ? saved.inheritanceError
+        : undefined;
       // Notify parent first; parent closes the panel on successful save.
       onSave({
         ...form,
@@ -690,6 +741,9 @@ function LocationPanel({
         logoSet: Boolean(saved.logoSet ?? logo.logoBase64),
       });
       onClose();
+      if (inheritanceError) {
+        window.alert(`Location saved, but inheritance failed: ${inheritanceError}`);
+      }
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save location.');
     } finally {
@@ -824,6 +878,116 @@ function LocationPanel({
             onChange={setAddressParts}
             layout="compact"
           />
+
+          {isNew && (
+            <div className="rounded-md border border-border p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Inheritance</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 font-sans">
+                    Copy a clean catalog from another location into this location bucket (components, vendors and vendor products, and/or products).
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 shrink-0 cursor-pointer pt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={inheritanceEnabled}
+                    onChange={e => {
+                      const on = e.target.checked;
+                      setInheritanceEnabled(on);
+                      if (on && inheritFromCompanyId == null && form.companyId) {
+                        setInheritFromCompanyId(form.companyId);
+                      }
+                      setError(null);
+                    }}
+                    className="rounded border-border"
+                  />
+                  <span className="text-xs font-medium">Activate</span>
+                </label>
+              </div>
+
+              {inheritanceEnabled && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Source company *</label>
+                      <select
+                        className={selectCls}
+                        value={inheritFromCompanyId ?? ''}
+                        onChange={e => {
+                          const next = e.target.value ? Number(e.target.value) : null;
+                          setInheritFromCompanyId(next);
+                          setInheritFromLocationExternalId('');
+                          setError(null);
+                        }}
+                      >
+                        <option value="">— Select company —</option>
+                        {companies.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Source location *</label>
+                      <select
+                        className={selectCls}
+                        value={inheritFromLocationExternalId}
+                        disabled={!inheritFromCompanyId}
+                        onChange={e => {
+                          setInheritFromLocationExternalId(e.target.value);
+                          setError(null);
+                        }}
+                      >
+                        <option value="">— Select location —</option>
+                        {inheritSourceLocations.map(l => (
+                          <option key={l.externalId} value={l.externalId}>{l.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={copyComponents}
+                        onChange={e => {
+                          setCopyComponents(e.target.checked);
+                          setError(null);
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-xs">Copy Component</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={copyVendorsAndVendorProducts}
+                        onChange={e => {
+                          setCopyVendorsAndVendorProducts(e.target.checked);
+                          setError(null);
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-xs">Copy Vendor and vendor Products</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={copyProducts}
+                        onChange={e => {
+                          setCopyProducts(e.target.checked);
+                          setError(null);
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-xs">Copy Product</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="rounded-md border border-border p-3 space-y-2">
             <p className="text-xs font-semibold text-foreground">Multi-concept physical site</p>
@@ -1446,6 +1610,7 @@ export function LocationsConfigTab({
           isNew={isNew}
           companies={companies}
           users={users}
+          locations={locations}
           onClose={closePanel}
           onSave={afterSave}
         />
