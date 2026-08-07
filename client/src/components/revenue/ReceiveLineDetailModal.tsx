@@ -2,35 +2,46 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardList, X } from 'lucide-react';
 
+type DetailSave = {
+  halalCertNo: string;
+  productExpiryDate: string;
+  receivedTemperature: string;
+};
+
 type Props = {
   productName: string;
   componentName: string;
+  halalCertNo: string;
   productExpiryDate: string;
   receivedTemperature: string;
   readOnly: boolean;
   onClose: () => void;
-  onSave: (next: { productExpiryDate: string; receivedTemperature: string }) => void;
+  onSave: (next: DetailSave) => void;
 };
 
 export function ReceiveLineDetailModal({
   productName,
   componentName,
+  halalCertNo,
   productExpiryDate,
   receivedTemperature,
   readOnly,
   onClose,
   onSave,
 }: Props) {
+  const [halal, setHalal] = useState(halalCertNo);
   const [expiry, setExpiry] = useState(productExpiryDate);
   const [temp, setTemp] = useState(receivedTemperature);
 
   useEffect(() => {
+    setHalal(halalCertNo);
     setExpiry(productExpiryDate);
     setTemp(receivedTemperature);
-  }, [productExpiryDate, receivedTemperature]);
+  }, [halalCertNo, productExpiryDate, receivedTemperature]);
 
   function handleSave() {
     onSave({
+      halalCertNo: halal.trim(),
       productExpiryDate: expiry.trim(),
       receivedTemperature: temp.trim(),
     });
@@ -76,6 +87,22 @@ export function ReceiveLineDetailModal({
         </div>
 
         <div className="px-5 py-4 space-y-3">
+          <div>
+            <label className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+              Halal Certification Reference
+            </label>
+            {readOnly ? (
+              <p className="mt-1 text-xs font-medium font-sans">{halal || '—'}</p>
+            ) : (
+              <input
+                type="text"
+                value={halal}
+                onChange={e => setHalal(e.target.value)}
+                placeholder="Optional"
+                className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-xs font-sans"
+              />
+            )}
+          </div>
           <div>
             <label className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
               Expiry date
