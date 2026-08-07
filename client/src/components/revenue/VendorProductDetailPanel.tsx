@@ -82,6 +82,7 @@ export function VendorProductDetailPanel({
   onSave,
 }: Props) {
   const [productName, setProductName] = useState(product.productName);
+  const [vendorProductId, setVendorProductId] = useState(product.id);
   const [group, setGroup] = useState(product.group);
   const [specification, setSpecification] = useState(product.specification);
   const [deliveryPrice, setDeliveryPrice] = useState(String(product.deliveryPrice));
@@ -99,6 +100,7 @@ export function VendorProductDetailPanel({
 
   useEffect(() => {
     setProductName(product.productName);
+    setVendorProductId(product.id);
     setGroup(product.group);
     setSpecification(product.specification);
     setDeliveryPrice(String(product.deliveryPrice));
@@ -157,9 +159,18 @@ export function VendorProductDetailPanel({
 
   function handleSave() {
     const name = productName.trim();
+    const id = vendorProductId.trim().toUpperCase();
     const price = parseFloat(deliveryPrice);
     if (!name) {
       setSaveError('Vendor product name is required.');
+      return;
+    }
+    if (isNew && !id) {
+      setSaveError('Vendor Product ID is required.');
+      return;
+    }
+    if (isNew && !/^[A-Z0-9][A-Z0-9._-]{1,79}$/.test(id)) {
+      setSaveError('Vendor Product ID must be 2–80 characters (letters, digits, . _ -).');
       return;
     }
     if (!group.trim()) {
@@ -197,6 +208,7 @@ export function VendorProductDetailPanel({
     setSaveError(null);
     onSave({
       ...product,
+      id: isNew ? id : product.id,
       productName: name,
       group: group.trim(),
       specification: specification.trim(),
@@ -229,7 +241,7 @@ export function VendorProductDetailPanel({
               {isNew ? 'New Vendor Product' : product.productName}
             </h3>
             <p className="text-xs text-muted-foreground font-sans mt-0.5">
-              {isNew ? product.vendorName : `${product.id} · ${product.vendorName}`}
+              {product.vendorName}
             </p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted transition-colors shrink-0">
@@ -238,6 +250,27 @@ export function VendorProductDetailPanel({
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-5 space-y-6">
+          <Field label="Vendor Product ID">
+            {isNew ? (
+              <input
+                value={vendorProductId}
+                onChange={e => setVendorProductId(e.target.value.toUpperCase())}
+                className={`${inputCls} font-sans`}
+                placeholder="e.g. VP-BEAN001"
+                maxLength={80}
+              />
+            ) : (
+              <p className="text-sm font-sans font-medium text-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
+                {product.id || '—'}
+              </p>
+            )}
+            {isNew ? (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Immutable after create. Letters, digits, and . _ - only.
+              </p>
+            ) : null}
+          </Field>
+
           <Field label="Vendor Product Name">
             <input
               value={productName}
@@ -441,7 +474,7 @@ export function VendorProductDetailPanel({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!productName.trim()}
+                disabled={!productName.trim() || (isNew && !vendorProductId.trim())}
                 className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {isNew ? 'Add Product' : 'Save'}

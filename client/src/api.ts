@@ -1854,6 +1854,13 @@ export interface PurchaseOrderLineWorkflowPayload {
   halalCertNo?: string;
   productExpiryDate?: string;
   receivedTemperature?: number | null;
+  /** Unordered receive (freebie / CN replacement): ItemId 0 + these fields. */
+  vendorProductId?: string;
+  componentId?: string;
+  componentName?: string;
+  name?: string;
+  unit?: string;
+  deliveryPackage?: string;
 }
 
 export interface PurchaseOrderWorkflowPayload {

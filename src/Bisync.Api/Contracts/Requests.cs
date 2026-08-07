@@ -709,7 +709,7 @@ public class CreatePurchaseOrderItemRequest
     public string? ComponentId { get; set; }
     [MaxLength(200)]
     public string? ComponentName { get; set; }
-    [MaxLength(32)]
+    [MaxLength(80)]
     public string? VendorProductId { get; set; }
     [Required, MaxLength(300)]
     public string Name { get; set; } = string.Empty;
@@ -771,6 +771,7 @@ public class ApprovePurchaseOrderRequest
 
 public class PurchaseOrderLineWorkflowRequest
 {
+    /// <summary>Existing PO line id. Use 0 (with vendor/component fields) to receive an unordered freebie or CN replacement.</summary>
     public int ItemId { get; set; }
     [Range(0, 999999999)]
     public decimal Quantity { get; set; }
@@ -787,6 +788,20 @@ public class PurchaseOrderLineWorkflowRequest
     public string? ProductExpiryDate { get; set; }
     /// <summary>Optional temperature check (°C) at receive/consolidate.</summary>
     public decimal? ReceivedTemperature { get; set; }
+
+    // --- Unordered receive lines (ItemId &lt;= 0): freebies / credit-note replacements ---
+    [MaxLength(80)]
+    public string? VendorProductId { get; set; }
+    [MaxLength(32)]
+    public string? ComponentId { get; set; }
+    [MaxLength(200)]
+    public string? ComponentName { get; set; }
+    [MaxLength(300)]
+    public string? Name { get; set; }
+    [MaxLength(50)]
+    public string? Unit { get; set; }
+    [MaxLength(200)]
+    public string? DeliveryPackage { get; set; }
 }
 
 public class CreateCashPurchaseRequest

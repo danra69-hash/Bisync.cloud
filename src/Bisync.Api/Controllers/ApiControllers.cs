@@ -1538,9 +1538,21 @@ public class PurchaseOrdersController(
         if (hygiene is null)
             return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
 
+        foreach (var line in request.Items.Where(l => l.ItemId <= 0))
+        {
+            if (string.IsNullOrWhiteSpace(line.VendorProductId))
+                return BadRequest(new { message = "Unordered receive lines require a Vendor Product ID." });
+            if (string.IsNullOrWhiteSpace(line.ComponentId))
+                return BadRequest(new { message = "Unordered receive lines require a component id." });
+            if (string.IsNullOrWhiteSpace(line.Name))
+                return BadRequest(new { message = "Unordered receive lines require a product name." });
+            if (line.Quantity <= 0)
+                return BadRequest(new { message = "Unordered receive lines (freebies / replacements) must have quantity greater than zero." });
+        }
+
         if (allowPartial)
         {
-            foreach (var line in request.Items)
+            foreach (var line in request.Items.Where(l => l.ItemId > 0))
             {
                 var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
                 if (item is null) continue;
@@ -1554,6 +1566,10 @@ public class PurchaseOrdersController(
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync();
+
+        var unorderedError = await EnsureUnorderedReceiveLinesAsync(order, request.Items);
+        if (unorderedError is not null)
+            return BadRequest(new { message = unorderedError });
 
         ApplyWorkflowLines(order, request.Items, workflow: "receive");
         order.VendorDoNumber = vendorDoNumber;
@@ -1748,9 +1764,13 @@ public class PurchaseOrdersController(
             {
                 if (allowPartial)
                 {
-                    var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
-                    if (shipmentQty > remaining + 0.0001m)
-                        return $"Received qty for '{item.Name}' cannot exceed remaining {remaining:0.####}.";
+                    // Unordered freebie / CN-replacement lines have ordered qty 0 — no remaining cap.
+                    if (item.Quantity > 0)
+                    {
+                        var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
+                        if (shipmentQty > remaining + 0.0001m)
+                            return $"Received qty for '{item.Name}' cannot exceed remaining {remaining:0.####}.";
+                    }
                     item.DeliveredQuantity = DecimalRounding.ToDb(item.DeliveredQuantity + Math.Max(0m, shipmentQty));
                 }
                 else
@@ -2027,6 +2047,70 @@ public class PurchaseOrdersController(
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Inserts unordered PO lines (freebies / credit-note replacements) when receive payload
+    /// sends ItemId &lt;= 0 with Vendor Product + Component identity. Assigns new ItemIds in-place.
+    /// </summary>
+    async Task<string?> EnsureUnorderedReceiveLinesAsync(
+        PurchaseOrder order,
+        List<PurchaseOrderLineWorkflowRequest> lines)
+    {
+        var created = new List<(PurchaseOrderLineWorkflowRequest Line, PurchaseOrderItem Item)>();
+        foreach (var line in lines.Where(l => l.ItemId <= 0))
+        {
+            var vendorProductId = line.VendorProductId?.Trim() ?? string.Empty;
+            var componentId = line.ComponentId?.Trim() ?? string.Empty;
+            var name = line.Name?.Trim() ?? string.Empty;
+            var componentName = string.IsNullOrWhiteSpace(line.ComponentName)
+                ? name
+                : line.ComponentName.Trim();
+            var deliveryPackage = (line.DeliveryPackage ?? line.Unit ?? string.Empty).Trim();
+            var unit = string.IsNullOrWhiteSpace(line.Unit) ? deliveryPackage : line.Unit.Trim();
+            var componentUom = line.ComponentUom?.Trim() ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(order.VendorExternalId) && !string.IsNullOrWhiteSpace(vendorProductId))
+            {
+                var vendorProduct = await db.VendorProducts.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.ExternalId == vendorProductId);
+                if (vendorProduct is not null
+                    && !string.Equals(
+                        vendorProduct.VendorExternalId?.Trim(),
+                        order.VendorExternalId.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Vendor product '{vendorProductId}' does not belong to vendor on this PO.";
+                }
+            }
+
+            // Ordered qty stays 0 — variance = received qty (freebie / replacement not on original order).
+            var item = new PurchaseOrderItem
+            {
+                PurchaseOrderId = order.Id,
+                ComponentId = componentId,
+                ComponentName = componentName,
+                VendorProductId = vendorProductId,
+                Name = name,
+                Quantity = 0m,
+                UnitPrice = DecimalRounding.ToDb(line.UnitPrice),
+                IssuedUnitPrice = DecimalRounding.ToDb(line.UnitPrice),
+                Unit = unit,
+                ComponentUom = componentUom,
+                DeliveryPackage = deliveryPackage,
+                IsReturnableDeposit = false,
+            };
+            order.Items.Add(item);
+            created.Add((line, item));
+        }
+
+        if (created.Count == 0)
+            return null;
+
+        await db.SaveChangesAsync();
+        foreach (var (line, item) in created)
+            line.ItemId = item.Id;
+        return null;
     }
 
     static void ApplyWorkflowLines(

@@ -85,6 +85,9 @@ export function OrderTemplateVendorProductPickerModal({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-medium truncate">{product.productName}</p>
+                      <p className="text-[10px] font-sans text-muted-foreground mt-0.5">
+                        Vendor Product ID: {product.id}
+                      </p>
                       <p className="text-muted-foreground truncate">{product.vendorName}</p>
                       <p className="text-[10px] text-muted-foreground mt-1">
                         Delivery unit: {formatDeliveryUnitPath(product.delivery)}

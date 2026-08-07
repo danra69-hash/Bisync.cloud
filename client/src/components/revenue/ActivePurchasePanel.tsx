@@ -4,8 +4,13 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
-import { Check, Copy, PackageCheck, X } from 'lucide-react';
+import { Check, Copy, PackageCheck, Plus, Trash2, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
+import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
+import {
+  ReceiveAddProductModal,
+  type ReceiveAddProductSelection,
+} from './ReceiveAddProductModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { orgRequiresHalalCertOnReceive } from '../../data/vendorPolicyRules';
@@ -37,7 +42,11 @@ type Props = {
 };
 
 type EditableLine = {
+  /** Stable React key (PO item id or extra-* for unordered receive lines). */
+  clientKey: string;
   itemId: number;
+  /** True when added at receive (freebie / CN replacement — not on original order). */
+  isExtra: boolean;
   componentId: string;
   componentName: string;
   productName: string;
@@ -85,7 +94,9 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
     const tax = item.taxAmount ?? 0;
 
     return {
+      clientKey: `po-item-${item.id}`,
       itemId: item.id,
+      isExtra: false,
       componentId: item.componentId ?? '',
       componentName: item.componentName || item.name,
       productName: item.name,
@@ -113,8 +124,8 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
   return lines.map(line => {
     const tempRaw = line.receivedTemperature.trim();
     const temp = tempRaw === '' ? null : Number(tempRaw);
-    return {
-      itemId: line.itemId,
+    const base: PurchaseOrderLineWorkflowPayload = {
+      itemId: line.isExtra ? 0 : line.itemId,
       quantity: parseFloat(line.quantity) || 0,
       unitPrice: parseFloat(line.unitPrice) || 0,
       componentUom: line.componentUom,
@@ -123,6 +134,18 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
       productExpiryDate: line.productExpiryDate.trim() || undefined,
       receivedTemperature: temp != null && Number.isFinite(temp) ? temp : null,
     };
+    if (line.isExtra) {
+      return {
+        ...base,
+        vendorProductId: line.vendorProductId,
+        componentId: line.componentId,
+        componentName: line.componentName,
+        name: line.productName,
+        unit: line.deliveryPackage,
+        deliveryPackage: line.deliveryPackage,
+      };
+    }
+    return base;
   });
 }
 
@@ -182,6 +205,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [shareToken, setShareToken] = useState(order.vendorShareToken?.trim() ?? '');
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
+  const [showAddProduct, setShowAddProduct] = useState(false);
   const vendorRatingRef = useRef<HTMLDivElement>(null);
   const panelScrollRef = useRef<HTMLDivElement>(null);
 
@@ -197,6 +221,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     setError(null);
     setShareToken(order.vendorShareToken?.trim() ?? '');
     setShareLinkCopied(false);
+    setShowAddProduct(false);
   }, [order, mode]);
 
   useEffect(() => {
@@ -330,8 +355,56 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     totalCount,
     visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(lines, { scrollRootRef });
 
-  function updateLine(itemId: number, patch: Partial<EditableLine>) {
-    setLines(prev => prev.map(line => (line.itemId === itemId ? { ...line, ...patch } : line)));
+  function updateLine(clientKey: string, patch: Partial<EditableLine>) {
+    setLines(prev => prev.map(line => (line.clientKey === clientKey ? { ...line, ...patch } : line)));
+  }
+
+  function removeExtraLine(clientKey: string) {
+    setLines(prev => prev.filter(line => line.clientKey !== clientKey));
+  }
+
+  const addedReceiveLineKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const line of lines) {
+      if (line.componentId && line.vendorProductId) {
+        keys.add(`${line.componentId}::${line.vendorProductId}`);
+      }
+    }
+    return keys;
+  }, [lines]);
+
+  function handleAddReceiveProduct(selection: ReceiveAddProductSelection) {
+    const lineKey = `${selection.componentId}::${selection.product.id}`;
+    if (addedReceiveLineKeys.has(lineKey)) return;
+    const deliveryPackage = formatDeliveryUnitPath(selection.product.delivery);
+    setLines(prev => [
+      ...prev,
+      {
+        clientKey: `extra-${Date.now()}-${selection.product.id}`,
+        itemId: 0,
+        isExtra: true,
+        componentId: selection.componentId,
+        componentName: selection.componentName,
+        productName: selection.product.productName,
+        vendorProductId: selection.product.id,
+        orderedQuantity: '0',
+        quantity: '1',
+        orderedUnitPrice: '0',
+        // Freebies / CN replacements default to zero cost; user may override.
+        unitPrice: '0',
+        taxAmount: '',
+        issuedUnitPrice: 0,
+        componentUom: selection.componentUom,
+        deliveryPackage,
+        halalCertNo: '',
+        productExpiryDate: '',
+        receivedTemperature: '',
+        deliveredQuantity: 0,
+        remainingQuantity: Number.POSITIVE_INFINITY,
+      },
+    ]);
+    setShowAddProduct(false);
+    setError(null);
   }
 
   async function handleCopyShareLink() {
@@ -381,9 +454,21 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       return;
     }
     if (order.allowPartialDelivery) {
-      const over = lines.find(line => (parseFloat(line.quantity) || 0) > line.remainingQuantity + 0.0001);
+      const over = lines.find(line =>
+        !line.isExtra && (parseFloat(line.quantity) || 0) > line.remainingQuantity + 0.0001);
       if (over) {
         setError(`Received qty for "${over.productName}" cannot exceed remaining ${over.remainingQuantity}.`);
+        return;
+      }
+    }
+    const extras = lines.filter(line => line.isExtra);
+    for (const extra of extras) {
+      if ((parseFloat(extra.quantity) || 0) <= 0) {
+        setError(`Enter a receive quantity for added product "${extra.productName}".`);
+        return;
+      }
+      if (!extra.vendorProductId.trim() || !extra.componentId.trim()) {
+        setError(`Added product "${extra.productName}" is missing Vendor Product ID or component.`);
         return;
       }
     }
@@ -430,7 +515,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       return;
     }
     if (order.allowPartialDelivery) {
-      const over = lines.find(line => (parseFloat(line.quantity) || 0) > line.remainingQuantity + 0.0001);
+      const over = lines.find(line =>
+        !line.isExtra && (parseFloat(line.quantity) || 0) > line.remainingQuantity + 0.0001);
       if (over) {
         setError(`Shipment qty for "${over.productName}" cannot exceed remaining ${over.remainingQuantity}.`);
         return;
@@ -716,8 +802,27 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
           )}
 
           <div className="border border-border rounded-lg overflow-hidden">
-            <div className="px-4 py-2 border-b border-border bg-muted/30">
-              <p className="text-xs font-semibold">Line items</p>
+            <div className="px-4 py-2 border-b border-border bg-muted/30 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold">Line items</p>
+                {mode === 'receive' && !readOnly ? (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Add freebies or credit-note replacements that were not on the original order.
+                  </p>
+                ) : null}
+              </div>
+              {mode === 'receive' && !readOnly ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAddProduct(true)}
+                  disabled={saving || !order.vendorExternalId}
+                  className="inline-flex items-center gap-1 shrink-0 px-2.5 py-1.5 rounded-md border border-border bg-background text-[11px] font-semibold hover:bg-muted disabled:opacity-50"
+                  title={order.vendorExternalId ? 'Add unordered vendor product' : 'PO has no vendor id'}
+                >
+                  <Plus size={12} />
+                  Add product
+                </button>
+              ) : null}
             </div>
             <TableScrollContainer ref={scrollRootRef} className="max-h-[min(42vh,24rem)] overflow-y-auto">
               <table className="w-full text-xs">
@@ -740,12 +845,35 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                     const priceVariance = price - orderedPrice;
                     const lineTotal = qty * price + tax;
                     return (
-                      <tr key={line.itemId} className="border-b border-border last:border-0">
+                      <tr key={line.clientKey} className="border-b border-border last:border-0">
                         <td className="px-3 py-2">
                           <p className="font-medium">{line.componentName}</p>
                           <p className="text-[10px] font-sans text-muted-foreground">{line.componentId || '—'}</p>
                         </td>
-                        <td className="px-3 py-2">{line.productName}</td>
+                        <td className="px-3 py-2">
+                          <p className="font-medium">{line.productName}</p>
+                          <p className="text-[10px] font-sans text-muted-foreground">
+                            Vendor Product ID: {line.vendorProductId || '—'}
+                          </p>
+                          {line.isExtra ? (
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                                Not ordered · freebie / replacement
+                              </span>
+                              {canEditReceived ? (
+                                <button
+                                  type="button"
+                                  onClick={() => removeExtraLine(line.clientKey)}
+                                  className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-destructive"
+                                  title="Remove added product"
+                                >
+                                  <Trash2 size={10} />
+                                  Remove
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </td>
                         {showCommitmentColumns ? (
                           <>
                             <td className="px-3 py-2 font-sans tabular-nums">{line.orderedQuantity}</td>
@@ -783,7 +911,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                   min="0"
                                   step="any"
                                   value={line.quantity}
-                                  onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
+                                  onChange={e => updateLine(line.clientKey, { quantity: e.target.value })}
                                   className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                                 />
                               ) : (
@@ -801,7 +929,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 min="0"
                                 step="any"
                                 value={line.quantity}
-                                onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
+                                onChange={e => updateLine(line.clientKey, { quantity: e.target.value })}
                                 className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                               />
                             )}
@@ -830,7 +958,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                     min="0"
                                     step="0.01"
                                     value={line.unitPrice}
-                                    onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
+                                    onChange={e => updateLine(line.clientKey, { unitPrice: e.target.value })}
                                     className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                                   />
                                 ) : (
@@ -862,7 +990,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                   min="0"
                                   step="0.01"
                                   value={line.unitPrice}
-                                  onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
+                                  onChange={e => updateLine(line.clientKey, { unitPrice: e.target.value })}
                                   className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                                 />
                               )}
@@ -877,7 +1005,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 min="0"
                                 step="0.01"
                                 value={line.taxAmount}
-                                onChange={e => updateLine(line.itemId, { taxAmount: e.target.value })}
+                                onChange={e => updateLine(line.clientKey, { taxAmount: e.target.value })}
                                 placeholder="0.00"
                                 className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                               />
@@ -894,7 +1022,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                               <input
                                 type="text"
                                 value={line.halalCertNo}
-                                onChange={e => updateLine(line.itemId, { halalCertNo: e.target.value })}
+                                onChange={e => updateLine(line.clientKey, { halalCertNo: e.target.value })}
                                 placeholder="Optional"
                                 className="w-32 rounded border border-border bg-background px-2 py-1"
                               />
@@ -909,7 +1037,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                               <input
                                 type="date"
                                 value={line.productExpiryDate}
-                                onChange={e => updateLine(line.itemId, { productExpiryDate: e.target.value })}
+                                onChange={e => updateLine(line.clientKey, { productExpiryDate: e.target.value })}
                                 className="w-36 rounded border border-border bg-background px-2 py-1 font-sans"
                               />
                             )}
@@ -922,7 +1050,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 type="number"
                                 step="0.1"
                                 value={line.receivedTemperature}
-                                onChange={e => updateLine(line.itemId, { receivedTemperature: e.target.value })}
+                                onChange={e => updateLine(line.clientKey, { receivedTemperature: e.target.value })}
                                 placeholder="—"
                                 title="Optional temperature check (°C)"
                                 className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
@@ -1146,6 +1274,17 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
           )}
         </div>
       </aside>
+      {showAddProduct ? (
+        <ReceiveAddProductModal
+          companyId={order.companyId ?? null}
+          vendorExternalId={order.vendorExternalId ?? ''}
+          vendorName={order.vendorName}
+          locationIds={order.locationExternalIds ?? []}
+          addedLineKeys={addedReceiveLineKeys}
+          onClose={() => setShowAddProduct(false)}
+          onSelect={handleAddReceiveProduct}
+        />
+      ) : null}
     </>,
     document.body,
   );
