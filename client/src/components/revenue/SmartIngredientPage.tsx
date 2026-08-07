@@ -8,8 +8,9 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
-import { FilePlus2, Search, Upload, X } from 'lucide-react';
+import { FilePlus2, Search, Tag, Upload, X } from 'lucide-react';
 import { api } from '../../api';
+import { ComponentTagSuggestionModal } from './ComponentTagSuggestionModal';
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { labelsEqual } from '../../utils/labelMatch';
 import {
@@ -59,6 +60,7 @@ type IngredientSortColumn =
   | 'storage'
   | 'products'
   | 'vendors'
+  | 'tagSuggest'
   | 'active';
 
 const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
@@ -73,6 +75,7 @@ const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
   { key: 'storage', label: 'Storage', ...tableColWidth('9%') },
   { key: 'products', label: 'Products', align: 'center', ...tableColWidth(72) },
   { key: 'vendors', label: 'Vendors', align: 'center', ...tableColWidth(72) },
+  { key: 'tagSuggest', label: 'Tag suggest', align: 'center', sortable: false, ...tableColWidth(88) },
   { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
 ];
 
@@ -175,6 +178,8 @@ export function SmartIngredientPage({
   const [importError, setImportError] = useState<string | null>(null);
   const [catalogRevision, setCatalogRevision] = useState(0);
   const [hierarchyRevision, setHierarchyRevision] = useState(0);
+  const [tagSuggestCounts, setTagSuggestCounts] = useState<Record<string, number>>({});
+  const [tagSuggestRow, setTagSuggestRow] = useState<ComponentRow | null>(null);
   const templateRef = useRef<HTMLInputElement | null>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<IngredientSortColumn>();
 
@@ -246,6 +251,23 @@ export function SmartIngredientPage({
   useEffect(() => {
     resetSort();
   }, [catFilter, grpFilter, search, uomFilter, showInactiveOnly, resetSort]);
+
+  useEffect(() => {
+    if (!selectedCompanyId || rows.length === 0) {
+      setTagSuggestCounts({});
+      return;
+    }
+    let cancelled = false;
+    const names = [...new Set(rows.map(r => r.name).filter(Boolean))];
+    void api.componentTagSuggestionCounts(selectedCompanyId, names)
+      .then(res => {
+        if (!cancelled) setTagSuggestCounts(res.counts ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setTagSuggestCounts({});
+      });
+    return () => { cancelled = true; };
+  }, [selectedCompanyId, rows]);
 
   /** Active and inactive components stay in the same table; the UI buckets them via this filter. */
   const activityScopedRows = useMemo(
@@ -752,6 +774,32 @@ export function SmartIngredientPage({
                       ) : <span className="text-muted-foreground font-sans">—</span>}
                     </td>
                     <td className="px-4 py-3 text-center">
+                      {(() => {
+                        const suggestCount = tagSuggestCounts[row.name] ?? 0;
+                        return (
+                          <button
+                            type="button"
+                            disabled={!selectedCompanyId}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setTagSuggestRow(row);
+                            }}
+                            className={`inline-flex items-center justify-center gap-1 min-w-[2rem] h-7 px-1.5 rounded-md border text-xs font-sans transition-colors ${
+                              suggestCount > 0
+                                ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
+                                : 'border-border text-muted-foreground hover:bg-muted'
+                            }`}
+                            title={suggestCount > 0
+                              ? `${suggestCount} tag suggestion${suggestCount === 1 ? '' : 's'} (≥50%)`
+                              : 'Open tag suggestions'}
+                          >
+                            <Tag size={12} />
+                            {suggestCount > 0 ? suggestCount : ''}
+                          </button>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => toggleActive(row)}
                         className={`w-9 h-5 rounded-full relative transition-colors ${row.active ? 'bg-primary' : 'bg-border'}`}
@@ -782,6 +830,21 @@ export function SmartIngredientPage({
           onSave={handleSave}
         />
       )}
+
+      {tagSuggestRow && selectedCompanyId ? (
+        <ComponentTagSuggestionModal
+          row={tagSuggestRow}
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          companyLocationIds={companyLocations.map(l => l.externalId)}
+          onClose={() => setTagSuggestRow(null)}
+          onTagged={updated => {
+            setRows(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+            setTagSuggestRow(null);
+            setCatalogRevision(v => v + 1);
+          }}
+        />
+      ) : null}
 
       {importPlan && (
         <SmartComponentImportReviewPanel

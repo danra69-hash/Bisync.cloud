@@ -143,6 +143,7 @@ jobs:
           DEFAULT_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync;Username=${DB_USER}"
           ARCHIVE_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_archive;Username=${DB_USER}"
           AUDIT_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_audit;Username=${DB_USER}"
+          TAG_SUGGESTION_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_tag_suggestions;Username=${DB_USER}"
 
           # Startup probe: give the revision ~4 minutes to bind PORT=8080 while
           # EnsureCreated/SchemaPatcher run, then deferred seeders continue after listen.
@@ -167,6 +168,7 @@ jobs:
             --set-env-vars="ConnectionStrings__DefaultConnection=${DEFAULT_CONN}" \
             --set-env-vars="ConnectionStrings__ArchiveConnection=${ARCHIVE_CONN}" \
             --set-env-vars="ConnectionStrings__AuditConnection=${AUDIT_CONN}" \
+            --set-env-vars="ConnectionStrings__TagSuggestionConnection=${TAG_SUGGESTION_CONN}" \
             --set-env-vars="DEV_CONSOLE_ENABLED=true" \
             --set-env-vars="BISYNC_GIT_SHA=${GITHUB_SHA}"
 

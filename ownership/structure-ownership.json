@@ -966,6 +966,16 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.api.tag-suggestions",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/TagSuggestionsController.cs",
+      "symbol": "TagSuggestionsController",
+      "route": "api/tag-suggestions",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-07"
+    },
+    {
       "id": "dr.api.purchase-orders",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/ApiControllers.cs",

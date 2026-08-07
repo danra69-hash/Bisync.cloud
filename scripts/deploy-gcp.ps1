@@ -152,6 +152,7 @@ Step "8" "Deploying to Cloud Run service '$ServiceName'"
 $DefaultConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync;Username=${DbUser}"
 $ArchiveConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_archive;Username=${DbUser}"
 $AuditConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_audit;Username=${DbUser}"
+$TagSuggestionConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_tag_suggestions;Username=${DbUser}"
 
 $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
 
@@ -175,6 +176,7 @@ $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
     --set-env-vars "ConnectionStrings__DefaultConnection=$DefaultConn" `
     --set-env-vars "ConnectionStrings__ArchiveConnection=$ArchiveConn" `
     --set-env-vars "ConnectionStrings__AuditConnection=$AuditConn" `
+    --set-env-vars "ConnectionStrings__TagSuggestionConnection=$TagSuggestionConn" `
     --set-env-vars "DEV_CONSOLE_ENABLED=$DevConsoleEnabled"
 if ($LASTEXITCODE -ne 0) { throw "Cloud Run deploy failed." }
 
