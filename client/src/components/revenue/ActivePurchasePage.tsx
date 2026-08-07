@@ -26,7 +26,12 @@ type Props = {
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
-type SummaryBucket = 'purchase_request' | 'po_accepted' | 'received' | 'reconciled';
+type SummaryBucket =
+  | 'purchase_request'
+  | 'po_accepted'
+  | 'received'
+  | 'reconciled'
+  | 'pre_committed';
 
 type ActivePurchaseSortColumn =
   | 'type'
@@ -81,6 +86,12 @@ const SUMMARY_BOXES: {
     empty: 'No reconciled purchase orders.',
     hint: 'Accounting consolidated — click a line to view.',
   },
+  {
+    id: 'pre_committed',
+    label: 'Pre-committed Purchase Order',
+    empty: 'No active pre-committed purchase orders.',
+    hint: 'Blanket commitments available for drawdown — click a line to view.',
+  },
 ];
 
 function orderTotal(order: PurchaseOrder): number {
@@ -117,9 +128,9 @@ function isPurchaseRequestOrder(order: PurchaseOrder): boolean {
     || order.canApprove === true;
 }
 
-/** Workflow bucket for Active Purchase KPI boxes (excludes pre-committed masters). */
+/** Workflow bucket for Active Purchase KPI boxes. */
 export function resolveActivePurchaseBucket(order: PurchaseOrder): SummaryBucket | null {
-  if (order.isPreCommitted) return null;
+  if (order.isPreCommitted) return 'pre_committed';
   if (isPurchaseRequestOrder(order)) return 'purchase_request';
   if (order.status === 'Reconciled') return 'reconciled';
   if (order.status === 'Received' || order.status === 'Partially Delivered') return 'received';
@@ -196,6 +207,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
       po_accepted: [],
       received: [],
       reconciled: [],
+      pre_committed: [],
     };
     for (const order of orders) {
       const bucket = resolveActivePurchaseBucket(order);
@@ -294,7 +306,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {SUMMARY_BOXES.map(box => {
           const count = bucketed[box.id].length;
           const selected = selectedBucket === box.id;
