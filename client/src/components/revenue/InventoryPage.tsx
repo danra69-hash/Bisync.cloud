@@ -130,6 +130,13 @@ function todayIsoDate() {
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  /**
+   * Team mobile actor (employee display name). When set, save/confirm follow
+   * Team workflow without requiring an AppUser inventory permission matrix.
+   */
+  teamActorName?: string;
+  /** Drop outer page padding when embedded in Team Stock. */
+  embedded?: boolean;
 };
 
 const ITEM_TYPES = ['All', 'Product', 'Sub-Product', 'Smart Component'] as const;
@@ -259,15 +266,18 @@ function sessionStatusLabel(session: InventoryCountSession, inventoryMode: Inven
   return `Full inventory confirmed on ${formatDateTime(session.confirmedAt ?? session.savedAt)} by ${session.confirmedBy || '—'}`;
 }
 
-export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props) {
+export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActorName, embedded = false }: Props) {
   const countryCode = useOrgCountryCode();
   const { currentUser } = useCurrentUser();
   const access = useMemo(
     () => (currentUser ? parseUserAccess(currentUser.accessJson) : null),
     [currentUser],
   );
-  const canSave = access ? canSaveInventoryCount(access) : false;
-  const canConfirm = access ? canConfirmInventoryCount(access) : false;
+  const teamWorkflow = Boolean(teamActorName?.trim());
+  const actorName = (currentUser?.fullName?.trim() || teamActorName?.trim() || 'Unknown user');
+  const canSave = teamWorkflow || (access ? canSaveInventoryCount(access) : false);
+  const canConfirm = teamWorkflow || (access ? canConfirmInventoryCount(access) : false);
+  const shellCls = pageShellClass({ embedded });
 
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [historyMonth, setHistoryMonth] = useState('');
@@ -646,7 +656,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         itemTypeFilter: itemTypeFilterParam(itemTypeFilter),
         groupFilter: 'All',
         countDate: inventoryMode === 'spot' ? countDate : new Date().toISOString().slice(0, 10),
-        savedBy: currentUser?.fullName ?? 'Unknown user',
+        savedBy: actorName,
         lines,
       });
       setActiveSession(result.session);
@@ -679,7 +689,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     try {
       const result = await api.confirmInventoryCount(
         sessionId,
-        currentUser?.fullName ?? 'Unknown user',
+        actorName,
         effectiveDate,
       );
       if (activeSession?.id === sessionId) {
@@ -709,14 +719,14 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
   if (!selectedCompanyId || selectedLocationIds.length === 0) {
     return (
-      <div className={pageShellClass()}>
+      <div className={shellCls}>
         <p className="text-sm text-muted-foreground">Select a company and location in the header to view inventory.</p>
       </div>
     );
   }
 
   return (
-    <div className={pageShellClass()}>
+    <div className={shellCls}>
       <PageStickyFilters opaque className="space-y-3 pb-2">
         <HrConfigTabBar tabs={INVENTORY_TABS} active={pageTab} onChange={setPageTab} />
 

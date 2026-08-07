@@ -571,6 +571,21 @@
   color: var(--team-fg);
 }
 
+/* RMS Transfer / Wastage / Inventory embedded under Team → Stock */
+.team-stock-rms {
+  padding-bottom: 8px;
+}
+
+.team-stock-rms-body {
+  margin-top: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.team-stock-rms-body table {
+  font-size: 11px;
+}
+
 .team-muted {
   color: var(--team-muted-fg);
 }
