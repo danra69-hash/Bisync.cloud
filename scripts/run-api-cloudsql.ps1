@@ -52,12 +52,14 @@ if (-not $password) { throw "Could not read bisync-db-password secret." }
 $defaultConn = "Host=$ip;Port=5432;Database=bisync;Username=$DbUser;Password=$password;SSL Mode=Require;Trust Server Certificate=true"
 $archiveConn = "Host=$ip;Port=5432;Database=bisync_archive;Username=$DbUser;Password=$password;SSL Mode=Require;Trust Server Certificate=true"
 $auditConn = "Host=$ip;Port=5432;Database=bisync_audit;Username=$DbUser;Password=$password;SSL Mode=Require;Trust Server Certificate=true"
+$tagSuggestionConn = "Host=$ip;Port=5432;Database=bisync_tag_suggestions;Username=$DbUser;Password=$password;SSL Mode=Require;Trust Server Certificate=true"
 
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 $env:DEV_CONSOLE_ENABLED = "true"
 $env:ConnectionStrings__DefaultConnection = $defaultConn
 $env:ConnectionStrings__ArchiveConnection = $archiveConn
 $env:ConnectionStrings__AuditConnection = $auditConn
+$env:ConnectionStrings__TagSuggestionConnection = $tagSuggestionConn
 
 Write-Host "Starting API on http://localhost:5299 (Cloud SQL backend)..." -ForegroundColor Green
 Write-Host "  ASPNETCORE_ENVIRONMENT=Development  DEV_CONSOLE_ENABLED=true" -ForegroundColor Gray

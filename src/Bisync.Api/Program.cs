@@ -73,6 +73,12 @@ static string ResolveAuditConnection(IServiceProvider sp)
         config["DB_PASSWORD"]);
 }
 
+static string ResolveTagSuggestionConnection(IServiceProvider sp)
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    return TagSuggestionStartup.ResolveConnection(config);
+}
+
 builder.Services.Configure<TenancyOptions>(builder.Configuration.GetSection(TenancyOptions.SectionName));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
@@ -147,6 +153,10 @@ builder.Services.AddDbContext<SystemAuditDbContext>((sp, options) =>
     options.UseNpgsql(ResolveAuditConnection(sp)));
 builder.Services.AddScoped<ISystemAuditService, SystemAuditService>();
 builder.Services.AddHostedService<SystemAuditArchiveHostedService>();
+builder.Services.AddDbContext<TagSuggestionDbContext>((sp, options) =>
+    options.UseNpgsql(ResolveTagSuggestionConnection(sp)));
+builder.Services.AddScoped<ComponentVendorTagSuggestionService>();
+builder.Services.AddHostedService<ComponentVendorTagSuggestionHostedService>();
 builder.Services.AddHostedService<InventoryCountAutoConfirmHostedService>();
 builder.Services.AddHostedService<SalesOrderLockExpiryHostedService>();
 

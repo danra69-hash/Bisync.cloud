@@ -2560,6 +2560,30 @@ export interface CentralStoreConfig {
   updatedAt?: string | null;
 }
 
+/** Platform-wide component → vendor-product tag suggestion (≥50% probability). */
+export interface ComponentTagSuggestion {
+  vendorProductId: string;
+  productName: string;
+  vendorExternalId: string;
+  vendorName: string;
+  vendorEngaged: boolean;
+  probability: number;
+  tagCount?: number;
+  observationCount?: number;
+  suggestedVendorName?: string;
+  deliveryPrice?: number;
+  group?: string;
+  specification?: string;
+  alreadyTagged?: boolean;
+}
+
+export interface ComponentTagSuggestionResponse {
+  componentName: string;
+  minProbability: number;
+  count: number;
+  suggestions: ComponentTagSuggestion[];
+}
+
 export interface StoreRequisitionLine {
   id: number;
   componentId: string;
@@ -4517,6 +4541,23 @@ export const api = {
       'DELETE',
     );
   },
+  componentTagSuggestions: (
+    companyId: number,
+    componentName: string,
+    locationIds?: string[],
+  ) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    params.set('componentName', componentName);
+    if (locationIds?.length) params.set('locationIds', locationIds.join(','));
+    return fetchJson<ComponentTagSuggestionResponse>(`/api/tag-suggestions?${params.toString()}`);
+  },
+  componentTagSuggestionCounts: (companyId: number, componentNames: string[]) =>
+    fetchJsonWithMethod<{ counts: Record<string, number> }>(
+      '/api/tag-suggestions/counts',
+      'POST',
+      { companyId, componentNames },
+    ),
   centralStoreConfig: (companyId: number) =>
     fetchJson<CentralStoreConfig>(`/api/central-store/config?companyId=${companyId}`),
   activateCentralStore: (payload: ActivateCentralStorePayload) =>

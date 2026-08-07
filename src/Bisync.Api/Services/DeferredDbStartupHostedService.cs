@@ -79,6 +79,7 @@ public sealed class DeferredDbStartupHostedService(
             await HrStartup.InitializeAsync(db);
             await StockCardArchiveStartup.InitializeAsync(sp);
             await SystemAuditStartup.InitializeAsync(sp);
+            await TagSuggestionStartup.InitializeAsync(sp);
             await sp.GetRequiredService<DevConsoleAuthService>().EnsureRootUserAsync();
             await sp.GetRequiredService<SalesModuleClientUpdateService>().SeedBundledIfEmptyAsync();
 
