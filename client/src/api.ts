@@ -2574,18 +2574,37 @@ export interface StoreRequisition {
   id: number;
   companyId?: number | null;
   requisitionNumber: string;
+  /** production (To Produce) | outlet (My Order Store Requisition) */
+  kind?: 'production' | 'outlet' | string;
   productId: number;
   productName: string;
   isSubProduct: boolean;
   batchQty: number;
   storeLocationExternalId: string;
   kitchenLocationExternalId: string;
-  status: 'pending' | 'issued' | 'cancelled' | string;
+  status: 'pending' | 'issued' | 'received' | 'cancelled' | string;
   requestedAt: string;
+  requestedBy?: string;
   issuedAt?: string | null;
   issuedBy?: string;
+  receivedAt?: string | null;
+  receivedBy?: string;
   createdAt: string;
+  canIssue?: boolean;
+  canReceive?: boolean;
   lines: StoreRequisitionLine[];
+}
+
+export interface CreateOutletStoreRequisitionPayload {
+  companyId: number;
+  requesterLocationExternalId: string;
+  requestedBy?: string;
+  lines: Array<{
+    componentId: string;
+    componentName?: string;
+    uom?: string;
+    quantity: number;
+  }>;
 }
 
 export interface ProductionStockHold {
@@ -4504,18 +4523,30 @@ export const api = {
     fetchJsonWithMethod<CentralStoreConfig>('/api/central-store/activate', 'POST', payload),
   deactivateCentralStore: (companyId: number) =>
     fetchJsonWithMethod<CentralStoreConfig>('/api/central-store/deactivate', 'POST', { companyId }),
-  storeRequisitions: (companyId: number, status?: string) => {
+  storeRequisitions: (companyId: number, status?: string, kind?: string) => {
     const params = new URLSearchParams();
     params.set('companyId', String(companyId));
     if (status) params.set('status', status);
+    if (kind) params.set('kind', kind);
     return fetchJson<StoreRequisition[]>(`/api/central-store/requisitions?${params.toString()}`);
   },
+  createOutletStoreRequisition: (payload: CreateOutletStoreRequisitionPayload) =>
+    fetchJsonWithMethod<StoreRequisition>('/api/central-store/requisitions', 'POST', payload),
   issueStoreRequisition: (
     id: number,
     payload: { companyId: number; issuedBy?: string },
   ) =>
     fetchJsonWithMethod<StoreRequisition>(
       `/api/central-store/requisitions/${id}/issue`,
+      'POST',
+      payload,
+    ),
+  receiveStoreRequisition: (
+    id: number,
+    payload: { companyId: number; receivedBy?: string },
+  ) =>
+    fetchJsonWithMethod<StoreRequisition>(
+      `/api/central-store/requisitions/${id}/receive`,
       'POST',
       payload,
     ),

@@ -459,13 +459,17 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.HasIndex(x => x.CompanyId);
             e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.Kind);
             e.HasIndex(x => x.ProductId);
             e.Property(x => x.RequisitionNumber).HasMaxLength(40);
+            e.Property(x => x.Kind).HasMaxLength(20);
             e.Property(x => x.ProductName).HasMaxLength(200);
             e.Property(x => x.StoreLocationExternalId).HasMaxLength(100);
             e.Property(x => x.KitchenLocationExternalId).HasMaxLength(100);
             e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.RequestedBy).HasMaxLength(200);
             e.Property(x => x.IssuedBy).HasMaxLength(200);
+            e.Property(x => x.ReceivedBy).HasMaxLength(200);
             e.HasMany(x => x.Lines)
                 .WithOne(l => l.StoreRequisition)
                 .HasForeignKey(l => l.StoreRequisitionId)

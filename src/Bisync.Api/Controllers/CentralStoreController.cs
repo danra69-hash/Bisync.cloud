@@ -60,7 +60,8 @@ public class CentralStoreController(
     [HttpGet("requisitions")]
     public async Task<ActionResult<IEnumerable<object>>> ListRequisitions(
         [FromQuery] int? companyId = null,
-        [FromQuery] string? status = null)
+        [FromQuery] string? status = null,
+        [FromQuery] string? kind = null)
     {
         var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
         if (cid is null && !TenantQuery.AllowsAllCompanies(tenant, cid))
@@ -76,6 +77,21 @@ public class CentralStoreController(
             var s = status.Trim().ToLowerInvariant();
             query = query.Where(r => r.Status == s);
         }
+        if (!string.IsNullOrWhiteSpace(kind))
+        {
+            var k = kind.Trim().ToLowerInvariant();
+            if (k == Models.StoreRequisition.KindProduction)
+            {
+                query = query.Where(r =>
+                    r.Kind == Models.StoreRequisition.KindProduction
+                    || r.Kind == ""
+                    || r.Kind == null!);
+            }
+            else
+            {
+                query = query.Where(r => r.Kind == k);
+            }
+        }
 
         var rows = await query
             .OrderByDescending(r => r.RequestedAt)
@@ -84,6 +100,37 @@ public class CentralStoreController(
             .ToListAsync();
 
         return Ok(rows.Select(CentralStoreService.MapRequisition));
+    }
+
+    [HttpPost("requisitions")]
+    public async Task<ActionResult<object>> CreateOutletRequisition(
+        [FromBody] CreateOutletStoreRequisitionRequest request)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, request.CompanyId);
+        if (cid is null)
+            return BadRequest(new { message = "Company is required." });
+
+        var lines = (request.Lines ?? [])
+            .Select(l => (
+                ComponentId: l.ComponentId ?? string.Empty,
+                ComponentName: l.ComponentName ?? string.Empty,
+                Uom: l.Uom ?? string.Empty,
+                Qty: l.Quantity))
+            .ToList();
+
+        try
+        {
+            var req = await centralStore.CreateOutletRequisitionAsync(
+                cid.Value,
+                request.RequesterLocationExternalId ?? string.Empty,
+                request.RequestedBy,
+                lines);
+            return Ok(CentralStoreService.MapRequisition(req));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPost("requisitions/{id:int}/issue")]
@@ -96,6 +143,24 @@ public class CentralStoreController(
         try
         {
             var req = await centralStore.IssueAsync(id, cid.Value, request.IssuedBy);
+            return Ok(CentralStoreService.MapRequisition(req));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("requisitions/{id:int}/receive")]
+    public async Task<ActionResult<object>> Receive(int id, [FromBody] ReceiveStoreRequisitionRequest request)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, request.CompanyId);
+        if (cid is null)
+            return BadRequest(new { message = "Company is required." });
+
+        try
+        {
+            var req = await centralStore.ReceiveOutletAsync(id, cid.Value, request.ReceivedBy);
             return Ok(CentralStoreService.MapRequisition(req));
         }
         catch (InvalidOperationException ex)
@@ -159,4 +224,29 @@ public class IssueStoreRequisitionRequest
 {
     public int? CompanyId { get; set; }
     public string? IssuedBy { get; set; }
+}
+
+public class ReceiveStoreRequisitionRequest
+{
+    public int? CompanyId { get; set; }
+    public string? ReceivedBy { get; set; }
+}
+
+public class CreateOutletStoreRequisitionRequest
+{
+    public int? CompanyId { get; set; }
+    [Required]
+    public string RequesterLocationExternalId { get; set; } = string.Empty;
+    public string? RequestedBy { get; set; }
+    public List<CreateOutletStoreRequisitionLineRequest> Lines { get; set; } = [];
+}
+
+public class CreateOutletStoreRequisitionLineRequest
+{
+    [Required]
+    public string ComponentId { get; set; } = string.Empty;
+    public string? ComponentName { get; set; }
+    public string? Uom { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
 }

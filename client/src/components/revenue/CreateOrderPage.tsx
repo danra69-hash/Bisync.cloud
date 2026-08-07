@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileStack, Handshake, Search, ShoppingCart } from 'lucide-react';
+import { FileStack, Handshake, Search, ShoppingCart, Warehouse } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
@@ -25,6 +25,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
+import { StoreRequisitionCreateModal } from './StoreRequisitionCreateModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { buildOrderQtyFromPrefill, type CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
@@ -64,6 +65,8 @@ type Props = {
   initialPrefillItems?: CreateOrderPrefillItem[];
   /** Opens the company-level Pre-committed PO editor (Order tab). */
   onOpenPreCommitted?: () => void;
+  /** Opens Active Requisition after a Store Requisition is submitted. */
+  onOpenActiveRequisition?: () => void;
 };
 
 export function CreateOrderPage({
@@ -72,6 +75,7 @@ export function CreateOrderPage({
   embedded = false,
   initialPrefillItems,
   onOpenPreCommitted,
+  onOpenActiveRequisition,
 }: Props) {
   const { number, rm } = useCountryFormatters();
   const [loading, setLoading] = useState(false);
@@ -82,6 +86,7 @@ export function CreateOrderPage({
   const [orderQtyByKey, setOrderQtyByKey] = useState<Record<string, string>>({});
   const [showCart, setShowCart] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showStoreRequisition, setShowStoreRequisition] = useState(false);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const [committedPos, setCommittedPos] = useState<PurchaseOrder[]>([]);
   const pendingTemplateRef = useRef<OrderTemplate | null>(null);
@@ -423,6 +428,22 @@ export function CreateOrderPage({
               <button
                 type="button"
                 onClick={() => {
+                  if (!selectedCompanyId) {
+                    setTemplateNotice('Select a company to create a store requisition.');
+                    return;
+                  }
+                  setShowStoreRequisition(true);
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors"
+                title="Request components from Central Store (Store → your location after issue & receive)"
+              >
+                <Warehouse size={16} />
+                Store Requisition
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   if (onOpenPreCommitted) {
                     onOpenPreCommitted();
                     return;
@@ -600,6 +621,18 @@ export function CreateOrderPage({
                 .then(setCommittedPos)
                 .catch(() => undefined);
             }
+          }}
+        />
+      )}
+
+      {showStoreRequisition && selectedCompanyId && (
+        <StoreRequisitionCreateModal
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          onClose={() => setShowStoreRequisition(false)}
+          onCreated={() => {
+            setShowStoreRequisition(false);
+            onOpenActiveRequisition?.();
           }}
         />
       )}

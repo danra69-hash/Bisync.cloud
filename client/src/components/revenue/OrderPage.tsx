@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { pageShellClass } from '../layout/pageLayout';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { ActivePurchasePage } from './ActivePurchasePage';
+import { ActiveRequisitionPage } from './ActiveRequisitionPage';
 import { B2bActiveOrderPage } from './B2bActiveOrderPage';
 import { CreateOrderPage } from './CreateOrderPage';
 import { PreCommittedPoPage } from './PreCommittedPoPage';
@@ -10,9 +11,10 @@ import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
 import type { CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
 const ORDER_TABS = [
+  { id: 'active', label: 'Active Purchase' },
+  { id: 'requisition', label: 'Active Requisition' },
   { id: 'create', label: 'My Order' },
   { id: 'pre-committed', label: 'Pre-committed PO' },
-  { id: 'active', label: 'Active Purchase' },
   { id: 'active-sales', label: 'Active Sales' },
 ] as const;
 
@@ -26,7 +28,7 @@ type Props = {
 };
 
 export function OrderPage({
-  initialTab = 'create',
+  initialTab = 'active',
   selectedCompanyId,
   selectedLocationIds,
   initialPrefillItems,
@@ -41,7 +43,7 @@ export function OrderPage({
 
   const resolvedInitial = useMemo((): OrderTabId => {
     if (initialPrefillItems && initialPrefillItems.length > 0) return 'create';
-    if (initialTab === 'active-sales' && !hasSupplyCapability) return 'create';
+    if (initialTab === 'active-sales' && !hasSupplyCapability) return 'active';
     return initialTab;
   }, [initialTab, hasSupplyCapability, initialPrefillItems]);
 
@@ -53,11 +55,11 @@ export function OrderPage({
 
   useEffect(() => {
     if (tab === 'active-sales' && !hasSupplyCapability) {
-      setTab('create');
+      setTab('active');
     }
   }, [tab, hasSupplyCapability]);
 
-  const activeTabLabel = visibleTabs.find(t => t.id === tab)?.label ?? 'My Order';
+  const activeTabLabel = visibleTabs.find(t => t.id === tab)?.label ?? 'Active Purchase';
   useRevMgmtPageLabel(activeTabLabel);
 
   return (
@@ -73,9 +75,16 @@ export function OrderPage({
           selectedLocationIds={selectedLocationIds}
           initialPrefillItems={initialPrefillItems}
           onOpenPreCommitted={() => setTab('pre-committed')}
+          onOpenActiveRequisition={() => setTab('requisition')}
         />
       ) : tab === 'pre-committed' ? (
         <PreCommittedPoPage
+          embedded
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      ) : tab === 'requisition' ? (
+        <ActiveRequisitionPage
           embedded
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}

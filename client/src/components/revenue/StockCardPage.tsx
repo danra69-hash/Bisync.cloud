@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
-import { api, type StockCardListRow } from '../../api';
+import { api, type DeliveryLocation, type Location, type StockCardListRow } from '../../api';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
@@ -25,6 +25,13 @@ import {
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type StockCardViewMode = 'list' | 'card';
+
+type StockLocationOption = {
+  key: string;
+  label: string;
+  /** Location external IDs used for stock card queries. */
+  locationIds: string[];
+};
 
 type Props = {
   selectedCompanyId: number | null;
@@ -131,6 +138,10 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
   const [listVersion, setListVersion] = useState(0);
   const [viewMode, setViewMode] = useState<StockCardViewMode>('list');
+  const [stockLocationKey, setStockLocationKey] = useState('all');
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>([]);
+  const [centralStoreLocationId, setCentralStoreLocationId] = useState<string | null>(null);
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<StockCardSortColumn>(
     'lastChangedAt',
@@ -138,11 +149,108 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   );
 
   useEffect(() => {
-    resetSort();
-  }, [search, groupFilter, itemTypeFilter, uomMode, selectedMonth, selectedCompanyId, selectedLocationIds, resetSort]);
+    if (!selectedCompanyId) {
+      setLocations([]);
+      setDeliveryLocations([]);
+      setCentralStoreLocationId(null);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      api.locations(),
+      api.deliveryLocations({ companyId: selectedCompanyId, locationExternalIds: selectedLocationIds }),
+      api.centralStoreConfig(selectedCompanyId).catch(() => null),
+    ]).then(([locs, deliveries, storeCfg]) => {
+      if (cancelled) return;
+      setLocations(
+        (Array.isArray(locs) ? locs : []).filter(
+          l => l.companyId === selectedCompanyId && l.active !== false,
+        ),
+      );
+      setDeliveryLocations(Array.isArray(deliveries) ? deliveries.filter(d => d.active !== false) : []);
+      const storeId = storeCfg?.active && storeCfg.storeLocationExternalId
+        ? storeCfg.storeLocationExternalId
+        : null;
+      setCentralStoreLocationId(storeId);
+    }).catch(() => {
+      if (!cancelled) {
+        setLocations([]);
+        setDeliveryLocations([]);
+        setCentralStoreLocationId(null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [selectedCompanyId, selectedLocationIds]);
+
+  const stockLocationOptions = useMemo((): StockLocationOption[] => {
+    const nameOf = (id: string) => locations.find(l => l.externalId === id)?.name || id;
+    const options: StockLocationOption[] = [
+      {
+        key: 'all',
+        label: selectedLocationIds.length > 1 ? 'All selected locations' : (nameOf(selectedLocationIds[0] ?? '') || 'Selected location'),
+        locationIds: [...selectedLocationIds],
+      },
+    ];
+    const seen = new Set<string>(['all']);
+
+    for (const id of selectedLocationIds) {
+      const key = `loc:${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      options.push({ key, label: nameOf(id), locationIds: [id] });
+    }
+
+    if (centralStoreLocationId) {
+      const key = `store:${centralStoreLocationId}`;
+      if (!seen.has(key) && !selectedLocationIds.includes(centralStoreLocationId)) {
+        seen.add(key);
+        options.push({
+          key,
+          label: `${nameOf(centralStoreLocationId)} (Central Store)`,
+          locationIds: [centralStoreLocationId],
+        });
+      } else if (selectedLocationIds.includes(centralStoreLocationId)) {
+        const existing = options.find(o => o.key === `loc:${centralStoreLocationId}`);
+        if (existing && !existing.label.includes('Central Store')) {
+          existing.label = `${existing.label} (Central Store)`;
+        }
+      }
+    }
+
+    for (const dl of deliveryLocations) {
+      const parent = (dl.locationExternalId || '').trim();
+      if (!parent) continue;
+      const key = `dl:${dl.externalId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      options.push({
+        key,
+        label: `${dl.name} (alternate · ${nameOf(parent)})`,
+        locationIds: [parent],
+      });
+    }
+
+    return options;
+  }, [locations, deliveryLocations, centralStoreLocationId, selectedLocationIds]);
 
   useEffect(() => {
-    if (!selectedCompanyId || selectedLocationIds.length === 0) {
+    if (!stockLocationOptions.some(o => o.key === stockLocationKey)) {
+      setStockLocationKey('all');
+    }
+  }, [stockLocationOptions, stockLocationKey]);
+
+  const effectiveLocationIds = useMemo(() => {
+    const opt = stockLocationOptions.find(o => o.key === stockLocationKey);
+    const ids = opt?.locationIds?.length ? opt.locationIds : selectedLocationIds;
+    return ids.filter(Boolean);
+  }, [stockLocationOptions, stockLocationKey, selectedLocationIds]);
+
+  useEffect(() => {
+    resetSort();
+  }, [search, groupFilter, itemTypeFilter, uomMode, selectedMonth, selectedCompanyId, effectiveLocationIds, stockLocationKey, resetSort]);
+
+  useEffect(() => {
+    if (!selectedCompanyId || effectiveLocationIds.length === 0) {
       setRows([]);
       setSelectedRow(null);
       setLoading(false);
@@ -152,7 +260,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
     setLoading(true);
     setError(null);
     api
-      .stockCards(selectedCompanyId, selectedLocationIds, {
+      .stockCards(selectedCompanyId, effectiveLocationIds, {
         itemType: itemTypeFilterParam(itemTypeFilter),
         uomMode,
         period: selectedMonth,
@@ -160,7 +268,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
       .then(setRows)
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load stock cards.'))
       .finally(() => setLoading(false));
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, listVersion]);
+  }, [selectedCompanyId, effectiveLocationIds, itemTypeFilter, uomMode, selectedMonth, listVersion]);
 
   const groups = useMemo(() => {
     const unique = new Set(rows.map(row => row.group).filter(Boolean));
@@ -223,6 +331,21 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
     <div className={pageShellClass()}>
       <PageStickyFilters opaque className="py-2 mb-3 space-y-2">
         <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+              Stock location
+            </label>
+            <select
+              value={stockLocationKey}
+              onChange={e => setStockLocationKey(e.target.value)}
+              className={`${filterSelectCls} min-w-[220px]`}
+              title="Location, Central Store, and alternate delivery locations from System Config"
+            >
+              {stockLocationOptions.map(opt => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <FilterSelect label="Type" value={itemTypeFilter} options={[...ITEM_TYPES]} onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])} />
           <FilterSelect label="Group" value={groupFilter} options={groups} onChange={setGroupFilter} />
           <div className="flex flex-col gap-1">
@@ -301,7 +424,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           <StockCardCardView
             rows={sortedRows}
             companyId={selectedCompanyId}
-            locationIds={selectedLocationIds}
+            locationIds={effectiveLocationIds}
             uomMode={uomMode}
             selectedMonth={selectedMonth}
             onOpenDetail={setSelectedRow}
@@ -362,7 +485,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           itemType={selectedRow.itemType}
           itemKey={selectedRow.itemKey}
           companyId={selectedCompanyId}
-          locationIds={selectedLocationIds}
+          locationIds={effectiveLocationIds}
           uomMode={uomMode}
           selectedMonth={selectedMonth}
           onClose={() => setSelectedRow(null)}
