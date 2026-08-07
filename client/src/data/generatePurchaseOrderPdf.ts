@@ -37,6 +37,8 @@ export type PurchaseOrderPdfLine = {
 export type PurchaseOrderPdfData = {
   poNumber: string;
   documentKind: 'purchase_order' | 'purchase_request' | 'sales_order';
+  /** When true, PDF title is PRE-COMMITTED ORDER and date block is commitment period. */
+  isPreCommitted?: boolean;
   orderDate: string;
   deliveryDate: string;
   /** Override label next to delivery/commitment date (default: Preferred Delivery Date). */
@@ -55,6 +57,23 @@ export type PurchaseOrderPdfData = {
   approvedBy: string;
   termsAndConditions: string;
 };
+
+/** PDF header title — pre-committed masters are not regular purchase orders. */
+export function resolvePurchaseOrderPdfTitle(
+  data: Pick<PurchaseOrderPdfData, 'documentKind' | 'isPreCommitted'>,
+): string {
+  if (data.isPreCommitted) return 'PRE-COMMITTED ORDER';
+  return getPurchaseDocumentLabels(data.documentKind).pdfTitle;
+}
+
+export function resolvePurchaseOrderPdfDateHeading(
+  data: Pick<PurchaseOrderPdfData, 'isPreCommitted' | 'deliveryDateHeading'>,
+): string {
+  if (data.isPreCommitted) {
+    return (data.deliveryDateHeading ?? 'Commitment Period').toUpperCase();
+  }
+  return (data.deliveryDateHeading ?? 'Preferred Delivery Date').toUpperCase();
+}
 
 type JsPDFDoc = import('jspdf').jsPDF;
 
@@ -228,14 +247,22 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   drawHeaderLogo(doc, data, margin, y);
 
   const labels = getPurchaseDocumentLabels(data.documentKind);
+  const pdfTitle = resolvePurchaseOrderPdfTitle(data);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text(labels.pdfTitle, right, y + 4, { align: 'right' });
+  doc.setFontSize(data.isPreCommitted ? 14 : 16);
+  doc.text(pdfTitle, right, y + 4, { align: 'right' });
   doc.setFontSize(10);
   doc.text(`${labels.numberLabel} ${data.poNumber}`, right, y + 11, { align: 'right' });
+  if (data.isPreCommitted) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text('Blanket commitment — not a delivery shipment', right, y + 16, { align: 'right' });
+    doc.setTextColor(0, 0, 0);
+  }
 
-  y += 24;
+  y += data.isPreCommitted ? 28 : 24;
   doc.setDrawColor(200);
   doc.line(margin, y, right, y);
   y += 8;
@@ -289,15 +316,13 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   const deliveryDateLabelY = y + 10;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text(
-    (data.deliveryDateHeading ?? 'PREFERRED DELIVERY DATE').toUpperCase(),
-    colRight,
-    deliveryDateLabelY,
-  );
+  doc.text(resolvePurchaseOrderPdfDateHeading(data), colRight, deliveryDateLabelY);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(data.deliveryDate, colRight, deliveryDateLabelY + 4.5);
-  y = Math.max(deliveryEnd, deliveryDateLabelY + 9) + 4;
+  const dateLines = doc.splitTextToSize(data.deliveryDate || '—', 86);
+  doc.text(dateLines, colRight, deliveryDateLabelY + 4.5);
+  const dateBlockEnd = deliveryDateLabelY + 4.5 + Math.max(0, dateLines.length - 1) * 4;
+  y = Math.max(deliveryEnd, dateBlockEnd + 4.5) + 4;
   doc.setDrawColor(120);
   doc.line(margin, y, right, y);
   y += 6;
@@ -425,11 +450,13 @@ export function triggerBlobDownload(blob: Blob, filename: string): void {
 
 export async function downloadPurchaseOrderPdf(data: PurchaseOrderPdfData): Promise<void> {
   const blob = await createPurchaseOrderPdfBlob(data);
-  const prefix = data.documentKind === 'purchase_request'
-    ? 'PR'
-    : data.documentKind === 'sales_order'
-      ? 'SO'
-      : 'PO';
+  const prefix = data.isPreCommitted
+    ? 'Pre-committed-PO'
+    : data.documentKind === 'purchase_request'
+      ? 'PR'
+      : data.documentKind === 'sales_order'
+        ? 'SO'
+        : 'PO';
   triggerBlobDownload(blob, `${prefix}-${safePdfFilename(data.poNumber)}.pdf`);
 }
 

@@ -19,6 +19,7 @@ export function buildPurchaseOrderPdfData(params: {
   orderDateLabel: string;
   deliveryDateLabel: string;
   deliveryDateHeading?: string;
+  isPreCommitted?: boolean;
   initiatedBy: string;
   approvedBy: string;
   documentKind?: PurchaseDocumentKind;
@@ -26,6 +27,7 @@ export function buildPurchaseOrderPdfData(params: {
 }): PurchaseOrderPdfData {
   const taxRate = params.taxRate ?? DEFAULT_TAX_RATE;
   const documentKind = params.documentKind ?? 'purchase_order';
+  const isPreCommitted = Boolean(params.isPreCommitted);
   const items = params.group.items.map(item => {
     const lineSubtotal = item.lineTotal;
     const taxAmount = lineSubtotal * taxRate;
@@ -45,9 +47,12 @@ export function buildPurchaseOrderPdfData(params: {
   return {
     poNumber: params.poNumber,
     documentKind,
+    isPreCommitted,
     orderDate: params.orderDateLabel,
     deliveryDate: params.deliveryDateLabel,
-    deliveryDateHeading: params.deliveryDateHeading,
+    deliveryDateHeading: isPreCommitted
+      ? (params.deliveryDateHeading ?? 'Commitment Period')
+      : params.deliveryDateHeading,
     countryCode: params.company.countryCode,
     company: {
       name: params.company.name,

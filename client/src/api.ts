@@ -2214,6 +2214,9 @@ export interface VendorOrderPortal {
   vendorName: string;
   documentType: string;
   documentKind: 'purchase_order' | 'purchase_request';
+  isPreCommitted?: boolean;
+  commitmentStartDate?: string | null;
+  commitmentEndDate?: string | null;
   status: string;
   orderDate: string;
   deliveryDate: string;

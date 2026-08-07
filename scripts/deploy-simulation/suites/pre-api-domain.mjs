@@ -13,6 +13,7 @@ const focused = [
   'scripts/stock-inbound-step1-bbq.mjs',
   'scripts/credit-note-outbound-residual.mjs',
   'scripts/active-purchase-buckets.mjs',
+  'scripts/precommitted-po-pdf-label.mjs',
 ]
 
 for (const rel of focused) {
