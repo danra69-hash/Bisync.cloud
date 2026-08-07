@@ -1232,6 +1232,26 @@
   background: color-mix(in srgb, var(--team-muted) 30%, #fff);
 }
 
+button.team-rm-list-item-btn {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  appearance: none;
+}
+
+button.team-rm-list-item-btn:hover,
+button.team-rm-list-item-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--team-primary) 45%, var(--team-border));
+  background: color-mix(in srgb, var(--team-primary-soft) 55%, #fff);
+}
+
+button.team-rm-list-item-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .team-rm-list-item > div:first-child {
   min-width: 0;
   flex: 1 1 auto;

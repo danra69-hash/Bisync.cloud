@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ClipboardList, PackageCheck, Layers, BadgeCheck } from 'lucide-react';
 import { api, type PurchaseOrder } from '../../api';
 import { resolvePurchaseOrderStatusLabel } from '../../data/purchaseOrderStatus';
+import { ActivePurchasePanel } from '../../components/revenue/ActivePurchasePanel';
 import { dateKeyInRange, formatTeamDate, rmsListDateWindow } from './teamRmsDates';
 
 type ListKind = 'to-approve' | 'active' | 'received' | 'consolidated';
@@ -9,6 +10,8 @@ type ListKind = 'to-approve' | 'active' | 'received' | 'consolidated';
 type Props = {
   onBackToTeam?: () => void;
   showBack?: boolean;
+  /** Team employee display name — enables approve/receive/reconcile without platform AppUser. */
+  employeeName?: string;
 };
 
 function statusTone(status: string): string {
@@ -66,40 +69,46 @@ function listTitle(kind: ListKind): string {
   return 'Consolidated';
 }
 
-export function TeamRmsLanding({ onBackToTeam, showBack = true }: Props) {
+function actionHint(order: PurchaseOrder): string {
+  if (order.canApprove || order.status === 'Pending Approval') return 'Tap to approve';
+  if (order.canReceive) return 'Tap to receive';
+  if (order.canReconcile) return 'Tap to consolidate';
+  return 'Tap to view';
+}
+
+export function TeamRmsLanding({ onBackToTeam, showBack = true, employeeName }: Props) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [listKind, setListKind] = useState<ListKind | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const [openingId, setOpeningId] = useState<number | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   const window = useMemo(() => rmsListDateWindow(), []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
-    void (async () => {
+    try {
+      let list: PurchaseOrder[] = [];
       try {
-        let list: PurchaseOrder[] = [];
-        try {
-          list = await api.purchaseOrders();
-        } catch {
-          list = await api.activePurchaseOrders();
-        }
-        if (!cancelled) setOrders(Array.isArray(list) ? list : []);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unable to load orders.');
-          setOrders([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+        list = await api.purchaseOrders();
+      } catch {
+        list = await api.activePurchaseOrders();
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      setOrders(Array.isArray(list) ? list : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load orders.');
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshOrders();
+  }, [refreshOrders]);
 
   const listed = useMemo(() => {
     if (!listKind) return [];
@@ -115,47 +124,101 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true }: Props) {
     return rows;
   }, [orders, listKind, window.from, window.to]);
 
+  const openOrder = async (order: PurchaseOrder) => {
+    setOpenError(null);
+    setOpeningId(order.id);
+    try {
+      // Prefer full detail (items + workflow flags) for approve/receive/reconcile.
+      const full = await api.purchaseOrder(order.id);
+      setSelectedOrder(full);
+    } catch {
+      setSelectedOrder(order);
+      setOpenError('Loaded summary only — some line details may be incomplete.');
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const handleOrderUpdated = (updated: PurchaseOrder) => {
+    setOrders(prev => {
+      const idx = prev.findIndex(o => o.id === updated.id);
+      if (idx < 0) return [updated, ...prev];
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+    setSelectedOrder(updated);
+    setOpenError(null);
+  };
+
   if (listKind) {
     const title = listTitle(listKind);
     return (
-      <section className="team-card">
-        <div className="team-panel-head">
-          <button type="button" className="team-back-btn" onClick={() => setListKind(null)}>
-            <ChevronRight style={{ transform: 'rotate(180deg)' }} size={16} />
-            RMS home
-          </button>
-          <h3>{title}</h3>
-        </div>
-        <p className="team-muted" style={{ margin: '0 0 8px', fontSize: 11 }}>
-          {formatTeamDate(window.from)} – {formatTeamDate(window.to)}
-          {' · '}
-          {listKind === 'active' || listKind === 'to-approve' ? 'Oldest first' : 'Newest first'}
-        </p>
-        {loading ? <p className="team-muted">Loading…</p> : null}
-        {error ? <p className="team-inline-error">{error}</p> : null}
-        {!loading && !error && listed.length === 0 ? (
-          <p className="team-muted" style={{ textAlign: 'center', margin: '12px 0 0' }}>
-            No {title.toLowerCase()} documents in this period.
+      <>
+        <section className="team-card">
+          <div className="team-panel-head">
+            <button type="button" className="team-back-btn" onClick={() => setListKind(null)}>
+              <ChevronRight style={{ transform: 'rotate(180deg)' }} size={16} />
+              RMS home
+            </button>
+            <h3>{title}</h3>
+          </div>
+          <p className="team-muted" style={{ margin: '0 0 8px', fontSize: 11 }}>
+            {formatTeamDate(window.from)} – {formatTeamDate(window.to)}
+            {' · '}
+            {listKind === 'active' || listKind === 'to-approve' ? 'Oldest first' : 'Newest first'}
+            {' · '}
+            Tap a row to open
           </p>
+          {loading ? <p className="team-muted">Loading…</p> : null}
+          {error ? <p className="team-inline-error">{error}</p> : null}
+          {openError ? <p className="team-inline-error">{openError}</p> : null}
+          {!loading && !error && listed.length === 0 ? (
+            <p className="team-muted" style={{ textAlign: 'center', margin: '12px 0 0' }}>
+              No {title.toLowerCase()} documents in this period.
+            </p>
+          ) : null}
+          <ul className="team-rm-list">
+            {listed.map(order => (
+              <li key={order.id}>
+                <button
+                  type="button"
+                  className="team-rm-list-item team-rm-list-item-btn"
+                  onClick={() => void openOrder(order)}
+                  disabled={openingId === order.id}
+                >
+                  <div>
+                    <strong>{order.poNumber || `PO-${order.id}`}</strong>
+                    <span className="team-muted">
+                      {order.vendorName || 'Vendor'}
+                      {' · '}
+                      {formatTeamDate(orderSortDate(order, listKind))}
+                      {' · '}
+                      {openingId === order.id ? 'Opening…' : actionHint(order)}
+                    </span>
+                  </div>
+                  <span className={`team-rm-status ${statusTone(order.status)}`}>
+                    {resolvePurchaseOrderStatusLabel(order)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {selectedOrder ? (
+          <ActivePurchasePanel
+            order={selectedOrder}
+            teamActorName={employeeName?.trim() || undefined}
+            onClose={() => {
+              setSelectedOrder(null);
+              setOpenError(null);
+              void refreshOrders();
+            }}
+            onUpdated={handleOrderUpdated}
+          />
         ) : null}
-        <ul className="team-rm-list">
-          {listed.map(order => (
-            <li key={order.id} className="team-rm-list-item">
-              <div>
-                <strong>{order.poNumber || `PO-${order.id}`}</strong>
-                <span className="team-muted">
-                  {order.vendorName || 'Vendor'}
-                  {' · '}
-                  {formatTeamDate(orderSortDate(order, listKind))}
-                </span>
-              </div>
-              <span className={`team-rm-status ${statusTone(order.status)}`}>
-                {resolvePurchaseOrderStatusLabel(order)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      </>
     );
   }
 
@@ -177,12 +240,15 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true }: Props) {
         {' · '}
         {formatTeamDate(window.from)} – {formatTeamDate(window.to)}
       </p>
+      <p className="team-muted" style={{ margin: '6px 0 0', fontSize: 11 }}>
+        Open a list, then tap an order to approve, receive, or consolidate. Adjust qty/price, add products, and enter vendor rating in the detail.
+      </p>
 
       <button type="button" className="team-landing-row" onClick={() => setListKind('to-approve')}>
         <span className="team-landing-icon"><BadgeCheck size={16} /></span>
         <span className="team-landing-copy">
           <strong>To Approve</strong>
-          <em>Pending approval · oldest first</em>
+          <em>Pending approval · tap to open</em>
         </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>
@@ -191,7 +257,7 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true }: Props) {
         <span className="team-landing-icon"><ClipboardList size={16} /></span>
         <span className="team-landing-copy">
           <strong>Active Order</strong>
-          <em>Open orders · oldest first</em>
+          <em>Open orders · receive from detail</em>
         </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>
@@ -200,7 +266,7 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true }: Props) {
         <span className="team-landing-icon"><PackageCheck size={16} /></span>
         <span className="team-landing-copy">
           <strong>Received</strong>
-          <em>Received deliveries · newest first</em>
+          <em>Consolidate from detail</em>
         </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>
@@ -209,7 +275,7 @@ export function TeamRmsLanding({ onBackToTeam, showBack = true }: Props) {
         <span className="team-landing-icon"><Layers size={16} /></span>
         <span className="team-landing-copy">
           <strong>Consolidated</strong>
-          <em>Reconciled orders · newest first</em>
+          <em>View reconciled orders</em>
         </span>
         <ChevronRight size={16} className="team-landing-chevron" />
       </button>

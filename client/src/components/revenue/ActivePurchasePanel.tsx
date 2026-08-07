@@ -44,6 +44,12 @@ type Props = {
   order: PurchaseOrder;
   onClose: () => void;
   onUpdated: (order: PurchaseOrder) => void;
+  /**
+   * Team mobile actor (employee display name). When set, workflow actions follow
+   * server canApprove/canReceive/canReconcile flags without requiring an AppUser
+   * RMS permission matrix (standalone /TEAM has no platform login).
+   */
+  teamActorName?: string;
 };
 
 type EditableLine = {
@@ -154,7 +160,7 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
   });
 }
 
-export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
+export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }: Props) {
   const { rm } = useCountryFormatters();
   const { currentUser } = useCurrentUser();
   const orgPolicyTags = useOrgVendorPolicy(order.companyId, order.locationExternalIds ?? []);
@@ -163,6 +169,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     () => (currentUser ? parseUserAccess(currentUser.accessJson) : null),
     [currentUser],
   );
+  const teamWorkflow = Boolean(teamActorName?.trim());
   const hidePrices = useShouldHidePrices();
   const money = (value: number) => formatPriceOrHidden(hidePrices, () => rm(value));
 
@@ -187,8 +194,10 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     || Boolean(order.receivedAt)
     || Boolean(order.reconciledAt)
     || Boolean(order.finalDeliveryCompletedAt);
+  const rmsReceiveOk = Boolean(access && canReceivePurchaseOrder(access));
+  const rmsApproveOk = Boolean(access && canApprovePurchaseOrder(access));
   const canFinalizeDelivery = Boolean(
-    access && (canReceivePurchaseOrder(access) || canApprovePurchaseOrder(access)) && order.canFinalizeDelivery,
+    (teamWorkflow || rmsReceiveOk || rmsApproveOk) && order.canFinalizeDelivery,
   );
   const showPartialDeliveryColumns = Boolean(order.allowPartialDelivery)
     && (
@@ -266,9 +275,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose, saving]);
 
-  const canApprove = Boolean(access && canApprovePurchaseOrder(access) && isPendingApproval && !approvalBlockedByServer);
-  const canReceive = Boolean(access && canReceivePurchaseOrder(access) && order.canReceive);
-  const canReconcile = Boolean(access && (canReceivePurchaseOrder(access) || canApprovePurchaseOrder(access)) && order.canReconcile);
+  const canApprove = Boolean(
+    (teamWorkflow || rmsApproveOk) && isPendingApproval && !approvalBlockedByServer,
+  );
+  const canReceive = Boolean((teamWorkflow || rmsReceiveOk) && order.canReceive);
+  const canReconcile = Boolean(
+    (teamWorkflow || rmsReceiveOk || rmsApproveOk) && order.canReconcile,
+  );
   const readOnly = mode === 'view' || (mode === 'approve' && !canApprove) || (mode === 'receive' && !canReceive) || (mode === 'reconcile' && !canReconcile);
 
   const totals = useMemo(() => {
@@ -429,11 +442,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   }
 
   async function handleApprove() {
-    if (!currentUser || !canApprove) return;
+    const approvedBy = (currentUser?.fullName?.trim() || teamActorName?.trim() || '');
+    if (!approvedBy || !canApprove) return;
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.approvePurchaseOrder(order.id, currentUser.fullName);
+      const updated = await api.approvePurchaseOrder(order.id, approvedBy);
       onUpdated(updated);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Failed to approve purchase request.';
