@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react';
 import {
   clampTableColumnWidth,
-  loadTableColumnWidths,
+  type TableColumnWidthMap,
 } from '../data/tableColumnPrefs';
 import { useResizableTable } from '../components/shared/ResizableTableContext';
 
@@ -71,17 +71,19 @@ function hitResizeEdge(th: HTMLTableCellElement, clientX: number): boolean {
   return clientX >= rect.right - EDGE_PX && clientX <= rect.right + 2;
 }
 
-function applyStoredWidths(table: HTMLTableElement, tableId: string) {
-  const saved = loadTableColumnWidths(tableId);
-  if (Object.keys(saved).length === 0) return;
+function applyWidthMap(table: HTMLTableElement, widths: TableColumnWidthMap) {
   const ths = listHeaderCells(table);
   const cols = ensureColKeys(table, ths);
   ths.forEach((th, index) => {
     const col = cols[index];
     if (!col) return;
     const key = th.dataset.colKey || col.dataset.colKey || `c${index}`;
-    const px = saved[key];
-    if (px == null) return;
+    const px = widths[key];
+    if (px == null) {
+      col.style.removeProperty('width');
+      col.style.removeProperty('min-width');
+      return;
+    }
     const width = `${clampTableColumnWidth(px)}px`;
     col.style.width = width;
     col.style.minWidth = width;
@@ -89,7 +91,8 @@ function applyStoredWidths(table: HTMLTableElement, tableId: string) {
 }
 
 /**
- * Drag the right edge of any header cell to resize. Persists via ResizableTableProvider.
+ * Applies saved/draft column widths. Drag-to-resize is only active while
+ * ResizableTableProvider.adjustMode is true.
  */
 export function useTableColumnResize(
   containerRef: RefObject<HTMLElement | null>,
@@ -99,20 +102,14 @@ export function useTableColumnResize(
   const ctx = useResizableTable();
   const bindTableId = ctx?.bindTableId;
   const setColumnWidth = ctx?.setColumnWidth;
+  const adjustMode = ctx?.adjustMode ?? false;
+  const widths = ctx?.widths;
 
+  // Always bind table id + apply current width map (including when not adjusting).
   useEffect(() => {
     if (!enabled) return;
     const container = containerRef.current;
-    if (!container || !bindTableId || !setColumnWidth) return;
-
-    let dragging:
-      | {
-          col: HTMLTableColElement;
-          key: string;
-          startX: number;
-          startWidth: number;
-        }
-      | null = null;
+    if (!container || !bindTableId) return;
 
     const bindId = () => {
       const table = container.querySelector('table');
@@ -123,16 +120,42 @@ export function useTableColumnResize(
       const id = explicitTableId?.trim() || resolveAutoTableId(container, table);
       container.dataset.tableId = id;
       bindTableId(id);
-      applyStoredWidths(table, id);
       return table;
     };
 
     bindId();
     const observer = new MutationObserver(() => {
-      if (dragging) return;
       bindId();
     });
     observer.observe(container, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, [containerRef, explicitTableId, enabled, bindTableId]);
+
+  // Re-apply width map whenever draft/saved widths change.
+  useEffect(() => {
+    if (!enabled) return;
+    const container = containerRef.current;
+    if (!container || !widths) return;
+    const table = container.querySelector('table');
+    if (!table) return;
+    applyWidthMap(table, widths);
+  }, [containerRef, enabled, widths]);
+
+  // Pointer drag only while adjust mode is on.
+  useEffect(() => {
+    if (!enabled || !adjustMode) return;
+    const container = containerRef.current;
+    if (!container || !setColumnWidth) return;
+
+    let dragging:
+      | {
+          col: HTMLTableColElement;
+          key: string;
+          startX: number;
+          startWidth: number;
+        }
+      | null = null;
 
     const onMove = (event: PointerEvent) => {
       if (dragging) {
@@ -161,7 +184,7 @@ export function useTableColumnResize(
       if (!(th instanceof HTMLTableCellElement) || !container.contains(th)) return;
       if (!hitResizeEdge(th, event.clientX)) return;
 
-      const table = bindId();
+      const table = container.querySelector('table');
       if (!table) return;
       const ths = listHeaderCells(table);
       const index = ths.indexOf(th);
@@ -190,7 +213,8 @@ export function useTableColumnResize(
       if (!dragging) return;
       const width = Number.parseFloat(dragging.col.style.width);
       if (Number.isFinite(width)) {
-        setColumnWidth(dragging.key, width);
+        // Draft only — Save button commits to localStorage.
+        setColumnWidth(dragging.key, width, { persist: false });
       }
       dragging = null;
       container.classList.remove('is-col-resizing');
@@ -202,12 +226,34 @@ export function useTableColumnResize(
     window.addEventListener('pointercancel', endDrag);
 
     return () => {
-      observer.disconnect();
       container.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', endDrag);
       window.removeEventListener('pointercancel', endDrag);
       container.classList.remove('is-col-resizing', 'is-col-resize-hover');
     };
-  }, [containerRef, explicitTableId, enabled, bindTableId, setColumnWidth]);
+  }, [containerRef, enabled, adjustMode, setColumnWidth]);
+}
+
+/** Snapshot every col width currently applied on the table into a map. */
+export function snapshotTableColumnWidths(container: HTMLElement | null): TableColumnWidthMap {
+  if (!container) return {};
+  const table = container.querySelector('table');
+  if (!table) return {};
+  const ths = listHeaderCells(table);
+  const cols = ensureColKeys(table, ths);
+  const out: TableColumnWidthMap = {};
+  ths.forEach((th, index) => {
+    const col = cols[index];
+    if (!col) return;
+    const key = th.dataset.colKey || col.dataset.colKey || `c${index}`;
+    const fromStyle = Number.parseFloat(col.style.width);
+    const px = Number.isFinite(fromStyle)
+      ? fromStyle
+      : th.getBoundingClientRect().width;
+    if (Number.isFinite(px) && px > 0) {
+      out[key] = clampTableColumnWidth(px);
+    }
+  });
+  return out;
 }
