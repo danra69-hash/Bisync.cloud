@@ -153,6 +153,7 @@ export const ja = {
       accountMapping: '勘定マッピング',
       vendorListProducts: '仕入先一覧と商品',
       comparePrice: '価格比較',
+      vendorRatingConfig: 'ベンダー評価設定',
       products: '商品',
       productAudit: 'Product Audit',
       externalPosMapping: '外部POSマッピング',

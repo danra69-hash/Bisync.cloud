@@ -153,6 +153,7 @@ export const zh = {
       accountMapping: '科目映射',
       vendorListProducts: '供应商与产品',
       comparePrice: '比价',
+      vendorRatingConfig: '供应商评分配置',
       products: '产品',
       productAudit: 'Product Audit',
       externalPosMapping: '外部 POS 映射',

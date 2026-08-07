@@ -153,6 +153,7 @@ export const fr = {
       accountMapping: 'Correspondance des comptes',
       vendorListProducts: 'Liste fournisseurs et produits',
       comparePrice: 'Comparer les prix',
+      vendorRatingConfig: 'Config. notation fournisseurs',
       products: 'Produits',
       productAudit: 'Product Audit',
       externalPosMapping: 'Correspondance POS externe',

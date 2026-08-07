@@ -47,6 +47,7 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'Account Mapping': 'revMgmt.items.accountMapping',
   'Vendor List & Products': 'revMgmt.items.vendorListProducts',
   'Compare Price': 'revMgmt.items.comparePrice',
+  'Vendor Rating Config': 'revMgmt.items.vendorRatingConfig',
   Products: 'revMgmt.items.products',
   'Product Audit': 'revMgmt.items.productAudit',
   'External POS Mapping': 'revMgmt.items.externalPosMapping',

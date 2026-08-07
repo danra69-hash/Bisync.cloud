@@ -153,6 +153,7 @@ export const es = {
       accountMapping: 'Asignación de cuentas',
       vendorListProducts: 'Lista de proveedores y productos',
       comparePrice: 'Comparar precios',
+      vendorRatingConfig: 'Config. calificación de proveedores',
       products: 'Productos',
       productAudit: 'Product Audit',
       externalPosMapping: 'Asignación de TPV externo',
