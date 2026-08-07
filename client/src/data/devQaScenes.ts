@@ -84,6 +84,13 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     activity: "Automated QA \u00b7 Verify Access Control matrix loads",
     panels: ["System Configuration", 'Status', 'Facts'],
   },
+  'sysconfig-delivery-locations': {
+    screenTitle: "Create delivery location under restaurant outlet",
+    routeHint: "/config",
+    actor: 'admin',
+    activity: "Automated QA \u00b7 Create delivery location under restaurant outlet",
+    panels: ["System Configuration", 'Status', 'Facts'],
+  },
   'create-first-component-vendor': {
     screenTitle: "Add Component + Vendor + Vendor Product (seed #1)",
     routeHint: "/rms/component",
@@ -125,6 +132,27 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     actor: 'admin',
     activity: "Automated QA \u00b7 Component Config (hierarchy / storage)",
     panels: ["Component \u00b7 My Component", 'Status', 'Facts'],
+  },
+  'component-alternate-uoms': {
+    screenTitle: "Verify Alternate Component UOMs on seeded components",
+    routeHint: "/rms/component",
+    actor: 'admin',
+    activity: "Automated QA \u00b7 Verify Alternate Component UOMs on seeded components",
+    panels: ["Component \u00b7 My Component", 'Status', 'Facts'],
+  },
+  'component-tag-suggestions': {
+    screenTitle: "My Component tag suggestions API",
+    routeHint: "/rms/component",
+    actor: 'admin',
+    activity: "Automated QA \u00b7 My Component tag suggestions API",
+    panels: ["Component \u00b7 My Component", 'Status', 'Facts'],
+  },
+  'vendor-listings-state-city-filter': {
+    screenTitle: "Vendor Listings State & City filters",
+    routeHint: "/rms/vendors",
+    actor: 'admin',
+    activity: "Automated QA \u00b7 Vendor Listings State & City filters",
+    panels: ["Vendors", 'Status', 'Facts'],
   },
   'vendor-compare-price': {
     screenTitle: "Compare Price across vendor products",
@@ -238,6 +266,27 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     activity: "Automated QA \u00b7 Create Pre-committed PO template",
     panels: ["Operation \u00b7 Order", 'Status', 'Facts'],
   },
+  'order-with-delivery-location': {
+    screenTitle: "Create PO ship-to delivery location",
+    routeHint: "/rms/order",
+    actor: 'admin',
+    activity: "Automated QA \u00b7 Create PO ship-to delivery location",
+    panels: ["Operation \u00b7 Order", 'Status', 'Facts'],
+  },
+  'order-store-requisition-flow': {
+    screenTitle: "Store Requisition create \u2192 issue \u2192 receive",
+    routeHint: "/rms/order",
+    actor: 'admin',
+    activity: "Automated QA \u00b7 Store Requisition create \u2192 issue \u2192 receive",
+    panels: ["Operation \u00b7 Order", 'Active Requisition', 'Facts'],
+  },
+  'team-rms-po-counts': {
+    screenTitle: "Team RMS PO group counts",
+    routeHint: "/team",
+    actor: 'admin',
+    activity: "Automated QA \u00b7 Team RMS PO group counts",
+    panels: ["Team \u00b7 RMS", 'Status', 'Facts'],
+  },
   'verify-stock-after-po': {
     screenTitle: "Verify STOCK CARD after PO receipts",
     routeHint: "/rms/inventory",
@@ -274,10 +323,10 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     panels: ["Operation \u00b7 Inventory", 'Status', 'Facts'],
   },
   'inventory-adjustment': {
-    screenTitle: "Stock Card inventory adjustment",
+    screenTitle: "Stock Card adjustment (Principal Component Unit)",
     routeHint: "/rms/inventory",
     actor: 'admin',
-    activity: "Automated QA \u00b7 Stock Card inventory adjustment",
+    activity: "Automated QA \u00b7 Stock Card adjustment (Principal Component Unit)",
     panels: ["Operation \u00b7 Inventory", 'Status', 'Facts'],
   },
   'produce-and-pos-sales': {
