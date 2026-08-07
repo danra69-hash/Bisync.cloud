@@ -131,7 +131,8 @@ export function TeamChatsLanding({
     pollRef.current = window.setInterval(() => {
       void (async () => {
         try {
-          const lastId = messages.length > 0 ? messages[messages.length - 1]!.id : undefined;
+          const current = messagesRef.current;
+          const lastId = current.length > 0 ? current[current.length - 1]!.id : undefined;
           const data = await hrApi.teamChat.messages(activeId, employeeId, lastId);
           if (lastId && data.messages?.length) {
             setMessages(prev => {
@@ -144,7 +145,7 @@ export function TeamChatsLanding({
           }
           if (data.conversation) {
             setCanSend(data.conversation.canSend !== false);
-            setThreadTitle(data.conversation.title || threadTitle);
+            setThreadTitle(prev => data.conversation.title || prev);
           }
         } catch {
           /* keep UI stable while polling */
@@ -154,7 +155,7 @@ export function TeamChatsLanding({
     return () => {
       if (pollRef.current != null) window.clearInterval(pollRef.current);
     };
-  }, [activeId, employeeId, messages, threadTitle]);
+  }, [activeId, employeeId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
