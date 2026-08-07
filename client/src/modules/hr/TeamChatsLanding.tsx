@@ -75,6 +75,8 @@ export function TeamChatsLanding({
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const pollRef = useRef<number | null>(null);
+  const messagesRef = useRef<TeamChatMessage[]>([]);
+  messagesRef.current = messages;
 
   const refreshList = useCallback(async () => {
     try {
