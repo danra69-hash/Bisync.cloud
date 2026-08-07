@@ -287,11 +287,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const showCommitmentColumns = Boolean(order.isPreCommitted);
   const showTaxColumn = !showCommitmentColumns && !isPurchaseRequest
     && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  // Halal cert is optional — show when org is under a halal policy (or value already stored).
-  const showHalalCertColumn = !showCommitmentColumns
-    && (requiresHalalCert || lines.some(line => line.halalCertNo.trim()))
-    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  /** Expiry / temp live in Add Detail popup (not as table columns). */
+  // Halal cert lives in Add Detail (optional). Keep a soft note when org policy is active.
+  const showHalalCertHint = !showCommitmentColumns
+    && requiresHalalCert
+    && (mode === 'receive' || mode === 'reconcile');
+  /** Halal cert / expiry / temp live in Add Detail popup (not as table columns). */
   const showLineDetailColumn = !showCommitmentColumns
     && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   const showReceiveDocs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
@@ -318,7 +318,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     showOrderedReceivedColumns ? 'QTY Variance' : null,
     !hidePrices && showOrderedReceivedColumns ? 'Unit Price Variance' : null,
     !hidePrices && showTaxColumn ? 'Tax' : null,
-    showHalalCertColumn ? 'Halal cert no.' : null,
     !hidePrices ? 'Line total' : null,
     showLineDetailColumn ? 'Detail' : null,
   ].filter(Boolean) as string[];
@@ -331,8 +330,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         return '14%';
       case 'Delivery Unit':
         return '8%';
-      case 'Halal cert no.':
-        return '9%';
       case 'Detail':
         return '7%';
       case 'Line total':
@@ -447,14 +444,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     }
   }
 
-  function focusVendorRating(message: string) {
-    setError(message);
-    setRatingHighlight(true);
-    window.requestAnimationFrame(() => {
-      vendorRatingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  }
-
   async function handleReceive() {
     if (!canReceive) return;
     const payload = linePayload(lines);
@@ -487,14 +476,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       setError('Enter a Vendor DO number and/or Vendor Invoice number for the documents received.');
       return;
     }
-    if (!productQualityRating) {
-      focusVendorRating('Select product quality (Satisfied, Acceptable, or Poor).');
-      return;
-    }
-    if (!hygieneRating) {
-      focusVendorRating('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
-      return;
-    }
     setSaving(true);
     setError(null);
     setRatingHighlight(false);
@@ -503,9 +484,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         items: payload,
         vendorDoNumber: doNumber || undefined,
         vendorInvoiceNumber: invoiceNumber || undefined,
-        productQualityRating,
+        productQualityRating: productQualityRating || undefined,
         productQualityComment: productQualityComment.trim() || undefined,
-        hygieneRating,
+        hygieneRating: hygieneRating || undefined,
         hygieneComment: hygieneComment.trim() || undefined,
       });
       onUpdated(updated);
@@ -531,23 +512,15 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         return;
       }
     }
-    if (!productQualityRating) {
-      focusVendorRating('Select product quality (Satisfied, Acceptable, or Poor).');
-      return;
-    }
-    if (!hygieneRating) {
-      focusVendorRating('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
-      return;
-    }
     setSaving(true);
     setError(null);
     setRatingHighlight(false);
     try {
       const result = await api.reconcilePurchaseOrder(order.id, {
         items: payload,
-        productQualityRating,
+        productQualityRating: productQualityRating || undefined,
         productQualityComment: productQualityComment.trim() || undefined,
-        hygieneRating,
+        hygieneRating: hygieneRating || undefined,
         hygieneComment: hygieneComment.trim() || undefined,
       });
       if (result.updatedVendorProductPrices.length > 0) {
@@ -1036,21 +1009,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             )}
                           </td>
                         )}
-                        {showHalalCertColumn && (
-                          <td className="px-3 py-2">
-                            {readOnly || mode !== 'receive' ? (
-                              <span>{line.halalCertNo || '—'}</span>
-                            ) : (
-                              <input
-                                type="text"
-                                value={line.halalCertNo}
-                                onChange={e => updateLine(line.clientKey, { halalCertNo: e.target.value })}
-                                placeholder="Optional"
-                                className="w-32 rounded border border-border bg-background px-2 py-1"
-                              />
-                            )}
-                          </td>
-                        )}
                         {!hidePrices && (
                           <td className="px-3 py-2 font-sans">{rm(lineTotal)}</td>
                         )}
@@ -1058,7 +1016,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           <td className="px-3 py-2">
                             {(() => {
                               const hasDetail = Boolean(
-                                line.productExpiryDate.trim() || line.receivedTemperature.trim(),
+                                line.halalCertNo.trim()
+                                || line.productExpiryDate.trim()
+                                || line.receivedTemperature.trim(),
                               );
                               const label = canEditReceived
                                 ? (hasDetail ? 'Edit Detail' : 'Add Detail')
@@ -1074,6 +1034,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                   }`}
                                   title={hasDetail
                                     ? [
+                                        line.halalCertNo.trim()
+                                          ? `Halal: ${line.halalCertNo}`
+                                          : null,
                                         line.productExpiryDate.trim()
                                           ? `Expiry: ${line.productExpiryDate}`
                                           : null,
@@ -1081,7 +1044,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                           ? `Temp: ${line.receivedTemperature}°C`
                                           : null,
                                       ].filter(Boolean).join(' · ')
-                                    : 'Add expiry date and temperature'}
+                                    : 'Add Halal cert, expiry date, and temperature'}
                                 >
                                   {label}
                                 </button>
@@ -1110,16 +1073,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <div>
                 <p className="text-xs font-semibold text-foreground flex items-center gap-2">
                   <PackageCheck size={14} className="text-muted-foreground" />
-                  Vendor rating (required)
+                  Vendor rating (optional)
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Record product quality and hygiene when receiving. You can change these at consolidate.
+                  Optional — record product quality and hygiene when receiving. You can add or change these at consolidate.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
-                    Product quality <span className="text-destructive">*</span>
+                    Product quality
                   </p>
                   {canEditVendorRating ? (
                     <>
@@ -1167,7 +1130,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                 </div>
                 <div className="space-y-2">
                   <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
-                    Hygiene &amp; cleanliness <span className="text-destructive">*</span>
+                    Hygiene &amp; cleanliness
                   </p>
                   {canEditVendorRating ? (
                     <>
@@ -1215,14 +1178,15 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                 </div>
               </div>
               <p className="text-[10px] text-muted-foreground">
-                Optional: enter product temperature (°C) on each line under Temp °C.
+                Optional: enter Halal Certification Reference, product expiry, and temperature under Add Detail on each line.
               </p>
             </div>
           )}
 
-          {requiresHalalCert && mode === 'receive' && (
+          {showHalalCertHint && (
             <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              Halal policy is active for this order&apos;s company/location. Halal certificate number is optional — enter it when available.
+              Halal policy is active for this order&apos;s company/location. Enter Halal Certification Reference
+              and expiry date under Add Detail when available.
             </div>
           )}
 
@@ -1316,6 +1280,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
           <ReceiveLineDetailModal
             productName={detailLine.productName}
             componentName={detailLine.componentName}
+            halalCertNo={detailLine.halalCertNo}
             productExpiryDate={detailLine.productExpiryDate}
             receivedTemperature={detailLine.receivedTemperature}
             readOnly={!canEditReceived}

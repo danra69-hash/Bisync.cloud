@@ -1624,12 +1624,9 @@ public class PurchaseOrdersController(
         }
 
         // Halal certificate number is optional even under a halal org policy.
+        // Vendor quality / hygiene ratings are optional at receive.
         var quality = VendorRatingRules.NormalizeCustomerLevel(request.ProductQualityRating);
         var hygiene = VendorRatingRules.NormalizeCustomerLevel(request.HygieneRating);
-        if (quality is null)
-            return BadRequest(new { message = "Product quality rating is required (Satisfied, Acceptable, or Poor)." });
-        if (hygiene is null)
-            return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
 
         foreach (var line in request.Items.Where(l => l.ItemId <= 0))
         {
@@ -1667,8 +1664,8 @@ public class PurchaseOrdersController(
         ApplyWorkflowLines(order, request.Items, workflow: "receive");
         order.VendorDoNumber = vendorDoNumber;
         order.VendorInvoiceNumber = vendorInvoiceNumber;
-        order.ProductQualityRating = quality;
-        order.HygieneRating = hygiene;
+        order.ProductQualityRating = quality ?? string.Empty;
+        order.HygieneRating = hygiene ?? string.Empty;
         order.ProductQualityComment = request.ProductQualityComment?.Trim() ?? string.Empty;
         order.HygieneComment = request.HygieneComment?.Trim() ?? string.Empty;
         order.Status = PurchaseOrderWorkflow.StatusReceived;
@@ -1723,13 +1720,9 @@ public class PurchaseOrdersController(
 
         var allowPartial = await ResolveAllowPartialAsync(order);
 
-        // Quality/hygiene can be updated at consolidate if provided; otherwise keep receive values.
+        // Quality/hygiene are optional; update when provided, otherwise keep existing values.
         var quality = VendorRatingRules.NormalizeCustomerLevel(request.ProductQualityRating);
         var hygiene = VendorRatingRules.NormalizeCustomerLevel(request.HygieneRating);
-        if (quality is null && string.IsNullOrWhiteSpace(order.ProductQualityRating))
-            return BadRequest(new { message = "Product quality rating is required (Satisfied, Acceptable, or Poor)." });
-        if (hygiene is null && string.IsNullOrWhiteSpace(order.HygieneRating))
-            return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
 
         await using var transaction = await db.Database.BeginTransactionAsync();
         ApplyWorkflowLines(order, request.Items, workflow: "reconcile");
