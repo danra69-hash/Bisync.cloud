@@ -496,8 +496,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       ? 'Approve to convert this PR into an open purchase order.'
       : mode === 'receive'
         ? (order.allowPartialDelivery
-          ? 'Enter qty for this shipment (defaults to remaining). Confirm receive posts stock with a pending-consolidation remark. PO stays Partially Delivered until Final delivery completed.'
-          : 'Confirm quantities and prices received — stock posts to the stock card with a received remark until Accounting consolidates.')
+          ? 'Enter qty for this shipment (defaults to remaining). Confirm receive posts stock in Principal Component Units (PCU) at 4dp; any UOM rounding residual vs the PO line amount is shown on the Stock Card. PO stays Partially Delivered until Final delivery completed.'
+          : 'Confirm quantities and prices received — stock posts in PCU at 4dp (document PO amount stays authority; UOM rounding residual appears on the Stock Card inbound).')
         : mode === 'reconcile'
           ? (order.allowPartialDelivery
             ? 'Accounting affirmation for this shipment — clears received remarks on the stock card. PO stays Partially Delivered until Final delivery completed.'

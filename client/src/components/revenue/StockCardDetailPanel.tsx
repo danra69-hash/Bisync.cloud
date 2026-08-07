@@ -259,6 +259,19 @@ function LedgerEntryRow({
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">
         {entry.subtotal > 0 ? rm(entry.subtotal) : '—'}
+        {Math.abs(entry.roundingResidual ?? 0) > 0.00005 ? (
+          <span
+            className="block text-[10px] text-muted-foreground font-normal"
+            title={
+              entry.extendedAtUnitPrice && entry.extendedAtUnitPrice > 0
+                ? `PCU extended ${rm(entry.extendedAtUnitPrice)} at 4dp unit price; document ${rm(entry.documentAmount ?? entry.subtotal)}`
+                : 'UOM conversion rounding residual (document amount is authority)'
+            }
+          >
+            Residual {(entry.roundingResidual ?? 0) > 0 ? '+' : ''}
+            {rm(entry.roundingResidual ?? 0)}
+          </span>
+        ) : null}
       </td>
       <td className="px-5 py-2.5 text-muted-foreground">
         <div>{entry.reason}</div>

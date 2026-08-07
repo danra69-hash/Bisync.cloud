@@ -146,6 +146,8 @@ public class SplitUseService(BisyncDbContext db)
         string sourceType,
         int sourceId,
         string? remarks = null,
+        decimal documentAmount = 0m,
+        decimal roundingResidual = 0m,
         CancellationToken cancellationToken = default)
     {
         var config = ReadConfig(parent)
@@ -168,7 +170,9 @@ public class SplitUseService(BisyncDbContext db)
             throw new InvalidOperationException("This receipt has already been posted for Split Use.");
 
         var scale = receiptBasisQty / config.ComponentQuantity;
-        var totalReceiptValue = receiptQuantity * receiptUnitPrice;
+        var totalReceiptValue = documentAmount > 0
+            ? documentAmount
+            : receiptQuantity * receiptUnitPrice;
         var parentBasisUnitCost = receiptBasisQty > 0 ? totalReceiptValue / receiptBasisQty : 0;
         decimal outputBasisQty = 0;
         decimal allocatedValue = 0;
@@ -291,7 +295,9 @@ public class SplitUseService(BisyncDbContext db)
             sourceId,
             "__gross__",
             parent.ComponentId,
-            stockRemarks);
+            stockRemarks,
+            documentAmount > 0 ? documentAmount : DecimalRounding.ToDb(totalReceiptValue),
+            roundingResidual);
 
         db.InventoryPurchases.Add(parentPurchase);
         db.InventoryPurchases.AddRange(childPurchases);
@@ -336,13 +342,19 @@ public class SplitUseService(BisyncDbContext db)
         int sourceId,
         string lineKey,
         string parentComponentId,
-        string remarks = "") => new()
+        string remarks = "",
+        decimal documentAmount = 0m,
+        decimal roundingResidual = 0m) => new()
         {
             ComponentId = componentId,
             ComponentName = componentName,
             Quantity = quantity,
             Uom = uom,
             UnitPrice = StockCardFifoEngine.RoundUnitPrice(unitPrice),
+            DocumentAmount = documentAmount > 0
+                ? DecimalRounding.ToDb(documentAmount)
+                : DecimalRounding.ToDb(quantity * StockCardFifoEngine.RoundUnitPrice(unitPrice)),
+            RoundingResidual = DecimalRounding.ToDb(roundingResidual),
             DateOrdered = dateOrdered,
             DateCreatedInStock = createdAt,
             PurchaseOrderId = purchaseOrderId,

@@ -192,6 +192,7 @@ function StockCardItemCard({
                         <th className="px-2 py-1 text-right font-semibold">Stock QTY</th>
                         <th className="px-2 py-1 text-left font-semibold">UOM</th>
                         <th className="px-2 py-1 text-right font-semibold">UOM price</th>
+                        <th className="px-2 py-1 text-right font-semibold">Value</th>
                         <th className="px-2 py-1 text-left font-semibold">Ref</th>
                       </tr>
                     </thead>
@@ -199,6 +200,7 @@ function StockCardItemCard({
                       {inboundRows.map((entry, idx) => {
                         const original = entry.originalQuantity ?? entry.quantity
                         const depleted = entry.depletedQuantity ?? 0
+                        const residual = entry.roundingResidual ?? 0
                         return (
                           <tr
                             key={`in-${entry.id}-${entry.splitIndex ?? 0}-${idx}`}
@@ -216,6 +218,17 @@ function StockCardItemCard({
                             <td className="px-2 py-1.5">{entry.uom || '—'}</td>
                             <td className="px-2 py-1.5 text-right tabular-nums">
                               {entry.unitPrice > 0 ? uomPrice(entry.unitPrice) : '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">
+                              {entry.subtotal > 0 ? rm(entry.subtotal) : '—'}
+                              {Math.abs(residual) > 0.00005 ? (
+                                <span
+                                  className="block text-[10px] text-muted-foreground font-normal"
+                                  title="UOM rounding residual — PO/cash document amount is authority"
+                                >
+                                  Res {(residual > 0 ? '+' : '') + rm(residual)}
+                                </span>
+                              ) : null}
                             </td>
                             <td className="px-2 py-1.5 text-muted-foreground">
                               <span className="block">{formatInboundSequence(entry)}</span>

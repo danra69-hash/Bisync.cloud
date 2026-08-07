@@ -3,6 +3,7 @@
  * Stock inbound Step 1 — BBQ Sauce / Smokey Mesquite regression.
  * stockQty = packages × principal
  * stockUnitPrice = round4(PO line amount ÷ stockQty)
+ * roundingResidual = extended@4dp − document amount (shown on Stock Card; document is authority)
  */
 import assert from 'node:assert/strict';
 
@@ -14,33 +15,44 @@ function round4AwayFromZero(n) {
 
 function convertDeliveryPackagesToPrincipal(deliveryPackages, deliveryUnitPrice, principalPerPackage) {
   const stockQty = deliveryPackages * principalPerPackage;
-  const poLineAmount = deliveryPackages * deliveryUnitPrice;
-  const stockUnitPrice = round4AwayFromZero(poLineAmount / stockQty);
-  return { stockQty, stockUnitPrice, poLineAmount };
+  const documentAmount = round4AwayFromZero(deliveryPackages * deliveryUnitPrice);
+  const stockUnitPrice = round4AwayFromZero(documentAmount / stockQty);
+  const extendedAtUnitPrice = round4AwayFromZero(stockQty * stockUnitPrice);
+  const roundingResidual = round4AwayFromZero(extendedAtUnitPrice - documentAmount);
+  return { stockQty, stockUnitPrice, documentAmount, extendedAtUnitPrice, roundingResidual };
 }
 
 // User example: 6 tub × 3790 Gr, PO total RM 750 → 22,740 Gr @ 0.0330
 const packages = 6;
 const principal = 3790;
 const deliveryUnitPrice = 750 / 6; // RM 125 per tub
-const { stockQty, stockUnitPrice, poLineAmount } = convertDeliveryPackagesToPrincipal(
-  packages,
-  deliveryUnitPrice,
-  principal,
-);
+const {
+  stockQty,
+  stockUnitPrice,
+  documentAmount,
+  extendedAtUnitPrice,
+  roundingResidual,
+} = convertDeliveryPackagesToPrincipal(packages, deliveryUnitPrice, principal);
 
-assert.equal(poLineAmount, 750);
+assert.equal(documentAmount, 750);
 assert.equal(stockQty, 22740);
 assert.equal(stockUnitPrice, 0.033);
+assert.equal(extendedAtUnitPrice, 750.42);
+assert.equal(roundingResidual, 0.42);
 
-// Explicit total÷qty path (same result)
-const raw = 750 / 22740;
-assert.ok(Math.abs(raw - 0.0329815303430079) < 1e-12);
-assert.equal(round4AwayFromZero(raw), 0.033);
+// Single tub: 125.00 → 3790 @ 0.0330 → extended 125.07 → residual +0.07
+const one = convertDeliveryPackagesToPrincipal(1, 125, 3790);
+assert.equal(one.documentAmount, 125);
+assert.equal(one.stockQty, 3790);
+assert.equal(one.stockUnitPrice, 0.033);
+assert.equal(one.extendedAtUnitPrice, 125.07);
+assert.equal(one.roundingResidual, 0.07);
 
-// Rounding residual is report-only: 22740 × 0.0330 ≠ 750 exactly
-const stockExtended = stockQty * stockUnitPrice;
-assert.ok(Math.abs(stockExtended - 750.42) < 1e-9);
-assert.notEqual(Number(stockExtended.toFixed(4)), poLineAmount);
-
-console.log('stock-inbound-step1-bbq: ok', { stockQty, stockUnitPrice, stockExtended, poLineAmount });
+console.log('stock-inbound-step1-bbq: ok', {
+  stockQty,
+  stockUnitPrice,
+  documentAmount,
+  extendedAtUnitPrice,
+  roundingResidual,
+  oneTub: one,
+});

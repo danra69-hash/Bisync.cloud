@@ -98,15 +98,26 @@ public sealed class ReceivedPurchaseStockHealer(
                                 || ingredient.CompanyId == order.CompanyId),
                         cancellationToken);
 
+                    decimal documentAmount = 0m;
+                    decimal roundingResidual = 0m;
                     if (parent is not null)
                     {
-                        (qty, uom, price) = IngredientUomBridge.ToInboundPrincipal(
+                        var inbound = IngredientUomBridge.ToInboundPrincipal(
                             parent,
                             qty,
                             uom,
                             price,
                             item.VendorProductId,
                             string.IsNullOrWhiteSpace(item.Unit) ? item.DeliveryPackage : item.Unit);
+                        qty = inbound.Quantity;
+                        uom = inbound.Uom;
+                        price = inbound.UnitPrice;
+                        documentAmount = inbound.DocumentAmount;
+                        roundingResidual = inbound.RoundingResidual;
+                    }
+                    else
+                    {
+                        documentAmount = DecimalRounding.ToDb(qty * price);
                     }
 
                     if (parent is not null && splitUse.ReadConfig(parent) is not null)
@@ -125,7 +136,10 @@ public sealed class ReceivedPurchaseStockHealer(
                             locationExternalId,
                             "purchase-order",
                             item.Id,
-                            PurchaseOrderWorkflow.StockRemarkReceivedPending);
+                            PurchaseOrderWorkflow.StockRemarkReceivedPending,
+                            documentAmount,
+                            roundingResidual,
+                            cancellationToken);
                         continue;
                     }
 
@@ -138,6 +152,8 @@ public sealed class ReceivedPurchaseStockHealer(
                         Quantity = qty,
                         Uom = uom,
                         UnitPrice = price,
+                        DocumentAmount = documentAmount,
+                        RoundingResidual = roundingResidual,
                         DateOrdered = order.OrderDate,
                         DateCreatedInStock = receiptCreatedAt,
                         PurchaseOrderId = order.Id,
@@ -232,6 +248,9 @@ public sealed class ReceivedPurchaseStockHealer(
                 continue;
 
             var deliveryUnitPrice = item.ReceivedUnitPrice ?? item.UnitPrice;
+            var uom = string.IsNullOrWhiteSpace(item.ComponentUom)
+                ? (string.IsNullOrWhiteSpace(ingredient.RecipeUom) ? purchase.Uom : ingredient.RecipeUom)
+                : item.ComponentUom.Trim();
 
             // Infer this receipt's package count. Prefer the posted qty when the row
             // still carries the delivery-package unit price (partial shipments).
@@ -247,6 +266,11 @@ public sealed class ReceivedPurchaseStockHealer(
             {
                 deliveryPackageQty = linePackages;
             }
+            else if (purchase.Quantity > linePackages + 0.0001m)
+            {
+                // Already converted to PCU (qty ≫ packages) — use PO line package count.
+                deliveryPackageQty = linePackages;
+            }
             else
             {
                 continue;
@@ -260,14 +284,28 @@ public sealed class ReceivedPurchaseStockHealer(
                     deliveryUnitPrice,
                     item.VendorProductId))
             {
+                // Already PCU — still backfill document amount / residual when missing.
+                if (purchase.DocumentAmount <= 0 && Math.Abs(purchase.RoundingResidual) <= 0.00005m)
+                {
+                    var tagged = IngredientUomBridge.ToInboundPrincipal(
+                        ingredient,
+                        deliveryPackageQty,
+                        uom,
+                        deliveryUnitPrice,
+                        item.VendorProductId,
+                        string.IsNullOrWhiteSpace(item.Unit) ? item.DeliveryPackage : item.Unit);
+                    if (NearlyEqual(tagged.Quantity, purchase.Quantity))
+                    {
+                        purchase.DocumentAmount = tagged.DocumentAmount;
+                        purchase.RoundingResidual = tagged.RoundingResidual;
+                        rewritten++;
+                        rewrittenPurchaseIds.Add(purchase.Id);
+                    }
+                }
                 continue;
             }
 
-            var uom = string.IsNullOrWhiteSpace(item.ComponentUom)
-                ? (string.IsNullOrWhiteSpace(ingredient.RecipeUom) ? purchase.Uom : ingredient.RecipeUom)
-                : item.ComponentUom.Trim();
-
-            var (qty, stockUom, price) = IngredientUomBridge.ToInboundPrincipal(
+            var inbound = IngredientUomBridge.ToInboundPrincipal(
                 ingredient,
                 deliveryPackageQty,
                 uom,
@@ -275,23 +313,29 @@ public sealed class ReceivedPurchaseStockHealer(
                 item.VendorProductId,
                 string.IsNullOrWhiteSpace(item.Unit) ? item.DeliveryPackage : item.Unit);
 
-            if (NearlyEqual(qty, purchase.Quantity) && NearlyEqual(price, purchase.UnitPrice)
-                && UomCanonical.Equals(stockUom, purchase.Uom))
+            if (NearlyEqual(inbound.Quantity, purchase.Quantity) && NearlyEqual(inbound.UnitPrice, purchase.UnitPrice)
+                && UomCanonical.Equals(inbound.Uom, purchase.Uom)
+                && NearlyEqual(inbound.DocumentAmount, purchase.DocumentAmount)
+                && NearlyEqual(inbound.RoundingResidual, purchase.RoundingResidual))
                 continue;
 
-            purchase.Quantity = qty;
-            purchase.UnitPrice = price;
-            purchase.Uom = stockUom;
+            purchase.Quantity = inbound.Quantity;
+            purchase.UnitPrice = inbound.UnitPrice;
+            purchase.Uom = inbound.Uom;
+            purchase.DocumentAmount = inbound.DocumentAmount;
+            purchase.RoundingResidual = inbound.RoundingResidual;
             rewritten++;
             rewrittenPurchaseIds.Add(purchase.Id);
             logger.LogInformation(
-                "Rewrote under-converted stock purchase {PurchaseId} for component {ComponentId}: {Packages} pkg → {Qty} {Uom} @ {Price}.",
+                "Rewrote under-converted stock purchase {PurchaseId} for component {ComponentId}: {Packages} pkg → {Qty} {Uom} @ {Price} (doc {Doc}, residual {Residual}).",
                 purchase.Id,
                 purchase.ComponentId,
                 deliveryPackageQty,
-                qty,
-                stockUom,
-                price);
+                inbound.Quantity,
+                inbound.Uom,
+                inbound.UnitPrice,
+                inbound.DocumentAmount,
+                inbound.RoundingResidual);
         }
 
         if (rewritten > 0)

@@ -84,6 +84,55 @@ public static class IngredientUomBridge
     }
 
     /// <summary>
+    /// Delivery→PCU inbound conversion result. Document amount (PO/cash line) is financial
+    /// authority; unit price is 4dp working rate; residual = extended@4dp − document.
+    /// </summary>
+    public readonly record struct InboundPrincipalConversion(
+        decimal Quantity,
+        string Uom,
+        decimal UnitPrice,
+        decimal DocumentAmount,
+        decimal ExtendedAtUnitPrice,
+        decimal RoundingResidual)
+    {
+        public void Deconstruct(out decimal quantity, out string uom, out decimal unitPrice)
+        {
+            quantity = Quantity;
+            uom = Uom;
+            unitPrice = UnitPrice;
+        }
+
+        public static InboundPrincipalConversion FromStock(
+            decimal quantity,
+            string uom,
+            decimal unitPrice,
+            decimal documentAmount)
+        {
+            var price = DecimalRounding.ToDb(unitPrice);
+            var qty = quantity;
+            var doc = DecimalRounding.ToDb(documentAmount);
+            var extended = qty > 0 && price > 0
+                ? DecimalRounding.ToDb(qty * price)
+                : doc;
+            var residual = DecimalRounding.ToDb(extended - doc);
+            return new InboundPrincipalConversion(qty, (uom ?? string.Empty).Trim(), price, doc, extended, residual);
+        }
+
+        public static InboundPrincipalConversion Passthrough(decimal quantity, string uom, decimal unitPrice)
+        {
+            var price = DecimalRounding.ToDb(unitPrice);
+            var doc = DecimalRounding.ToDb(quantity * price);
+            return new InboundPrincipalConversion(
+                quantity,
+                (uom ?? string.Empty).Trim(),
+                price,
+                doc,
+                doc,
+                0m);
+        }
+    }
+
+    /// <summary>
     /// Converts a received delivery-package quantity into Principal Component Unit for stock posting.
     /// <para>
     /// Step 1 (component detail tag): <c>stockQty = deliveryPackages × principalPerPackage</c>
@@ -96,12 +145,12 @@ public static class IngredientUomBridge
     /// </para>
     /// <para>
     /// Step 3: unit price is persisted at 4 decimal places (5th digit AwayFromZero).
-    /// Any residual vs PO line amount (qty × rounded price ≠ PO total) is report-level only —
-    /// never adjusted operationally on the stock card / inventory row.
+    /// <c>RoundingResidual = ExtendedAtUnitPrice − DocumentAmount</c> (e.g. 125.07 − 125.00 = +0.07).
+    /// Document amount stays AP/PO authority; residual is stored and shown on Stock Card inbound.
     /// </para>
     /// Falls back to inventory↔recipe conversion when no vendor tag exists.
     /// </summary>
-    public static (decimal Quantity, string Uom, decimal UnitPrice) ToInboundPrincipal(
+    public static InboundPrincipalConversion ToInboundPrincipal(
         Ingredient ingredient,
         decimal quantity,
         string uom,
@@ -111,7 +160,7 @@ public static class IngredientUomBridge
     {
         var sourceUom = (uom ?? string.Empty).Trim();
         if (quantity <= 0 || ingredient is null)
-            return (quantity, sourceUom, unitPrice);
+            return InboundPrincipalConversion.Passthrough(quantity, sourceUom, unitPrice);
 
         var recipeLabel = string.IsNullOrWhiteSpace(ingredient.RecipeUom)
             ? sourceUom
@@ -120,6 +169,7 @@ public static class IngredientUomBridge
         var inventory = UomCanonical.Normalize(ingredient.InventoryUom);
         var selected = UomCanonical.Normalize(sourceUom);
         var delivery = UomCanonical.Normalize(deliveryUom);
+        var documentAmount = DecimalRounding.ToDb(quantity * unitPrice);
 
         // Prefer tagged principal qty: delivery packages × PCU-per-package.
         if (TryGetVendorPrincipalPerPackage(
@@ -134,7 +184,7 @@ public static class IngredientUomBridge
                 && selected == recipe
                 && LooksAlreadyConvertedToPrincipal(quantity, unitPrice, principalPerPackage))
             {
-                return (quantity, recipeLabel, DecimalRounding.ToDb(unitPrice));
+                return InboundPrincipalConversion.FromStock(quantity, recipeLabel, unitPrice, documentAmount);
             }
 
             var principalInRecipe = ResolvePrincipalInRecipeUom(
@@ -157,7 +207,7 @@ public static class IngredientUomBridge
 
         // Already PCU (or convertible inventory → PCU).
         if (!string.IsNullOrEmpty(recipe) && selected == recipe)
-            return (quantity, recipeLabel, DecimalRounding.ToDb(unitPrice));
+            return InboundPrincipalConversion.FromStock(quantity, recipeLabel, unitPrice, documentAmount);
 
         if (!string.IsNullOrEmpty(inventory) && selected == inventory
             && !string.IsNullOrEmpty(recipe) && recipe != inventory)
@@ -166,11 +216,10 @@ public static class IngredientUomBridge
             if (convertedQty > 0 && quantity > 0 && ConvertedAwayFromSource(quantity, convertedQty, selected, UomCanonical.Normalize(convertedUom)))
             {
                 // Preserve PO line amount: (packages × packagePrice) / principalQty.
-                var lineAmount = quantity * unitPrice;
-                var stockPrice = DecimalRounding.ToDb(lineAmount / convertedQty);
-                return (convertedQty, convertedUom, stockPrice);
+                var stockPrice = DecimalRounding.ToDb(documentAmount / convertedQty);
+                return InboundPrincipalConversion.FromStock(convertedQty, convertedUom, stockPrice, documentAmount);
             }
-            return (convertedQty, convertedUom, DecimalRounding.ToDb(unitPrice));
+            return InboundPrincipalConversion.FromStock(convertedQty, convertedUom, unitPrice, documentAmount);
         }
 
         // Qty may still be labeled with delivery UOM while ComponentUom was empty.
@@ -181,11 +230,11 @@ public static class IngredientUomBridge
         {
             // No principal factor — keep as-is but label PCU when recipe exists so stock card can show it.
             if (!string.IsNullOrEmpty(recipeLabel))
-                return (quantity, recipeLabel, DecimalRounding.ToDb(unitPrice));
+                return InboundPrincipalConversion.FromStock(quantity, recipeLabel, unitPrice, documentAmount);
         }
 
         var (fallbackQty, fallbackUom) = ToRecipePreferred(ingredient, quantity, sourceUom);
-        return (fallbackQty, fallbackUom, DecimalRounding.ToDb(unitPrice));
+        return InboundPrincipalConversion.FromStock(fallbackQty, fallbackUom, unitPrice, documentAmount);
     }
 
     /// <summary>
@@ -193,20 +242,34 @@ public static class IngredientUomBridge
     /// <c>stockQty = packages × principal</c>;
     /// <c>stockUnitPrice = round4(PO line amount ÷ stockQty)</c>.
     /// </summary>
-    public static (decimal Quantity, string Uom, decimal UnitPrice) ConvertDeliveryPackagesToPrincipal(
+    public static InboundPrincipalConversion ConvertDeliveryPackagesToPrincipal(
         decimal deliveryPackages,
         decimal deliveryUnitPrice,
         decimal principalPerPackage,
         string recipeUomLabel)
     {
         if (deliveryPackages <= 0 || principalPerPackage <= 0)
-            return (deliveryPackages, recipeUomLabel, DecimalRounding.ToDb(deliveryUnitPrice));
+            return InboundPrincipalConversion.Passthrough(deliveryPackages, recipeUomLabel, deliveryUnitPrice);
 
         // Keep full precision on qty; round only the derived unit price (4dp).
         var stockQty = deliveryPackages * principalPerPackage;
         var poLineAmount = deliveryPackages * deliveryUnitPrice;
         var stockUnitPrice = DecimalRounding.ToDb(poLineAmount / stockQty);
-        return (stockQty, recipeUomLabel, stockUnitPrice);
+        return InboundPrincipalConversion.FromStock(stockQty, recipeUomLabel, stockUnitPrice, poLineAmount);
+    }
+
+    /// <summary>UI / ledger label for a non-zero UOM rounding residual.</summary>
+    public static string FormatRoundingResidualNote(
+        decimal roundingResidual,
+        decimal documentAmount,
+        decimal extendedAtUnitPrice,
+        decimal unitPrice)
+    {
+        if (Math.Abs(roundingResidual) <= 0.00005m)
+            return string.Empty;
+        var sign = roundingResidual > 0 ? "+" : "";
+        return $"UOM rounding residual {sign}{roundingResidual:0.####} "
+            + $"(PCU {extendedAtUnitPrice:0.####} @ {unitPrice:0.####}; document {documentAmount:0.####})";
     }
 
     /// <summary>

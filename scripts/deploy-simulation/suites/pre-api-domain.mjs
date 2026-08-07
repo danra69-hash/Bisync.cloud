@@ -10,6 +10,7 @@ const focused = [
   'scripts/open-checks.test.mjs',
   'scripts/fifo-batch-pcu-sync.test.mjs',
   'scripts/stockcard-credit-note-outbound.test.mjs',
+  'scripts/stock-inbound-step1-bbq.mjs',
 ]
 
 for (const rel of focused) {

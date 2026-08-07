@@ -744,6 +744,10 @@ public sealed class FifoEvent
     public string Reason { get; init; } = string.Empty;
     public string ReferenceNumber { get; init; } = string.Empty;
     public string SourceLabel { get; init; } = string.Empty;
+    /// <summary>PO/cash document line amount (authority). 0 when unknown.</summary>
+    public decimal DocumentAmount { get; init; }
+    /// <summary>Extended@4dp − DocumentAmount (UOM conversion rounding).</summary>
+    public decimal RoundingResidual { get; init; }
 }
 
 public sealed class FifoEnrichedEvent

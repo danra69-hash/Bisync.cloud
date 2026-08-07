@@ -8,6 +8,15 @@ public class InventoryPurchase
     public decimal Quantity { get; set; }
     public string Uom { get; set; } = string.Empty;
     public decimal UnitPrice { get; set; }
+    /// <summary>
+    /// PO/cash delivery line amount (financial authority). May differ from Quantity × UnitPrice
+    /// by <see cref="RoundingResidual"/> after 4dp PCU conversion.
+    /// </summary>
+    public decimal DocumentAmount { get; set; }
+    /// <summary>
+    /// Extended@4dp − DocumentAmount (e.g. +0.07 when 3790 × 0.0330 = 125.07 vs PO 125.00).
+    /// </summary>
+    public decimal RoundingResidual { get; set; }
     public DateOnly DateOrdered { get; set; }
     public DateTime DateCreatedInStock { get; set; }
     public int PurchaseOrderId { get; set; }

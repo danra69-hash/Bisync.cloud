@@ -1777,16 +1777,27 @@ public class PurchaseOrdersController(
                     || ingredient.CompanyId == order.CompanyId));
 
             // Step 1: delivery packages → Principal Component qty + unit price
-            // (PO line amount ÷ total principal qty, 4dp). No operational rounding true-up.
+            // (PO line amount ÷ total principal qty, 4dp). Store UOM rounding residual.
+            decimal documentAmount = 0m;
+            decimal roundingResidual = 0m;
             if (parent is not null)
             {
-                (qty, uom, price) = IngredientUomBridge.ToInboundPrincipal(
+                var inbound = IngredientUomBridge.ToInboundPrincipal(
                     parent,
                     qty,
                     uom,
                     price,
                     item.VendorProductId,
                     string.IsNullOrWhiteSpace(item.Unit) ? item.DeliveryPackage : item.Unit);
+                qty = inbound.Quantity;
+                uom = inbound.Uom;
+                price = inbound.UnitPrice;
+                documentAmount = inbound.DocumentAmount;
+                roundingResidual = inbound.RoundingResidual;
+            }
+            else
+            {
+                documentAmount = DecimalRounding.ToDb(shipmentQty * (item.ReceivedUnitPrice ?? item.ReconciledUnitPrice ?? line.UnitPrice));
             }
 
             try
@@ -1810,7 +1821,9 @@ public class PurchaseOrdersController(
                         locationExternalId,
                         "purchase-order",
                         item.Id,
-                        remarks);
+                        remarks,
+                        documentAmount,
+                        roundingResidual);
                     continue;
                 }
 
@@ -1821,6 +1834,8 @@ public class PurchaseOrdersController(
                     Quantity = qty,
                     Uom = uom,
                     UnitPrice = price,
+                    DocumentAmount = documentAmount,
+                    RoundingResidual = roundingResidual,
                     DateOrdered = order.OrderDate,
                     DateCreatedInStock = receiptCreatedAt,
                     PurchaseOrderId = order.Id,

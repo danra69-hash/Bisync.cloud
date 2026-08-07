@@ -85,13 +85,16 @@ public class CashPurchasesController(
 
         var stockQty = request.Quantity;
         var stockUom = componentUom;
-        (stockQty, stockUom, unitCost) = IngredientUomBridge.ToInboundPrincipal(
+        var inbound = IngredientUomBridge.ToInboundPrincipal(
             ingredient,
             request.Quantity,
             componentUom,
             unitCost,
             vendorProductId: null,
             deliveryUom: deliveryUnit);
+        stockQty = inbound.Quantity;
+        stockUom = inbound.Uom;
+        unitCost = inbound.UnitPrice;
 
         var receiptBase64 = request.ReceiptFileBase64?.Trim() ?? string.Empty;
         if (receiptBase64.Length > 2_000_000)
@@ -139,7 +142,10 @@ public class CashPurchasesController(
                     locationIdsJson,
                     locationExternalId,
                     "cash-purchase",
-                    cashPurchase.Id);
+                    cashPurchase.Id,
+                    remarks: null,
+                    documentAmount: inbound.DocumentAmount,
+                    roundingResidual: inbound.RoundingResidual);
                 inventoryPurchase = posting.ParentPurchase;
             }
             else
@@ -151,6 +157,8 @@ public class CashPurchasesController(
                     Quantity = stockQty,
                     Uom = stockUom,
                     UnitPrice = unitCost,
+                    DocumentAmount = inbound.DocumentAmount,
+                    RoundingResidual = inbound.RoundingResidual,
                     DateOrdered = request.DatePurchased,
                     DateCreatedInStock = cashPurchase.CreatedAt,
                     PurchaseOrderId = 0,

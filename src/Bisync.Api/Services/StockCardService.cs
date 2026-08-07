@@ -844,6 +844,16 @@ public class StockCardService(
     {
         var unitPrice = StockCardFifoEngine.RoundUnitPrice(enriched.UnitPrice);
         var quantity = enriched.Event.Quantity;
+        var pcuExtended = quantity > 0 && unitPrice > 0 ? RoundLineSubtotal(quantity, unitPrice) : 0m;
+        var documentAmount = enriched.Event.DocumentAmount > 0
+            ? enriched.Event.DocumentAmount
+            : pcuExtended;
+        var roundingResidual = enriched.Event.RoundingResidual;
+        // Inbound financial subtotal = document amount (PO/cash authority).
+        var isInbound = enriched.Event.SignedQty > 0
+            && enriched.Event.EntryType is "purchase" or "cash_purchase" or "split_use_in" or "inbound" or "transfer_in" or "adjustment_in" or "balance_forward";
+        var subtotal = isInbound && documentAmount > 0 ? documentAmount : pcuExtended;
+
         return new StockCardLedgerEntry
         {
             Id = enriched.Event.Id,
@@ -853,7 +863,10 @@ public class StockCardService(
             SignedQty = enriched.Event.SignedQty,
             Uom = enriched.Event.Uom,
             UnitPrice = unitPrice,
-            Subtotal = quantity > 0 && unitPrice > 0 ? RoundLineSubtotal(quantity, unitPrice) : 0,
+            Subtotal = subtotal,
+            DocumentAmount = documentAmount,
+            RoundingResidual = roundingResidual,
+            ExtendedAtUnitPrice = pcuExtended,
             Reason = enriched.Event.Reason,
             ReferenceNumber = enriched.Event.ReferenceNumber,
             FifoDetail = enriched.FifoDetail,
@@ -869,6 +882,22 @@ public class StockCardService(
             DepletedQuantity = enriched.DepletedQuantity,
             SourceInboundSequenceNo = enriched.SourceInboundSequenceNo,
         };
+    }
+
+    static (decimal DocumentAmount, decimal RoundingResidual) ResolvePurchaseDocumentAmounts(
+        InventoryPurchase purchase,
+        decimal stockQty,
+        decimal stockUnitPrice,
+        IReadOnlyDictionary<int, PurchaseOrderItem> poItemsById)
+    {
+        _ = poItemsById;
+        if (purchase.DocumentAmount > 0 || Math.Abs(purchase.RoundingResidual) > 0.00005m)
+            return (DecimalRounding.ToDb(purchase.DocumentAmount), DecimalRounding.ToDb(purchase.RoundingResidual));
+
+        var fallback = stockQty > 0 && stockUnitPrice > 0
+            ? DecimalRounding.ToDb(stockQty * stockUnitPrice)
+            : 0m;
+        return (fallback, 0m);
     }
 
     async Task<StockMovementSummary> SummarizeComponentAsync(
@@ -1190,9 +1219,11 @@ public class StockCardService(
         }
 
         IReadOnlyDictionary<int, string> poNumbers;
+        Dictionary<int, PurchaseOrderItem> poItemsById;
         if (poNumbersOverride is not null)
         {
             poNumbers = poNumbersOverride;
+            poItemsById = new Dictionary<int, PurchaseOrderItem>();
         }
         else
         {
@@ -1202,6 +1233,13 @@ public class StockCardService(
                 : await db.PurchaseOrders.AsNoTracking()
                     .Where(p => poIds.Contains(p.Id))
                     .ToDictionaryAsync(p => p.Id, p => p.PoNumber, cancellationToken);
+
+            var itemIds = purchases.Where(p => p.PurchaseOrderItemId > 0).Select(p => p.PurchaseOrderItemId).Distinct().ToList();
+            poItemsById = itemIds.Count == 0
+                ? new Dictionary<int, PurchaseOrderItem>()
+                : await db.PurchaseOrderItems.AsNoTracking()
+                    .Where(i => itemIds.Contains(i.Id))
+                    .ToDictionaryAsync(i => i.Id, cancellationToken);
         }
 
         var events = new List<FifoEvent>();
@@ -1232,6 +1270,18 @@ public class StockCardService(
             if (isSplitChild)
                 entryType = "split_use_in";
 
+            var (documentAmount, roundingResidual) = ResolvePurchaseDocumentAmounts(
+                purchase,
+                convertedQty,
+                convertedPrice,
+                poItemsById);
+
+            var residualNote = IngredientUomBridge.FormatRoundingResidualNote(
+                roundingResidual,
+                documentAmount,
+                DecimalRounding.ToDb(convertedQty * convertedPrice),
+                convertedPrice);
+
             var reason = isSplitChild
                 ? $"Split from {purchase.SplitParentComponentId}"
                     + (string.IsNullOrWhiteSpace(poNumber) ? string.Empty : $" — PO {poNumber}")
@@ -1243,6 +1293,8 @@ public class StockCardService(
                         : entryType == "cash_purchase"
                             ? "Cash purchase"
                             : "Stock inbound";
+            if (!string.IsNullOrWhiteSpace(residualNote))
+                reason = $"{reason} · {residualNote}";
 
             var sourceLabel = isSplitChild
                 ? $"Split from {purchase.SplitParentComponentId}"
@@ -1262,6 +1314,8 @@ public class StockCardService(
                 Reason = reason,
                 ReferenceNumber = poNumber,
                 SourceLabel = sourceLabel,
+                DocumentAmount = documentAmount,
+                RoundingResidual = roundingResidual,
             });
         }
 
@@ -2172,6 +2226,12 @@ public sealed record StockCardLedgerEntry
     public string Uom { get; init; } = string.Empty;
     public decimal UnitPrice { get; init; }
     public decimal Subtotal { get; init; }
+    /// <summary>PO/cash document line amount (authority) for inbound rows.</summary>
+    public decimal DocumentAmount { get; init; }
+    /// <summary>PCU extended (qty × 4dp price) − document amount.</summary>
+    public decimal RoundingResidual { get; init; }
+    /// <summary>qty × 4dp unit price before residual true-up.</summary>
+    public decimal ExtendedAtUnitPrice { get; init; }
     public string Reason { get; init; } = string.Empty;
     public string ReferenceNumber { get; init; } = string.Empty;
     public string FifoDetail { get; init; } = string.Empty;

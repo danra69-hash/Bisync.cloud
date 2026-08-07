@@ -3268,6 +3268,12 @@ export interface StockCardLedgerEntry {
   uom: string;
   unitPrice: number;
   subtotal: number;
+  /** PO/cash document line amount (authority) for inbound. */
+  documentAmount?: number;
+  /** PCU extended − document (UOM rounding residual). */
+  roundingResidual?: number;
+  /** qty × 4dp unit price before residual true-up. */
+  extendedAtUnitPrice?: number;
   reason: string;
   referenceNumber: string;
   fifoDetail: string;
