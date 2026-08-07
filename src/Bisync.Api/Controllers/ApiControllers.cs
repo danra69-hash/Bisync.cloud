@@ -1144,9 +1144,10 @@ public class PurchaseOrdersController(
     [HttpGet("active")]
     public async Task<ActionResult<IEnumerable<object>>> GetActive([FromQuery] int? companyId)
     {
+        // Include Reconciled so Active Purchase KPIs can bucket PR / accepted / received / reconciled.
+        // Commitment Closed masters stay out of this queue.
         var query = BaseQuery()
-            .Where(p => p.Status != PurchaseOrderWorkflow.StatusReconciled
-                && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed);
+            .Where(p => p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed);
 
         if (companyId is int id)
             query = query.Where(p => p.CompanyId == null || p.CompanyId == id);

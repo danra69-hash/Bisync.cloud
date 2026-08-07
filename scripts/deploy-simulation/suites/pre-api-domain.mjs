@@ -12,6 +12,7 @@ const focused = [
   'scripts/stockcard-credit-note-outbound.test.mjs',
   'scripts/stock-inbound-step1-bbq.mjs',
   'scripts/credit-note-outbound-residual.mjs',
+  'scripts/active-purchase-buckets.mjs',
 ]
 
 for (const rel of focused) {

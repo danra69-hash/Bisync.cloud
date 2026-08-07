@@ -39,5 +39,6 @@ export function purchaseOrderStatusBadgeClass(statusLabel: string): string {
     return 'bg-primary/15 text-primary';
   }
   if (normalized === 'received') return 'bg-blue-500/15 text-blue-700 dark:text-blue-400';
+  if (normalized === 'reconciled') return 'bg-slate-500/15 text-slate-700 dark:text-slate-300';
   return 'bg-muted text-muted-foreground';
 }
