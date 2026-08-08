@@ -133,11 +133,10 @@ export function TeamMyWorkPage({
             {carryForward > 0 ? <em> ({carryForward})</em> : null}
           </strong>
         </div>
-        {carryForward > 0 ? (
-          <p className="team-muted" style={{ margin: '0 0 6px', fontSize: 10 }}>
-            Bracket = carry-forward from previous year
-          </p>
-        ) : null}
+        <p className="team-muted" style={{ margin: '0 0 6px', fontSize: 10 }}>
+          Annual leave is pro-rated for the join year
+          {carryForward > 0 ? '; bracket = carry-forward from previous year' : ''}
+        </p>
         <div className="team-leave-row">
           <span>RDO</span>
           <strong style={{ fontSize: 15 }}>{leaveBalance?.rdoBalance ?? 0}</strong>

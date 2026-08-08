@@ -212,6 +212,7 @@ public static class HrStartup
         await OrgSeeder.SeedAsync(db);
         await EmployeeSeeder.SeedAsync(db);
         await PayrollDemoSeeder.SeedAsync(db);
+        await AnnualLeaveProrationMigrator.ApplyAsync(db);
     }
 
     static readonly string[] PayrollTableSql =

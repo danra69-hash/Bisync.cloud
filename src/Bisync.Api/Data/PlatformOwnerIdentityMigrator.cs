@@ -463,31 +463,40 @@ public static class PlatformOwnerIdentityMigrator
                 .FirstOrDefaultAsync() ?? 0;
         }
 
-        // Both legacy rows were seeded with Director AL (28). Sum merge produced 56.
-        const decimal knownDoubledAl = 56m;
-        const decimal knownSingleAl = 28m;
+        // Prefer operating-year pro-rata (same person rename must not stack or lumpsum full-year AL).
+        var fallback = levelDays > 0 ? levelDays : 28;
+        var rulesJson = employee.EmployeeLevelId is int lid
+            ? await db.EmployeeLevels.AsNoTracking()
+                .Where(l => l.Id == lid)
+                .Select(l => l.AnnualLeaveRulesJson)
+                .FirstOrDefaultAsync()
+            : null;
+        var prorated = AnnualLeaveEntitlement.ResolveOpeningBalanceDays(
+            rulesJson,
+            employee.JoinDate,
+            fallback,
+            annualLeaveEnabled: true);
 
-        decimal? target = null;
-        if (balance.AlBalance == knownDoubledAl)
-            target = knownSingleAl;
-        else if (levelDays > 0 && balance.AlBalance == levelDays * 2m)
-            target = levelDays;
+        var isDoubledOrLumpsum =
+            balance.AlBalance == 56m
+            || (levelDays > 0 && balance.AlBalance == levelDays * 2m)
+            || (levelDays > 0 && balance.AlBalance == levelDays && prorated < levelDays);
 
-        if (target is null)
+        if (!isDoubledOrLumpsum || balance.AlBalance == prorated)
             return;
 
         var previous = balance.AlBalance;
-        balance.AlBalance = target.Value;
+        balance.AlBalance = prorated;
         if (levelDays > 0 && balance.AlCarryForward == levelDays * 2m)
             balance.AlCarryForward = levelDays;
-        else if (balance.AlCarryForward == knownDoubledAl)
-            balance.AlCarryForward = knownSingleAl;
+        else if (balance.AlCarryForward == 56m)
+            balance.AlCarryForward = 28m;
 
         await db.SaveChangesAsync();
         logger?.LogInformation(
-            "Healed doubled platform-owner annual leave for Employee {EmployeeId}: {Previous} → {Target}",
+            "Healed platform-owner annual leave for Employee {EmployeeId}: {Previous} → {Target} (pro-rated)",
             employee.Id,
             previous,
-            target.Value);
+            prorated);
     }
 }
