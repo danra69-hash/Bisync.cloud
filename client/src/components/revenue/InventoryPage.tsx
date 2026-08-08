@@ -95,35 +95,35 @@ type HistorySortColumn =
   | 'varianceValue';
 
 const COUNT_TABLE_COLUMNS: SortableColumnDef<string>[] = [
-  { key: 'type', label: 'Type', ...tableColWidth('6%') },
-  { key: 'group', label: 'Group', ...tableColWidth('7%') },
-  { key: 'name', label: 'Name', ...tableColWidth('12%') },
-  { key: 'uom', label: 'UOM', ...tableColWidth('5%') },
-  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'principalQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
-  { key: 'alternateUom', label: 'Alternate Component UOM', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'alternateQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth('7%') },
-  { key: 'totalQty', label: 'Total QTY (PCU)', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'qtyVariance', label: 'QTY Variance', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'varianceValue', label: 'Variance Value', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'area', label: 'Area', ...tableColWidth('6%') },
-  { key: 'storage', label: 'Storage', ...tableColWidth('7%') },
-] ;
+  { key: 'type', label: 'Type', ...tableColWidth(72) },
+  { key: 'group', label: 'Group', ...tableColWidth(96) },
+  { key: 'name', label: 'Name', ...tableColWidth(168) },
+  { key: 'uom', label: 'UOM', ...tableColWidth(64) },
+  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const, ...tableColWidth(120) },
+  { key: 'principalQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth(96) },
+  { key: 'alternateUom', label: 'Alternate Component UOM', align: 'right' as const, ...tableColWidth(120) },
+  { key: 'alternateQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth(96) },
+  { key: 'totalQty', label: 'Total QTY (PCU)', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'qtyVariance', label: 'QTY Variance', align: 'right' as const, ...tableColWidth(100) },
+  { key: 'varianceValue', label: 'Variance Value', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'area', label: 'Area', ...tableColWidth(88) },
+  { key: 'storage', label: 'Storage', ...tableColWidth(96) },
+];
 
 const HISTORY_TABLE_COLUMNS: SortableColumnDef<string>[] = [
-  { key: 'itemName', label: 'Item', ...tableColWidth('12%') },
-  { key: 'location', label: 'Location', ...tableColWidth('8%') },
-  { key: 'savedAt', label: 'Date Created', ...tableColWidth('8%') },
-  { key: 'confirmedAt', label: 'Date Confirmed', ...tableColWidth('8%') },
-  { key: 'effectiveDate', label: 'Effective Date', ...tableColWidth('8%') },
-  { key: 'uom', label: 'UOM', ...tableColWidth('5%') },
-  { key: 'systemQty', label: 'System Qty', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'countedQty', label: 'Actual Inventory', align: 'right' as const, ...tableColWidth('8%') },
-  { key: 'varianceQty', label: 'Variance', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'systemValue', label: 'System Value', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'actualValue', label: 'Actual Value', align: 'right' as const, ...tableColWidth('7%') },
-  { key: 'varianceValue', label: 'Variance', align: 'right' as const, ...tableColWidth('7%') },
+  { key: 'itemName', label: 'Item', ...tableColWidth(168) },
+  { key: 'location', label: 'Location', ...tableColWidth(120) },
+  { key: 'savedAt', label: 'Date Created', ...tableColWidth(132) },
+  { key: 'confirmedAt', label: 'Date Confirmed', ...tableColWidth(132) },
+  { key: 'effectiveDate', label: 'Effective Date', ...tableColWidth(112) },
+  { key: 'uom', label: 'UOM', ...tableColWidth(64) },
+  { key: 'systemQty', label: 'System Qty', align: 'right' as const, ...tableColWidth(96) },
+  { key: 'countedQty', label: 'Actual Inventory', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'varianceQty', label: 'Variance', align: 'right' as const, ...tableColWidth(88) },
+  { key: 'systemValue', label: 'System Value', align: 'right' as const, ...tableColWidth(104) },
+  { key: 'actualValue', label: 'Actual Value', align: 'right' as const, ...tableColWidth(104) },
+  { key: 'varianceValue', label: 'Variance', align: 'right' as const, ...tableColWidth(96) },
   { key: 'actions', label: 'Actions', align: 'right', sortable: false, ...tableColWidth(100) },
 ];
 
@@ -938,7 +938,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
       {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 
       <TableScrollContainer ref={scrollRootRef} tableId="revenue.inventory.count">
-        <table className="w-full text-sm font-sans">
+        <table className="w-full min-w-[1460px] text-sm font-sans">
           <TableColGroup columns={COUNT_TABLE_COLUMNS} />
           <thead>
             <SortableTableHeaderRow
@@ -1044,7 +1044,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActo
           {historyError ? <p className="text-sm text-destructive">{historyError}</p> : null}
 
           <TableScrollContainer tableId="revenue.inventory.history">
-            <table className="w-full text-sm font-sans">
+            <table className="w-full min-w-[1440px] text-sm font-sans">
               <TableColGroup columns={HISTORY_TABLE_COLUMNS} />
               <thead>
                 <SortableTableHeaderRow

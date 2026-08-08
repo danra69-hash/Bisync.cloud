@@ -663,19 +663,19 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds, embedded =
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
           tableId="revenue.wastage.summary"
         >
-          <table className="w-full border-collapse text-sm">
-            <ColGroup widths={[64, 96, '22%', 112, 136, 64, 136, '18%', 112]} />
+          <table className="w-full min-w-[1080px] border-collapse text-sm">
+            <ColGroup widths={[64, 96, 200, 112, 80, 56, 100, 180, 112]} />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="text-left px-2 py-1.5">Source</th>
-                <th className="text-left px-2 py-1.5">Date</th>
-                <th className="text-left px-2 py-1.5">Item</th>
-                <th className="text-left px-2 py-1.5">Type</th>
-                <th className="text-right px-2 py-1.5">Qty</th>
-                <th className="text-left px-2 py-1.5">UOM</th>
-                <th className="text-right px-2 py-1.5">Value</th>
-                <th className="text-left px-2 py-1.5">Reason</th>
-                <th className="text-left px-2 py-1.5">Check no.</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Source</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Date</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Item</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Type</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Qty</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">UOM</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Value</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Reason</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Check no.</th>
               </tr>
             </thead>
             <tbody>
