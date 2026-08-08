@@ -416,11 +416,58 @@ export type OrderCartVendorGroup = {
   subtotal: number;
 };
 
+function depositCombineKey(item: OrderCartItem): string {
+  const name = (item.returnableItemName || item.productName || '').trim().toLowerCase();
+  const uom = (item.deliveryUnitLabel || item.componentUom || '').trim().toLowerCase();
+  const price = Number.isFinite(item.deliveryPrice) ? item.deliveryPrice : 0;
+  return `${item.vendorExternalId}|${name}|${uom}|${price}`;
+}
+
+/**
+ * Collapse auto-attached returnable deposit lines so the same deposit type
+ * (vendor + name + UOM + unit price) becomes one line with summed quantity.
+ */
+export function combineReturnableDepositLines(items: OrderCartItem[]): OrderCartItem[] {
+  const products: OrderCartItem[] = [];
+  const depositsByKey = new Map<string, OrderCartItem>();
+
+  for (const item of items) {
+    if (!item.isReturnableDeposit) {
+      products.push(item);
+      continue;
+    }
+
+    const key = depositCombineKey(item);
+    const existing = depositsByKey.get(key);
+    if (!existing) {
+      depositsByKey.set(key, {
+        ...item,
+        lineKey: `returnable::${key}`,
+        vendorProductId: '',
+        componentId: '',
+        quantity: item.quantity,
+        lineTotal: item.quantity * item.deliveryPrice,
+      });
+      continue;
+    }
+
+    existing.quantity += item.quantity;
+    existing.lineTotal = existing.quantity * existing.deliveryPrice;
+  }
+
+  return [
+    ...products,
+    ...[...depositsByKey.values()].sort((a, b) =>
+      (a.returnableItemName || a.productName).localeCompare(b.returnableItemName || b.productName),
+    ),
+  ];
+}
+
 export function buildCartItems(
   lines: CreateOrderLine[],
   orderQtyByKey: Record<string, string>,
 ): OrderCartItem[] {
-  return lines.flatMap(line => {
+  const expanded = lines.flatMap(line => {
     const quantity = parseFloat(orderQtyByKey[line.key] || '') || 0;
     if (quantity <= 0) return [];
     const productLine: OrderCartItem = {
@@ -472,6 +519,8 @@ export function buildCartItems(
 
     return [productLine];
   });
+
+  return combineReturnableDepositLines(expanded);
 }
 
 export function groupCartByVendor(items: OrderCartItem[]): OrderCartVendorGroup[] {

@@ -4,6 +4,7 @@ import { api, setApiTenantCompanyId, type Company, type Location, type Vendor } 
 import { ingredientToRow } from '../../components/revenue/smartIngredientShared';
 import {
   buildCreateOrderLines,
+  combineReturnableDepositLines,
   formatRm,
   groupCartByVendor,
   resolveVendorsForSelectedLocations,
@@ -42,7 +43,7 @@ function defaultDeliveryDateValue(): string {
 function buildCartItemsFromEntries(
   entries: { line: CreateOrderLine; qty: number; price: number }[],
 ): OrderCartItem[] {
-  return entries.flatMap(({ line, qty, price }) => {
+  const expanded = entries.flatMap(({ line, qty, price }) => {
     if (qty <= 0) return [];
     const productLine: OrderCartItem = {
       lineKey: line.key,
@@ -93,6 +94,8 @@ function buildCartItemsFromEntries(
 
     return [productLine];
   });
+
+  return combineReturnableDepositLines(expanded);
 }
 
 export function TeamRmsOrderPage({ employeeName }: Props) {
