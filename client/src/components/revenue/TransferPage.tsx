@@ -658,19 +658,19 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds, teamActor
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <ColGroup widths={[96, 112, 112, '28%', 136, 64, 136, 136, 112]} />
+            <table className="w-full min-w-[1080px] border-collapse text-sm">
+              <ColGroup widths={[96, 140, 140, 220, 80, 56, 100, 100, 140]} />
               <thead>
                 <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="text-left px-2 py-1.5">Date</th>
-                  <th className="text-left px-2 py-1.5">From</th>
-                  <th className="text-left px-2 py-1.5">To</th>
-                  <th className="text-left px-2 py-1.5">Item</th>
-                  <th className="text-right px-2 py-1.5">Qty</th>
-                  <th className="text-left px-2 py-1.5">UOM</th>
-                  <th className="text-right px-2 py-1.5">Unit price</th>
-                  <th className="text-right px-2 py-1.5">Total value</th>
-                  <th className="text-left px-2 py-1.5">Initiated by</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">Date</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">From</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">To</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">Item</th>
+                  <th className="text-right px-2 py-1.5 whitespace-nowrap">Qty</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">UOM</th>
+                  <th className="text-right px-2 py-1.5 whitespace-nowrap">Unit price</th>
+                  <th className="text-right px-2 py-1.5 whitespace-nowrap">Total value</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">Initiated by</th>
                 </tr>
               </thead>
               <tbody>
@@ -860,23 +860,40 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds, teamActor
         <TableScrollContainer
           ref={historyScrollRef}
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
+          tableId="team.transfer.history"
         >
-          <table className="w-full border-collapse text-sm">
-            <ColGroup widths={[96, 112, 112, '22%', 96, 120, 56, 120, 120, 112, 120, 112]} />
+          <table className="w-full min-w-[1360px] border-collapse text-sm">
+            <ColGroup
+              widths={[96, 140, 140, 200, 96, 80, 56, 100, 100, 120, 150, 96]}
+              columnKeys={[
+                'date',
+                'from',
+                'to',
+                'item',
+                'type',
+                'qty',
+                'uom',
+                'unitPrice',
+                'totalValue',
+                'initiatedBy',
+                'actedBy',
+                'status',
+              ]}
+            />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="text-left px-2 py-1.5">Date</th>
-                <th className="text-left px-2 py-1.5">From</th>
-                <th className="text-left px-2 py-1.5">To</th>
-                <th className="text-left px-2 py-1.5">Item</th>
-                <th className="text-left px-2 py-1.5">Type</th>
-                <th className="text-right px-2 py-1.5">Qty</th>
-                <th className="text-left px-2 py-1.5">UOM</th>
-                <th className="text-right px-2 py-1.5">Unit price</th>
-                <th className="text-right px-2 py-1.5">Total value</th>
-                <th className="text-left px-2 py-1.5">Initiated by</th>
-                <th className="text-left px-2 py-1.5">Received / Rejected by</th>
-                <th className="text-left px-2 py-1.5">Status</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Date</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">From</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">To</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Item</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Type</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Qty</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">UOM</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Unit price</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Total value</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Initiated by</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Received / Rejected by</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Status</th>
               </tr>
             </thead>
             <tbody>
