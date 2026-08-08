@@ -7,8 +7,9 @@ public static class SuperAdminAccess
     public const string SuperAdminEmail = "dra@cubevalue.com";
 
     /// <summary>
-    /// Historical login aliases for the same platform-owner person.
-    /// Startup merge folds these AppUser/Employee rows into <see cref="SuperAdminEmail"/>.
+    /// Legacy email before rename to <see cref="SuperAdminEmail"/> (same person, not a second user).
+    /// Startup merge folds leftover AppUser/Employee rows into the canonical identity without
+    /// stacking leave entitlements.
     /// </summary>
     public static readonly string[] AliasEmails = ["dra@test.com"];
 

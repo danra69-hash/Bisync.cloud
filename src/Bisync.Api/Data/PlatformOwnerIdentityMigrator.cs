@@ -5,16 +5,18 @@ using Microsoft.EntityFrameworkCore;
 namespace Bisync.Api.Data;
 
 /// <summary>
-/// Idempotent merge: fold alias login emails (e.g. dra@test.com) into the
+/// Idempotent merge: fold renamed/alias login emails (legacy dra@test.com) into the
 /// platform owner AppUser (dra@cubevalue.com) and a single HR Employee row,
 /// preserving Weissbrau company assignment when present.
+/// Alias rows are the same person after email rename — leave balances must not be stacked.
 /// </summary>
 public static class PlatformOwnerIdentityMigrator
 {
     static int _requestPathGate;
 
     /// <summary>
-    /// Cheap request-path trigger: only runs a full merge when an alias AppUser still exists.
+    /// Cheap request-path trigger: runs a full merge when an alias AppUser/Employee still exists,
+    /// and always heals a previously doubled owner annual-leave balance.
     /// </summary>
     public static async Task EnsureMergedAsync(BisyncDbContext db, ILogger? logger = null)
     {
@@ -28,19 +30,29 @@ public static class PlatformOwnerIdentityMigrator
                 .Select(e => e.Trim().ToLowerInvariant())
                 .Where(e => e.Length > 0)
                 .ToArray();
-            if (aliasEmails.Length == 0) return;
 
             var users = await db.AppUsers.AsNoTracking()
                 .Select(u => new { u.Id, u.Email, u.EmployeeId })
                 .ToListAsync();
-            var needsMerge = users.Any(u =>
+            var needsMerge = aliasEmails.Length > 0 && users.Any(u =>
                 aliasEmails.Contains((u.Email ?? string.Empty).Trim().ToLowerInvariant()));
             var keeper = users.FirstOrDefault(u =>
                 string.Equals((u.Email ?? string.Empty).Trim(), SuperAdminAccess.SuperAdminEmail, StringComparison.OrdinalIgnoreCase));
-            if (!needsMerge && keeper?.EmployeeId is > 0)
-                return;
 
-            await ApplyAsync(db, logger);
+            var aliasEmployeeStillExists = false;
+            if (aliasEmails.Length > 0)
+            {
+                var employeeEmails = await db.Employees.AsNoTracking()
+                    .Select(e => e.Email)
+                    .ToListAsync();
+                aliasEmployeeStillExists = employeeEmails.Any(e =>
+                    aliasEmails.Contains((e ?? string.Empty).Trim().ToLowerInvariant()));
+            }
+
+            if (needsMerge || aliasEmployeeStillExists || keeper?.EmployeeId is null or <= 0)
+                await ApplyAsync(db, logger);
+            else
+                await HealDoubledPlatformOwnerLeaveAsync(db, logger);
 
             var stillAlias = await db.AppUsers.AsNoTracking()
                 .Select(u => u.Email)
@@ -114,6 +126,7 @@ public static class PlatformOwnerIdentityMigrator
             }
             await EnsureWeissbrauHomeAsync(db, keeper, logger);
             await db.SaveChangesAsync();
+            await HealDoubledPlatformOwnerLeaveAsync(db, logger);
             return;
         }
 
@@ -181,6 +194,7 @@ public static class PlatformOwnerIdentityMigrator
 
         await EnsureWeissbrauHomeAsync(db, keeper, logger);
         await db.SaveChangesAsync();
+        await HealDoubledPlatformOwnerLeaveAsync(db, logger);
 
         // Delete absorb/alias rows via SQL so leftover FKs cannot block EF Remove.
         foreach (var absorb in absorbEmployees)
@@ -361,10 +375,12 @@ public static class PlatformOwnerIdentityMigrator
             }
             else
             {
-                keeperBalance.RdoBalance += rdo;
-                keeperBalance.RphBalance += rph;
-                keeperBalance.AlBalance += al;
-                keeperBalance.AlCarryForward += alCf;
+                // Same person after email rename (dra@test.com → dra@cubevalue.com):
+                // keep the higher remaining balance, never stack two full entitlements.
+                keeperBalance.RdoBalance = Math.Max(keeperBalance.RdoBalance, rdo);
+                keeperBalance.RphBalance = Math.Max(keeperBalance.RphBalance, rph);
+                keeperBalance.AlBalance = Math.Max(keeperBalance.AlBalance, al);
+                keeperBalance.AlCarryForward = Math.Max(keeperBalance.AlCarryForward, alCf);
                 db.LeaveBalances.Remove(absorbBalance);
             }
         }
@@ -402,5 +418,76 @@ public static class PlatformOwnerIdentityMigrator
             .ToListAsync();
         foreach (var u in linkedUsers)
             u.EmployeeId = null;
+    }
+
+    /// <summary>
+    /// Fixes AL that was stacked when the same person existed as both
+    /// dra@test.com and dra@cubevalue.com (28 + 28 → 56). Idempotent.
+    /// </summary>
+    public static async Task HealDoubledPlatformOwnerLeaveAsync(
+        BisyncDbContext db,
+        ILogger? logger = null)
+    {
+        if (!await DatabaseSchemaHelper.TableExistsAsync(db, "LeaveBalances"))
+            return;
+
+        var canonical = SuperAdminAccess.SuperAdminEmail.Trim().ToLowerInvariant();
+        var users = await db.AppUsers.AsNoTracking().ToListAsync();
+        var ownerUser = users.FirstOrDefault(u =>
+            string.Equals(u.Email?.Trim(), canonical, StringComparison.OrdinalIgnoreCase));
+
+        Employee? employee = null;
+        if (ownerUser?.EmployeeId is > 0)
+            employee = await db.Employees.FirstOrDefaultAsync(e => e.Id == ownerUser.EmployeeId);
+
+        if (employee is null)
+        {
+            var employees = await db.Employees.ToListAsync();
+            employee = employees.FirstOrDefault(e =>
+                string.Equals(e.Email?.Trim(), canonical, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (employee is null)
+            return;
+
+        var balance = await db.LeaveBalances.FirstOrDefaultAsync(b => b.EmployeeId == employee.Id);
+        if (balance is null)
+            return;
+
+        var levelDays = 0;
+        if (employee.EmployeeLevelId is int levelId)
+        {
+            levelDays = await db.EmployeeLevels.AsNoTracking()
+                .Where(l => l.Id == levelId)
+                .Select(l => (int?)l.AnnualLeaveDays)
+                .FirstOrDefaultAsync() ?? 0;
+        }
+
+        // Both legacy rows were seeded with Director AL (28). Sum merge produced 56.
+        const decimal knownDoubledAl = 56m;
+        const decimal knownSingleAl = 28m;
+
+        decimal? target = null;
+        if (balance.AlBalance == knownDoubledAl)
+            target = knownSingleAl;
+        else if (levelDays > 0 && balance.AlBalance == levelDays * 2m)
+            target = levelDays;
+
+        if (target is null)
+            return;
+
+        var previous = balance.AlBalance;
+        balance.AlBalance = target.Value;
+        if (levelDays > 0 && balance.AlCarryForward == levelDays * 2m)
+            balance.AlCarryForward = levelDays;
+        else if (balance.AlCarryForward == knownDoubledAl)
+            balance.AlCarryForward = knownSingleAl;
+
+        await db.SaveChangesAsync();
+        logger?.LogInformation(
+            "Healed doubled platform-owner annual leave for Employee {EmployeeId}: {Previous} → {Target}",
+            employee.Id,
+            previous,
+            target.Value);
     }
 }
