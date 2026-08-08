@@ -1411,6 +1411,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "VendorProducts", "ReturnableDepositAmount", "numeric NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "IsReturnableDeposit", "boolean NOT NULL DEFAULT false");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "ReturnableItemName", "TEXT NOT NULL DEFAULT ''");
+        await PurchaseOrderDepositCombinerMigrator.ApplyAsync(db);
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "ReturnableGoodsReturns" (

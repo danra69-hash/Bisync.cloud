@@ -146,6 +146,18 @@ public static class PurchaseOrderWorkflow
     /// Collapse returnable deposit lines of the same type (name + UOM + unit price)
     /// into a single line with summed quantity. Product lines are left unchanged.
     /// </summary>
+    /// <summary>
+    /// Combine key for returnable deposit lines: name + UOM + unit price (case-insensitive name/UOM).
+    /// </summary>
+    public static string ReturnableDepositCombineKey(PurchaseOrderItem item)
+    {
+        var name = string.IsNullOrWhiteSpace(item.ReturnableItemName)
+            ? item.Name.Trim()
+            : item.ReturnableItemName.Trim();
+        var uom = string.IsNullOrWhiteSpace(item.Unit) ? item.ComponentUom.Trim() : item.Unit.Trim();
+        return $"{name.ToLowerInvariant()}|{uom.ToLowerInvariant()}|{item.UnitPrice:0.####}";
+    }
+
     public static List<PurchaseOrderItem> CombineReturnableDepositItems(IEnumerable<PurchaseOrderItem> items)
     {
         var products = new List<PurchaseOrderItem>();
@@ -163,7 +175,7 @@ public static class PurchaseOrderWorkflow
                 ? item.Name.Trim()
                 : item.ReturnableItemName.Trim();
             var uom = string.IsNullOrWhiteSpace(item.Unit) ? item.ComponentUom.Trim() : item.Unit.Trim();
-            var key = $"{name.ToLowerInvariant()}|{uom.ToLowerInvariant()}|{item.UnitPrice:0.####}";
+            var key = ReturnableDepositCombineKey(item);
 
             if (deposits.TryGetValue(key, out var existing))
             {

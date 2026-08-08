@@ -101,6 +101,21 @@ public sealed class DeferredDbStartupHostedService(
 
             try
             {
+                // Shared DB already combined in SchemaPatcher; fan-out to provisioned tenant DBs.
+                var depositLinesRemoved = await PurchaseOrderDepositCombinerMigrator
+                    .ApplyAcrossProvisionedTenantsAsync(db, logger, cancellationToken);
+                if (depositLinesRemoved > 0)
+                    logger.LogInformation(
+                        "Combined returnable deposits on provisioned tenants; removed {Count} duplicate line(s).",
+                        depositLinesRemoved);
+            }
+            catch (Exception depositEx)
+            {
+                logger.LogError(depositEx, "Returnable deposit combine (provisioned) failed; continuing startup");
+            }
+
+            try
+            {
                 var purged = await sp.GetRequiredService<CreditNoteService>()
                     .PurgeErroneousTinyQuantityAsync(cancellationToken);
                 if (purged > 0)
