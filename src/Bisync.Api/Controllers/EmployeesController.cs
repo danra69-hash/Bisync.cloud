@@ -73,19 +73,20 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         if (!await ApplyAsync(employee, request))
             return BadRequest("A valid department is required.");
         await ApplyShiftFromLevel(employee);
-        // Every employee gets a balance row; AL starts from the level tenure band for years of service.
+        // Every employee gets a balance row; AL is the tenure-band entitlement pro-rated
+        // for the current operating year (not a full-year lumpsum for mid-year joiners).
         var level = request.EmployeeLevelId is int assignedLevelId
             ? await db.EmployeeLevels.FindAsync(assignedLevelId)
             : null;
-        var yearsOfService = YearsOfServiceFromJoinDate(employee.JoinDate);
         employee.LeaveBalance = new LeaveBalance
         {
-            AlBalance = level is { AnnualLeaveEnabled: true }
-                ? LeaveTenureRules.ResolveDays(
+            AlBalance = level is null
+                ? 0
+                : AnnualLeaveEntitlement.ResolveOpeningBalanceDays(
                     level.AnnualLeaveRulesJson,
-                    yearsOfService,
-                    level.AnnualLeaveDays)
-                : 0,
+                    employee.JoinDate,
+                    level.AnnualLeaveDays,
+                    level.AnnualLeaveEnabled),
         };
 
         db.Employees.Add(employee);
@@ -338,19 +339,6 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         db.PerformanceAppraisals.Remove(record);
         await db.SaveChangesAsync();
         return NoContent();
-    }
-
-    private static decimal YearsOfServiceFromJoinDate(DateOnly joinDate)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (joinDate >= today) return 0;
-        var years = today.Year - joinDate.Year;
-        var anniversary = joinDate.AddYears(years);
-        if (anniversary > today) years--;
-        var partialAnniversary = joinDate.AddYears(Math.Max(0, years));
-        var daysInYear = DateTime.IsLeapYear(today.Year) ? 366d : 365d;
-        var partial = Math.Clamp(today.DayNumber - partialAnniversary.DayNumber, 0, 366) / daysInYear;
-        return Math.Round(Math.Max(0, years + (decimal)partial), 1);
     }
 
     private async Task<bool> ApplyAsync(Employee employee, EmployeeRequest request)
