@@ -1,0 +1,2188 @@
+{
+  "summary": {
+    "companyId": 5,
+    "generatedAt": "2026-07-31T02:05:42.408601+00:00",
+    "totals": {
+      "products": 522,
+      "ingredients": 651,
+      "subProducts": 14,
+      "componentsUsedInBOMs": 331,
+      "productsWithHeaderIssues": 3,
+      "bomLinesWithIssues": 95,
+      "componentsWithIssues": 45
+    },
+    "issueBreakdown": {
+      "components": {
+        "Inactive but used on active product BOM": 32,
+        "Referenced on product BOM but missing from component catalog": 7,
+        "Recipe price is 0": 6,
+        "No tagged vendor product / vendor": 6,
+        "Inventory/delivery price is 0": 4,
+        "Missing recipe UOM": 1,
+        "Missing inventory UOM": 1,
+        "Invalid inventory\u2192recipe conversion qty": 1
+      },
+      "bomLines": {
+        "UOM price is 0": 49,
+        "Uses inactive component on active product": 39,
+        "Component ID not found in catalog (orphan reference)": 7,
+        "BOM price 1.282500 differs from component recipe price 1.580000": 2,
+        "BOM price 5.500000 differs from component recipe price 0.011000": 1,
+        "BOM price 1.511700 differs from component recipe price 0.985000": 1,
+        "BOM price 0.545000 differs from component recipe price 0.450000": 1
+      },
+      "products": {
+        "Active B2C product has RRP = 0 and no aliases": 3
+      }
+    }
+  },
+  "productIssues": [
+    {
+      "productId": "PRD-ISLAND-001",
+      "productName": "ISLAND TRIP JUG",
+      "active": true,
+      "type": "Product",
+      "issues": [
+        "Active B2C product has RRP = 0 and no aliases"
+      ],
+      "recipeLines": 7,
+      "totalCost": 23.196428571428573,
+      "rrp": 0.0
+    },
+    {
+      "productId": "PRD-SIDECA-001",
+      "productName": "SIDE CAR",
+      "active": true,
+      "type": "Product",
+      "issues": [
+        "Active B2C product has RRP = 0 and no aliases"
+      ],
+      "recipeLines": 4,
+      "totalCost": 8.814285714285715,
+      "rrp": 0.0
+    },
+    {
+      "productId": "PRD-VODKAR-001",
+      "productName": "VODKARITA",
+      "active": true,
+      "type": "Product",
+      "issues": [
+        "Active B2C product has RRP = 0 and no aliases"
+      ],
+      "recipeLines": 5,
+      "totalCost": 6.84725,
+      "rrp": 0.0
+    }
+  ],
+  "bomLineIssues": [
+    {
+      "productId": "PRD-ABSOLU-008",
+      "productName": "Absolut Raspberri (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A148",
+      "componentName": "ABSOLUT RASPBERRY",
+      "uom": "ml",
+      "qty": 750.0,
+      "price": 0.22266666666666668,
+      "subtotal": 167.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-ABSOLU-007",
+      "productName": "Absolut Raspberri (Glass)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A148",
+      "componentName": "ABSOLUT RASPBERRY",
+      "uom": "ml",
+      "qty": 30.0,
+      "price": 0.22266666666666668,
+      "subtotal": 6.680000000000001,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-APPLET-001",
+      "productName": "Apple Turnover",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A357",
+      "componentName": "APPLE TURNOVER",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 3.125,
+      "subtotal": 3.125,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-APPLET-001",
+      "productName": "Apple Turnover",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A418",
+      "componentName": "GELATO VANILLA",
+      "uom": "ctn",
+      "qty": 0.02,
+      "price": 0.04,
+      "subtotal": 0.0008,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-BACARD-002",
+      "productName": "Bacardi Carta Blanca (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BACARD-001",
+      "productName": "Bacardi Carta Blanca (Glass)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BACONC-001",
+      "productName": "Bacon Carbonara",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A518",
+      "componentName": "EGG NOODLES FRESH",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 1.5,
+      "subtotal": 1.5,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-BACONC-002",
+      "productName": "Bacon Cheese Burger",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BAILEY-002",
+      "productName": "Bailey's / Amaretto / Galliano (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BAILEY-001",
+      "productName": "Bailey's / Amaretto / Galliano (Glass)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BARBAR-002",
+      "productName": "BARBARESCO DOCG PIO CESARE",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A649",
+      "componentName": "BARBARESCO DOCG PIO CESARE",
+      "uom": "btl",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BARBAR-001",
+      "productName": "Barbaresco DOCG Pio Cesare Nebbiolo (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A649",
+      "componentName": "BARBARESCO DOCG PIO CESARE",
+      "uom": "btl",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BARBER-001",
+      "productName": "Barbera d'Alba DOC Pio Cesare (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A650",
+      "componentName": "BARBERA DALBA DOCG",
+      "uom": "btl",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BARBER-002",
+      "productName": "BARBERA D'ALBA DOC, PIO CESARE",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A650",
+      "componentName": "BARBERA DALBA DOCG",
+      "uom": "btl",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "SUB-BASEBR-001",
+      "productName": "Base Brown Gravy",
+      "productActive": true,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "WEIS-A636",
+      "componentName": "WATER TAP",
+      "uom": "Ml",
+      "qty": 3000.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "SUB-BASEES-001",
+      "productName": "Base Espresso Shot",
+      "productActive": true,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "WEIS-A636",
+      "componentName": "WATER TAP",
+      "uom": "Ml",
+      "qty": 35.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "SUB-BASEGA-001",
+      "productName": "Base Garlic Mashed Potato",
+      "productActive": true,
+      "productType": "Sub-Product",
+      "section": "packaging",
+      "componentId": "WEIS-A553",
+      "componentName": "PLASTIC BAG 6X9",
+      "uom": "Gr",
+      "qty": 1.0,
+      "price": 5.5,
+      "subtotal": 5.5,
+      "issues": [
+        "BOM price 5.500000 differs from component recipe price 0.011000"
+      ]
+    },
+    {
+      "productId": "SUB-BASERE-001",
+      "productName": "Base Red Wine Rosemary Sauce",
+      "productActive": true,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "WEIS-A636",
+      "componentName": "WATER TAP",
+      "uom": "Ml",
+      "qty": 250.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "SUB-BASETE-001",
+      "productName": "Base Tempura Mix",
+      "productActive": true,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "WEIS-A636",
+      "componentName": "WATER TAP",
+      "uom": "Ml",
+      "qty": 500.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BBQPOR-002",
+      "productName": "BBQ PORK RIB WITH STEAMED MIXED RICE AND EGG - SET LUNCH",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A259",
+      "componentName": "BBQ SAUCE",
+      "uom": "ml",
+      "qty": 30.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BBQPOR-003",
+      "productName": "BBQ PORK RIB(SEASONAL)",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A259",
+      "componentName": "BBQ SAUCE",
+      "uom": "ml",
+      "qty": 50.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BBQPUL-001",
+      "productName": "BBQ PULLED PORK SANDWICH - SET LUNCH",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A259",
+      "componentName": "BBQ SAUCE",
+      "uom": "ml",
+      "qty": 30.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BEEFRA-001",
+      "productName": "Beef Ragu",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A260",
+      "componentName": "BEEF BOLOGNAISE SAUCE",
+      "uom": "g",
+      "qty": 150.0,
+      "price": 0.014,
+      "subtotal": 2.1,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-BEEFRA-001",
+      "productName": "Beef Ragu",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A518",
+      "componentName": "EGG NOODLES FRESH",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 1.5,
+      "subtotal": 1.5,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-BRUNCH-001",
+      "productName": "Brunch Burger",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-BRUNCH-001",
+      "productName": "Brunch Burger",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A275",
+      "componentName": "MAYO MUSTARD",
+      "uom": "g",
+      "qty": 15.0,
+      "price": 0.032,
+      "subtotal": 0.48,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-BRUNCH-001",
+      "productName": "Brunch Burger",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A476",
+      "componentName": "ONION CARAMELISED",
+      "uom": "g",
+      "qty": 30.0,
+      "price": 0.02,
+      "subtotal": 0.6,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-BURNTC-001",
+      "productName": "Burnt Cheesecake",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A249",
+      "componentName": "RETAIL BURNT CHEESECAKE WHOLE",
+      "uom": "slice",
+      "qty": 1.0,
+      "price": 5.0,
+      "subtotal": 5.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-CALAMA-001",
+      "productName": "Calamari Fritti",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A278",
+      "componentName": "MAYONNAISE TARTAR",
+      "uom": "g",
+      "qty": 30.0,
+      "price": 0.016,
+      "subtotal": 0.48,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-CARAME-001",
+      "productName": "Caramelized Pork Belly",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A468",
+      "componentName": "CS BOILED PORK BELLY",
+      "uom": "g",
+      "qty": 250.0,
+      "price": 0.065,
+      "subtotal": 16.25,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-CARAME-001",
+      "productName": "Caramelized Pork Belly",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A287",
+      "componentName": "SAUCE BROWN GRAVY",
+      "uom": "g",
+      "qty": 35.0,
+      "price": 12.0,
+      "subtotal": 420.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-CHABLI-002",
+      "productName": "CHABLIS JOSEPH DROUHIN",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A203",
+      "componentName": "CHABLIS JOSEPH DROUHIN",
+      "uom": "ml",
+      "qty": 750.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CHABLI-001",
+      "productName": "Chablis Joseph Drouhin Chardonnay (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A203",
+      "componentName": "CHABLIS JOSEPH DROUHIN",
+      "uom": "ml",
+      "qty": 750.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CHEDDA-001",
+      "productName": "CHEDDAR CHEESE SLICES",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CHIANT-001",
+      "productName": "Chianti DOCG Baron Ricasoli Sangiovese (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CLASSI-001",
+      "productName": "Classic B.L.T. with Cheddar Pesto",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 2.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CLASSI-001",
+      "productName": "Classic B.L.T. with Cheddar Pesto",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A480",
+      "componentName": "PESTO SAUCE",
+      "uom": "g",
+      "qty": 20.0,
+      "price": 0.054000000000000006,
+      "subtotal": 1.08,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-CLASSI-001",
+      "productName": "Classic B.L.T. with Cheddar Pesto",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A288",
+      "componentName": "SAUCE MAYONNAISE GARLIC",
+      "uom": "g",
+      "qty": 30.0,
+      "price": 25.0,
+      "subtotal": 750.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-CLASSI-002",
+      "productName": "Classic Caesar Salad",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A265",
+      "componentName": "DRESSING CAESAR",
+      "uom": "g",
+      "qty": 60.0,
+      "price": 60.0,
+      "subtotal": 3600.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-COCKTA-006",
+      "productName": "COCKTAIL MOJITO",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A058",
+      "componentName": "SODA WATER",
+      "uom": "Can",
+      "qty": 0.31,
+      "price": 1.2825,
+      "subtotal": 0.397575,
+      "issues": [
+        "BOM price 1.282500 differs from component recipe price 1.580000"
+      ]
+    },
+    {
+      "productId": "PRD-COCKTA-010",
+      "productName": "COCKTAIL TOM COLLINS",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A058",
+      "componentName": "SODA WATER",
+      "uom": "Can",
+      "qty": 0.31,
+      "price": 1.2825,
+      "subtotal": 0.397575,
+      "issues": [
+        "BOM price 1.282500 differs from component recipe price 1.580000"
+      ]
+    },
+    {
+      "productId": "PRD-COKECO-001",
+      "productName": "Coke / Coke Zero / Sprite / Ginger Ale / Soda / Tonic",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CORDON-002",
+      "productName": "CORDON BLEU BACON & CHEESE",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-COTESD-001",
+      "productName": "Cotes du Rhone Bellaruche Grenache / Shiraz (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CRISPY-003",
+      "productName": "CRISPY CHICKEN WITH MUSHROOM SAUCE - SET LUNCH",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-CROISS-002",
+      "productName": "CROISSANT HAM & CHEESE",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 2.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-FLEURI-001",
+      "productName": "Fleurie Joseph Drouhin Gamay (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-FRANKF-001",
+      "productName": "Frankfurter (3pcs) Add-On",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-FRANZI-001",
+      "productName": "Franziskaner 500ml",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-GARDEN-001",
+      "productName": "Garden Green Salad",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A267",
+      "componentName": "DRESSING SWEET BALSAMIC",
+      "uom": "g",
+      "qty": 50.0,
+      "price": 18.0,
+      "subtotal": 900.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-GLENLI-002",
+      "productName": "Glenlivet Founder's (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-GLENLI-001",
+      "productName": "Glenlivet Founder's (Glass)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-HAVANA-002",
+      "productName": "Havana Club (Bottle)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A132",
+      "componentName": "HAVANA CLUB 3YR",
+      "uom": "ml",
+      "qty": 700.0,
+      "price": 183.0,
+      "subtotal": 128100.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-HAVANA-001",
+      "productName": "Havana Club (Glass)",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A132",
+      "componentName": "HAVANA CLUB 3YR",
+      "uom": "ml",
+      "qty": 30.0,
+      "price": 183.0,
+      "subtotal": 5490.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-HOMEMA-001",
+      "productName": "Homemade Tiramisu",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A242",
+      "componentName": "HOMEMADE TIRAMISU",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 6.0,
+      "subtotal": 6.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-HUNGAR-001",
+      "productName": "Hungarian Goulash (Seasonal)",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A290",
+      "componentName": "SOUR CREAM",
+      "uom": "ml",
+      "qty": 60.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-JAGERS-001",
+      "productName": "Jagerschnitzel",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A289",
+      "componentName": "SAUCE MUSHROOM",
+      "uom": "g",
+      "qty": 100.0,
+      "price": 30.0,
+      "subtotal": 3000.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-LEMONG-001",
+      "productName": "Lemongrass Chicken Ciabatta",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-LEMONG-001",
+      "productName": "Lemongrass Chicken Ciabatta",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A276",
+      "componentName": "MAYO SWEET CHILI",
+      "uom": "g",
+      "qty": 50.0,
+      "price": 0.0212,
+      "subtotal": 1.06,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-LIMONA-001",
+      "productName": "LIMONATA BIO",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A105",
+      "componentName": "LIMONATA BIO",
+      "uom": "btl",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-MEATPL-001",
+      "productName": "MEAT PLATTER",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.5,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-MIRABE-001",
+      "productName": "MIRABELLEN BTL",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A651",
+      "componentName": "MIRABELLEN",
+      "uom": "ml",
+      "qty": 500.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-MIRABE-002",
+      "productName": "MIRABELLEN GLS",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A651",
+      "componentName": "MIRABELLEN",
+      "uom": "ml",
+      "qty": 30.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-MOJITO-002",
+      "productName": "Mojito Virgin",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A054",
+      "componentName": "GINGER ALE",
+      "uom": "Can",
+      "qty": 0.31,
+      "price": 1.5117,
+      "subtotal": 0.468627,
+      "issues": [
+        "BOM price 1.511700 differs from component recipe price 0.985000"
+      ]
+    },
+    {
+      "productId": "PRD-MUSHRO-001",
+      "productName": "Mushroom Cream Soup",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A482",
+      "componentName": "SOUP MUSHROOM PORTIONED",
+      "uom": "ptn",
+      "qty": 1.0,
+      "price": 4.0,
+      "subtotal": 4.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-NACHOS-001",
+      "productName": "Nachos",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A233",
+      "componentName": "CORN TORTILLAS",
+      "uom": "Each",
+      "qty": 6.0,
+      "price": 0.545,
+      "subtotal": 3.27,
+      "issues": [
+        "BOM price 0.545000 differs from component recipe price 0.450000"
+      ]
+    },
+    {
+      "productId": "PRD-N\u00dcRNBE-001",
+      "productName": "N\u00fcrnberger Sausage",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A281",
+      "componentName": "ONION SAUCE",
+      "uom": "g",
+      "qty": 50.0,
+      "price": 13.0,
+      "subtotal": 650.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-PANNAC-001",
+      "productName": "Panna Cotta With Coffee Jelly",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A247",
+      "componentName": "PANNA COTTA WITH COFFEE JELLY",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 3.5,
+      "subtotal": 3.5,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-PARMES-001",
+      "productName": "Parmesan Egg Coated Fish Fillet",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A518",
+      "componentName": "EGG NOODLES FRESH",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 1.5,
+      "subtotal": 1.5,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-PORKBE-001",
+      "productName": "Pork Belly & Assorted Mushrooms",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A518",
+      "componentName": "EGG NOODLES FRESH",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 1.5,
+      "subtotal": 1.5,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-PORKBE-001",
+      "productName": "Pork Belly & Assorted Mushrooms",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A497",
+      "componentName": "MUSHROOM MARINATED",
+      "uom": "g",
+      "qty": 30.0,
+      "price": 0.031,
+      "subtotal": 0.93,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-PORKBE-001",
+      "productName": "Pork Belly & Assorted Mushrooms",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A501",
+      "componentName": "PASTA AMATRICIANA SAUCE",
+      "uom": "g",
+      "qty": 200.0,
+      "price": 0.01,
+      "subtotal": 2.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-PORKCH-001",
+      "productName": "Pork Chop with Apple Sauce",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A258",
+      "componentName": "APPLE SAUCE",
+      "uom": "g",
+      "qty": 20.0,
+      "price": 5.4,
+      "subtotal": 108.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-PULLED-001",
+      "productName": "PULLED PORK",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A259",
+      "componentName": "BBQ SAUCE",
+      "uom": "ml",
+      "qty": 60.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-PUMPKI-001",
+      "productName": "Pumpkin Soup",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A483",
+      "componentName": "SOUP PUMPKIN PORTIONED",
+      "uom": "ptn",
+      "qty": 1.0,
+      "price": 3.0,
+      "subtotal": 3.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-REDBUL-001",
+      "productName": "Red Bull",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "SUB-SAUCEA-001",
+      "productName": "Sauce Aglio Olio",
+      "productActive": false,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "BISY-A213",
+      "componentName": "Chicken Stock Powder",
+      "uom": "Gr",
+      "qty": 280.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0",
+        "Component ID not found in catalog (orphan reference)"
+      ]
+    },
+    {
+      "productId": "SUB-SAUCEA-001",
+      "productName": "Sauce Aglio Olio",
+      "productActive": false,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "BISY-A211",
+      "componentName": "Chili Flake",
+      "uom": "Gr",
+      "qty": 16.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0",
+        "Component ID not found in catalog (orphan reference)"
+      ]
+    },
+    {
+      "productId": "SUB-SAUCEA-001",
+      "productName": "Sauce Aglio Olio",
+      "productActive": false,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "BISY-A210",
+      "componentName": "Chili Red Fresh",
+      "uom": "Gr",
+      "qty": 400.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0",
+        "Component ID not found in catalog (orphan reference)"
+      ]
+    },
+    {
+      "productId": "SUB-SAUCEA-001",
+      "productName": "Sauce Aglio Olio",
+      "productActive": false,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "BISY-A025",
+      "componentName": "Olive Oil Extra Virgin",
+      "uom": "Ml",
+      "qty": 3200.0,
+      "price": 0.012,
+      "subtotal": 38.4,
+      "issues": [
+        "Component ID not found in catalog (orphan reference)"
+      ]
+    },
+    {
+      "productId": "SUB-SAUCEA-001",
+      "productName": "Sauce Aglio Olio",
+      "productActive": false,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "BISY-A212",
+      "componentName": "Oregano Dried",
+      "uom": "Gr",
+      "qty": 280.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0",
+        "Component ID not found in catalog (orphan reference)"
+      ]
+    },
+    {
+      "productId": "SUB-SAUCEA-001",
+      "productName": "Sauce Aglio Olio",
+      "productActive": false,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "BISY-A020",
+      "componentName": "Peeled Garlic",
+      "uom": "Gr",
+      "qty": 1000.0,
+      "price": 0.016842105263157894,
+      "subtotal": 16.842105263157894,
+      "issues": [
+        "Component ID not found in catalog (orphan reference)"
+      ]
+    },
+    {
+      "productId": "SUB-SAUCEA-001",
+      "productName": "Sauce Aglio Olio",
+      "productActive": false,
+      "productType": "Sub-Product",
+      "section": "recipe",
+      "componentId": "BISY-A214",
+      "componentName": "Water Tap",
+      "uom": "Gr",
+      "qty": 3600.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0",
+        "Component ID not found in catalog (orphan reference)"
+      ]
+    },
+    {
+      "productId": "PRD-SEAFOO-001",
+      "productName": "Seafood Aglio Olio",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A518",
+      "componentName": "EGG NOODLES FRESH",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 1.5,
+      "subtotal": 1.5,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-SEAFOO-001",
+      "productName": "Seafood Aglio Olio",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A500",
+      "componentName": "PASTA AGLIO OLIO SAUCE",
+      "uom": "g",
+      "qty": 150.0,
+      "price": 0.01875,
+      "subtotal": 2.8125,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-SEAFOO-002",
+      "productName": "Seafood Chowder Soup",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A484",
+      "componentName": "SOUP SEAFOOD CHOWDER PORTIONED",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 4.5,
+      "subtotal": 4.5,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-SKEWER-001",
+      "productName": "SKEWER PLATTER",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 1.5,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-SMOKED-001",
+      "productName": "Smoked Duck with Orange Sauce",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A477",
+      "componentName": "ORANGE SAUCE",
+      "uom": "g",
+      "qty": 30.0,
+      "price": 7.0,
+      "subtotal": 210.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-STELLA-004",
+      "productName": "STELLA BUCKET PROMO 4+1",
+      "productActive": false,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A042",
+      "componentName": "STELLA ARTOIS BTL",
+      "uom": "btl",
+      "qty": 5.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-SWISSC-001",
+      "productName": "Swiss Chocolate Mousse",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A250",
+      "componentName": "SWISS CHOCOLATE MOUSSE",
+      "uom": "pcs",
+      "qty": 1.0,
+      "price": 4.0,
+      "subtotal": 4.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-UPGRAD-001",
+      "productName": "Upgrade Mashed Potatoes to Crunchy Fries",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A001",
+      "componentName": "POS Menu Placeholder",
+      "uom": "Pcs",
+      "qty": 1.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-WEISSB-002",
+      "productName": "Weissbrau Club",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A251",
+      "componentName": "CHEESE CHEDDAR SLICED",
+      "uom": "pcs",
+      "qty": 2.0,
+      "price": 0.0,
+      "subtotal": 0.0,
+      "issues": [
+        "UOM price is 0"
+      ]
+    },
+    {
+      "productId": "PRD-WEISSB-002",
+      "productName": "Weissbrau Club",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A288",
+      "componentName": "SAUCE MAYONNAISE GARLIC",
+      "uom": "g",
+      "qty": 20.0,
+      "price": 25.0,
+      "subtotal": 500.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-WEISSB-001",
+      "productName": "Weissbrau Schnitzel",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A486",
+      "componentName": "STEAM MIXED RICE",
+      "uom": "ptn",
+      "qty": 1.0,
+      "price": 2.0,
+      "subtotal": 2.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    },
+    {
+      "productId": "PRD-WEISSB-001",
+      "productName": "Weissbrau Schnitzel",
+      "productActive": true,
+      "productType": "Product",
+      "section": "recipe",
+      "componentId": "WEIS-A295",
+      "componentName": "TONKATSU SAUCE",
+      "uom": "ml",
+      "qty": 80.0,
+      "price": 22.5,
+      "subtotal": 1800.0,
+      "issues": [
+        "Uses inactive component on active product"
+      ]
+    }
+  ],
+  "componentIssues": [
+    {
+      "componentId": "WEIS-A001",
+      "name": "POS Menu Placeholder",
+      "issues": [
+        "Missing recipe UOM",
+        "Missing inventory UOM",
+        "Recipe price is 0",
+        "Inventory/delivery price is 0",
+        "No tagged vendor product / vendor",
+        "Invalid inventory\u2192recipe conversion qty"
+      ],
+      "usedInCount": 14,
+      "usedInProducts": [
+        "PRD-BACARD-001 \u00b7 Bacardi Carta Blanca (Glass)",
+        "PRD-BACARD-002 \u00b7 Bacardi Carta Blanca (Bottle)",
+        "PRD-BAILEY-001 \u00b7 Bailey's / Amaretto / Galliano (Glass)",
+        "PRD-BAILEY-002 \u00b7 Bailey's / Amaretto / Galliano (Bottle)",
+        "PRD-CHIANT-001 \u00b7 Chianti DOCG Baron Ricasoli Sangiovese (Bottle)",
+        "PRD-COKECO-001 \u00b7 Coke / Coke Zero / Sprite / Ginger Ale / Soda / Tonic",
+        "PRD-COTESD-001 \u00b7 Cotes du Rhone Bellaruche Grenache / Shiraz (Bottle)",
+        "PRD-FLEURI-001 \u00b7 Fleurie Joseph Drouhin Gamay (Bottle)",
+        "PRD-FRANKF-001 \u00b7 Frankfurter (3pcs) Add-On",
+        "PRD-FRANZI-001 \u00b7 Franziskaner 500ml",
+        "PRD-GLENLI-001 \u00b7 Glenlivet Founder's (Glass)",
+        "PRD-GLENLI-002 \u00b7 Glenlivet Founder's (Bottle)"
+      ],
+      "usageLines": 14
+    },
+    {
+      "componentId": "WEIS-A649",
+      "name": "BARBARESCO DOCG PIO CESARE",
+      "issues": [
+        "Recipe price is 0",
+        "Inventory/delivery price is 0",
+        "No tagged vendor product / vendor"
+      ],
+      "usedInCount": 2,
+      "usedInProducts": [
+        "PRD-BARBAR-001 \u00b7 Barbaresco DOCG Pio Cesare Nebbiolo (Bottle)",
+        "PRD-BARBAR-002 \u00b7 BARBARESCO DOCG PIO CESARE"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A650",
+      "name": "BARBERA DALBA DOCG",
+      "issues": [
+        "Recipe price is 0",
+        "Inventory/delivery price is 0",
+        "No tagged vendor product / vendor"
+      ],
+      "usedInCount": 2,
+      "usedInProducts": [
+        "PRD-BARBER-001 \u00b7 Barbera d'Alba DOC Pio Cesare (Bottle)",
+        "PRD-BARBER-002 \u00b7 BARBERA D'ALBA DOC, PIO CESARE"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A651",
+      "name": "MIRABELLEN",
+      "issues": [
+        "Recipe price is 0",
+        "Inventory/delivery price is 0",
+        "No tagged vendor product / vendor"
+      ],
+      "usedInCount": 2,
+      "usedInProducts": [
+        "PRD-MIRABE-001 \u00b7 MIRABELLEN BTL",
+        "PRD-MIRABE-002 \u00b7 MIRABELLEN GLS"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A105",
+      "name": "LIMONATA BIO",
+      "issues": [
+        "Recipe price is 0",
+        "No tagged vendor product / vendor"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-LIMONA-001 \u00b7 LIMONATA BIO"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A042",
+      "name": "STELLA ARTOIS BTL",
+      "issues": [
+        "Recipe price is 0",
+        "No tagged vendor product / vendor"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-STELLA-004 \u00b7 STELLA BUCKET PROMO 4+1"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A518",
+      "name": "EGG NOODLES FRESH",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 10,
+      "usedInProducts": [
+        "PRD-AGLIOO-001 \u00b7 AGLIO OLIO WITH SMOKED DUCK - SET LUNCH",
+        "PRD-AGLIOO-002 \u00b7 AGLIO-OLIO SEAFOOD",
+        "PRD-BACONC-001 \u00b7 Bacon Carbonara",
+        "PRD-BEEFRA-001 \u00b7 Beef Ragu",
+        "PRD-FRESHM-001 \u00b7 Fresh Market Seafood Noodle (Seasonal)",
+        "PRD-GRILLE-003 \u00b7 Grilled Shrimp and Zucchini Noodle (Seasonal)",
+        "PRD-PARMES-001 \u00b7 Parmesan Egg Coated Fish Fillet",
+        "PRD-PORKBE-001 \u00b7 Pork Belly & Assorted Mushrooms",
+        "PRD-SALTED-001 \u00b7 SALTED EGG GERMAN EGG NOODLE(SEASONAL)",
+        "PRD-SEAFOO-001 \u00b7 Seafood Aglio Olio"
+      ],
+      "usageLines": 12
+    },
+    {
+      "componentId": "WEIS-A132",
+      "name": "HAVANA CLUB 3YR",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 4,
+      "usedInProducts": [
+        "PRD-HAVANA-001 \u00b7 Havana Club (Glass)",
+        "PRD-HAVANA-002 \u00b7 Havana Club (Bottle)",
+        "PRD-HAVANA-003 \u00b7 HAVANA CLUB BTL",
+        "PRD-HAVANA-004 \u00b7 HAVANA CLUB GLS"
+      ],
+      "usageLines": 4
+    },
+    {
+      "componentId": "WEIS-A148",
+      "name": "ABSOLUT RASPBERRY",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 2,
+      "usedInProducts": [
+        "PRD-ABSOLU-007 \u00b7 Absolut Raspberri (Glass)",
+        "PRD-ABSOLU-008 \u00b7 Absolut Raspberri (Bottle)"
+      ],
+      "usageLines": 4
+    },
+    {
+      "componentId": "WEIS-A258",
+      "name": "APPLE SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 2,
+      "usedInProducts": [
+        "PRD-HAWIIP-001 \u00b7 HAWII PORK CHOP WRAP",
+        "PRD-PORKCH-001 \u00b7 Pork Chop with Apple Sauce"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A288",
+      "name": "SAUCE MAYONNAISE GARLIC",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 2,
+      "usedInProducts": [
+        "PRD-CLASSI-001 \u00b7 Classic B.L.T. with Cheddar Pesto",
+        "PRD-WEISSB-002 \u00b7 Weissbrau Club"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A357",
+      "name": "APPLE TURNOVER",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-APPLET-001 \u00b7 Apple Turnover"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A260",
+      "name": "BEEF BOLOGNAISE SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-BEEFRA-001 \u00b7 Beef Ragu"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "BISY-A213",
+      "name": "Chicken Stock Powder",
+      "issues": [
+        "Referenced on product BOM but missing from component catalog"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "SUB-SAUCEA-001 \u00b7 Sauce Aglio Olio"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "BISY-A211",
+      "name": "Chili Flake",
+      "issues": [
+        "Referenced on product BOM but missing from component catalog"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "SUB-SAUCEA-001 \u00b7 Sauce Aglio Olio"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "BISY-A210",
+      "name": "Chili Red Fresh",
+      "issues": [
+        "Referenced on product BOM but missing from component catalog"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "SUB-SAUCEA-001 \u00b7 Sauce Aglio Olio"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A468",
+      "name": "CS BOILED PORK BELLY",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-CARAME-001 \u00b7 Caramelized Pork Belly"
+      ],
+      "usageLines": 3
+    },
+    {
+      "componentId": "WEIS-A265",
+      "name": "DRESSING CAESAR",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-CLASSI-002 \u00b7 Classic Caesar Salad"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A267",
+      "name": "DRESSING SWEET BALSAMIC",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-GARDEN-001 \u00b7 Garden Green Salad"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A418",
+      "name": "GELATO VANILLA",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-APPLET-001 \u00b7 Apple Turnover"
+      ],
+      "usageLines": 3
+    },
+    {
+      "componentId": "WEIS-A242",
+      "name": "HOMEMADE TIRAMISU",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-HOMEMA-001 \u00b7 Homemade Tiramisu"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A275",
+      "name": "MAYO MUSTARD",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-BRUNCH-001 \u00b7 Brunch Burger"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A276",
+      "name": "MAYO SWEET CHILI",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-LEMONG-001 \u00b7 Lemongrass Chicken Ciabatta"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A278",
+      "name": "MAYONNAISE TARTAR",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-CALAMA-001 \u00b7 Calamari Fritti"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A497",
+      "name": "MUSHROOM MARINATED",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-PORKBE-001 \u00b7 Pork Belly & Assorted Mushrooms"
+      ],
+      "usageLines": 4
+    },
+    {
+      "componentId": "BISY-A025",
+      "name": "Olive Oil Extra Virgin",
+      "issues": [
+        "Referenced on product BOM but missing from component catalog"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "SUB-SAUCEA-001 \u00b7 Sauce Aglio Olio"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A476",
+      "name": "ONION CARAMELISED",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-BRUNCH-001 \u00b7 Brunch Burger"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A281",
+      "name": "ONION SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-N\u00dcRNBE-001 \u00b7 N\u00fcrnberger Sausage"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A477",
+      "name": "ORANGE SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-SMOKED-001 \u00b7 Smoked Duck with Orange Sauce"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "BISY-A212",
+      "name": "Oregano Dried",
+      "issues": [
+        "Referenced on product BOM but missing from component catalog"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "SUB-SAUCEA-001 \u00b7 Sauce Aglio Olio"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A247",
+      "name": "PANNA COTTA WITH COFFEE JELLY",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-PANNAC-001 \u00b7 Panna Cotta With Coffee Jelly"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A500",
+      "name": "PASTA AGLIO OLIO SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-SEAFOO-001 \u00b7 Seafood Aglio Olio"
+      ],
+      "usageLines": 3
+    },
+    {
+      "componentId": "WEIS-A501",
+      "name": "PASTA AMATRICIANA SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-PORKBE-001 \u00b7 Pork Belly & Assorted Mushrooms"
+      ],
+      "usageLines": 4
+    },
+    {
+      "componentId": "BISY-A020",
+      "name": "Peeled Garlic",
+      "issues": [
+        "Referenced on product BOM but missing from component catalog"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "SUB-SAUCEA-001 \u00b7 Sauce Aglio Olio"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A480",
+      "name": "PESTO SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-CLASSI-001 \u00b7 Classic B.L.T. with Cheddar Pesto"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A249",
+      "name": "RETAIL BURNT CHEESECAKE WHOLE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-BURNTC-001 \u00b7 Burnt Cheesecake"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A287",
+      "name": "SAUCE BROWN GRAVY",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-CARAME-001 \u00b7 Caramelized Pork Belly"
+      ],
+      "usageLines": 5
+    },
+    {
+      "componentId": "WEIS-A289",
+      "name": "SAUCE MUSHROOM",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-JAGERS-001 \u00b7 Jagerschnitzel"
+      ],
+      "usageLines": 4
+    },
+    {
+      "componentId": "WEIS-A482",
+      "name": "SOUP MUSHROOM PORTIONED",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-MUSHRO-001 \u00b7 Mushroom Cream Soup"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A483",
+      "name": "SOUP PUMPKIN PORTIONED",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-PUMPKI-001 \u00b7 Pumpkin Soup"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A484",
+      "name": "SOUP SEAFOOD CHOWDER PORTIONED",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-SEAFOO-002 \u00b7 Seafood Chowder Soup"
+      ],
+      "usageLines": 2
+    },
+    {
+      "componentId": "WEIS-A486",
+      "name": "STEAM MIXED RICE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-WEISSB-001 \u00b7 Weissbrau Schnitzel"
+      ],
+      "usageLines": 4
+    },
+    {
+      "componentId": "WEIS-A250",
+      "name": "SWISS CHOCOLATE MOUSSE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-SWISSC-001 \u00b7 Swiss Chocolate Mousse"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "WEIS-A295",
+      "name": "TONKATSU SAUCE",
+      "issues": [
+        "Inactive but used on active product BOM"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "PRD-WEISSB-001 \u00b7 Weissbrau Schnitzel"
+      ],
+      "usageLines": 1
+    },
+    {
+      "componentId": "BISY-A214",
+      "name": "Water Tap",
+      "issues": [
+        "Referenced on product BOM but missing from component catalog"
+      ],
+      "usedInCount": 1,
+      "usedInProducts": [
+        "SUB-SAUCEA-001 \u00b7 Sauce Aglio Olio"
+      ],
+      "usageLines": 1
+    }
+  ]
+}
