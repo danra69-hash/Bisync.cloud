@@ -142,6 +142,51 @@ public static class PurchaseOrderWorkflow
     public static string SerializeLocationIds(IEnumerable<string> locationIds) =>
         JsonSerializer.Serialize(locationIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// Collapse returnable deposit lines of the same type (name + UOM + unit price)
+    /// into a single line with summed quantity. Product lines are left unchanged.
+    /// </summary>
+    public static List<PurchaseOrderItem> CombineReturnableDepositItems(IEnumerable<PurchaseOrderItem> items)
+    {
+        var products = new List<PurchaseOrderItem>();
+        var deposits = new Dictionary<string, PurchaseOrderItem>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in items)
+        {
+            if (!item.IsReturnableDeposit)
+            {
+                products.Add(item);
+                continue;
+            }
+
+            var name = string.IsNullOrWhiteSpace(item.ReturnableItemName)
+                ? item.Name.Trim()
+                : item.ReturnableItemName.Trim();
+            var uom = string.IsNullOrWhiteSpace(item.Unit) ? item.ComponentUom.Trim() : item.Unit.Trim();
+            var key = $"{name.ToLowerInvariant()}|{uom.ToLowerInvariant()}|{item.UnitPrice:0.####}";
+
+            if (deposits.TryGetValue(key, out var existing))
+            {
+                existing.Quantity += item.Quantity;
+                continue;
+            }
+
+            item.Name = name;
+            item.ComponentName = name;
+            item.ReturnableItemName = name;
+            item.Unit = uom;
+            item.ComponentUom = string.IsNullOrWhiteSpace(item.ComponentUom) ? uom : item.ComponentUom;
+            item.DeliveryPackage = string.IsNullOrWhiteSpace(item.DeliveryPackage) ? uom : item.DeliveryPackage;
+            item.VendorProductId = string.Empty;
+            item.ComponentId = string.Empty;
+            deposits[key] = item;
+        }
+
+        products.AddRange(
+            deposits.Values.OrderBy(d => d.ReturnableItemName, StringComparer.OrdinalIgnoreCase));
+        return products;
+    }
+
     /// <param name="consolidatedByItemId">
     /// For pre-committed masters: qty received &amp; consolidated on linked release POs, keyed by master item id.
     /// </param>

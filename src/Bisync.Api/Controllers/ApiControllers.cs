@@ -1665,26 +1665,26 @@ public class PurchaseOrdersController(
             if (string.IsNullOrWhiteSpace(vendorName))
                 return BadRequest(new { message = "Vendor name is required for each purchase order." });
 
-            var items = (orderRequest.Items ?? [])
-                .Where(i => !string.IsNullOrWhiteSpace(i.Name) && i.Quantity > 0)
-                .Select(i => new PurchaseOrderItem
-                {
-                    ComponentId = i.ComponentId?.Trim() ?? string.Empty,
-                    ComponentName = string.IsNullOrWhiteSpace(i.ComponentName) ? i.Name.Trim() : i.ComponentName.Trim(),
-                    VendorProductId = i.VendorProductId?.Trim() ?? string.Empty,
-                    Name = i.Name.Trim(),
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice,
-                    IssuedUnitPrice = i.UnitPrice,
-                    Unit = i.Unit.Trim(),
-                    ComponentUom = i.ComponentUom?.Trim() ?? i.Unit.Trim(),
-                    DeliveryPackage = i.DeliveryPackage.Trim(),
-                    IsReturnableDeposit = i.IsReturnableDeposit,
-                    ReturnableItemName = i.IsReturnableDeposit
-                        ? (string.IsNullOrWhiteSpace(i.ReturnableItemName) ? i.Name.Trim() : i.ReturnableItemName.Trim())
-                        : string.Empty,
-                })
-                .ToList();
+            var items = PurchaseOrderWorkflow.CombineReturnableDepositItems(
+                (orderRequest.Items ?? [])
+                    .Where(i => !string.IsNullOrWhiteSpace(i.Name) && i.Quantity > 0)
+                    .Select(i => new PurchaseOrderItem
+                    {
+                        ComponentId = i.ComponentId?.Trim() ?? string.Empty,
+                        ComponentName = string.IsNullOrWhiteSpace(i.ComponentName) ? i.Name.Trim() : i.ComponentName.Trim(),
+                        VendorProductId = i.VendorProductId?.Trim() ?? string.Empty,
+                        Name = i.Name.Trim(),
+                        Quantity = i.Quantity,
+                        UnitPrice = i.UnitPrice,
+                        IssuedUnitPrice = i.UnitPrice,
+                        Unit = i.Unit.Trim(),
+                        ComponentUom = i.ComponentUom?.Trim() ?? i.Unit.Trim(),
+                        DeliveryPackage = i.DeliveryPackage.Trim(),
+                        IsReturnableDeposit = i.IsReturnableDeposit,
+                        ReturnableItemName = i.IsReturnableDeposit
+                            ? (string.IsNullOrWhiteSpace(i.ReturnableItemName) ? i.Name.Trim() : i.ReturnableItemName.Trim())
+                            : string.Empty,
+                    }));
 
             if (items.Count == 0)
                 return BadRequest(new { message = $"Purchase order for {vendorName} has no valid items." });
