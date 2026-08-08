@@ -590,6 +590,50 @@
   font-size: 11px;
 }
 
+/*
+ * Team phone shell uses overflow-x: hidden. Keep that for the page chrome, but let
+ * embedded RMS tables keep readable column widths and scroll horizontally instead
+ * of crushing headers mid-word (DAT E / UNIT PRIC E).
+ */
+.team-stock-rms-body [data-table-scroll],
+.team-stock-rms-body .overflow-x-auto {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.team-stock-rms-body table:has(> colgroup) {
+  min-width: max(100%, 88rem);
+  width: max(100%, 88rem);
+  table-layout: fixed;
+}
+
+.team-stock-rms-body table thead th {
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.team-stock-rms-body table thead th .block,
+.team-stock-rms-body table thead th .line-clamp-2,
+.team-stock-rms-body table thead th span {
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
+  display: inline !important;
+  max-width: 100%;
+}
+
+.team-stock-rms-body table thead th button {
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 .team-muted {
   color: var(--team-muted-fg);
 }
