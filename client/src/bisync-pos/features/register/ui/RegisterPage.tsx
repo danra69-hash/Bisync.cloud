@@ -771,9 +771,17 @@ export function RegisterPage() {
     if (!compulsoryFlow) return
     const group = compulsoryFlow.groups[compulsoryFlow.index]
     if (!group) return
-    const labels = (group.options ?? [])
-      .filter(o => optionIds.includes(o.id))
-      .map(o => o.label)
+    const byId = new Map((group.options ?? []).map(o => [o.id, o.label]))
+    const qtyById = new Map<number, number>()
+    for (const id of optionIds) {
+      qtyById.set(id, (qtyById.get(id) ?? 0) + 1)
+    }
+    const labels: string[] = []
+    for (const [id, qty] of qtyById) {
+      const label = byId.get(id)
+      if (!label) continue
+      labels.push(qty > 1 ? `${qty}× ${label}` : label)
+    }
     const selectedLabels = [...compulsoryFlow.selectedLabels, ...labels]
     const nextIndex = compulsoryFlow.index + 1
     if (nextIndex < compulsoryFlow.groups.length) {
@@ -916,16 +924,20 @@ export function RegisterPage() {
 
   function modifierInitialSelected(note: string | undefined, groups: ReturnType<typeof resolveToolbarModifierGroups>): string[] {
     if (!note?.trim() || groups.length === 0) return []
-    const labels = new Set(
-      note
-        .split(/[·,]/)
-        .map(s => s.trim())
-        .filter(Boolean),
-    )
+    const parts = note
+      .split(/[·,]/)
+      .map(s => s.trim())
+      .filter(Boolean)
     const ids: string[] = []
-    for (const group of groups) {
-      for (const opt of group.options ?? []) {
-        if (labels.has(opt.label)) ids.push(opt.id)
+    for (const part of parts) {
+      const qtyMatch = /^(\d+)\s*[x×]\s*(.+)$/i.exec(part)
+      const qty = qtyMatch ? Math.max(1, Number(qtyMatch[1]) || 1) : 1
+      const label = (qtyMatch ? qtyMatch[2] : part).trim()
+      for (const group of groups) {
+        for (const opt of group.options ?? []) {
+          if (opt.label !== label) continue
+          for (let i = 0; i < qty; i++) ids.push(opt.id)
+        }
       }
     }
     return ids
