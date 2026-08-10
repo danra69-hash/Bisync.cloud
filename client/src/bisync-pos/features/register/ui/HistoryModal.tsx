@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { formatMoney } from '../../../core/types/money'
 import {
   formatCheckClosedAt,
-  MOCK_CLOSED_CHECKS,
   type ClosedCheck,
 } from '../domain/history'
 import { formatPosCheckNumber } from '../domain/checkNumber'
@@ -13,8 +12,14 @@ type Props = {
   onClose: () => void
 }
 
+/**
+ * Closed-check history for the register.
+ * Demo MOCK_CLOSED_CHECKS are intentionally not shown — they looked like residual
+ * orders that were never initiated on the live table.
+ */
 export function HistoryModal({ onClose }: Props) {
   const [selected, setSelected] = useState<ClosedCheck | null>(null)
+  const checks: ClosedCheck[] = []
 
   return (
     <div className="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
@@ -52,9 +57,11 @@ export function HistoryModal({ onClose }: Props) {
 
         {selected ? (
           <CheckDetail check={selected} />
+        ) : checks.length === 0 ? (
+          <p className="history-modal__empty">No closed checks yet for this register session.</p>
         ) : (
           <ul className="history-list">
-            {MOCK_CLOSED_CHECKS.map((check) => (
+            {checks.map((check) => (
               <li key={check.id}>
                 <button
                   type="button"
@@ -118,25 +125,15 @@ function CheckDetail({ check }: { check: ClosedCheck }) {
       </table>
 
       <div className="history-detail__summary">
-        <SummaryRow label="Sub-Total" value={formatMoney(subtotal)} />
-        <SummaryRow label="Discount" value={formatMoney(check.charges.discountCents)} />
-        <SummaryRow label="Service" value={formatMoney(check.charges.serviceCents)} />
-        <SummaryRow label="Tax Regular" value={formatMoney(check.charges.taxRegularCents)} />
-        <SummaryRow label="Tax Alcohol" value={formatMoney(check.charges.taxAlcoholCents)} />
-        <div className="history-detail__total">
-          <span>Grand Total</span>
-          <strong>{formatMoney(check.grandTotalCents)}</strong>
+        <div className="history-detail__row">
+          <span>Subtotal</span>
+          <span>{formatMoney(subtotal)}</span>
+        </div>
+        <div className="history-detail__row history-detail__row--total">
+          <span>Total</span>
+          <span>{formatMoney(check.grandTotalCents)}</span>
         </div>
       </div>
-    </div>
-  )
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="history-detail__row">
-      <span>{label}</span>
-      <span>{value}</span>
     </div>
   )
 }

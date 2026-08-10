@@ -1,4 +1,5 @@
 import { api } from '../../../../api'
+import { applyOpenCheckOccupancyToDocument } from '../../register/domain/openChecks'
 import { cloneJson } from './clonePlan'
 import {
   DEFAULT_FLOOR_PLAN,
@@ -19,6 +20,19 @@ import {
   singleFloorDocument,
   type FloorPlanDocument,
 } from './multiFloor'
+
+/** After a server pull/sync, restore occupied tables from local open checks. */
+function withOpenCheckOccupancy(
+  doc: FloorPlanDocument,
+  companyId: number,
+  locationExternalId: string,
+  updatedAt?: string | null,
+): FloorPlanDocument {
+  const reconciled = applyOpenCheckOccupancyToDocument(doc)
+  if (reconciled === doc) return doc
+  saveFloorPlanDocumentLocal(reconciled, companyId, locationExternalId, updatedAt ?? reconciled.updatedAt)
+  return reconciled
+}
 
 function scopedKey(companyId: number, locationExternalId: string) {
   return `${FLOOR_STORAGE_KEY}:${companyId}:${locationExternalId}`
@@ -141,15 +155,17 @@ export function loadFloorPlanDocumentLocal(
   companyId: number,
   locationExternalId: string,
 ): FloorPlanDocument {
-  return peekFloorPlanLocal(companyId, locationExternalId).doc
+  const peeked = peekFloorPlanLocal(companyId, locationExternalId)
+  return applyOpenCheckOccupancyToDocument(peeked.doc)
 }
 
 /**
  * Local cache for a company/location (active floor only).
  * Cold miss returns default/legacy WITHOUT writing a "now" stamp — sync must prefer DB.
+ * Occupancy is overlaid from local open checks so residual bills keep tables marked ordered.
  */
 export function loadFloorPlanLocal(companyId: number, locationExternalId: string): FloorPlanState {
-  return documentToActivePlan(peekFloorPlanLocal(companyId, locationExternalId).doc)
+  return documentToActivePlan(loadFloorPlanDocumentLocal(companyId, locationExternalId))
 }
 
 export function saveFloorPlanDocumentLocal(
@@ -212,11 +228,18 @@ export async function pullFloorPlanFromServer(
       locationExternalId,
       stamped.updatedAt,
     )
-    return documentToActivePlan(stamped)
+    const reconciled = withOpenCheckOccupancy(
+      stamped,
+      companyId,
+      locationExternalId,
+      stamped.updatedAt,
+    )
+    return documentToActivePlan(reconciled)
   }
   const peeked = peekFloorPlanLocal(companyId, locationExternalId)
   if (peeked.hadScoped && !isStockDefaultDocument(peeked.doc)) {
-    return documentToActivePlan(peeked.doc)
+    const reconciled = withOpenCheckOccupancy(peeked.doc, companyId, locationExternalId)
+    return documentToActivePlan(reconciled)
   }
   return cloneJson(DEFAULT_FLOOR_PLAN)
 }
@@ -233,10 +256,12 @@ export async function pullFloorPlanDocumentFromServer(
       updatedAt: remote.updatedAt || new Date().toISOString(),
     }
     saveFloorPlanDocumentLocal(stamped, companyId, locationExternalId, stamped.updatedAt)
-    return stamped
+    return withOpenCheckOccupancy(stamped, companyId, locationExternalId, stamped.updatedAt)
   }
   const peeked = peekFloorPlanLocal(companyId, locationExternalId)
-  if (peeked.hadScoped && !isStockDefaultDocument(peeked.doc)) return peeked.doc
+  if (peeked.hadScoped && !isStockDefaultDocument(peeked.doc)) {
+    return withOpenCheckOccupancy(peeked.doc, companyId, locationExternalId)
+  }
   return emptyFloorPlanDocument()
 }
 
@@ -264,7 +289,6 @@ export async function syncFloorPlan(
       const remoteMs = parseTime(remoteUpdatedAt)
       const localIsStockDefault = isStockDefaultDocument(localDoc)
       const remoteIsStockDefault = isStockDefaultDocument(serverDoc)
-      const serverPlan = documentToActivePlan(serverDoc)
 
       const canPushLocal =
         peeked.hadScoped
@@ -277,42 +301,56 @@ export async function syncFloorPlan(
         )
 
       if (canPushLocal) {
+        const occupied = applyOpenCheckOccupancyToDocument(localDoc)
         await api.posFloorPlanUpsert({
           companyId,
           locationExternalId,
-          layoutJson: serializeFloorPlanDocument(localDoc),
+          layoutJson: serializeFloorPlanDocument(occupied),
         })
         const stamp = new Date().toISOString()
-        saveFloorPlanDocumentLocal(localDoc, companyId, locationExternalId, stamp)
-        return local
+        saveFloorPlanDocumentLocal(occupied, companyId, locationExternalId, stamp)
+        return documentToActivePlan(occupied)
       }
 
-      saveFloorPlanDocumentLocal(
-        { ...serverDoc, updatedAt: remoteUpdatedAt || new Date().toISOString() },
-        companyId,
-        locationExternalId,
-        remoteUpdatedAt || new Date().toISOString(),
-      )
-      return serverPlan
+      const stamp = remoteUpdatedAt || new Date().toISOString()
+      const stamped = { ...serverDoc, updatedAt: stamp }
+      saveFloorPlanDocumentLocal(stamped, companyId, locationExternalId, stamp)
+      const reconciled = withOpenCheckOccupancy(stamped, companyId, locationExternalId, stamp)
+      return documentToActivePlan(reconciled)
     }
 
     if (peeked.hadScoped && !isStockDefaultDocument(localDoc) && local.tables.length > 0) {
+      const occupied = applyOpenCheckOccupancyToDocument(localDoc)
       const uploaded = await api.posFloorPlanUpsert({
         companyId,
         locationExternalId,
-        layoutJson: serializeFloorPlanDocument(localDoc),
+        layoutJson: serializeFloorPlanDocument(occupied),
       })
       saveFloorPlanDocumentLocal(
-        localDoc,
+        occupied,
         companyId,
         locationExternalId,
         uploaded.updatedAt || new Date().toISOString(),
       )
-      return local
+      return documentToActivePlan(occupied)
     }
 
+    const occupied = applyOpenCheckOccupancyToDocument(localDoc)
+    if (occupied !== localDoc) {
+      saveFloorPlanDocumentLocal(occupied, companyId, locationExternalId)
+      return documentToActivePlan(occupied)
+    }
     return local.tables.length > 0 ? local : cloneJson(DEFAULT_FLOOR_PLAN)
   } catch {
+    const occupied = applyOpenCheckOccupancyToDocument(localDoc)
+    if (occupied !== localDoc) {
+      try {
+        saveFloorPlanDocumentLocal(occupied, companyId, locationExternalId)
+      } catch {
+        /* ignore */
+      }
+      return documentToActivePlan(occupied)
+    }
     return local.tables.length > 0 ? local : cloneJson(DEFAULT_FLOOR_PLAN)
   }
 }

@@ -1,6 +1,8 @@
 import type { CartLine, OrderCharges, Product } from './types'
 import { loadKitchenTickets } from '../../boh/domain/kitchenTickets'
 import { publishStationLan } from '../../../core/lan/stationLanBus'
+import { normalizeTable, type FloorPlanState, type FloorTable } from '../../order/domain/tables'
+import type { FloorPlanDocument } from '../../order/domain/multiFloor'
 
 export const OPEN_CHECKS_KEY = 'bisync-pos-open-checks-v1'
 
@@ -94,9 +96,93 @@ export function lineIdentity(line: CartLine): string {
   return line.lineKey ?? `pid:${line.productId}`
 }
 
+export function listOpenChecks(): OpenCheck[] {
+  return readAll()
+}
+
 export function loadOpenCheckForTable(tableId: string): OpenCheck | null {
   if (!tableId) return null
   return readAll().find(c => c.tableId === tableId) ?? null
+}
+
+function labelsMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (v: string | null | undefined) =>
+    (v || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^table\s+/i, '')
+      .replace(/\s+/g, ' ')
+  return norm(a) === norm(b) && norm(a) !== ''
+}
+
+/** Drop open checks with no cart lines (stale shells left after abandon / sync). */
+export function purgeEmptyOpenChecks(): number {
+  const all = readAll()
+  const next = all.filter(c => (c.lines?.length ?? 0) > 0)
+  if (next.length === all.length) return 0
+  writeAll(next)
+  return all.length - next.length
+}
+
+function findCheckForTable(table: FloorTable, checks: OpenCheck[]): OpenCheck | undefined {
+  return (
+    checks.find(c => c.tableId === table.id)
+    ?? checks.find(c => labelsMatch(c.tableLabel, table.label))
+  )
+}
+
+/**
+ * Re-apply open-check occupancy onto a floor plan.
+ * Floor sync / layout pull can reset tables to "open" while local open checks still hold items —
+ * without this, a free-looking table hydrates residual orders on the register.
+ */
+export function applyOpenCheckOccupancy(plan: FloorPlanState): FloorPlanState {
+  purgeEmptyOpenChecks()
+  const checks = readAll().filter(c => (c.lines?.length ?? 0) > 0)
+  if (checks.length === 0) return plan
+
+  let changed = false
+  const tables = plan.tables.map(table => {
+    const check = findCheckForTable(table, checks)
+    if (!check) return table
+    if (table.status === 'ordered' && table.orderId === check.orderId) return table
+    changed = true
+    return normalizeTable({
+      ...table,
+      status: 'ordered',
+      orderId: check.orderId,
+      openedAt: table.openedAt || check.updatedAt,
+    })
+  })
+  return changed ? { ...plan, tables } : plan
+}
+
+/** Apply open-check occupancy across every floor in a multi-floor document. */
+export function applyOpenCheckOccupancyToDocument(doc: FloorPlanDocument): FloorPlanDocument {
+  purgeEmptyOpenChecks()
+  const checks = readAll().filter(c => (c.lines?.length ?? 0) > 0)
+  if (checks.length === 0) return doc
+
+  let changed = false
+  const floors = doc.floors.map(floor => {
+    let floorChanged = false
+    const tables = floor.tables.map(table => {
+      const check = findCheckForTable(table, checks)
+      if (!check) return table
+      if (table.status === 'ordered' && table.orderId === check.orderId) return table
+      floorChanged = true
+      return normalizeTable({
+        ...table,
+        status: 'ordered',
+        orderId: check.orderId,
+        openedAt: table.openedAt || check.updatedAt,
+      })
+    })
+    if (!floorChanged) return floor
+    changed = true
+    return { ...floor, tables }
+  })
+  return changed ? { ...doc, floors } : doc
 }
 
 export function loadOpenCheckByOrderId(orderId: string): OpenCheck | null {

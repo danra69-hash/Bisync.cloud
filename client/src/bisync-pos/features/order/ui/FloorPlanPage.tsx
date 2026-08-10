@@ -34,6 +34,7 @@ import {
   type FloorPlanDocument,
 } from '../domain/multiFloor'
 import { FLOOR_PLAN_CHANGED_EVENT } from '../domain/reservations'
+import { loadOpenCheckForTable } from '../../register/domain/openChecks'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import { formatOpenedAt, printTableQr } from '../../../core/config/qrTable'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
@@ -369,6 +370,21 @@ export function FloorPlanPage() {
     if (locked) return
     setSelected({ type: 'table', id: table.id })
     if (editing) return
+
+    // Residual open check (floor sync can mark the seat free while the bill remains).
+    const residual = loadOpenCheckForTable(table.id)
+    if (residual && residual.lines.length > 0) {
+      const occupied: FloorTable = {
+        ...table,
+        status: 'ordered',
+        orderId: residual.orderId,
+        openedAt: table.openedAt || residual.updatedAt,
+      }
+      const nextTables = plan.tables.map(t => (t.id === table.id ? occupied : t))
+      persistPlan({ ...plan, tables: nextTables })
+      beginRegisterForTable(occupied, occupied.openedAt)
+      return
+    }
 
     // Open tables: Fixed opens immediately (no pax / no print). Dynamic asks pax then prints.
     if (table.status === 'open') {
