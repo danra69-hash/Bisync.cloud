@@ -81,6 +81,8 @@ type EditableLine = {
   productExpiryDate: string;
   /** Optional temperature °C at receive/consolidate. */
   receivedTemperature: string;
+  /** Extra lines may link a confirmed credit note (exact vendor product). */
+  linkedCreditNoteId: number | null;
   deliveredQuantity: number;
   remainingQuantity: number;
 };
@@ -126,6 +128,7 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       receivedTemperature: item.receivedTemperature != null && Number.isFinite(item.receivedTemperature)
         ? String(item.receivedTemperature)
         : '',
+      linkedCreditNoteId: null,
       deliveredQuantity: delivered,
       remainingQuantity: remaining,
     };
@@ -155,6 +158,7 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
         name: line.productName,
         unit: line.deliveryPackage,
         deliveryPackage: line.deliveryPackage,
+        linkedCreditNoteId: line.linkedCreditNoteId ?? undefined,
       };
     }
     return base;
@@ -388,19 +392,28 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
     setLines(prev => prev.filter(line => line.clientKey !== clientKey));
   }
 
-  const addedReceiveLineKeys = useMemo(() => {
+  /** Extras already on this receive sheet (ordered PO lines may be re-added). */
+  const addedExtraLineKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const line of lines) {
-      if (line.componentId && line.vendorProductId) {
+      if (line.isExtra && line.componentId && line.vendorProductId) {
         keys.add(`${line.componentId}::${line.vendorProductId}`);
       }
     }
     return keys;
   }, [lines]);
 
+  const reservedCreditNoteIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const line of lines) {
+      if (line.linkedCreditNoteId != null && line.linkedCreditNoteId > 0) {
+        ids.add(line.linkedCreditNoteId);
+      }
+    }
+    return ids;
+  }, [lines]);
+
   function handleAddReceiveProduct(selection: ReceiveAddProductSelection) {
-    const lineKey = `${selection.componentId}::${selection.product.id}`;
-    if (addedReceiveLineKeys.has(lineKey)) return;
     const deliveryPackage = formatDeliveryUnitPath(selection.product.delivery);
     setLines(prev => [
       ...prev,
@@ -424,6 +437,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
         halalCertNo: '',
         productExpiryDate: '',
         receivedTemperature: '',
+        linkedCreditNoteId: null,
         deliveredQuantity: 0,
         remainingQuantity: Number.POSITIVE_INFINITY,
       },
@@ -497,6 +511,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
         setError(`Added product "${extra.productName}" is missing Vendor Product ID or component.`);
         return;
       }
+    }
+    const linkedCnIds = extras
+      .map(line => line.linkedCreditNoteId)
+      .filter((id): id is number => id != null && id > 0);
+    if (new Set(linkedCnIds).size !== linkedCnIds.length) {
+      setError('Each credit note can only be linked on one receive line.');
+      return;
     }
     const doNumber = vendorDoNumber.trim();
     const invoiceNumber = vendorInvoiceNumber.trim();
@@ -906,7 +927,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                   const lineTotal = qty * price + tax;
                   const poItem = order.items.find(i => i.id === line.itemId);
                   const hasDetail = Boolean(
-                    line.productExpiryDate.trim() || line.receivedTemperature.trim(),
+                    line.productExpiryDate.trim()
+                    || line.receivedTemperature.trim()
+                    || (line.linkedCreditNoteId != null && line.linkedCreditNoteId > 0),
                   );
                   const detailLabel = canEditReceived
                     ? (hasDetail ? 'Edit Detail' : 'Add Detail')
@@ -925,7 +948,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                         {line.isExtra ? (
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                              Not ordered · freebie / replacement
+                              {line.linkedCreditNoteId
+                                ? `Not ordered · CN #${line.linkedCreditNoteId} replacement`
+                                : 'Not ordered · freebie / replacement'}
                             </span>
                             {canEditReceived ? (
                               <button
@@ -1157,8 +1182,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                                 line.receivedTemperature.trim()
                                   ? `Temp: ${line.receivedTemperature}°C`
                                   : null,
+                                line.linkedCreditNoteId
+                                  ? `Credit note #${line.linkedCreditNoteId}`
+                                  : null,
                               ].filter(Boolean).join(' · ')
-                            : 'Add expiry date and temperature'}
+                            : 'Add expiry, temperature, or credit note'}
                         >
                           {detailLabel}
                         </button>
@@ -1394,7 +1422,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                             <td className="px-3 py-2">
                               {(() => {
                                 const hasDetail = Boolean(
-                                  line.productExpiryDate.trim() || line.receivedTemperature.trim(),
+                                  line.productExpiryDate.trim()
+                                  || line.receivedTemperature.trim()
+                                  || (line.linkedCreditNoteId != null && line.linkedCreditNoteId > 0),
                                 );
                                 const label = canEditReceived
                                   ? (hasDetail ? 'Edit Detail' : 'Add Detail')
@@ -1416,8 +1446,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                                           line.receivedTemperature.trim()
                                             ? `Temp: ${line.receivedTemperature}°C`
                                             : null,
+                                          line.linkedCreditNoteId
+                                            ? `Credit note #${line.linkedCreditNoteId}`
+                                            : null,
                                         ].filter(Boolean).join(' · ')
-                                      : 'Add expiry date and temperature'}
+                                      : 'Add expiry, temperature, or credit note'}
                                   >
                                     {label}
                                   </button>
@@ -1641,7 +1674,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
           vendorExternalId={order.vendorExternalId ?? ''}
           vendorName={order.vendorName}
           locationIds={order.locationExternalIds ?? []}
-          addedLineKeys={addedReceiveLineKeys}
+          addedExtraLineKeys={addedExtraLineKeys}
           onClose={() => setShowAddProduct(false)}
           onSelect={handleAddReceiveProduct}
         />
@@ -1649,15 +1682,30 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
       {detailLineKey ? (() => {
         const detailLine = lines.find(line => line.clientKey === detailLineKey);
         if (!detailLine) return null;
+        const reservedOthers = new Set(
+          [...reservedCreditNoteIds].filter(id => id !== detailLine.linkedCreditNoteId),
+        );
         return (
           <ReceiveLineDetailModal
             productName={detailLine.productName}
             componentName={detailLine.componentName}
+            vendorProductId={detailLine.vendorProductId}
+            companyId={order.companyId ?? null}
+            locationIds={order.locationExternalIds ?? []}
+            allowCreditNoteLink={detailLine.isExtra}
             productExpiryDate={detailLine.productExpiryDate}
             receivedTemperature={detailLine.receivedTemperature}
+            linkedCreditNoteId={detailLine.linkedCreditNoteId}
+            reservedCreditNoteIds={reservedOthers}
             readOnly={!canEditReceived}
             onClose={() => setDetailLineKey(null)}
-            onSave={next => updateLine(detailLine.clientKey, next)}
+            onSave={next => {
+              // CN cancel revalues zero-cost replacement receipts — keep linked lines at 0.
+              const patch = next.linkedCreditNoteId != null && next.linkedCreditNoteId > 0
+                ? { ...next, unitPrice: '0' }
+                : next;
+              updateLine(detailLine.clientKey, patch);
+            }}
           />
         );
       })() : null}

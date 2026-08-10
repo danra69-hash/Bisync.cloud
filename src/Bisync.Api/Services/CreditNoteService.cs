@@ -508,25 +508,14 @@ public class CreditNoteService(
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            var revaluedQty = await RevalueZeroCostReceiptsAsync(
+            await CancelCoreAsync(
                 entry,
-                replacement.Id,
+                replacement,
+                docNumber,
+                cancelledBy,
+                requireVendorProductMatch: false,
+                replacementPurchaseOrderItemId: null,
                 cancellationToken);
-
-            if (revaluedQty <= StockCardFifoEngine.QtyEpsilon)
-                throw new InvalidOperationException(
-                    "No zero-cost replacement receipt found on that PO for this component. "
-                    + "Receive the free replacement first, then cancel the credit note.");
-
-            entry.Status = StatusCancelled;
-            entry.CancelPurchaseOrderId = replacement.Id;
-            entry.CancelPoNumber = replacement.PoNumber ?? poNumber;
-            entry.CancelDoOrInvoiceNumber = docNumber;
-            entry.CancelledAt = DateTime.UtcNow;
-            entry.CancelledBy = (cancelledBy ?? string.Empty).Trim();
-            entry.UpdatedAt = DateTime.UtcNow;
-
-            // Do NOT reverse the original credit-note outbound qty — free receipt already restored stock.
             await db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
         }
@@ -539,9 +528,174 @@ public class CreditNoteService(
         return entry;
     }
 
+    /// <summary>
+    /// Settle a confirmed credit note against a freebie / replacement receive on
+    /// <paramref name="replacementOrder"/>. Vendor product on the receive line must
+    /// match the credit note exactly. When receive qty is lower than the CN qty,
+    /// the CN is reduced first (excess outbound restored), then cancelled.
+    /// Caller owns the ambient DB transaction.
+    /// </summary>
+    public async Task<CreditNote> SettleAgainstReplacementReceiveAsync(
+        int creditNoteId,
+        int companyId,
+        PurchaseOrder replacementOrder,
+        string receiveVendorProductId,
+        decimal receiveQuantity,
+        string? cancelledBy,
+        int? replacementPurchaseOrderItemId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (receiveQuantity <= 0)
+            throw new InvalidOperationException("Receive quantity must be greater than zero to settle a credit note.");
+
+        var entry = await db.CreditNotes
+            .FirstOrDefaultAsync(c => c.Id == creditNoteId && c.CompanyId == companyId, cancellationToken)
+            ?? throw new InvalidOperationException("Credit note not found.");
+
+        if (!string.Equals(entry.Status, StatusConfirmed, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only confirmed credit notes can be settled on receive.");
+
+        var cnVp = (entry.VendorProductId ?? string.Empty).Trim();
+        var recvVp = (receiveVendorProductId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(cnVp) || string.IsNullOrWhiteSpace(recvVp)
+            || !string.Equals(cnVp, recvVp, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Credit note vendor product must match the received vendor product exactly.");
+        }
+
+        var docNumber = !string.IsNullOrWhiteSpace(replacementOrder.VendorDoNumber)
+            ? replacementOrder.VendorDoNumber.Trim()
+            : (replacementOrder.VendorInvoiceNumber ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(docNumber))
+            throw new InvalidOperationException(
+                "DO or invoice number is required on this PO to settle the linked credit note.");
+
+        // Receive qty lower than CN → shrink CN (and reverse excess stock outbound) before cancel.
+        if (receiveQuantity + 0.0001m < entry.Quantity)
+            await ReduceConfirmedQuantityAsync(entry, receiveQuantity, cancellationToken);
+
+        await CancelCoreAsync(
+            entry,
+            replacementOrder,
+            docNumber,
+            cancelledBy,
+            requireVendorProductMatch: true,
+            replacementPurchaseOrderItemId,
+            cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return entry;
+    }
+
+    /// <summary>
+    /// Lightweight checks before stock is posted: confirmed, unique, exact vendor product.
+    /// </summary>
+    public async Task ValidateLinkedCreditNoteForReceiveAsync(
+        int creditNoteId,
+        int companyId,
+        string receiveVendorProductId,
+        CancellationToken cancellationToken = default)
+    {
+        var entry = await db.CreditNotes.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == creditNoteId && c.CompanyId == companyId, cancellationToken)
+            ?? throw new InvalidOperationException($"Credit note #{creditNoteId} was not found.");
+
+        if (!string.Equals(entry.Status, StatusConfirmed, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Credit note #{creditNoteId} is not confirmed (status: {entry.Status}).");
+
+        var cnVp = (entry.VendorProductId ?? string.Empty).Trim();
+        var recvVp = (receiveVendorProductId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(cnVp) || string.IsNullOrWhiteSpace(recvVp)
+            || !string.Equals(cnVp, recvVp, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Credit note #{creditNoteId} vendor product must match the received vendor product exactly.");
+        }
+    }
+
+    async Task ReduceConfirmedQuantityAsync(
+        CreditNote entry,
+        decimal newDeliveryQty,
+        CancellationToken cancellationToken)
+    {
+        if (newDeliveryQty < MinAllowedCreditQuantity)
+            throw new InvalidOperationException(
+                $"Settled credit quantity must be at least {MinAllowedCreditQuantity:0.##}.");
+
+        var oldQty = entry.Quantity;
+        if (oldQty <= 0)
+            throw new InvalidOperationException("Credit note has no quantity to adjust.");
+
+        var ratio = newDeliveryQty / oldQty;
+        var oldStockQty = entry.StockQuantity;
+        var newStockQty = DecimalRounding.ToDb(oldStockQty * ratio);
+        var excessStock = DecimalRounding.ToDb(oldStockQty - newStockQty);
+
+        if (excessStock > StockCardFifoEngine.QtyEpsilon
+            && !string.IsNullOrWhiteSpace(entry.ComponentId))
+        {
+            // Restore the portion of outbound that is no longer credited.
+            componentStock.RecordAddition(
+                entry.ComponentId,
+                entry.ComponentName,
+                entry.LocationExternalId,
+                excessStock,
+                entry.StockUom,
+                $"Credit note #{entry.Id} reduced on replacement receive — reverse excess outbound",
+                "credit_note_adjust",
+                entry.Id,
+                entry.CompanyId,
+                createdAt: DateTime.UtcNow,
+                unitPrice: entry.StockUnitPrice);
+        }
+
+        entry.Quantity = DecimalRounding.ToDb(newDeliveryQty);
+        entry.Amount = DecimalRounding.ToDb(newDeliveryQty * entry.DeliveryUnitPrice);
+        entry.DocumentAmount = entry.Amount;
+        entry.StockQuantity = newStockQty;
+        entry.RoundingResidual = DecimalRounding.ToDb(
+            (newStockQty * entry.StockUnitPrice) - entry.DocumentAmount);
+        entry.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    async Task CancelCoreAsync(
+        CreditNote entry,
+        PurchaseOrder replacement,
+        string docNumber,
+        string? cancelledBy,
+        bool requireVendorProductMatch,
+        int? replacementPurchaseOrderItemId,
+        CancellationToken cancellationToken)
+    {
+        var revaluedQty = await RevalueZeroCostReceiptsAsync(
+            entry,
+            replacement.Id,
+            requireVendorProductMatch,
+            replacementPurchaseOrderItemId,
+            cancellationToken);
+
+        if (revaluedQty <= StockCardFifoEngine.QtyEpsilon)
+            throw new InvalidOperationException(
+                "No zero-cost replacement receipt found on that PO for this "
+                + (requireVendorProductMatch ? "vendor product" : "component")
+                + ". Receive the free replacement first, then cancel the credit note.");
+
+        entry.Status = StatusCancelled;
+        entry.CancelPurchaseOrderId = replacement.Id;
+        entry.CancelPoNumber = replacement.PoNumber ?? string.Empty;
+        entry.CancelDoOrInvoiceNumber = docNumber;
+        entry.CancelledAt = DateTime.UtcNow;
+        entry.CancelledBy = (cancelledBy ?? string.Empty).Trim();
+        entry.UpdatedAt = DateTime.UtcNow;
+    }
+
     async Task<decimal> RevalueZeroCostReceiptsAsync(
         CreditNote entry,
         int replacementPoId,
+        bool requireVendorProductMatch,
+        int? replacementPurchaseOrderItemId,
         CancellationToken cancellationToken)
     {
         var purchases = await db.InventoryPurchases
@@ -551,6 +705,27 @@ public class CreditNoteService(
             .OrderBy(p => p.DateCreatedInStock)
             .ThenBy(p => p.Id)
             .ToListAsync(cancellationToken);
+
+        // Prefer the exact unordered receive line that linked this CN (avoids
+        // revaluing a same-VP ordered line that happens to be zero-cost).
+        if (replacementPurchaseOrderItemId is > 0)
+        {
+            purchases = purchases
+                .Where(p => p.PurchaseOrderItemId == replacementPurchaseOrderItemId.Value)
+                .ToList();
+        }
+        else if (requireVendorProductMatch && !string.IsNullOrWhiteSpace(entry.VendorProductId))
+        {
+            var vp = entry.VendorProductId.Trim();
+            var matchingItemIds = await db.PurchaseOrderItems.AsNoTracking()
+                .Where(i => i.PurchaseOrderId == replacementPoId)
+                .Where(i => i.VendorProductId.ToLower() == vp.ToLower())
+                .Select(i => i.Id)
+                .ToListAsync(cancellationToken);
+            purchases = purchases
+                .Where(p => matchingItemIds.Contains(p.PurchaseOrderItemId))
+                .ToList();
+        }
 
         var stockUomNorm = (entry.StockUom ?? string.Empty).Trim().ToUpperInvariant();
         var deliveryUomNorm = (entry.DeliveryUom ?? string.Empty).Trim().ToUpperInvariant();

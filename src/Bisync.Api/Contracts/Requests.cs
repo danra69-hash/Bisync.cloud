@@ -822,6 +822,12 @@ public class PurchaseOrderLineWorkflowRequest
     public string? Unit { get; set; }
     [MaxLength(200)]
     public string? DeliveryPackage { get; set; }
+
+    /// <summary>
+    /// Optional confirmed credit note settled by this receive line (exact vendor product match).
+    /// When set, receive qty cancels the CN (or reduces then cancels when qty is lower).
+    /// </summary>
+    public int? LinkedCreditNoteId { get; set; }
 }
 
 public class CreateCashPurchaseRequest
