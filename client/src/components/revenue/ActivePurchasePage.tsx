@@ -12,10 +12,12 @@ import { api, type DeliveryLocation, type PurchaseOrder } from '../../api';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { ActivePurchasePanel } from './ActivePurchasePanel';
+import { PreCommittedProgressSummary } from './PreCommittedProgressSummary';
 import {
   purchaseOrderStatusBadgeClass,
   resolvePurchaseOrderStatusLabel,
 } from '../../data/purchaseOrderStatus';
+import { formatCommitmentDate } from '../../data/preCommittedProgress';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { filterSelectCls } from '../layout/formControls';
 
@@ -102,7 +104,7 @@ const SUMMARY_BOXES: {
     id: 'pre_committed',
     label: 'Pre-committed Purchase Order',
     empty: 'No active pre-committed purchase orders.',
-    hint: 'Blanket commitments available for drawdown — click a line to view.',
+    hint: 'Issued, received vs committed, and expiry show under each line — click to open details.',
   },
 ];
 
@@ -341,6 +343,14 @@ export function ActivePurchasePage({
   }
 
   const activeBox = SUMMARY_BOXES.find(b => b.id === selectedBucket) ?? null;
+  const tableColumns = useMemo(() => {
+    if (selectedBucket !== 'pre_committed') return ACTIVE_PURCHASE_TABLE_COLUMNS;
+    return ACTIVE_PURCHASE_TABLE_COLUMNS.map(col => {
+      if (col.key === 'delivery') return { ...col, label: 'Expires' };
+      if (col.key === 'shipTo') return { ...col, label: 'Drawdown locations' };
+      return col;
+    });
+  }, [selectedBucket]);
 
   return (
     <div className={pageShellClass({ embedded })}>
@@ -424,10 +434,10 @@ export function ActivePurchasePage({
             tableId={`revenue.active-purchase.${activeBox.id}`}
           >
             <table className="w-full">
-              <TableColGroup columns={ACTIVE_PURCHASE_TABLE_COLUMNS} />
+              <TableColGroup columns={tableColumns} />
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
-                  columns={ACTIVE_PURCHASE_TABLE_COLUMNS}
+                  columns={tableColumns}
                   sortColumn={sortColumn}
                   sortDirection={sortDirection}
                   onSort={toggleSort}
@@ -451,7 +461,14 @@ export function ActivePurchasePage({
                       onClick={() => setSelectedOrderId(order.id)}
                     >
                       <td className={tdCls}>{documentTypeLabel(order)}</td>
-                      <td className={`${tdCls} font-sans text-primary`}>{order.poNumber}</td>
+                      <td className={`${tdCls} font-sans text-primary`}>
+                        <p>{order.poNumber}</p>
+                        {order.isPreCommitted ? (
+                          <div className="mt-1">
+                            <PreCommittedProgressSummary order={order} compact />
+                          </div>
+                        ) : null}
+                      </td>
                       <td className={tdCls}>{order.vendorName}</td>
                       <td className={tdCls}>
                         <p className="font-medium">{shipToLabel(order, outletNameById)}</p>
@@ -460,11 +477,17 @@ export function ActivePurchasePage({
                             {[order.deliveryLocation.city, order.deliveryLocation.postcode].filter(Boolean).join(' · ') || 'Delivery location'}
                           </p>
                         ) : (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">Outlet</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {order.isPreCommitted ? 'Drawdown outlets' : 'Outlet'}
+                          </p>
                         )}
                       </td>
                       <td className={`${tdCls} font-sans text-muted-foreground`}>{order.orderDate}</td>
-                      <td className={`${tdCls} font-sans text-muted-foreground`}>{order.deliveryDate}</td>
+                      <td className={`${tdCls} font-sans text-muted-foreground`}>
+                        {order.isPreCommitted
+                          ? formatCommitmentDate(order.commitmentEndDate)
+                          : order.deliveryDate}
+                      </td>
                       <td className={tdCls}>{order.items.length}</td>
                       <td className={`${tdCls} font-sans`}>{rm(orderTotal(order))}</td>
                       <td className={tdCls}>{statusBadge(order)}</td>

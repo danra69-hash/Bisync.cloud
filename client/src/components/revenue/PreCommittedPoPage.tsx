@@ -46,12 +46,14 @@ import {
   type PurchaseOrderPdfData,
 } from '../../data/generatePurchaseOrderPdf';
 import { PurchaseOrderPdfPreview } from './PurchaseOrderPdfPreview';
+import { PreCommittedProgressSummary } from './PreCommittedProgressSummary';
 import {
   buildVendorOrderShareUrl,
   buildVendorOrderWhatsAppUrl,
   copyVendorOrderShareLink,
 } from '../../data/vendorOrderShare';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
+import { formatCommitmentDate } from '../../data/preCommittedProgress';
 import type { OrderCartVendorGroup } from '../../data/createOrder';
 
 type Props = {
@@ -125,11 +127,35 @@ export function PreCommittedPoPage({
   } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeCommitments, setActiveCommitments] = useState<PurchaseOrder[]>([]);
+  const [commitmentsLoading, setCommitmentsLoading] = useState(false);
+  const [commitmentsError, setCommitmentsError] = useState<string | null>(null);
 
   const companyLocations = useMemo(
     () => allLocations.filter(loc => loc.companyId === selectedCompanyId),
     [allLocations, selectedCompanyId],
   );
+
+  async function loadActiveCommitments(companyId: number) {
+    setCommitmentsLoading(true);
+    setCommitmentsError(null);
+    try {
+      const rows = await api.activePurchaseOrders(companyId);
+      const masters = rows
+        .filter(o => o.isPreCommitted)
+        .sort((a, b) => {
+          const endA = a.commitmentEndDate ?? '';
+          const endB = b.commitmentEndDate ?? '';
+          return endA.localeCompare(endB) || a.poNumber.localeCompare(b.poNumber);
+        });
+      setActiveCommitments(masters);
+    } catch (err) {
+      setActiveCommitments([]);
+      setCommitmentsError(err instanceof Error ? err.message : 'Failed to load active commitments.');
+    } finally {
+      setCommitmentsLoading(false);
+    }
+  }
 
   // Catalog scope = drawdown locations (company commitment), not header outlet alone.
   const catalogLocationIds = drawdownLocationIds.length > 0
@@ -146,6 +172,15 @@ export function PreCommittedPoPage({
   useEffect(() => {
     void refreshVendorProductPricesFromApi();
   }, []);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setActiveCommitments([]);
+      setCommitmentsError(null);
+      return;
+    }
+    void loadActiveCommitments(selectedCompanyId);
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) {
@@ -444,6 +479,7 @@ export function PreCommittedPoPage({
 
       setCreated({ order: po, pdf, shareToken: token });
       setLines([]);
+      if (selectedCompanyId) void loadActiveCommitments(selectedCompanyId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create Pre-committed PO.');
     } finally {
@@ -573,12 +609,67 @@ export function PreCommittedPoPage({
 
   return (
     <div className={pageShellClass({ embedded })}>
+      <section className="rounded-lg border border-border bg-card overflow-hidden mb-4">
+        <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">Active commitments</h2>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Issued (drawn), received versus total committed, and commitment expiry for each open blanket PO.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => selectedCompanyId && void loadActiveCommitments(selectedCompanyId)}
+            disabled={!selectedCompanyId || commitmentsLoading}
+            className="text-xs border border-border rounded-md px-2.5 py-1.5 hover:bg-muted disabled:opacity-50 shrink-0"
+          >
+            {commitmentsLoading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+        <div className="px-4 py-3 space-y-3">
+          {commitmentsError ? (
+            <p className="text-xs text-red-600">{commitmentsError}</p>
+          ) : commitmentsLoading && activeCommitments.length === 0 ? (
+            <div className="py-4">
+              <MillstoneLoader size="sm" layout="block" label="Loading commitments…" />
+            </div>
+          ) : activeCommitments.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              No active pre-committed POs for this company yet. Create one below.
+            </p>
+          ) : (
+            activeCommitments.map(order => (
+              <article
+                key={order.id}
+                className="rounded-lg border border-border bg-background/40 px-3 py-3 space-y-2"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold">
+                      <span className="font-sans text-primary">{order.poNumber}</span>
+                      <span className="text-muted-foreground font-normal"> · {order.vendorName}</span>
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 font-sans">
+                      {formatCommitmentDate(order.commitmentStartDate)} → {formatCommitmentDate(order.commitmentEndDate)}
+                    </p>
+                  </div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+                    {order.status}
+                  </p>
+                </div>
+                <PreCommittedProgressSummary order={order} />
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
       <section className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Handshake size={16} className="text-primary" />
-              <h2 className="text-sm font-semibold">Pre-committed PO</h2>
+              <h2 className="text-sm font-semibold">Create Pre-committed PO</h2>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
               Company-level commitment at a bulk/special price. Choose which locations may draw down,

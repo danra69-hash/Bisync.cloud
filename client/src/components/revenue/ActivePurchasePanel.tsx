@@ -12,6 +12,7 @@ import {
   type ReceiveAddProductSelection,
 } from './ReceiveAddProductModal';
 import { ReceiveLineDetailModal } from './ReceiveLineDetailModal';
+import { PreCommittedProgressSummary } from './PreCommittedProgressSummary';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -640,12 +641,15 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
 
         <div ref={panelScrollRef} className="flex-1 overflow-y-auto px-5 max-sm:px-3 py-4 space-y-4">
           {order.isPreCommitted ? (
-            <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-800 dark:text-teal-300">
-              <p className="font-semibold">Pre-committed PO</p>
-              <p className="mt-0.5 leading-relaxed">
-                Company-level blanket. Issue regular POs to draw down; delivery unit and price follow this
-                commitment. Stock posts when each drawdown PO is received; consolidation affirms it for Accounting.
-              </p>
+            <div className="space-y-3">
+              <PreCommittedProgressSummary order={order} />
+              <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-800 dark:text-teal-300">
+                <p className="font-semibold">Pre-committed PO</p>
+                <p className="mt-0.5 leading-relaxed">
+                  Company-level blanket. Issue regular POs to draw down; delivery unit and price follow this
+                  commitment. Stock posts when each drawdown PO is received; consolidation affirms it for Accounting.
+                </p>
+              </div>
             </div>
           ) : null}
           {order.allowPartialDelivery || order.status === 'Partially Delivered' ? (
