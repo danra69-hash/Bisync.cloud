@@ -2177,17 +2177,55 @@ public class PurchaseOrdersController(
 
             // Step 1: delivery packages → Principal Component qty + unit price
             // (PO line amount ÷ total principal qty, 4dp). Store UOM rounding residual.
+            // Quantity is always delivery packages; ComponentUom may be mislabeled as RecipeUom.
             decimal documentAmount = 0m;
             decimal roundingResidual = 0m;
             if (parent is not null)
             {
+                var deliveryBasis = string.IsNullOrWhiteSpace(item.Unit)
+                    ? item.DeliveryPackage
+                    : item.Unit;
+                decimal? pathPrincipal = null;
+                string? pathPrincipalUom = null;
+                var vendorProductId = (item.VendorProductId ?? string.Empty).Trim();
+                if (!string.IsNullOrEmpty(vendorProductId))
+                {
+                    var vendorProduct = await db.VendorProducts.AsNoTracking()
+                        .FirstOrDefaultAsync(v => v.ExternalId == vendorProductId);
+                    if (DeliveryPrincipalResolver.TryResolveFromVendorProduct(
+                            vendorProduct,
+                            parent,
+                            out var resolvedPrincipal,
+                            out var resolvedUom))
+                    {
+                        pathPrincipal = resolvedPrincipal;
+                        pathPrincipalUom = resolvedUom;
+                    }
+                }
+
+                if (pathPrincipal is null
+                    && DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                        deliveryBasis,
+                        parent,
+                        out var pathFromLabel,
+                        out var pathFromLabelUom))
+                {
+                    pathPrincipal = pathFromLabel;
+                    pathPrincipalUom = pathFromLabelUom;
+                }
+
+                // Prefer delivery UOM as the quantity basis so recipe-labeled ComponentUom
+                // cannot short-circuit conversion when packages still need × principal.
+                var qtyBasisUom = !string.IsNullOrWhiteSpace(deliveryBasis) ? deliveryBasis : uom;
                 var inbound = IngredientUomBridge.ToInboundPrincipal(
                     parent,
                     qty,
-                    uom,
+                    qtyBasisUom,
                     price,
-                    item.VendorProductId,
-                    string.IsNullOrWhiteSpace(item.Unit) ? item.DeliveryPackage : item.Unit);
+                    vendorProductId,
+                    deliveryBasis,
+                    pathPrincipal,
+                    pathPrincipalUom);
                 qty = inbound.Quantity;
                 uom = inbound.Uom;
                 price = inbound.UnitPrice;

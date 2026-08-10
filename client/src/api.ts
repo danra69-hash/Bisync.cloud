@@ -2433,6 +2433,8 @@ export interface CreateCashPurchasePayload {
   deliveryPrice: number;
   quantity: number;
   componentUom: string;
+  /** Optional tagged vendor product id for delivery→PCU conversion. */
+  vendorProductId?: string;
   receiptNumber?: string;
   receiptFileName?: string;
   receiptFileBase64?: string;

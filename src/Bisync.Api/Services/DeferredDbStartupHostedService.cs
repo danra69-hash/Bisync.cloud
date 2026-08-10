@@ -90,7 +90,7 @@ public sealed class DeferredDbStartupHostedService(
             try
             {
                 var healed = await sp.GetRequiredService<ReceivedPurchaseStockHealer>()
-                    .HealMissingReceivedStockAsync(cancellationToken);
+                    .HealMissingReceivedStockAsync(cancellationToken, fullScan: true);
                 if (healed > 0)
                     logger.LogInformation("Healed received stock for {Count} purchase order(s).", healed);
             }
