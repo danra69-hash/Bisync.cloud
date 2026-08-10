@@ -25,6 +25,7 @@ import {
   emptyHierarchyAttachmentCounts,
   loadComponentHierarchy,
   loadComponentHierarchyForCompany,
+  reconcileHierarchyWithComponents,
   saveComponentHierarchy,
   type ComponentHierarchyState,
   type HierarchyAttachmentCounts,
@@ -120,7 +121,11 @@ export function ComponentConfigPage({
       api.locationsConfig().catch(() => [] as LocationConfig[]),
       api.ingredients(selectedCompanyId).catch(() => [] as Ingredient[]),
     ]).then(([nextHierarchy, nextStorage, locations, ingredients]) => {
-      setHierarchy(nextHierarchy);
+      const reconciled = reconcileHierarchyWithComponents(nextHierarchy, ingredients);
+      if (reconciled.changed) {
+        saveComponentHierarchy(reconciled.state, selectedCompanyId);
+      }
+      setHierarchy(reconciled.state);
       setAttachmentCounts(buildHierarchyAttachmentCounts(ingredients));
       const companyLocIds = locations
         .filter(location => location.companyId === selectedCompanyId)

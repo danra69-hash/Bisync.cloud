@@ -44,11 +44,12 @@ function clearLocalKey(key: string) {
 function normalizeHierarchy(state: unknown): ComponentHierarchyState | null {
   if (!state || typeof state !== 'object') return null;
   const parsed = state as ComponentHierarchyState;
-  if (!Array.isArray(parsed.categories) || parsed.categories.length === 0) return null;
+  // Empty categories is valid — hierarchy is user/component-owned, not demo-seeded.
+  if (!Array.isArray(parsed.categories)) return null;
   return {
     categories: parsed.categories ?? [],
-    groups: parsed.groups ?? [],
-    subGroups: parsed.subGroups ?? [],
+    groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+    subGroups: Array.isArray(parsed.subGroups) ? parsed.subGroups : [],
     nextCategoryId: parsed.nextCategoryId ?? 1,
     nextGroupId: parsed.nextGroupId ?? 1,
     nextSubGroupId: parsed.nextSubGroupId ?? 1,
@@ -120,14 +121,22 @@ export async function ensureComponentHierarchy(companyId: number): Promise<Compo
   const legacy = readLocalJson<ComponentHierarchyState>('bisync.componentHierarchy');
   const legacyState = normalizeHierarchy(legacy);
 
-  if (legacyState && (!state || response.seeded)) {
-    state = legacyState;
-    await api.updateRevMgmtConfig(companyId, REV_MGMT_HIERARCHY_KEY, JSON.stringify(state));
+  // Prefer server state. Only migrate browser legacy when the company has no saved row yet.
+  // Do not re-import demo Food/Proteins residue from localStorage over an empty server hierarchy.
+  if (legacyState && response.seeded && (!state || state.categories.length === 0) && legacyState.categories.length > 0) {
+    const { isLegacySeedHierarchy } = await import('./componentHierarchy');
+    if (!isLegacySeedHierarchy(legacyState)) {
+      state = legacyState;
+      await api.updateRevMgmtConfig(companyId, REV_MGMT_HIERARCHY_KEY, JSON.stringify(state));
+    }
+    clearLocalKey('bisync.componentHierarchy');
+  } else if (legacy) {
     clearLocalKey('bisync.componentHierarchy');
   }
 
   if (!state) {
-    state = normalizeHierarchy(response.state)!;
+    const { emptyComponentHierarchy } = await import('./componentHierarchy');
+    state = emptyComponentHierarchy();
   }
 
   hierarchyCache = state;

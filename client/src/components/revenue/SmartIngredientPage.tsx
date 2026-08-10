@@ -20,7 +20,13 @@ import {
   resolveDetailConfigForRow,
   type ComponentRow,
 } from '../../data/componentForm';
-import { getDefaultCategoryAndGroup, loadComponentHierarchy, loadComponentHierarchyForCompany } from '../../data/componentHierarchy';
+import {
+  getDefaultCategoryAndGroup,
+  loadComponentHierarchy,
+  loadComponentHierarchyForCompany,
+  reconcileHierarchyWithComponents,
+  saveComponentHierarchy,
+} from '../../data/componentHierarchy';
 import {
   buildSmartComponentImportPlan,
   downloadSmartComponentTemplateCsv,
@@ -197,8 +203,16 @@ export function SmartIngredientPage({
       setHierarchyRevision(value => value + 1);
       return;
     }
-    void loadComponentHierarchyForCompany(selectedCompanyId).then(() => {
-      if (!cancelled) setHierarchyRevision(value => value + 1);
+    void Promise.all([
+      loadComponentHierarchyForCompany(selectedCompanyId),
+      api.ingredients(selectedCompanyId).catch(() => []),
+    ]).then(([hierarchy, ingredients]) => {
+      if (cancelled) return;
+      const reconciled = reconcileHierarchyWithComponents(hierarchy, ingredients);
+      if (reconciled.changed) {
+        saveComponentHierarchy(reconciled.state, selectedCompanyId);
+      }
+      setHierarchyRevision(value => value + 1);
     });
     return () => {
       cancelled = true;

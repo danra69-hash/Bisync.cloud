@@ -2,31 +2,18 @@ namespace Bisync.Api.Data;
 
 public static class RevMgmtDefaults
 {
+    /// <summary>
+    /// Empty hierarchy — categories/groups come from user creation and live components,
+    /// not demo residue (Food/Proteins/Beef sample tree).
+    /// </summary>
     public static object ComponentHierarchy() => new
     {
-        categories = new[]
-        {
-            new { id = 1, name = "Food" },
-            new { id = 2, name = "Beverage" },
-        },
-        groups = new[]
-        {
-            new { id = 1, categoryId = 1, name = "Proteins", items = 12 },
-            new { id = 2, categoryId = 1, name = "Dairy", items = 8 },
-            new { id = 3, categoryId = 1, name = "Produce", items = 15 },
-            new { id = 4, categoryId = 2, name = "Spirits", items = 24 },
-            new { id = 5, categoryId = 1, name = "Dry Goods", items = 18 },
-        },
-        subGroups = new[]
-        {
-            new { id = 1, groupId = 1, name = "Beef", items = 5 },
-            new { id = 2, groupId = 1, name = "Poultry", items = 4 },
-            new { id = 3, groupId = 2, name = "Cheese", items = 6 },
-            new { id = 4, groupId = 4, name = "Whisky", items = 10 },
-        },
-        nextCategoryId = 3,
-        nextGroupId = 6,
-        nextSubGroupId = 5,
+        categories = Array.Empty<object>(),
+        groups = Array.Empty<object>(),
+        subGroups = Array.Empty<object>(),
+        nextCategoryId = 1,
+        nextGroupId = 1,
+        nextSubGroupId = 1,
     };
 
     /// <summary>
