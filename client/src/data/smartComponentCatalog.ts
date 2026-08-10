@@ -116,6 +116,7 @@ export type SmartComponentImportPlan = {
   deactivations: SmartComponentImportDeactivation[];
 };
 
+/** Full My Component table export/import headers (not just alternate-UOM columns). */
 export const SMART_COMPONENT_TEMPLATE_HEADERS = [
   'Component ID',
   'Category',
@@ -132,11 +133,18 @@ export const SMART_COMPONENT_TEMPLATE_HEADERS = [
   'Conversion 4',
   'Alternate Component Unit 5',
   'Conversion 5',
+  'Last UOM Price',
+  'Daily Usage',
+  'Order Freq (days)',
   'Par Stock',
   'Par Stock UOM',
+  'Qty on Hand',
   'Area',
   'Storage',
   'Location',
+  'Products',
+  'Vendors',
+  'Active',
   'Last Updated',
 ] as const;
 
@@ -202,11 +210,15 @@ const TEMPLATE_FIELD_LABELS: Record<string, string> = {
   altInventoryConversion1: 'Alternate inventory conversion 1 (legacy)',
   altInventoryUnit2: 'Alternate Inventory Unit 2 (legacy)',
   altInventoryConversion2: 'Alternate inventory conversion 2 (legacy)',
+  lastPriceRecipe: 'Last UOM Price',
+  dailyUsage: 'Daily Usage',
+  orderFreqDays: 'Order Freq (days)',
   parStock: 'Par Stock',
   parStockUom: 'Par Stock UOM',
   area: 'Area',
   storage: 'Storage',
   locations: 'Location',
+  active: 'Active',
   lastUpdated: 'Last Updated',
 };
 
@@ -236,6 +248,9 @@ function buildTemplateColumnAccessor(
         const index = indexByHeader.get(normalizeTemplateHeader(alias));
         if (index !== undefined) return cols[index]?.trim() ?? '';
       }
+      // Negative fallback means "optional / absent in older templates" — do not
+      // read another column by position (that mis-maps Par Stock, Storage, etc.).
+      if (fallbackIndex < 0) return '';
       return cols[fallbackIndex]?.trim() ?? '';
     },
   };
@@ -555,14 +570,14 @@ function mergeDraftWithExisting(
   const detail = resolveDetailConfigForRow(existing);
   const merged: SmartComponentImportDraft = {
     ...draft,
-    lastPriceRecipe: existing.lastPriceRecipe,
-    lastPriceInventory: existing.lastPriceInventory,
-    orderFreqDays: existing.orderFreqDays,
-    storageNote: existing.storageNote ?? '',
-    active: existing.active,
+    lastPriceRecipe: draft.lastPriceRecipe > 0 ? draft.lastPriceRecipe : existing.lastPriceRecipe,
+    lastPriceInventory: draft.lastPriceInventory > 0 ? draft.lastPriceInventory : existing.lastPriceInventory,
+    orderFreqDays: draft.orderFreqDays > 0 ? draft.orderFreqDays : existing.orderFreqDays,
+    storageNote: draft.storageNote || existing.storageNote || '',
+    active: draft.active,
     convertFromInventoryQty: draft.convertFromInventoryQty || detail.convertFromInventoryQty || '1',
     convertToRecipeQty: draft.convertToRecipeQty || detail.convertToRecipeQty || '1',
-    dailyUsage: existing.dailyUsage,
+    dailyUsage: draft.dailyUsage > 0 ? draft.dailyUsage : existing.dailyUsage,
   };
 
   if (draft.templateParStock !== undefined && draft.templateParStock > 0) {
@@ -599,6 +614,9 @@ function rowToCsvLine(row: ComponentRow, scope?: SmartComponentLocationScope): s
   });
   const altPairs = [0, 1, 2, 3, 4].map(i => formatAltUnitPair(migrated.altRecipeUnits[i]));
   const parStockFields = exportComponentParStockFields(row);
+  const onHand = row.onHandQty ?? 0;
+  const products = row.attachedProducts ?? 0;
+  const vendors = row.attachedVendors ?? countComponentTaggedVendors(row);
 
   return [
     row.componentId || '',
@@ -607,11 +625,18 @@ function rowToCsvLine(row: ComponentRow, scope?: SmartComponentLocationScope): s
     row.name,
     migrated.recipeUnit,
     ...altPairs.flatMap(pair => [pair[0], pair[1]]),
+    row.lastPriceRecipe > 0 ? String(row.lastPriceRecipe) : '',
+    row.dailyUsage > 0 ? String(row.dailyUsage) : '',
+    row.orderFreqDays > 0 ? String(row.orderFreqDays) : '',
     parStockFields.parStock,
     parStockFields.parStockUom,
+    onHand !== 0 ? String(onHand) : '',
     resolveTemplateArea(row, scope),
     formatListField(row.storage),
     resolveTemplateLocationNames(row.locations, scope),
+    products > 0 ? String(products) : '',
+    vendors > 0 ? String(vendors) : '',
+    row.active ? 'Yes' : 'No',
     formatDisplayDate(row.updatedAt),
   ];
 }
@@ -636,14 +661,21 @@ function rowToDraft(
   const principalInventoryConversion = parsePrincipalInventoryConversion(
     get(['Principal inventory Conversion'], 10),
   );
-  const storage = parseListField(get(['Storage'], 18));
+  const storage = parseListField(get(['Storage'], 22));
   const locations = resolveLocationsFromTemplate(
-    parseListField(get(['Location'], 19)),
+    parseListField(get(['Location'], 23)),
     scope,
   );
-  const parStockRaw = get(['Par Stock'], 15);
-  const parStockUomRaw = get(['Par Stock UOM'], 16);
+  const parStockRaw = get(['Par Stock'], 18);
+  const parStockUomRaw = get(['Par Stock UOM'], 19);
   const templateParStock = parseFloat(String(parStockRaw).replace(/[^0-9.-]/g, '')) || 0;
+  // Newer full-table columns — header-name only so older templates keep Storage/Par Stock intact.
+  const lastPriceRecipe = parseFloat(String(get(['Last UOM Price', 'Last Price (Recipe)'], -1)).replace(/[^0-9.-]/g, '')) || 0;
+  const dailyUsageRaw = get(['Daily Usage'], -1);
+  const dailyUsage = parseFloat(String(dailyUsageRaw).replace(/[^0-9.-]/g, '')) || 0;
+  const orderFreqRaw = get(['Order Freq (days)', 'Order Freq'], -1);
+  const orderFreqDays = parseInt(String(orderFreqRaw).replace(/[^0-9]/g, ''), 10) || 7;
+  const activeRaw = get(['Active'], -1);
 
   const altRecipeUnits = parseAltUnitsFromColumns(
     get(['Alternate Component Unit 1', 'Unit Alternate Component Unit 1'], 5),
@@ -680,12 +712,16 @@ function rowToDraft(
     convertToRecipeQty: inventoryUom !== recipeUom
       ? principalInventoryConversion.convertToRecipeQty
       : '1',
+    lastPriceRecipe,
+    dailyUsage,
+    orderFreqDays,
     storage,
     locations,
+    active: activeRaw ? parseActive(activeRaw) : true,
     templateParStock: templateParStock > 0 ? templateParStock : undefined,
     parStockUom: parStockUomRaw || undefined,
-    templateLastUpdated: get(['Last Updated'], 20) || undefined,
-    area: get(['Area'], 17) || resolveTemplateArea(
+    templateLastUpdated: get(['Last Updated'], 27) || undefined,
+    area: get(['Area'], 21) || resolveTemplateArea(
       { storage, locations } as ComponentRow,
       scope,
     ),
@@ -749,21 +785,28 @@ export function buildSmartComponentTemplateCsv(
       'Proteins',
       'Sample Chicken Breast',
       'Gr',
-      '',
-      '',
-      '',
-      '',
       'Kg',
       '1000',
       '',
       '',
       '',
       '',
+      '',
+      '',
+      '',
+      '',
+      '12.50',
+      '2',
+      '7',
       '14',
       'Gr',
+      '',
       'Kitchen',
       'Chiller',
       scopedLocationNames.length > 0 ? formatListField(scopedLocationNames) : 'All',
+      '',
+      '',
+      'Yes',
       '',
     ]];
 
@@ -825,14 +868,19 @@ function buildTemplateComparable(
     altInventoryUnits: AltUnitEntry[];
     convertFromInventoryQty?: string;
     convertToRecipeQty?: string;
+    lastPriceRecipe?: number;
     dailyUsage?: number;
     orderFreqDays?: number;
     parStockUom?: string;
+    active?: boolean;
   },
   scope?: SmartComponentLocationScope,
 ): TemplateComparable {
   const altRecipe0 = formatAltUnitPair(row.altRecipeUnits[0]);
   const altRecipe1 = formatAltUnitPair(row.altRecipeUnits[1]);
+  const altRecipe2 = formatAltUnitPair(row.altRecipeUnits[2]);
+  const altRecipe3 = formatAltUnitPair(row.altRecipeUnits[3]);
+  const altRecipe4 = formatAltUnitPair(row.altRecipeUnits[4]);
   const altInventory0 = formatAltUnitPair(row.altInventoryUnits[0]);
   const altInventory1 = formatAltUnitPair(row.altInventoryUnits[1]);
   const parStockFields = row.dailyUsage !== undefined && row.orderFreqDays !== undefined
@@ -844,14 +892,14 @@ function buildTemplateComparable(
         group: row.group,
         recipeUOM: row.recipeUOM,
         inventoryUOM: row.inventoryUOM,
-        lastPriceRecipe: 0,
+        lastPriceRecipe: row.lastPriceRecipe ?? 0,
         lastPriceInventory: 0,
         dailyUsage: row.dailyUsage,
         orderFreqDays: row.orderFreqDays,
         storage: row.storage,
         attachedProducts: 0,
         attachedVendors: 0,
-        active: true,
+        active: row.active ?? true,
         locations: row.locations,
         detailConfig: {
           altRecipeUnits: row.altRecipeUnits,
@@ -882,6 +930,12 @@ function buildTemplateComparable(
     altRecipeConversion1: altRecipe0[1],
     altRecipeUnit2: altRecipe1[0],
     altRecipeConversion2: altRecipe1[1],
+    altRecipeUnit3: altRecipe2[0],
+    altRecipeConversion3: altRecipe2[1],
+    altRecipeUnit4: altRecipe3[0],
+    altRecipeConversion4: altRecipe3[1],
+    altRecipeUnit5: altRecipe4[0],
+    altRecipeConversion5: altRecipe4[1],
     inventoryUOM: fromApiUom(row.inventoryUOM),
     principalInventoryConversion: formatPrincipalInventoryConversion(
       row.convertFromInventoryQty || '1',
@@ -891,6 +945,9 @@ function buildTemplateComparable(
     altInventoryConversion1: altInventory0[1],
     altInventoryUnit2: altInventory1[0],
     altInventoryConversion2: altInventory1[1],
+    lastPriceRecipe: row.lastPriceRecipe && row.lastPriceRecipe > 0 ? String(row.lastPriceRecipe) : '',
+    dailyUsage: row.dailyUsage && row.dailyUsage > 0 ? String(row.dailyUsage) : '',
+    orderFreqDays: row.orderFreqDays && row.orderFreqDays > 0 ? String(row.orderFreqDays) : '',
     parStock: parStockFields.parStock,
     parStockUom: parStockFields.parStockUom,
     area: resolveTemplateArea(
@@ -902,6 +959,7 @@ function buildTemplateComparable(
     ),
     storage: formatListField(row.storage),
     locations: resolveTemplateLocationNames(row.locations, scope),
+    active: row.active === false ? 'No' : 'Yes',
     lastUpdated: formatDisplayDate(row.updatedAt),
   };
 }
@@ -962,8 +1020,10 @@ function diffRows(
       altInventoryUnits: existingDetail.altInventoryUnits,
       convertFromInventoryQty: existingDetail.convertFromInventoryQty,
       convertToRecipeQty: existingDetail.convertToRecipeQty,
+      lastPriceRecipe: existing.lastPriceRecipe,
       dailyUsage: existing.dailyUsage,
       orderFreqDays: existing.orderFreqDays,
+      active: existing.active,
     },
     scope,
   );
@@ -974,9 +1034,11 @@ function diffRows(
       altInventoryUnits: draft.altInventoryUnits,
       convertFromInventoryQty: draft.convertFromInventoryQty,
       convertToRecipeQty: draft.convertToRecipeQty,
+      lastPriceRecipe: draft.lastPriceRecipe,
       dailyUsage: draft.dailyUsage,
       orderFreqDays: draft.orderFreqDays,
       parStockUom: draft.parStockUom,
+      active: draft.active,
     },
     scope,
   );
@@ -1039,8 +1101,10 @@ export function existingRowToImportDraft(
       altInventoryUnits: detail.altInventoryUnits,
       convertFromInventoryQty: detail.convertFromInventoryQty,
       convertToRecipeQty: detail.convertToRecipeQty,
+      lastPriceRecipe: row.lastPriceRecipe,
       dailyUsage: row.dailyUsage,
       orderFreqDays: row.orderFreqDays,
+      active: row.active,
     },
     scope,
   );

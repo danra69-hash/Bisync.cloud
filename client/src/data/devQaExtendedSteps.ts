@@ -160,6 +160,9 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           csv.includes('Alternate Component Unit 1'),
           'Template CSV missing Alternate Component Unit 1 header',
         );
+        await assert(csv.includes('Storage'), 'Template CSV missing Storage header');
+        await assert(csv.includes('Daily Usage'), 'Template CSV missing Daily Usage header');
+        await assert(csv.includes('Active'), 'Template CSV missing Active header');
         await assert(!csv.includes('Inventory UOM'), 'Template CSV still contains legacy Inventory UOM header');
         await assert(
           SMART_COMPONENT_TEMPLATE_HEADERS.every(h => csv.includes(h)),
@@ -168,7 +171,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         await assert(csv.split('\n').length > 2, 'Template CSV should include existing component rows');
         ctx.componentTemplateCsv = csv;
         update({
-          detail: `Exported Principal/Alternate Component template with ${rows.length} row(s)`,
+          detail: `Exported full My Component table template with ${rows.length} row(s)`,
           facts: { rowCount: rows.length, csvBytes: csv.length, headerCount: SMART_COMPONENT_TEMPLATE_HEADERS.length },
           fixActions: defaultFixActions('component-download-template'),
         });
