@@ -75,6 +75,20 @@ public sealed class DeferredDbStartupHostedService(
             }
             await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
             await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
+
+            // Wipe non-user demo/seed residue after seeders so customer DBs stay clean
+            // and sandbox leftovers (SC Demo, FIFO demo, catalog seeds) cannot linger.
+            try
+            {
+                var purged = await DemoResiduePurger.PurgeAsync(db, logger, cancellationToken);
+                if (purged.Total > 0)
+                    logger.LogInformation("Demo residue purge removed {Count} row(s).", purged.Total);
+            }
+            catch (Exception purgeEx)
+            {
+                logger.LogError(purgeEx, "Demo residue purge failed; continuing startup");
+            }
+
             await sp.GetRequiredService<LocationSubscriptionService>().EnsureSchemaAsync();
             await HrStartup.InitializeAsync(db);
             await StockCardArchiveStartup.InitializeAsync(sp);

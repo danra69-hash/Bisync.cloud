@@ -19,6 +19,10 @@ public static class B2bSalesOrderSeeder
         B2bSalesOrderService salesOrderService,
         CancellationToken cancellationToken = default)
     {
+        // Never recreate demo SOs (or SC Demo stock) once a customer tenant exists.
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db, cancellationToken))
+            return;
+
         if (await db.B2bSalesOrders.AnyAsync(o => o.OrderNumber.StartsWith(DemoOrderPrefix), cancellationToken))
             return;
 
@@ -27,12 +31,7 @@ public static class B2bSalesOrderSeeder
             return;
 
         var candidates = await LoadStockCandidatesAsync(db, cancellationToken);
-        if (candidates.Count < 2)
-        {
-            await StockCardDummySeeder.EnsureAsync(db, companyId);
-            candidates = await LoadStockCandidatesAsync(db, cancellationToken);
-        }
-
+        // Do not call StockCardDummySeeder — that reintroduces SC Demo residue.
         if (candidates.Count < 2)
             return;
 

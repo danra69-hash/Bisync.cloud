@@ -29,6 +29,18 @@ public static class StockCardDummySeeder
 
     public static async Task<StockCardDummySeedResult> EnsureAsync(BisyncDbContext db, int? companyId = 1)
     {
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+        {
+            return new StockCardDummySeedResult
+            {
+                Skipped = true,
+                Message = "Skipped — customer tenant present; SC Demo seed is disabled.",
+                ComponentsAdded = 0,
+                ProductsAdded = 0,
+                SubProductsAdded = 0,
+            };
+        }
+
         var existing = await db.Ingredients
             .CountAsync(i => i.Name.StartsWith(NamePrefix));
 

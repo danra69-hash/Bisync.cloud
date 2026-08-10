@@ -16,6 +16,15 @@ public static class StockCardFifoDemoSeeder
 
     public static async Task<object> EnsureAsync(BisyncDbContext db, int companyId = 1, bool force = false)
     {
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+        {
+            return new
+            {
+                skipped = true,
+                message = "Skipped — customer tenant present; FIFO demo seed is disabled.",
+            };
+        }
+
         var existing = await db.Ingredients
             .FirstOrDefaultAsync(i =>
                 i.ComponentId == LegacyComponentId
