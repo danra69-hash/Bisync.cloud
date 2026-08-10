@@ -14,6 +14,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+import { PosMappingSchedulerPage } from './PosMappingSchedulerPage';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -23,6 +24,7 @@ type Props = {
 const TABS = [
   { id: 'active', label: 'Active Promotion' },
   { id: 'create', label: 'Create Promotion' },
+  { id: 'pos-mapping', label: 'POS Mapping' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -548,7 +550,7 @@ export function PromotionSchedulerPage({
             </TableScrollContainer>
           )}
         </div>
-      ) : (
+      ) : tab === 'create' ? (
         <div className="space-y-4 pt-3 max-w-5xl">
           {promotionType !== 'combo' && (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -954,6 +956,13 @@ export function PromotionSchedulerPage({
               Clear
             </button>
           </div>
+        </div>
+      ) : (
+        <div className="pt-3">
+          <PosMappingSchedulerPage
+            selectedCompanyId={selectedCompanyId}
+            embedded
+          />
         </div>
       )}
     </div>

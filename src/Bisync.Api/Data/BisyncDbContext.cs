@@ -78,6 +78,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
     public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();
     public DbSet<PosPromotionProduct> PosPromotionProducts => Set<PosPromotionProduct>();
+    public DbSet<PosProductMapping> PosProductMappings => Set<PosProductMapping>();
     public DbSet<PosPrepaidPurchase> PosPrepaidPurchases => Set<PosPrepaidPurchase>();
     public DbSet<PosPrepaidLedger> PosPrepaidLedgers => Set<PosPrepaidLedger>();
     public DbSet<PosDevice> PosDevices => Set<PosDevice>();
@@ -664,6 +665,15 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.ProductId);
             e.Property(x => x.ProductCode).HasMaxLength(80);
             e.Property(x => x.ProductName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosProductMapping>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.ProductId }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.PluNumber }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.Active });
+            e.Property(x => x.ProductCode).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.PluNumber).HasMaxLength(80);
         });
         modelBuilder.Entity<PosPrepaidPurchase>(e =>
         {
