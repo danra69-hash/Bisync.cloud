@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PosConfigType } from '../../../../api'
 import {
   findEntertainmentBlockedProducts,
@@ -159,9 +159,11 @@ function appendMoneyKey(current: string, key: (typeof MONEY_KEYS)[number]): stri
     if (current.includes('.')) return current
     return current === '' ? '0.' : `${current}.`
   }
+  // Prefill is often "12.50" — a complete 2-decimal value. Typing another digit
+  // must start a new entry; otherwise the keypad appears broken for split pay.
   if (current.includes('.')) {
     const frac = current.split('.')[1] ?? ''
-    if (frac.length >= 2) return current
+    if (frac.length >= 2) return key
   }
   if (current === '0') return key
   if (current.replace('.', '').length >= 9) return current
@@ -275,8 +277,19 @@ export function PaymentModal({
     [applied],
   )
   const remainingCents = remainingAfterPayments(dueCents, applied)
+  const seededAmountKeyRef = useRef('')
 
+  // Reseed amount when mode / remaining / due changes. Digit entry on a complete
+  // "12.50" value starts a new amount (see appendMoneyKey). Skip reseed when the
+  // seed key is unchanged so Strict Mode / tender re-renders do not wipe typing.
   useEffect(() => {
+    const seedKey = splitMode
+      ? `split:${remainingCents}`
+      : behavior === 'cash'
+        ? `cash:${dueCents}`
+        : `full:${dueCents}:${behavior}`
+    if (seededAmountKeyRef.current === seedKey) return
+    seededAmountKeyRef.current = seedKey
     if (splitMode) {
       setAmountDigits(centsToMoneyInput(remainingCents > 0 ? remainingCents : 0))
       return
@@ -293,6 +306,9 @@ export function PaymentModal({
       ? Math.max(0, amountEntryCents - remainingCents)
       : 0
   const cashShort = behavior === 'cash' && !splitMode && amountEntryCents < dueCents
+  const splitApplyPreviewCents = behavior === 'cash'
+    ? Math.min(Math.max(0, amountEntryCents), remainingCents)
+    : Math.max(0, Math.min(amountEntryCents, remainingCents))
 
   const cartProducts = useMemo(() => {
     const byId = new Map(catalog.map(p => [String(p.id), p]))
@@ -318,26 +334,27 @@ export function PaymentModal({
     )
 
   const splitComplete = !splitMode || remainingCents === 0
-  const showAmountKeypad =
-    keypadTarget === 'amount'
-    && (behavior === 'cash' || splitMode)
-    && behavior !== 'entertainment'
+  const needsAmountKeypad =
+    (behavior === 'cash' || splitMode) && behavior !== 'entertainment'
+  const showAmountKeypad = keypadTarget === 'amount' && needsAmountKeypad
 
   function selectTender(key: string) {
     setLocalError(null)
     setTenderKey(key)
-    setKeypadTarget('amount')
+    if (covers >= 1) setKeypadTarget('amount')
   }
 
   function setPayMode(split: boolean) {
     setLocalError(null)
     setSplitMode(split)
     setApplied([])
-    setKeypadTarget(split || behavior === 'cash' ? 'amount' : 'pax')
+    seededAmountKeyRef.current = ''
     if (split && behavior === 'entertainment') {
       const fallback = tenderOptions.find(o => o.behavior !== 'entertainment')
       if (fallback) setTenderKey(fallback.key)
     }
+    // Prefer amount keypad once pax is known; otherwise keep collecting pax first.
+    setKeypadTarget(covers >= 1 && (split || behavior === 'cash') ? 'amount' : 'pax')
   }
 
   function addSplitPayment() {
@@ -354,16 +371,19 @@ export function PaymentModal({
     if (behavior === 'cash') {
       if (applyCents <= 0) {
         setLocalError('Enter cash received on the keypad.')
+        setKeypadTarget('amount')
         return
       }
       applyCents = Math.min(applyCents, remainingCents)
     } else {
       if (applyCents <= 0) {
         setLocalError('Enter an amount on the keypad.')
+        setKeypadTarget('amount')
         return
       }
       if (applyCents > remainingCents) {
         setLocalError(`Amount cannot exceed remaining ${formatMoney(remainingCents)}.`)
+        setKeypadTarget('amount')
         return
       }
     }
@@ -599,14 +619,32 @@ export function PaymentModal({
                   : cashChangeCents > 0
                     ? `Change due: ${formatMoney(cashChangeCents)}`
                     : splitMode
-                      ? `Applies ${formatMoney(Math.min(amountEntryCents, remainingCents))} to check`
-                      : 'Exact amount'}
+                      ? `Applies ${formatMoney(splitApplyPreviewCents)} to check`
+                      : 'Exact amount · tap a digit to replace'}
               </em>
             ) : (
               <em className="payment-modal__hint">
-                Remaining {formatMoney(remainingCents)}
+                {splitMode
+                  ? `Will add ${formatMoney(splitApplyPreviewCents)} · remaining ${formatMoney(remainingCents)}`
+                  : `Remaining ${formatMoney(remainingCents)}`}
               </em>
             )}
+          </button>
+        ) : null}
+
+        {splitMode && behavior !== 'entertainment' ? (
+          <button
+            type="button"
+            className="payment-modal__btn payment-modal__btn--add-tender"
+            disabled={busy || remainingCents <= 0 || splitApplyPreviewCents <= 0}
+            onClick={() => {
+              setKeypadTarget('amount')
+              addSplitPayment()
+            }}
+          >
+            {remainingCents <= 0
+              ? 'Check fully covered'
+              : `Add ${selectedTender?.name || 'tender'} · ${formatMoney(splitApplyPreviewCents)}`}
           </button>
         ) : null}
 
@@ -620,7 +658,13 @@ export function PaymentModal({
                 disabled={busy}
                 onClick={() => {
                   setLocalError(null)
-                  setPaxDigits(prev => appendPaxKey(prev, key))
+                  setPaxDigits(prev => {
+                    const next = appendPaxKey(prev, key)
+                    if (Math.floor(Number(next) || 0) >= 1 && needsAmountKeypad) {
+                      setKeypadTarget('amount')
+                    }
+                    return next
+                  })
                 }}
               >
                 {key}
@@ -639,11 +683,7 @@ export function PaymentModal({
                 disabled={busy}
                 onClick={() => {
                   setLocalError(null)
-                  setAmountDigits(prev => {
-                    if (key === '⌫') return appendMoneyKey(prev, key)
-                    if (key === '.') return appendMoneyKey(prev, key)
-                    return appendMoneyKey(prev, key)
-                  })
+                  setAmountDigits(prev => appendMoneyKey(prev, key))
                 }}
               >
                 {key}
@@ -660,16 +700,6 @@ export function PaymentModal({
             >
               Clear
             </button>
-            {splitMode ? (
-              <button
-                type="button"
-                className="payment-modal__key payment-modal__key--wide payment-modal__key--add"
-                disabled={busy || remainingCents <= 0}
-                onClick={addSplitPayment}
-              >
-                Add tender
-              </button>
-            ) : null}
           </div>
         ) : null}
 

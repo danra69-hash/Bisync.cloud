@@ -171,6 +171,18 @@
   color: #fff;
 }
 
+.payment-modal__btn--add-tender {
+  width: 100%;
+  background: var(--color-primary, #0f766e);
+  border-color: var(--color-primary, #0f766e);
+  color: #fff;
+  font-weight: 750;
+}
+
+.payment-modal__btn--add-tender:disabled {
+  opacity: 0.5;
+}
+
 .payment-modal__pax-row {
   display: grid;
   grid-template-columns: minmax(96px, 120px) 1fr;

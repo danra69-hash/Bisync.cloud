@@ -275,6 +275,7 @@ export function OrderPanel({
           label="Discount"
           value={formatMoney(charges.discountCents)}
           editable
+          editLabel={charges.discountCents > 0 ? 'Edit' : 'Apply'}
           onEdit={() => {
             if (onEditDiscount) onEditDiscount()
             else editCents('discountCents', 'Discount ($)')
@@ -384,29 +385,35 @@ function SummaryRow({
   label,
   value,
   editable,
+  editLabel = 'Edit',
   onEdit,
 }: {
   label: string
   value: string
   editable?: boolean
+  editLabel?: string
   onEdit?: () => void
 }) {
+  if (editable && onEdit) {
+    return (
+      <button
+        type="button"
+        className="summary-row summary-row--editable summary-row--button"
+        onClick={onEdit}
+        aria-label={`${editLabel} ${label}`}
+      >
+        <span className="summary-row__label">
+          {label}
+          <span className="summary-row__edit" aria-hidden="true">{editLabel}</span>
+        </span>
+        <span className="summary-row__value">{value}</span>
+      </button>
+    )
+  }
   return (
     <div className="summary-row">
-      <span>
-        {label}
-        {editable && (
-          <button
-            type="button"
-            className="summary-row__edit"
-            onClick={onEdit}
-            aria-label={`Edit ${label}`}
-          >
-            ✎
-          </button>
-        )}
-      </span>
-      <span>{value}</span>
+      <span className="summary-row__label">{label}</span>
+      <span className="summary-row__value">{value}</span>
     </div>
   )
 }
