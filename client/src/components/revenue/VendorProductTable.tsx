@@ -106,6 +106,59 @@ export function VendorProductTaggedSection({
   );
 }
 
+/** Platform name-match suggestions — same columns as tagged, conversion fields blank until filled. */
+export function VendorProductSuggestedSection({
+  products,
+  companyLocations,
+  hideYieldLoss = false,
+  handlers,
+  loading = false,
+  error = null,
+  probabilityByProductId,
+}: {
+  products: VendorProductCatalogItem[];
+  companyLocations: CompanyLocationOption[];
+  hideYieldLoss?: boolean;
+  handlers: RowHandlers;
+  loading?: boolean;
+  error?: string | null;
+  /** Optional match % shown under the product name. */
+  probabilityByProductId?: Record<string, number>;
+}) {
+  return (
+    <div className="space-y-2 mb-4">
+      <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+        Suggested Vendor Products{!loading && products.length > 0 ? ` (${products.length})` : ''}
+      </p>
+      <p className="text-[11px] text-muted-foreground -mt-1">
+        From component ↔ vendor product relations. Fill Principal UOM Qty, Component UOM, and Yield Loss %, then tick Tag if the suggestion is correct.
+      </p>
+      <div className="border border-border rounded-lg overflow-hidden bg-muted/10">
+        {loading ? (
+          <p className="px-3 py-6 text-center text-xs text-muted-foreground">Loading suggestions…</p>
+        ) : error ? (
+          <p className="px-3 py-6 text-center text-xs text-destructive">{error}</p>
+        ) : products.length === 0 ? (
+          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+            No suggestions at 50%+ probability for this component name yet.
+          </p>
+        ) : (
+          <VendorProductTableBody
+            products={products}
+            showTagColumn
+            showLocationColumn
+            companyLocations={companyLocations}
+            handlers={handlers}
+            hideYieldLoss={hideYieldLoss}
+            blankConversionFields
+            probabilityByProductId={probabilityByProductId}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatQty(n: number, countryCode: string): string {
   if (n <= 0) return '—';
   return formatCountryNumber(n, countryCode);
@@ -214,6 +267,8 @@ export function VendorProductTableBody({
   companyLocations,
   handlers,
   hideYieldLoss = false,
+  blankConversionFields = false,
+  probabilityByProductId,
 }: {
   products: VendorProductCatalogItem[];
   showTagColumn: boolean;
@@ -221,6 +276,9 @@ export function VendorProductTableBody({
   companyLocations: CompanyLocationOption[];
   handlers: RowHandlers;
   hideYieldLoss?: boolean;
+  /** When true, Principal Qty / Component UOM / Yield Loss stay blank until the user fills them. */
+  blankConversionFields?: boolean;
+  probabilityByProductId?: Record<string, number>;
 }) {
   const countryCode = useOrgCountryCode();
   const [locationModalProductId, setLocationModalProductId] = useState<string | null>(null);
@@ -291,22 +349,25 @@ export function VendorProductTableBody({
         </thead>
         <tbody>
           {pagedProducts.map(product => {
-            const componentUom = componentUomByProduct[product.id] ?? defaultComponentUom;
-            const resolved = resolveComponentUomQty(
-              product.delivery,
-              principalComponentUom,
-              altRecipeUnits,
-              componentUom,
-            );
+            const storedUom = componentUomByProduct[product.id];
+            const componentUom = blankConversionFields
+              ? (storedUom ?? '')
+              : (storedUom ?? defaultComponentUom);
+            const resolved = componentUom
+              ? resolveComponentUomQty(
+                product.delivery,
+                principalComponentUom,
+                altRecipeUnits,
+                componentUom,
+              )
+              : { qty: null as number | null, auto: false };
             const storedQty = principalQtyByProduct[product.id];
-            const principalQty = parseFloat(
-              storedQty !== undefined && storedQty !== ''
-                ? storedQty
-                : resolved.qty !== null
-                  ? String(resolved.qty)
-                  : '',
-            ) || 0;
-            const qtyAutoFilled = resolved.auto
+            const qtyInputValue = blankConversionFields
+              ? (storedQty ?? '')
+              : (storedQty ?? (resolved.qty !== null ? String(resolved.qty) : ''));
+            const principalQty = parseFloat(qtyInputValue) || 0;
+            const qtyAutoFilled = !blankConversionFields
+              && resolved.auto
               && (storedQty === undefined || storedQty === '' || storedQty === String(resolved.qty));
 
             const lossYield = hideYieldLoss ? 0 : (parseFloat(lossYieldByProduct[product.id] ?? '0') || 0);
@@ -328,14 +389,30 @@ export function VendorProductTableBody({
             const tagReadyLocations = activeLocationIds.length > 0
               ? [...new Set([...assignedLocations, ...activeLocationIds])]
               : assignedLocations;
-            const tagReady = isVendorProductTagReady(product, {
-              recipeUnit: principalComponentUom,
-              altRecipeUnits,
-              componentUom,
-              principalQty: storedQty,
-              productLocationIds: tagReadyLocations,
-              companyLocationCount: companyLocations.length,
-            });
+            const tagReady = blankConversionFields
+              ? {
+                ready: principalQty > 0 && Boolean(componentUom.trim()) && (
+                  companyLocations.length === 0
+                  || tagReadyLocations.length > 0
+                  || activeLocationIds.length > 0
+                ),
+                reason: principalQty <= 0
+                  ? 'Enter principal UOM qty before tagging.'
+                  : !componentUom.trim()
+                    ? 'Select component UOM before tagging.'
+                    : companyLocations.length > 0 && tagReadyLocations.length === 0 && activeLocationIds.length === 0
+                      ? 'Assign at least one location before tagging.'
+                      : undefined,
+              }
+              : isVendorProductTagReady(product, {
+                recipeUnit: principalComponentUom,
+                altRecipeUnits,
+                componentUom,
+                principalQty: storedQty,
+                productLocationIds: tagReadyLocations,
+                companyLocationCount: companyLocations.length,
+              });
+            const matchPct = probabilityByProductId?.[product.id];
 
             return (
               <tr
@@ -349,6 +426,11 @@ export function VendorProductTableBody({
                   <p className="text-xs font-sans text-primary mt-1.5">
                     Delivery: {formatDeliveryBreakdown(product.delivery)}
                   </p>
+                  {matchPct != null && matchPct > 0 ? (
+                    <p className="text-[11px] text-muted-foreground mt-1 tabular-nums">
+                      {Math.round(matchPct)}% match
+                    </p>
+                  ) : null}
                 </td>
                 <td className="px-2 py-2.5 font-sans">{formatPrice(product.deliveryPrice, countryCode)}</td>
                 <td className="px-2 py-2.5">
@@ -356,17 +438,20 @@ export function VendorProductTableBody({
                     <input
                       type="number"
                       className={`${inputCls} text-xs py-1`}
-                      value={storedQty ?? (resolved.qty !== null ? String(resolved.qty) : '')}
+                      value={qtyInputValue}
                       onChange={e => onPrincipalQtyChange(product.id, e.target.value)}
-                      placeholder={`Qty in ${componentUom}`}
+                      placeholder={componentUom ? `Qty in ${componentUom}` : 'Enter qty'}
                     />
                     {qtyAutoFilled && (
                       <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[7px] font-sans text-primary">auto</span>
                     )}
                   </div>
-                  {!resolved.auto && !storedQty && (
+                  {!blankConversionFields && !resolved.auto && !storedQty && (
                     <p className="text-[11px] text-muted-foreground mt-1">Enter conversion manually</p>
                   )}
+                  {blankConversionFields && !storedQty ? (
+                    <p className="text-[11px] text-muted-foreground mt-1">Fill before tagging</p>
+                  ) : null}
                 </td>
                 <td className="px-2 py-2.5 font-sans">{formatPrincipalPrice(principalPrice, countryCode)}</td>
                 <td className="px-2 py-2.5">
@@ -375,6 +460,9 @@ export function VendorProductTableBody({
                     value={componentUom}
                     onChange={e => onComponentUomChange(product.id, e.target.value)}
                   >
+                    {blankConversionFields ? (
+                      <option value="">Select UOM</option>
+                    ) : null}
                     {componentUomChoices.map(uom => (
                       <option key={uom} value={uom}>{uom}</option>
                     ))}
@@ -387,7 +475,7 @@ export function VendorProductTableBody({
                       className={`${inputCls} text-xs py-1 w-full`}
                       value={lossYieldByProduct[product.id] ?? ''}
                       onChange={e => onLossYieldChange(product.id, e.target.value)}
-                      placeholder="0"
+                      placeholder={blankConversionFields ? 'Enter %' : '0'}
                       min="0"
                       max="100"
                     />
