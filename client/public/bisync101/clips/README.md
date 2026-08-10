@@ -1,5 +1,12 @@
 # Bisync101 clips
 
-Short silent WebM captures that mirror Bisync.cloud platform screens (header, module chrome, and task hotspots).
-Regenerate with `python3 scripts/generate-bisync101-clips.py`.
-Replace any file with a live screen recording of the same name to upgrade fidelity.
+Silent WebM recordings captured from the **live Bisync.cloud UI**
+(cursor moves + typed examples), not synthetic Pillow mockups.
+
+Regenerate:
+```bash
+BASE_URL=http://127.0.0.1:5173 BISYNC_EMAIL=dra@cubevalue.com BISYNC_PASSWORD='Pass@123' \
+  node scripts/capture-bisync101-clips.mjs
+```
+
+Optional: `ONLY=gs-sign-in,rms-create-po` to capture a subset.

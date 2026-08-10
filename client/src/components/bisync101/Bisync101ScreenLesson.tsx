@@ -29,8 +29,8 @@ type ScreenKind =
 
 /**
  * Short per-task capture player.
- * Prefers a platform-screen WebM under /bisync101/clips;
- * otherwise plays an animated Bisync.cloud chrome lesson (not a blank placeholder).
+ * Prefers a live-UI WebM under /bisync101/clips (cursor + typed examples);
+ * otherwise plays an animated Bisync.cloud chrome lesson fallback.
  */
 export function Bisync101ScreenLesson({ task }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
