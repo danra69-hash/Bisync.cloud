@@ -1299,6 +1299,26 @@ export interface PosPromotionActivePricesResponse {
   prices: PosPromotionActivePrice[];
 }
 
+/** Sales → Promotion Scheduler → POS Mapping: product ↔ PLU / POS product number. */
+export interface PosProductMapping {
+  id: number;
+  companyId: number;
+  productId: number;
+  productCode: string;
+  productName: string;
+  pluNumber: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpsertPosProductMappingPayload {
+  companyId: number;
+  productId: number;
+  pluNumber: string;
+  active?: boolean;
+}
+
 export interface PosDevice {
   id: number;
   companyId: number;
@@ -4136,6 +4156,20 @@ export const api = {
     fetchJsonWithMethod<PosPromotion>('/api/pos-promotions', 'POST', data),
   setPosPromotionActive: (id: number, active: boolean) =>
     fetchJsonWithMethod<PosPromotion>(`/api/pos-promotions/${id}/active`, 'PATCH', { active }),
+  posProductMappings: (companyId: number, opts?: { includeInactive?: boolean }) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.includeInactive === false) params.set('includeInactive', 'false');
+    else params.set('includeInactive', 'true');
+    return fetchJson<PosProductMapping[]>(`/api/pos-product-mappings?${params}`);
+  },
+  createPosProductMapping: (data: UpsertPosProductMappingPayload) =>
+    fetchJsonWithMethod<PosProductMapping>('/api/pos-product-mappings', 'POST', data),
+  updatePosProductMapping: (id: number, data: UpsertPosProductMappingPayload) =>
+    fetchJsonWithMethod<PosProductMapping>(`/api/pos-product-mappings/${id}`, 'PUT', data),
+  setPosProductMappingActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosProductMapping>(`/api/pos-product-mappings/${id}/active`, 'PATCH', { active }),
+  deletePosProductMapping: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-product-mappings/${id}`, 'DELETE'),
   posPrepaidPurchases: (
     companyId: number,
     opts?: { mobile?: string; status?: string; locationExternalId?: string },
