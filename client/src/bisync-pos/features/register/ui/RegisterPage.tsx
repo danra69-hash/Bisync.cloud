@@ -1867,6 +1867,12 @@ export function RegisterPage() {
         onChargesChange={setCharges}
         onEditDiscount={() => {
           setDiscountError(null)
+          const companyId = session?.companyId
+          if (companyId && companyId > 0) {
+            void api.posConfigTypes(companyId, { kind: 'discount', includeInactive: false })
+              .then(disc => setDiscountTypes(disc.filter(r => r.active !== false)))
+              .catch(() => { /* keep previously loaded types */ })
+          }
           setDiscountOpen(true)
         }}
         onSwapLine={handleSwapLine}
