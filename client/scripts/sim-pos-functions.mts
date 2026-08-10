@@ -109,10 +109,64 @@ const pickers = toPickerGroups(required)
 assert.ok(pickers[0]?.options?.length)
 assert.ok(pickers[0]!.options.every(o => o.label))
 
-// 4) Toolbar food modifiers never return undefined options
-const toolbar = resolveToolbarModifierGroups([], 'food', { id: 1, group: 'Mains' })
-assert.ok(toolbar.length > 0)
-for (const g of toolbar) {
+// 4) Toolbar shows only groups attached to the selected product (no company-wide dump)
+const teaGroup = {
+  id: 4,
+  companyId: 5,
+  kind: 'beverage' as const,
+  name: 'Tea Strength',
+  sequence: 2,
+  required: false,
+  minSelect: 0,
+  maxSelect: 1,
+  affectsStock: false,
+  active: true,
+  options: [
+    { id: 9, label: 'Strong', sequence: 0, extraChargeCents: 0, active: true },
+  ],
+  attachments: [
+    { id: 2, targetType: 'product' as const, targetProductGroup: '', targetProductId: 99, targetProductName: 'Earl Grey' },
+  ],
+}
+const draughtGroup = {
+  ...groups[0]!,
+  id: 5,
+  name: 'Glass for Tower',
+  attachments: [
+    {
+      id: 3,
+      targetType: 'product-group' as const,
+      targetProductCategory: '',
+      targetProductGroup: 'Draft Beer',
+      targetProductId: null,
+    },
+  ],
+}
+const beverageAll = [draughtGroup, teaGroup]
+const earlGreyToolbar = resolveToolbarModifierGroups(
+  beverageAll,
+  'beverage',
+  { id: 99, group: 'Blue Tea', category: 'Beverage' },
+)
+assert.equal(earlGreyToolbar.length, 1)
+assert.equal(earlGreyToolbar[0]?.name, 'Tea Strength')
+const draughtToolbar = resolveToolbarModifierGroups(
+  beverageAll,
+  'beverage',
+  { id: 10, group: 'Draught Beer', category: 'Beverage' },
+)
+assert.equal(draughtToolbar.length, 1)
+assert.equal(draughtToolbar[0]?.name, 'Glass for Tower')
+const unattachedToolbar = resolveToolbarModifierGroups(
+  beverageAll,
+  'beverage',
+  { id: 50, group: 'Soft Drink', category: 'Beverage' },
+)
+assert.equal(unattachedToolbar.length, 0)
+// Without a product, hard-coded defaults still apply when no API groups exist
+const foodDefaults = resolveToolbarModifierGroups([], 'food', null)
+assert.ok(foodDefaults.length > 0)
+for (const g of foodDefaults) {
   assert.ok(Array.isArray(g.options))
 }
 
