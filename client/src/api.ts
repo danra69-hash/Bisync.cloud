@@ -1370,7 +1370,8 @@ export interface PosModifierOption {
 
 export interface PosModifierAttachment {
   id: number;
-  targetType: 'product-group' | 'product' | string;
+  targetType: 'category' | 'product-group' | 'product' | string;
+  targetProductCategory?: string;
   targetProductGroup: string;
   targetProductId?: number | null;
   targetProductName?: string;
@@ -1537,7 +1538,8 @@ export interface UpsertPosModifierGroupPayload {
     active?: boolean;
   }>;
   attachments?: Array<{
-    targetType: 'product-group' | 'product' | string;
+    targetType?: 'category' | 'product-group' | 'product' | string;
+    targetProductCategory?: string;
     targetProductGroup?: string;
     targetProductId?: number | null;
     targetProductName?: string;

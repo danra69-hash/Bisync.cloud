@@ -79,8 +79,9 @@ export function mapApiProductsToPosCatalog(
     const sellPrice = resolvePosMenuSellPrice(product, catalogProducts, promoRppByProductId)
     if (!(sellPrice >= 0) && !isVariableComponent) continue
     const safeSell = sellPrice >= 0 ? sellPrice : 0
+    const category = (product.category || '').trim()
     const group = normalizePosGroupLabel(product.group || product.category || 'General')
-    const department = mapDepartment(product.category || '', group)
+    const department = mapDepartment(category, group)
 
     const isVariable = Boolean(product.isVariableProduct)
     const mode = isVariable ? parseVariableMode(product.variableMode) : undefined
@@ -113,6 +114,7 @@ export function mapApiProductsToPosCatalog(
       name: product.name,
       priceCents,
       department,
+      category: category || undefined,
       group,
       emoji: pickEmoji(product.name),
       accent: pickAccent(product.name),
