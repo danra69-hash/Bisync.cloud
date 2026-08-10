@@ -43,7 +43,12 @@ export function ModifierPickerModal({
   }
 
   return (
-    <div className="combo-picker-modal" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="combo-picker-modal combo-picker-modal--compact"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
       <button
         type="button"
         className="combo-picker-modal__backdrop"

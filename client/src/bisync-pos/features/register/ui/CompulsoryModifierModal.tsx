@@ -47,7 +47,12 @@ export function CompulsoryModifierModal({
   }
 
   return (
-    <div className="combo-picker-modal" role="dialog" aria-modal="true" aria-label="Compulsory modifier">
+    <div
+      className="combo-picker-modal combo-picker-modal--compact"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Compulsory modifier"
+    >
       <button
         type="button"
         className="combo-picker-modal__backdrop"
