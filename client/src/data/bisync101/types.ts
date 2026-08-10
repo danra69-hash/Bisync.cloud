@@ -22,8 +22,9 @@ export type Bisync101Task = {
   steps: Bisync101Step[];
   tips?: string[];
   /**
-   * Optional real screen recording under `client/public/bisync101/clips/`.
+   * Optional platform-screen recording under `client/public/bisync101/clips/`.
    * When present, the player prefers this file over the animated lesson.
+   * Clips are generated to mirror real Bisync.cloud chrome (not placeholder cards).
    */
   clipFile?: string;
   /** Where this lives in the product nav (for orientation). */
