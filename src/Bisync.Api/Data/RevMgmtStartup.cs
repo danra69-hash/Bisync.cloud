@@ -307,6 +307,10 @@ public static class RevMgmtStartup
 
     static async Task SeedVendorProductsAsync(BisyncDbContext db)
     {
+        // Bundled vendor-products.seed.json is demo catalog — never load onto customer tenants.
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+            return;
+
         if (await db.VendorProducts.AnyAsync())
             return;
 

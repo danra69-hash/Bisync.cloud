@@ -15,6 +15,9 @@ public static class InventoryCountHistorySeeder
 
     public static async Task EnsureAsync(BisyncDbContext db)
     {
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+            return;
+
         var hasDowntownHistory = await db.InventoryCountSessions
             .AnyAsync(s => s.CompanyId == CompanyId && s.LocationIdsJson.Contains($"\"{LocationId}\""));
 
