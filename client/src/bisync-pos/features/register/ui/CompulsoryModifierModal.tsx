@@ -9,6 +9,7 @@ type Props = {
   stepIndex: number
   stepTotal: number
   onCancel: () => void
+  /** Option ids in selection order; the same id may appear more than once for qty. */
   onConfirm: (selectedOptionIds: number[]) => void
 }
 
@@ -27,23 +28,49 @@ export function CompulsoryModifierModal({
         .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)),
     [group?.options],
   )
-  const [selected, setSelected] = useState<Set<number>>(() => new Set())
+  const [counts, setCounts] = useState<Record<number, number>>({})
   const minSelect = Math.max(1, group.minSelect || 1)
   const maxSelect = Math.max(minSelect, group.maxSelect || 1)
-  const canConfirm = selected.size >= minSelect && selected.size <= maxSelect
+  const selectedTotal = useMemo(
+    () => Object.values(counts).reduce((sum, qty) => sum + qty, 0),
+    [counts],
+  )
+  const remaining = Math.max(0, maxSelect - selectedTotal)
+  const canConfirm = selectedTotal >= minSelect && selectedTotal <= maxSelect
 
-  function toggle(id: number) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
+  function addOption(id: number) {
+    setCounts(prev => {
+      const total = Object.values(prev).reduce((sum, qty) => sum + qty, 0)
+      if (maxSelect === 1) return { [id]: 1 }
+      if (total >= maxSelect) return prev
+      return { ...prev, [id]: (prev[id] ?? 0) + 1 }
+    })
+  }
+
+  function removeOption(id: number) {
+    setCounts(prev => {
+      const current = prev[id] ?? 0
+      if (current <= 1) {
+        const next = { ...prev }
+        delete next[id]
         return next
       }
-      if (maxSelect === 1) return new Set([id])
-      if (next.size >= maxSelect) return prev
-      next.add(id)
-      return next
+      return { ...prev, [id]: current - 1 }
     })
+  }
+
+  function reset() {
+    setCounts({})
+  }
+
+  function confirm() {
+    if (!canConfirm) return
+    const ids: number[] = []
+    for (const opt of options) {
+      const qty = counts[opt.id] ?? 0
+      for (let i = 0; i < qty; i++) ids.push(opt.id)
+    }
+    onConfirm(ids)
   }
 
   return (
@@ -71,7 +98,7 @@ export function CompulsoryModifierModal({
               {minSelect === maxSelect
                 ? ` (choose ${minSelect})`
                 : ` (choose ${minSelect}–${maxSelect})`}
-              .
+              . Tap again for another of the same option.
             </p>
           </div>
           <button
@@ -88,39 +115,85 @@ export function CompulsoryModifierModal({
           <section className="combo-picker-modal__group">
             <div className="combo-picker-modal__grid">
               {options.map(opt => {
-                const checked = selected.has(opt.id)
+                const qty = counts[opt.id] ?? 0
+                const disabled = remaining <= 0 && qty === 0 && maxSelect > 1
                 return (
-                  <button
+                  <div
                     key={opt.id}
-                    type="button"
-                    className={`combo-picker-tile${checked ? ' is-selected' : ''}`}
-                    aria-pressed={checked}
-                    onClick={() => toggle(opt.id)}
+                    className={`combo-picker-tile${qty > 0 ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`}
                   >
-                    <span className="combo-picker-tile__main">
-                      <span className="combo-picker-tile__name">{opt.label}</span>
+                    <button
+                      type="button"
+                      className="combo-picker-tile__main"
+                      disabled={disabled}
+                      onClick={() => addOption(opt.id)}
+                      aria-label={`Add ${opt.label}`}
+                    >
+                      <span className="combo-picker-tile__name">
+                        {opt.label}
+                        {qty > 0 ? (
+                          <span className="combo-picker-tile__badge" aria-label={`Selected ${qty}`}>
+                            {qty}
+                          </span>
+                        ) : null}
+                      </span>
                       {opt.extraChargeCents > 0 ? (
                         <span className="combo-picker-tile__meta">
                           +{formatMoney(opt.extraChargeCents)}
+                          {qty > 1 ? ` each` : ''}
                         </span>
-                      ) : null}
-                    </span>
-                  </button>
+                      ) : (
+                        <span className="combo-picker-tile__code">
+                          {qty > 0 ? `${qty} selected · tap for more` : 'Tap to add'}
+                        </span>
+                      )}
+                    </button>
+                    {qty > 0 ? (
+                      <div className="combo-picker-tile__qty">
+                        <button
+                          type="button"
+                          className="combo-picker-tile__step"
+                          onClick={() => removeOption(opt.id)}
+                          aria-label={`Remove one ${opt.label}`}
+                        >
+                          −
+                        </button>
+                        <span aria-live="polite">{qty}</span>
+                        <button
+                          type="button"
+                          className="combo-picker-tile__step"
+                          disabled={remaining <= 0 && maxSelect > 1}
+                          onClick={() => addOption(opt.id)}
+                          aria-label={`Add one ${opt.label}`}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 )
               })}
             </div>
           </section>
         </div>
 
-        <footer className="combo-picker-modal__footer">
+        <footer className="combo-picker-modal__footer combo-picker-modal__actions--triple">
           <button type="button" className="combo-picker-modal__btn" onClick={onCancel}>
             Cancel
           </button>
           <button
             type="button"
+            className="combo-picker-modal__btn"
+            onClick={reset}
+            disabled={selectedTotal === 0}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
             className="combo-picker-modal__btn combo-picker-modal__btn--primary"
             disabled={!canConfirm}
-            onClick={() => onConfirm([...selected])}
+            onClick={confirm}
           >
             {stepIndex + 1 < stepTotal ? 'Next' : 'Continue'}
           </button>

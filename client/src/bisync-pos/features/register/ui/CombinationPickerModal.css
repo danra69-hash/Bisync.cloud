@@ -160,6 +160,23 @@
   color: var(--color-ink-muted, #667085);
 }
 
+.combo-picker-tile__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #1d4ed8;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
 .combo-picker-tile__qty {
   display: grid;
   grid-template-columns: 48px 1fr 48px;
@@ -339,6 +356,28 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
+}
+
+.combo-picker-modal--compact .combo-picker-modal__actions--triple,
+.combo-picker-modal__actions--triple {
+  grid-template-columns: 1fr 1fr 1.4fr;
+}
+
+.combo-picker-modal--compact .combo-picker-tile__qty {
+  min-height: 32px;
+  font-size: 0.9rem;
+}
+
+.combo-picker-modal--compact .combo-picker-tile__step {
+  height: 32px;
+  font-size: 1.1rem;
+}
+
+.combo-picker-modal--compact .combo-picker-tile__badge {
+  min-width: 1.15rem;
+  height: 1.15rem;
+  font-size: 0.65rem;
+  margin-left: 4px;
 }
 
 .combo-picker-modal--compact .combo-picker-modal__btn {

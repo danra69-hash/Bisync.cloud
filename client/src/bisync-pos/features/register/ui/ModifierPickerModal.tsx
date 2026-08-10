@@ -11,6 +11,15 @@ type Props = {
   onConfirm: (labels: string[]) => void
 }
 
+function countsFromIds(ids: string[]): Record<string, number> {
+  const next: Record<string, number> = {}
+  for (const id of ids) {
+    if (!id) continue
+    next[id] = (next[id] ?? 0) + 1
+  }
+  return next
+}
+
 export function ModifierPickerModal({
   title,
   productName,
@@ -19,27 +28,48 @@ export function ModifierPickerModal({
   onCancel,
   onConfirm,
 }: Props) {
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(initialSelected),
+  const [counts, setCounts] = useState<Record<string, number>>(() =>
+    countsFromIds(initialSelected),
+  )
+
+  const selectedTotal = useMemo(
+    () => Object.values(counts).reduce((sum, qty) => sum + qty, 0),
+    [counts],
   )
 
   const selectedLabels = useMemo(() => {
     const labels: string[] = []
     for (const group of groups ?? []) {
       for (const opt of group.options ?? []) {
-        if (selected.has(opt.id)) labels.push(opt.label)
+        const qty = counts[opt.id] ?? 0
+        if (qty <= 0) continue
+        labels.push(qty > 1 ? `${qty}× ${opt.label}` : opt.label)
       }
     }
     return labels
-  }, [groups, selected])
+  }, [groups, counts])
 
-  function toggle(optionId: string) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(optionId)) next.delete(optionId)
-      else next.add(optionId)
-      return next
+  function addOption(optionId: string) {
+    setCounts(prev => ({
+      ...prev,
+      [optionId]: (prev[optionId] ?? 0) + 1,
+    }))
+  }
+
+  function removeOption(optionId: string) {
+    setCounts(prev => {
+      const current = prev[optionId] ?? 0
+      if (current <= 1) {
+        const next = { ...prev }
+        delete next[optionId]
+        return next
+      }
+      return { ...prev, [optionId]: current - 1 }
     })
+  }
+
+  function reset() {
+    setCounts({})
   }
 
   return (
@@ -61,7 +91,7 @@ export function ModifierPickerModal({
             <p className="combo-picker-modal__eyebrow">{title}</p>
             <h2>{productName}</h2>
             <p className="combo-picker-modal__copy">
-              Tick modifiers for this item. They are saved on the order line note for kitchen.
+              Tap an option to add it. Tap again for another of the same. Use − to reduce.
             </p>
           </div>
           <button
@@ -85,22 +115,52 @@ export function ModifierPickerModal({
               <div className="combo-picker-modal__grid">
                 {(groups ?? []).flatMap(group =>
                   (group.options ?? []).map(opt => {
-                    const checked = selected.has(opt.id)
+                    const qty = counts[opt.id] ?? 0
                     return (
-                      <button
+                      <div
                         key={opt.id}
-                        type="button"
-                        className={`combo-picker-tile${checked ? ' is-selected' : ''}`}
-                        aria-pressed={checked}
-                        onClick={() => toggle(opt.id)}
+                        className={`combo-picker-tile${qty > 0 ? ' is-selected' : ''}`}
                       >
-                        <span className="combo-picker-tile__main">
-                          <span className="combo-picker-tile__name">{opt.label || group.name}</span>
-                          <span className="combo-picker-tile__code">
-                            {checked ? 'Selected' : 'Tap to add'}
+                        <button
+                          type="button"
+                          className="combo-picker-tile__main"
+                          onClick={() => addOption(opt.id)}
+                          aria-label={`Add ${opt.label || group.name}`}
+                        >
+                          <span className="combo-picker-tile__name">
+                            {opt.label || group.name}
+                            {qty > 0 ? (
+                              <span className="combo-picker-tile__badge" aria-label={`Selected ${qty}`}>
+                                {qty}
+                              </span>
+                            ) : null}
                           </span>
-                        </span>
-                      </button>
+                          <span className="combo-picker-tile__code">
+                            {qty > 0 ? `${qty} selected · tap for more` : 'Tap to add'}
+                          </span>
+                        </button>
+                        {qty > 0 ? (
+                          <div className="combo-picker-tile__qty">
+                            <button
+                              type="button"
+                              className="combo-picker-tile__step"
+                              onClick={() => removeOption(opt.id)}
+                              aria-label={`Remove one ${opt.label}`}
+                            >
+                              −
+                            </button>
+                            <span aria-live="polite">{qty}</span>
+                            <button
+                              type="button"
+                              className="combo-picker-tile__step"
+                              onClick={() => addOption(opt.id)}
+                              aria-label={`Add one ${opt.label}`}
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     )
                   }),
                 )}
@@ -115,9 +175,17 @@ export function ModifierPickerModal({
             : <span>No modifiers selected</span>}
         </div>
 
-        <footer className="combo-picker-modal__actions">
+        <footer className="combo-picker-modal__actions combo-picker-modal__actions--triple">
           <button type="button" className="combo-picker-modal__btn" onClick={onCancel}>
             Cancel
+          </button>
+          <button
+            type="button"
+            className="combo-picker-modal__btn"
+            onClick={reset}
+            disabled={selectedTotal === 0}
+          >
+            Reset
           </button>
           <button
             type="button"
