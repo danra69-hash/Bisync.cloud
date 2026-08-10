@@ -58,8 +58,33 @@ function ruleForSalesType(
   )
 }
 
+/** True when config has at least one tax/service line attached to a sales type. */
+export function configDrivesRegisterCharges(
+  config: PosTaxServiceConfig | null | undefined,
+): boolean {
+  if (!config) return false
+  const taxById = new Map((config.taxes ?? []).map(t => [t.id, t]))
+  const svcById = new Map((config.services ?? []).map(s => [s.id, s]))
+  for (const rule of config.salesTypes ?? []) {
+    for (const id of rule.taxIds ?? []) {
+      const line = taxById.get(id)
+      if (line && line.percent > 0) return true
+    }
+    for (const id of rule.serviceIds ?? []) {
+      const line = svcById.get(id)
+      if (line && line.percent > 0) return true
+    }
+  }
+  // Incomplete setup: lines exist but none attached yet — still treat as config-driven
+  // once we auto-apply (see computeTaxServiceCharges fallback).
+  const hasOpenLines =
+    (config.services ?? []).some(s => s.percent > 0)
+    || (config.taxes ?? []).some(t => t.percent > 0)
+  return hasOpenLines
+}
+
 /**
- * Apply POS Setup → Tax & service charge rates to the current check.
+ * Apply POS Config → Tax & service charge rates to the current check.
  *
  * - Picks the sales-type rule from dining mode (dine-in / takeaway / delivery).
  * - Eligible base = lines matching All products or selected product groups.
@@ -67,6 +92,8 @@ function ruleForSalesType(
  * - Service % applies to post-discount eligible base.
  * - Non-alcohol tax % applies to (eligible base + service).
  * - Alcohol-named tax % applies to the alcohol product share of that taxable base.
+ * - If charge lines exist but no sales type has attachments yet, apply all lines
+ *   (covers incomplete saves before auto-attach existed).
  */
 export function computeTaxServiceCharges(args: {
   lines: CartLine[]
@@ -79,10 +106,25 @@ export function computeTaxServiceCharges(args: {
   if (!config || lines.length === 0) return EMPTY
 
   const rule = ruleForSalesType(config, dining)
-  if (!rule) return EMPTY
+    ?? {
+      salesType: normalizeSalesType(dining),
+      taxIds: [] as string[],
+      serviceIds: [] as string[],
+      applyToAllProducts: true,
+      productGroups: [] as string[],
+    }
 
-  const taxIds = new Set(rule.taxIds ?? [])
-  const serviceIds = new Set(rule.serviceIds ?? [])
+  let taxIds = new Set(rule.taxIds ?? [])
+  let serviceIds = new Set(rule.serviceIds ?? [])
+
+  const anySalesTypeHasTax = (config.salesTypes ?? []).some(r => (r.taxIds ?? []).length > 0)
+  const anySalesTypeHasService = (config.salesTypes ?? []).some(r => (r.serviceIds ?? []).length > 0)
+  if (taxIds.size === 0 && !anySalesTypeHasTax) {
+    taxIds = new Set((config.taxes ?? []).filter(t => t.percent > 0).map(t => t.id))
+  }
+  if (serviceIds.size === 0 && !anySalesTypeHasService) {
+    serviceIds = new Set((config.services ?? []).filter(s => s.percent > 0).map(s => s.id))
+  }
   if (taxIds.size === 0 && serviceIds.size === 0) return EMPTY
 
   const byId = new Map(products.map(p => [String(p.id), p]))
