@@ -146,23 +146,56 @@ const beverageAll = [draughtGroup, teaGroup]
 const earlGreyToolbar = resolveToolbarModifierGroups(
   beverageAll,
   'beverage',
-  { id: 99, group: 'Blue Tea', category: 'Beverage' },
+  { id: 99, group: 'Blue Tea', category: 'Beverage', department: 'Beverage' },
 )
 assert.equal(earlGreyToolbar.length, 1)
 assert.equal(earlGreyToolbar[0]?.name, 'Tea Strength')
 const draughtToolbar = resolveToolbarModifierGroups(
   beverageAll,
   'beverage',
-  { id: 10, group: 'Draught Beer', category: 'Beverage' },
+  { id: 10, group: 'Draught Beer', category: 'Beverage', department: 'Beverage' },
 )
 assert.equal(draughtToolbar.length, 1)
 assert.equal(draughtToolbar[0]?.name, 'Glass for Tower')
 const unattachedToolbar = resolveToolbarModifierGroups(
   beverageAll,
   'beverage',
-  { id: 50, group: 'Soft Drink', category: 'Beverage' },
+  { id: 50, group: 'Soft Drink', category: 'Beverage', department: 'Beverage' },
 )
 assert.equal(unattachedToolbar.length, 0)
+
+// Category attach works when only department is present on the POS product
+const chilled = {
+  id: 40,
+  companyId: 5,
+  kind: 'beverage' as const,
+  name: 'Chilled',
+  sequence: 0,
+  required: false,
+  minSelect: 0,
+  maxSelect: 1,
+  affectsStock: false,
+  active: true,
+  options: [{ id: 15, label: 'Chilled', sequence: 0, extraChargeCents: 0, active: true }],
+  attachments: [
+    {
+      id: 8,
+      targetType: 'category' as const,
+      targetProductCategory: 'Beverage',
+      targetProductGroup: '',
+      targetProductId: null,
+    },
+  ],
+}
+const deptOnlyToolbar = resolveToolbarModifierGroups(
+  [chilled, draughtGroup],
+  'beverage',
+  { id: 223, group: 'Tea', department: 'Beverage' },
+)
+assert.equal(deptOnlyToolbar.length, 1)
+assert.equal(deptOnlyToolbar[0]?.name, 'Chilled')
+assert.ok(deptOnlyToolbar.every(g => g.name !== 'Glass for Tower'))
+
 // Without a product, hard-coded defaults still apply when no API groups exist
 const foodDefaults = resolveToolbarModifierGroups([], 'food', null)
 assert.ok(foodDefaults.length > 0)

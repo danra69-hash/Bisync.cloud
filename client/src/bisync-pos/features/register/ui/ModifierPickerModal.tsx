@@ -81,11 +81,10 @@ export function ModifierPickerModal({
               under Revenue → POS Modifier Group (Category, Product Group, or Product).
             </p>
           ) : (
-            (groups ?? []).map(group => (
-              <section key={group.id} className="combo-picker-modal__group">
-                <h3>{group.name}</h3>
-                <div className="combo-picker-modal__grid">
-                  {(group.options ?? []).map(opt => {
+            <section className="combo-picker-modal__group">
+              <div className="combo-picker-modal__grid">
+                {(groups ?? []).flatMap(group =>
+                  (group.options ?? []).map(opt => {
                     const checked = selected.has(opt.id)
                     return (
                       <button
@@ -96,17 +95,17 @@ export function ModifierPickerModal({
                         onClick={() => toggle(opt.id)}
                       >
                         <span className="combo-picker-tile__main">
-                          <span className="combo-picker-tile__name">{opt.label}</span>
+                          <span className="combo-picker-tile__name">{opt.label || group.name}</span>
                           <span className="combo-picker-tile__code">
                             {checked ? 'Selected' : 'Tap to add'}
                           </span>
                         </span>
                       </button>
                     )
-                  })}
-                </div>
-              </section>
-            ))
+                  }),
+                )}
+              </div>
+            </section>
           )}
         </div>
 

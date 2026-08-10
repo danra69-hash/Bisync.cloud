@@ -232,10 +232,11 @@
   color: #fff;
 }
 
-/* Food / Beverage / Compulsory modifier popups — ~50% viewport, horizontal wrap */
+/* Food / Beverage / Compulsory modifier popups — ~50% of the POS frame */
 .combo-picker-modal--compact .combo-picker-modal__card {
-  width: min(50vw, 460px, calc(100vw - 24px));
-  max-height: min(50dvh, 430px, var(--pos-modal-max-h, calc(100dvh - 16px)));
+  width: min(50%, 460px, calc(100% - 24px)) !important;
+  max-width: min(50%, 460px, calc(100% - 24px)) !important;
+  max-height: min(50%, 430px, var(--pos-modal-max-h, calc(100dvh - 16px))) !important;
   gap: 8px;
   padding: 10px 12px;
 }
@@ -366,8 +367,9 @@
   }
 
   .combo-picker-modal--compact .combo-picker-modal__card {
-    width: min(50vw, 460px, calc(100vw - 16px));
-    max-height: min(50dvh, 430px, calc(100dvh - 16px));
+    width: min(92%, 460px, calc(100% - 16px)) !important;
+    max-width: min(92%, 460px, calc(100% - 16px)) !important;
+    max-height: min(70%, 430px, var(--pos-modal-max-h, calc(100dvh - 16px))) !important;
   }
 
   .combo-picker-modal--compact .combo-picker-modal__grid {

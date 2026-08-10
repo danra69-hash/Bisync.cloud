@@ -59,6 +59,8 @@ export type ModifierAttachProduct = {
   id: string | number
   category?: string | null
   group?: string | null
+  /** POS department (Food / Beverage / Retail) — used when category is blank. */
+  department?: string | null
 }
 
 /** Hierarchical attach match: Category ∧ Product Group ∧ Product (empty = All). */
@@ -96,7 +98,15 @@ export function attachmentMatchesProduct(
   }
 
   if (category) {
-    if (!groupsMatchName(category, product.category)) return false
+    const productCategory = (product.category || '').trim()
+    const productDepartment = (product.department || '').trim()
+    // POS catalog sometimes leaves RMS category blank while department is Food/Beverage.
+    if (
+      !groupsMatchName(category, productCategory)
+      && !groupsMatchName(category, productDepartment)
+    ) {
+      return false
+    }
   } else if (type === 'category') {
     return false
   }
@@ -164,9 +174,9 @@ function toPickerOption(o: PosModifierOption): ModifierOption {
 
 /**
  * Food/Beverage toolbar picker groups for the selected product.
- * When a product is provided, only groups attached to that product (and kind) are shown —
- * never every beverage/food group company-wide.
- * Without a product, fall back to all active groups of that kind, then hard-coded defaults.
+ * Prefer groups attached to this product. If none match, show unscoped groups
+ * (no attachments) of that kind. Never dump every scoped group company-wide
+ * (e.g. Glass for Tower stays off Earl Grey).
  */
 export function resolveToolbarModifierGroups(
   all: PosModifierGroup[],
@@ -174,7 +184,18 @@ export function resolveToolbarModifierGroups(
   product?: ModifierAttachProduct | null,
 ): ModifierGroup[] {
   if (product) {
-    return toPickerGroups(resolveAttachedModifierGroups(all, product, kind))
+    const attached = resolveAttachedModifierGroups(all, product, kind)
+    if (attached.length > 0) return toPickerGroups(attached)
+
+    const unscoped = all
+      .filter(g => g.active && g.kind === kind)
+      .filter(g => (g.attachments ?? []).length === 0)
+      .sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name))
+    if (unscoped.length > 0) return toPickerGroups(unscoped)
+
+    const anyConfigured = all.some(g => g.active && g.kind === kind)
+    if (anyConfigured) return []
+    return kind === 'food' ? FOOD_MODIFIER_GROUPS : BEVERAGE_MODIFIER_GROUPS
   }
   const anyOfKind = all
     .filter(g => g.active && g.kind === kind)

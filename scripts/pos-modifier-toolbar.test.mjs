@@ -53,7 +53,14 @@ function attachmentMatchesProduct(attachment, product) {
   }
 
   if (category) {
-    if (!groupsMatchName(category, product.category)) return false
+    const productCategory = (product.category || '').trim()
+    const productDepartment = (product.department || '').trim()
+    if (
+      !groupsMatchName(category, productCategory)
+      && !groupsMatchName(category, productDepartment)
+    ) {
+      return false
+    }
   } else if (type === 'category') {
     return false
   }
@@ -71,7 +78,12 @@ function resolveAttachedModifierGroups(all, product, kind) {
 
 function resolveToolbarModifierGroups(all, kind, product) {
   if (product) {
-    return resolveAttachedModifierGroups(all, product, kind).map(g => g.name)
+    const attached = resolveAttachedModifierGroups(all, product, kind)
+    if (attached.length > 0) return attached.map(g => g.name)
+    const unscoped = all
+      .filter(g => g.active && g.kind === kind)
+      .filter(g => (g.attachments ?? []).length === 0)
+    return unscoped.map(g => g.name)
   }
   return all.filter(g => g.active && g.kind === kind).map(g => g.name)
 }
@@ -101,26 +113,58 @@ const earlGreyMod = {
 const all = [glassForTower, earlGreyMod]
 
 test('Draft Beer attach matches Draught Beer product on register', () => {
-  const draught = { id: 10, group: 'Draught Beer', category: 'Beverage' }
+  const draught = { id: 10, group: 'Draught Beer', category: 'Beverage', department: 'Beverage' }
   const names = resolveToolbarModifierGroups(all, 'beverage', draught)
   assert.deepEqual(names, ['Glass for Tower'])
 })
 
 test('Earl Grey only sees beverage modifiers attached to it', () => {
-  const earlGrey = { id: 99, group: 'Blue Tea', category: 'Beverage' }
+  const earlGrey = { id: 99, group: 'Blue Tea', category: 'Beverage', department: 'Beverage' }
   const names = resolveToolbarModifierGroups(all, 'beverage', earlGrey)
   assert.deepEqual(names, ['Tea Strength'])
   assert.ok(!names.includes('Glass for Tower'))
 })
 
 test('unattached beverage product gets empty toolbar list (no company-wide dump)', () => {
-  const other = { id: 50, group: 'Soft Drink', category: 'Beverage' }
+  const other = { id: 50, group: 'Soft Drink', category: 'Beverage', department: 'Beverage' }
   const names = resolveToolbarModifierGroups(all, 'beverage', other)
   assert.deepEqual(names, [])
 })
 
 test('BEER DRAFT synonym matches Draught Beer attach', () => {
-  const shandy = { id: 11, group: 'BEER DRAFT', category: 'Beverage' }
+  const shandy = { id: 11, group: 'BEER DRAFT', category: 'Beverage', department: 'Beverage' }
   const names = resolveToolbarModifierGroups(all, 'beverage', shandy)
   assert.deepEqual(names, ['Glass for Tower'])
+})
+
+test('category Beverage attach matches when only department is set', () => {
+  const allCategory = [
+    {
+      id: 4,
+      name: 'Chilled',
+      kind: 'beverage',
+      active: true,
+      sequence: 1,
+      attachments: [
+        { targetType: 'category', targetProductCategory: 'Beverage', targetProductGroup: '' },
+      ],
+    },
+    {
+      id: 3,
+      name: 'Glass for Tower',
+      kind: 'beverage',
+      active: true,
+      sequence: 2,
+      attachments: [
+        { targetType: 'product', targetProductId: 124, targetProductGroup: '', targetProductCategory: '' },
+      ],
+    },
+  ]
+  const names = resolveToolbarModifierGroups(
+    allCategory,
+    'beverage',
+    { id: 223, group: 'Tea', department: 'Beverage' },
+  )
+  assert.deepEqual(names, ['Chilled'])
+  assert.ok(!names.includes('Glass for Tower'))
 })
