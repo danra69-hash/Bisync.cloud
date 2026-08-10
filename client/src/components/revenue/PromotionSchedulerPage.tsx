@@ -962,6 +962,7 @@ export function PromotionSchedulerPage({
           <PosMappingSchedulerPage
             selectedCompanyId={selectedCompanyId}
             embedded
+            title="POS Mapping"
           />
         </div>
       )}

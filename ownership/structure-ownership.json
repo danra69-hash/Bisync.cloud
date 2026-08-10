@@ -439,11 +439,11 @@
       "kind": "client-page",
       "path": "client/src/components/revenue/PosMappingSchedulerPage.tsx",
       "symbol": "PosMappingSchedulerPage",
-      "route": "/revenue/promotion-scheduler#pos-mapping",
+      "route": "/revenue/external-pos-mapping",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-10",
-      "notes": "Sales → Promotion Scheduler → POS Mapping — catalog product ↔ PLU / POS product number list"
+      "notes": "Products → External POS Mapping (also Sales → Promotion Scheduler → POS Mapping tab) — catalog product ↔ PLU / POS product number list"
     },
     {
       "id": "dr.api.pos-product-mappings",
