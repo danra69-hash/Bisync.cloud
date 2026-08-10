@@ -16,6 +16,8 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
     static readonly HashSet<string> CreditQrMethods = new(StringComparer.OrdinalIgnoreCase)
     {
         "credit-card", "qr-pay", "card", "qr",
+        "card-emv", "emv", "emv-chip", "tap", "tap-to-pay",
+        "gift-card", "giftcard",
     };
 
     static readonly HashSet<string> NonRevenueMethods = new(StringComparer.OrdinalIgnoreCase)

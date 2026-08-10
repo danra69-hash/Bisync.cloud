@@ -6,7 +6,15 @@ import {
   hasPosConfigExceptions,
 } from '../../../../data/entertainmentSettlement'
 import { formatMoney } from '../../../core/types/money'
-import { TENDER_LABEL, type TenderType } from '../../cashier/domain/payments'
+import {
+  DEFAULT_PAYMENT_TENDERS,
+  paymentMethodForApi,
+  paymentTenderBehavior,
+  paymentTenderKey,
+  paymentTypeLabel,
+  TENDER_LABEL,
+  type TenderType,
+} from '../../cashier/domain/payments'
 import { formatPosCheckNumber } from '../domain/checkNumber'
 import type { CartLine, Product } from '../domain/types'
 import './PaymentModal.css'
@@ -21,9 +29,22 @@ export type EntertainmentPaymentPayload = {
 }
 
 export type PaymentConfirmPayload = {
+  /** Behavioral / storage tender key (normalized code). */
   tender: TenderType
+  /** POS Config payment type code when selected from config. */
+  paymentTypeCode?: string
+  /** Display name from POS Config (or built-in label). */
+  paymentTypeName?: string
   cashReceivedCents?: number
   entertainment?: EntertainmentPaymentPayload
+}
+
+type TenderOption = {
+  key: string
+  code: string
+  name: string
+  behavior: 'cash' | 'entertainment' | 'other'
+  fromConfig: boolean
 }
 
 type Props = {
@@ -35,12 +56,73 @@ type Props = {
   entertainmentAmountCents: number
   cartLines: CartLine[]
   catalog: Product[]
+  /** Active POS Config payment types (kind=payment). */
+  paymentTypes?: PosConfigType[]
   entertainmentTypes: PosConfigType[]
   defaultEmployeeName?: string
   busy?: boolean
   error?: string | null
   onCancel: () => void
   onConfirm: (payload: PaymentConfirmPayload) => void
+}
+
+function buildTenderOptions(
+  paymentTypes: PosConfigType[],
+  entertainmentTypes: PosConfigType[],
+): TenderOption[] {
+  const activePayments = paymentTypes
+    .filter(t => t.active !== false)
+    .slice()
+    .sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name))
+
+  const options: TenderOption[] = []
+  if (activePayments.length > 0) {
+    for (const row of activePayments) {
+      const code = (row.code || '').trim() || suggestCodeFromName(row.name)
+      const key = paymentTenderKey(code)
+      if (options.some(o => o.key === key)) continue
+      options.push({
+        key,
+        code: code || key.toUpperCase(),
+        name: paymentTypeLabel(code, row.name),
+        behavior: paymentTenderBehavior(code),
+        fromConfig: true,
+      })
+    }
+  } else {
+    for (const row of DEFAULT_PAYMENT_TENDERS) {
+      options.push({
+        key: paymentTenderKey(row.code),
+        code: row.code,
+        name: row.name,
+        behavior: paymentTenderBehavior(row.code),
+        fromConfig: false,
+      })
+    }
+  }
+
+  const hasEntertainmentOption = options.some(o => o.behavior === 'entertainment')
+  const activeEntertainment = entertainmentTypes.filter(t => t.active !== false)
+  if (!hasEntertainmentOption && activeEntertainment.length > 0) {
+    options.push({
+      key: 'entertainment',
+      code: 'ENTERTAINMENT',
+      name: TENDER_LABEL.entertainment,
+      behavior: 'entertainment',
+      fromConfig: false,
+    })
+  }
+
+  return options
+}
+
+function suggestCodeFromName(name: string): string {
+  return name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
 }
 
 export function PaymentModal({
@@ -50,6 +132,7 @@ export function PaymentModal({
   entertainmentAmountCents,
   cartLines,
   catalog,
+  paymentTypes = [],
   entertainmentTypes,
   defaultEmployeeName = '',
   busy = false,
@@ -57,7 +140,12 @@ export function PaymentModal({
   onCancel,
   onConfirm,
 }: Props) {
-  const [tender, setTender] = useState<TenderType>('cash')
+  const tenderOptions = useMemo(
+    () => buildTenderOptions(paymentTypes, entertainmentTypes),
+    [paymentTypes, entertainmentTypes],
+  )
+
+  const [tenderKey, setTenderKey] = useState(() => tenderOptions[0]?.key ?? 'cash')
   const [cashReceived, setCashReceived] = useState(() =>
     (amountCents / 100).toFixed(2),
   )
@@ -70,13 +158,25 @@ export function PaymentModal({
     [entertainmentTypes],
   )
 
+  const selectedTender = useMemo(
+    () => tenderOptions.find(o => o.key === tenderKey) ?? tenderOptions[0] ?? null,
+    [tenderOptions, tenderKey],
+  )
+
+  const behavior = selectedTender?.behavior ?? 'other'
+
   useEffect(() => {
-    if (tender !== 'entertainment') return
+    if (tenderOptions.some(o => o.key === tenderKey)) return
+    setTenderKey(tenderOptions[0]?.key ?? 'cash')
+  }, [tenderOptions, tenderKey])
+
+  useEffect(() => {
+    if (behavior !== 'entertainment') return
     if (entertainmentTypeId != null && activeEntertainment.some(t => t.id === entertainmentTypeId)) {
       return
     }
     setEntertainmentTypeId(activeEntertainment[0]?.id ?? null)
-  }, [tender, activeEntertainment, entertainmentTypeId])
+  }, [behavior, activeEntertainment, entertainmentTypeId])
 
   useEffect(() => {
     if (defaultEmployeeName && !employeeName) {
@@ -89,14 +189,14 @@ export function PaymentModal({
     [activeEntertainment, entertainmentTypeId],
   )
 
-  const dueCents = tender === 'entertainment' ? entertainmentAmountCents : amountCents
+  const dueCents = behavior === 'entertainment' ? entertainmentAmountCents : amountCents
 
   const cashReceivedCents = useMemo(
     () => Math.round(Number(cashReceived || 0) * 100),
     [cashReceived],
   )
   const changeCents = Math.max(0, cashReceivedCents - dueCents)
-  const cashShort = tender === 'cash' && cashReceivedCents < dueCents
+  const cashShort = behavior === 'cash' && cashReceivedCents < dueCents
 
   const cartProducts = useMemo(() => {
     const byId = new Map(catalog.map(p => [String(p.id), p]))
@@ -112,7 +212,7 @@ export function PaymentModal({
   )
 
   const entertainmentReady =
-    tender !== 'entertainment'
+    behavior !== 'entertainment'
     || (
       selectedEntertainment != null
       && hasPosConfigExceptions(selectedEntertainment)
@@ -122,7 +222,8 @@ export function PaymentModal({
     )
 
   function confirm() {
-    if (tender === 'entertainment') {
+    if (!selectedTender) return
+    if (behavior === 'entertainment') {
       if (!selectedEntertainment || !entertainmentReady) return
       const purpose = formatEntertainmentPurpose(
         selectedEntertainment.code,
@@ -130,7 +231,9 @@ export function PaymentModal({
         reason,
       )
       onConfirm({
-        tender,
+        tender: 'entertainment',
+        paymentTypeCode: selectedTender.code,
+        paymentTypeName: selectedEntertainment.name,
         entertainment: {
           typeId: selectedEntertainment.id,
           typeCode: selectedEntertainment.code,
@@ -143,8 +246,10 @@ export function PaymentModal({
       return
     }
     onConfirm({
-      tender,
-      cashReceivedCents: tender === 'cash' ? cashReceivedCents : undefined,
+      tender: paymentMethodForApi(selectedTender.code) as TenderType,
+      paymentTypeCode: selectedTender.code,
+      paymentTypeName: selectedTender.name,
+      cashReceivedCents: behavior === 'cash' ? cashReceivedCents : undefined,
     })
   }
 
@@ -168,27 +273,36 @@ export function PaymentModal({
           <span>Amount due</span>
           <strong>{formatMoney(dueCents)}</strong>
         </div>
-        {tender === 'entertainment' ? (
+        {behavior === 'entertainment' ? (
           <p className="payment-modal__hint">
             Entertainment settles the full check with no tax or service charge.
           </p>
         ) : null}
 
         <div className="payment-modal__tenders" role="group" aria-label="Tender">
-          {(Object.keys(TENDER_LABEL) as TenderType[]).map(key => (
-            <button
-              key={key}
-              type="button"
-              className={`payment-modal__tender${tender === key ? ' is-active' : ''}`}
-              disabled={busy || (key === 'entertainment' && activeEntertainment.length === 0)}
-              onClick={() => setTender(key)}
-            >
-              {TENDER_LABEL[key]}
-            </button>
-          ))}
+          {tenderOptions.length === 0 ? (
+            <p className="payment-modal__error">
+              No payment types configured. Add them under POS Config → Payment Type.
+            </p>
+          ) : (
+            tenderOptions.map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`payment-modal__tender${tenderKey === opt.key ? ' is-active' : ''}`}
+                disabled={
+                  busy
+                  || (opt.behavior === 'entertainment' && activeEntertainment.length === 0)
+                }
+                onClick={() => setTenderKey(opt.key)}
+              >
+                {opt.name}
+              </button>
+            ))
+          )}
         </div>
 
-        {tender === 'cash' ? (
+        {behavior === 'cash' ? (
           <label className="payment-modal__field">
             <span>Cash received ($)</span>
             <input
@@ -207,11 +321,11 @@ export function PaymentModal({
           </label>
         ) : null}
 
-        {tender === 'entertainment' ? (
+        {behavior === 'entertainment' ? (
           <div className="payment-modal__entertainment">
             {activeEntertainment.length === 0 ? (
               <p className="payment-modal__error">
-                No active entertainment types. Add them under POS Config → Entertainment.
+                No active entertainment types. Add them under POS Config → Entertainment Type.
               </p>
             ) : (
               <>
@@ -251,7 +365,7 @@ export function PaymentModal({
                 {selectedEntertainment && !hasPosConfigExceptions(selectedEntertainment) ? (
                   <p className="payment-modal__error" role="alert">
                     {selectedEntertainment.name} has no exceptions configured. Edit it under
-                    POS Config → Entertainment and tick at least one Product Group or Product
+                    POS Config → Entertainment Type and tick at least one Product Group or Product
                     exception.
                   </p>
                 ) : null}
@@ -266,9 +380,9 @@ export function PaymentModal({
               </>
             )}
           </div>
-        ) : tender !== 'cash' ? (
+        ) : behavior !== 'cash' ? (
           <p className="payment-modal__copy">
-            Confirm {TENDER_LABEL[tender]} for {formatMoney(dueCents)}.
+            Confirm {selectedTender?.name || 'payment'} for {formatMoney(dueCents)}.
           </p>
         ) : null}
 
@@ -281,12 +395,12 @@ export function PaymentModal({
           <button
             type="button"
             className="payment-modal__btn payment-modal__btn--pay"
-            disabled={busy || cashShort || !entertainmentReady}
+            disabled={busy || cashShort || !entertainmentReady || tenderOptions.length === 0}
             onClick={confirm}
           >
             {busy
               ? 'Processing…'
-              : tender === 'entertainment'
+              : behavior === 'entertainment'
                 ? 'Settle entertainment'
                 : 'Take payment'}
           </button>

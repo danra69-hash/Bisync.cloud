@@ -275,7 +275,9 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Config</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Company lookup tables for payment, entertainment, and discount types, plus device routing for the register.
+            Payment Type, Entertainment Type, and Discount Type drive the POS register
+            (payment tenders, entertainment settle, and discount picker). Device Set up
+            configures station routing for this company/location.
           </p>
         </div>
         {isConfigTypeTab(tab) ? (
