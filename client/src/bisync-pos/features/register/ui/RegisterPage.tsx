@@ -46,7 +46,12 @@ import {
   publishPosDiningMode,
 } from '../../../core/session/posDiningBridge'
 import { api } from '../../../../api'
-import type { PosConfigType, PosPrepaidPurchase, PosPromotion } from '../../../../api'
+import type {
+  PosConfigType,
+  PosPrepaidPurchase,
+  PosPromotion,
+  PosTaxServiceConfig,
+} from '../../../../api'
 import { enqueueOutbox } from '../../../core/offline/posOutbox'
 import { isOnline } from '../../../core/offline/posCatalogStore'
 import { ProductGrid } from './ProductGrid'
@@ -78,6 +83,7 @@ import {
   type TakeawayPickup,
 } from '../domain/pickupTime'
 import { formatPosCheckNumber, nextPosCheckNumber } from '../domain/checkNumber'
+import { computeTaxServiceCharges } from '../domain/taxServiceCharges'
 import {
   EMPTY_OPEN_CHARGES,
   lineIdentity,
@@ -175,6 +181,7 @@ export function RegisterPage() {
   const [entertainmentTypes, setEntertainmentTypes] = useState<PosConfigType[]>([])
   const [discountTypes, setDiscountTypes] = useState<PosConfigType[]>([])
   const [paymentTypes, setPaymentTypes] = useState<PosConfigType[]>([])
+  const [taxServiceConfig, setTaxServiceConfig] = useState<PosTaxServiceConfig | null>(null)
   const [discountOpen, setDiscountOpen] = useState(false)
   const [discountError, setDiscountError] = useState<string | null>(null)
   const [prepaidPromotions, setPrepaidPromotions] = useState<PosPromotion[]>([])
@@ -283,6 +290,24 @@ export function RegisterPage() {
   }, [session?.companyId])
 
   useEffect(() => {
+    if (!session?.companyId) {
+      setTaxServiceConfig(null)
+      return
+    }
+    let cancelled = false
+    api.posTaxServiceConfig(session.companyId)
+      .then(cfg => {
+        if (!cancelled) setTaxServiceConfig(cfg)
+      })
+      .catch(() => {
+        if (!cancelled) setTaxServiceConfig(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session?.companyId])
+
+  useEffect(() => {
     function openTakeaway() {
       setPickupModalOpen(true)
     }
@@ -374,6 +399,39 @@ export function RegisterPage() {
   }, [session?.locations, session?.locationId])
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
+
+  // Wire POS Setup → Tax & service charge into register totals.
+  useEffect(() => {
+    const next = computeTaxServiceCharges({
+      lines,
+      products: catalogForFilter,
+      dining,
+      discountCents: charges.discountCents,
+      config: taxServiceConfig,
+    })
+    setCharges(prev => {
+      if (
+        prev.serviceCents === next.serviceCents
+        && prev.taxRegularCents === next.taxRegularCents
+        && prev.taxAlcoholCents === next.taxAlcoholCents
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        serviceCents: next.serviceCents,
+        taxRegularCents: next.taxRegularCents,
+        taxAlcoholCents: next.taxAlcoholCents,
+      }
+    })
+  }, [
+    lines,
+    dining,
+    charges.discountCents,
+    taxServiceConfig,
+    catalogForFilter,
+  ])
+
   const tableOptions = useMemo(() => {
     const plan =
       session?.companyId && session.locationId
@@ -1907,6 +1965,7 @@ export function RegisterPage() {
         onCoverChange={setCover}
         onChange={setLines}
         onChargesChange={setCharges}
+        chargesFromConfig={taxServiceConfig != null}
         onEditDiscount={() => {
           setDiscountError(null)
           const companyId = session?.companyId
