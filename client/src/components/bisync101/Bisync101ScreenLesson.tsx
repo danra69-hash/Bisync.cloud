@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw } from 'lucide-react';
-import type { Bisync101Task } from '../../data/bisync101/types';
+import type { Bisync101Hotspot, Bisync101Task } from '../../data/bisync101/types';
 import { bisync101ClipUrl } from '../../data/bisync101/catalog';
 
 type Props = {
@@ -10,10 +10,27 @@ type Props = {
 const STEP_MS = 2800;
 const INTRO_MS = 700;
 
+const SADDLE = '#2A2118';
+const ORANGE = '#F37021';
+const MUTED = '#6B5E52';
+const SOFT = '#F5F2EE';
+
+type ScreenKind =
+  | 'login'
+  | 'home'
+  | 'home-sidebar'
+  | 'home-101'
+  | 'rms'
+  | 'pos'
+  | 'pos-floor'
+  | 'hr'
+  | 'accounting'
+  | 'system';
+
 /**
  * Short per-task capture player.
- * Prefers a real screen recording under /bisync101/clips when present;
- * otherwise plays an animated in-app screen lesson (cursor + hotspots).
+ * Prefers a platform-screen WebM under /bisync101/clips;
+ * otherwise plays an animated Bisync.cloud chrome lesson (not a blank placeholder).
  */
 export function Bisync101ScreenLesson({ task }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,11 +165,11 @@ export function Bisync101ScreenLesson({ task }: Props) {
             width={960}
             height={540}
             className="absolute inset-0 h-full w-full"
-            aria-label={`Screen lesson for ${task.title}`}
+            aria-label={`Platform screen lesson for ${task.title}`}
           />
         )}
         <div className="absolute left-2 top-2 rounded bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/90">
-          {useVideo ? 'Screen capture' : 'Screen lesson'} · {task.durationLabel}
+          Platform screen · {task.durationLabel}
         </div>
       </div>
 
@@ -176,7 +193,7 @@ export function Bisync101ScreenLesson({ task }: Props) {
         <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
           <div
             className="h-full transition-[width] duration-100"
-            style={{ width: `${progress * 100}%`, background: '#F37021' }}
+            style={{ width: `${progress * 100}%`, background: ORANGE }}
           />
         </div>
         <span className="text-[11px] text-white/60 tabular-nums shrink-0">
@@ -185,6 +202,297 @@ export function Bisync101ScreenLesson({ task }: Props) {
       </div>
     </div>
   );
+}
+
+function screenKindForTask(taskId: string): ScreenKind {
+  if (taskId === 'gs-sign-in') return 'login';
+  if (taskId === 'gs-navigate-modules') return 'home-sidebar';
+  if (taskId === 'gs-bisync101') return 'home-101';
+  if (taskId.startsWith('gs-')) return 'home';
+  if (taskId.startsWith('sc-')) return 'system';
+  if (taskId.startsWith('rms-')) return 'rms';
+  if (taskId === 'pos-take-order') return 'pos-floor';
+  if (taskId.startsWith('pos-')) return 'pos';
+  if (taskId.startsWith('hr-')) return 'hr';
+  if (taskId.startsWith('ac-')) return 'accounting';
+  return 'home';
+}
+
+function pageTitle(task: Bisync101Task): string {
+  const kind = screenKindForTask(task.id);
+  if (kind === 'login' || kind.startsWith('home')) return 'Home';
+  const where = task.whereInApp || '';
+  if (where.includes('→')) return where.split('→').pop()?.trim().slice(0, 28) || task.title;
+  if (where.includes('·')) return where.split('·').pop()?.trim().slice(0, 28) || task.title;
+  if (where) return where.trim().slice(0, 28);
+  return task.title.slice(0, 28);
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
+
+function drawBrandLockup(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.font = '700 13px Nunito, system-ui, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Bisync.', x, y);
+  const tw = ctx.measureText('Bisync.').width;
+  ctx.fillStyle = ORANGE;
+  ctx.fillText('cloud', x + tw, y);
+  const cw = ctx.measureText('cloud').width;
+  const ax = x + tw + cw + 6;
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(ax, y - 4);
+  ctx.lineTo(ax + 16, y - 4);
+  ctx.stroke();
+  ctx.fillStyle = ORANGE;
+  ctx.beginPath();
+  ctx.moveTo(ax + 12, y - 8);
+  ctx.lineTo(ax + 18, y - 4);
+  ctx.lineTo(ax + 12, y);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText('pasar', ax + 22, y);
+  const pw = ctx.measureText('pasar').width;
+  ctx.fillStyle = ORANGE;
+  ctx.fillText('.ai', ax + 22 + pw, y);
+}
+
+function drawHeader(ctx: CanvasRenderingContext2D, w: number, headerH: number, title: string) {
+  ctx.fillStyle = SADDLE;
+  ctx.fillRect(0, 0, w, headerH);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(0, headerH - 1, w, 1);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, 14, 16, 20, 20, 3);
+  ctx.stroke();
+  ctx.strokeStyle = '#fff';
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(18, 22 + i * 5);
+    ctx.lineTo(30, 22 + i * 5);
+    ctx.stroke();
+  }
+
+  drawBrandLockup(ctx, 44, 30);
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(210, 14, 1, 26);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 13px Nunito, system-ui, sans-serif';
+  ctx.fillText(title.slice(0, 18), 220, 26);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '400 10px Nunito, system-ui, sans-serif';
+  ctx.fillText('Asia/Singapore · 12:00', 220, 40);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  roundRect(ctx, 430, 14, 130, 26, 6);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '600 11px Nunito, system-ui, sans-serif';
+  ctx.fillText('Company ▾', 442, 31);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.1)';
+  roundRect(ctx, 570, 14, 120, 26, 6);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Location ▾', 582, 31);
+
+  ctx.fillStyle = ORANGE;
+  roundRect(ctx, w - 106, 14, 88, 26, 6);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 10px Nunito, system-ui, sans-serif';
+  ctx.fillText('Bisync101', w - 94, 31);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.arc(w - 124, 27, 11, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 9px Nunito, system-ui, sans-serif';
+  ctx.fillText('EN', w - 132, 30);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath();
+  ctx.arc(w - 154, 27, 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = ORANGE;
+  ctx.font = '700 12px Nunito, system-ui, sans-serif';
+  ctx.fillText('⌂', w - 159, 31);
+}
+
+function drawModuleBar(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  y: number,
+  pills: string[],
+  active: string,
+): number {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, y, w, 44);
+  ctx.fillStyle = 'rgba(42,33,24,0.1)';
+  ctx.fillRect(0, y + 43, w, 1);
+  let x = 16;
+  for (const pill of pills) {
+    ctx.font = '700 11px Nunito, system-ui, sans-serif';
+    const tw = ctx.measureText(pill).width + 20;
+    if (pill === active) {
+      ctx.fillStyle = ORANGE;
+      roundRect(ctx, x, y + 8, tw, 26, 13);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+    } else {
+      ctx.fillStyle = SOFT;
+      roundRect(ctx, x, y + 8, tw, 26, 13);
+      ctx.fill();
+      ctx.fillStyle = MUTED;
+    }
+    ctx.fillText(pill, x + 10, y + 25);
+    x += tw + 8;
+  }
+  return y + 44;
+}
+
+function drawTable(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  tw: number,
+  th: number,
+  headers: string[],
+  rows: string[][],
+) {
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, x, y, tw, th, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(42,33,24,0.12)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  const rowH = 32;
+  ctx.fillStyle = SOFT;
+  ctx.fillRect(x, y, tw, rowH);
+  const colW = tw / Math.max(headers.length, 1);
+  ctx.font = '700 10px Nunito, system-ui, sans-serif';
+  ctx.fillStyle = MUTED;
+  headers.forEach((h, i) => ctx.fillText(h, x + 10 + i * colW, y + 20));
+  rows.slice(0, 8).forEach((row, r) => {
+    const yy = y + rowH * (r + 1);
+    if (yy + rowH > y + th) return;
+    if (r % 2 === 1) {
+      ctx.fillStyle = '#faf8f5';
+      ctx.fillRect(x, yy, tw, rowH);
+    }
+    ctx.fillStyle = SADDLE;
+    ctx.font = '400 11px Nunito, system-ui, sans-serif';
+    row.forEach((cell, i) => ctx.fillText(cell.slice(0, 22), x + 10 + i * colW, yy + 20));
+  });
+}
+
+function drawHome(ctx: CanvasRenderingContext2D, w: number, h: number, headerH: number) {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, headerH, w, h - headerH);
+  ctx.fillStyle = SADDLE;
+  ctx.font = '700 18px Nunito, system-ui, sans-serif';
+  ctx.fillText('Home', 24, headerH + 32);
+  ctx.fillStyle = MUTED;
+  ctx.font = '400 11px Nunito, system-ui, sans-serif';
+  ctx.fillText('Open a module to continue — only enabled modules are available.', 24, headerH + 52);
+
+  const tiles: Array<{ code: string; name: string; accent: string }> = [
+    { code: 'RMS', name: 'Revenue Management', accent: ORANGE },
+    { code: 'POS', name: 'Point-of-Sales', accent: '#2A7A6A' },
+    { code: 'HRM', name: 'Human Resources', accent: '#3B6EA5' },
+    { code: 'Accounting', name: 'Accounting', accent: '#8A6A2A' },
+  ];
+  const tileW = 440;
+  const tileH = 150;
+  tiles.forEach((tile, i) => {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const x = 24 + col * (tileW + 16);
+    const y = headerH + 70 + row * (tileH + 16);
+    ctx.fillStyle = '#fff';
+    roundRect(ctx, x, y, tileW, tileH, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(42,33,24,0.12)';
+    ctx.stroke();
+    ctx.fillStyle = SOFT;
+    ctx.fillRect(x + tileW - 120, y + 24, 104, tileH - 48);
+    ctx.fillStyle = tile.accent;
+    for (let b = 0; b < 4; b++) {
+      const bh = 28 + b * 10;
+      ctx.fillRect(x + tileW - 108 + b * 22, y + tileH - 36 - bh / 2, 14, bh / 2);
+    }
+    ctx.fillStyle = tile.accent;
+    ctx.font = '700 10px Nunito, system-ui, sans-serif';
+    ctx.fillText(tile.code, x + 16, y + 28);
+    ctx.fillStyle = SADDLE;
+    ctx.font = '700 15px Nunito, system-ui, sans-serif';
+    ctx.fillText(tile.name, x + 16, y + 52);
+    ctx.fillStyle = ORANGE;
+    ctx.font = '700 11px Nunito, system-ui, sans-serif';
+    ctx.fillText('Open module →', x + 16, y + 78);
+  });
+}
+
+function drawLogin(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.fillStyle = '#fdf8f2';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = SADDLE;
+  ctx.fillRect(0, 0, w * 0.42, h);
+  ctx.fillStyle = ORANGE;
+  ctx.beginPath();
+  ctx.arc(110, 160, 40, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 36px Nunito, system-ui, sans-serif';
+  ctx.fillText('B', 96, 172);
+  ctx.font = '700 22px Nunito, system-ui, sans-serif';
+  ctx.fillText('Bisync.cloud', 70, 230);
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.font = '400 12px Nunito, system-ui, sans-serif';
+  ctx.fillText('Restaurant operations platform', 70, 252);
+
+  const cx = w * 0.5;
+  const cy = h * 0.18;
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, cx, cy, 380, 320, 12);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(42,33,24,0.12)';
+  ctx.stroke();
+  ctx.fillStyle = SADDLE;
+  ctx.font = '700 20px Nunito, system-ui, sans-serif';
+  ctx.fillText('Sign in', cx + 28, cy + 48);
+  ctx.fillStyle = MUTED;
+  ctx.font = '400 11px Nunito, system-ui, sans-serif';
+  ctx.fillText('Use your company account email and password.', cx + 28, cy + 72);
+  ctx.fillStyle = SOFT;
+  roundRect(ctx, cx + 28, cy + 100, 324, 36, 6);
+  ctx.fill();
+  roundRect(ctx, cx + 28, cy + 152, 324, 36, 6);
+  ctx.fill();
+  ctx.fillStyle = MUTED;
+  ctx.fillText('Email', cx + 40, cy + 122);
+  ctx.fillText('Password', cx + 40, cy + 174);
+  ctx.fillStyle = ORANGE;
+  roundRect(ctx, cx + 28, cy + 220, 324, 38, 8);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 13px Nunito, system-ui, sans-serif';
+  ctx.fillText('Sign in', cx + 160, cy + 244);
 }
 
 function drawLessonFrame(
@@ -196,87 +504,247 @@ function drawLessonFrame(
   progress: number,
 ) {
   ctx.clearRect(0, 0, w, h);
+  const kind = screenKindForTask(task.id);
+  const headerH = Math.round(h * 0.11);
+  const title = pageTitle(task);
 
-  // App chrome
-  ctx.fillStyle = '#2A2118';
-  ctx.fillRect(0, 0, w, h);
-
-  // Top bar
-  ctx.fillStyle = '#241c15';
-  ctx.fillRect(0, 0, w, h * 0.1);
-  ctx.fillStyle = '#F37021';
-  ctx.beginPath();
-  ctx.roundRect(w * 0.03, h * 0.03, w * 0.1, h * 0.04, 4);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.font = '600 14px Inter, system-ui, sans-serif';
-  ctx.fillText('Bisync.cloud', w * 0.15, h * 0.058);
-
-  // Fake sidebar
-  ctx.fillStyle = '#1c1612';
-  ctx.fillRect(0, h * 0.1, w * 0.2, h * 0.9);
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.font = '12px Inter, system-ui, sans-serif';
-  for (let i = 0; i < 6; i++) {
-    ctx.fillRect(w * 0.03, h * (0.18 + i * 0.08), w * 0.14, h * 0.025);
-  }
-
-  // Content card
-  ctx.fillStyle = '#f7f4ef';
-  ctx.beginPath();
-  ctx.roundRect(w * 0.23, h * 0.14, w * 0.72, h * 0.72, 10);
-  ctx.fill();
-
-  ctx.fillStyle = '#2A2118';
-  ctx.font = '700 22px Inter, system-ui, sans-serif';
-  ctx.fillText(task.title, w * 0.26, h * 0.22);
-
-  ctx.fillStyle = '#5c534a';
-  ctx.font = '14px Inter, system-ui, sans-serif';
-  wrapText(ctx, task.summary, w * 0.26, h * 0.28, w * 0.64, 18);
-
-  const step = task.steps[stepIndex] ?? task.steps[0];
-  if (step?.hotspot) {
-    const hx = w * (0.23 + (step.hotspot.x / 100) * 0.72);
-    const hy = h * (0.14 + (step.hotspot.y / 100) * 0.72);
-    const hw = w * (step.hotspot.w / 100) * 0.72;
-    const hh = h * (step.hotspot.h / 100) * 0.72;
-    ctx.strokeStyle = '#F37021';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 6]);
-    ctx.strokeRect(hx, hy, hw, hh);
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(243,112,33,0.12)';
-    ctx.fillRect(hx, hy, hw, hh);
-
-    // Cursor
-    const cx = hx + hw * (0.35 + 0.3 * Math.sin(progress * Math.PI * 4));
-    const cy = hy + hh * 0.55;
-    drawCursor(ctx, cx, cy);
-
-    if (step.hotspot.label) {
-      ctx.fillStyle = '#F37021';
-      ctx.beginPath();
-      ctx.roundRect(hx, Math.max(h * 0.12, hy - 22), Math.min(hw, w * 0.28), 20, 4);
+  if (kind === 'login') {
+    drawLogin(ctx, w, h);
+  } else {
+    drawHeader(ctx, w, headerH, title);
+    if (kind === 'home' || kind === 'home-sidebar' || kind === 'home-101') {
+      drawHome(ctx, w, h, headerH);
+      if (kind === 'home-sidebar') {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = SADDLE;
+        ctx.fillRect(0, 0, w * 0.28, h);
+        const nav = ['Home', 'Revenue Management', 'Point-of-Sales', 'Human Resources', 'Accounting', 'System Configuration'];
+        nav.forEach((label, i) => {
+          const y = 70 + i * 42;
+          if (i === 0) {
+            ctx.fillStyle = ORANGE;
+            roundRect(ctx, 12, y, w * 0.28 - 24, 34, 6);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+          } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          }
+          ctx.font = '600 12px Nunito, system-ui, sans-serif';
+          ctx.fillText(label, 24, y + 22);
+        });
+      } else if (kind === 'home-101') {
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = SADDLE;
+        roundRect(ctx, 40, 40, w - 80, h - 80, 12);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = '700 16px Nunito, system-ui, sans-serif';
+        ctx.fillText('Bisync101', 60, 70);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.font = '400 11px Nunito, system-ui, sans-serif';
+        ctx.fillText('User guide & wiki', 60, 90);
+        const mods = ['Getting Started', 'System Config', 'RMS Orders', 'POS', 'HR', 'Accounting'];
+        mods.forEach((m, i) => {
+          const y = 120 + i * 36;
+          if (i === 0) {
+            ctx.fillStyle = ORANGE;
+            roundRect(ctx, 56, y, 184, 30, 6);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+          } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.65)';
+          }
+          ctx.font = '600 11px Nunito, system-ui, sans-serif';
+          ctx.fillText(m, 68, y + 19);
+        });
+        ctx.fillStyle = '#1a1410';
+        roundRect(ctx, 260, 120, w - 320, h - 190, 8);
+        ctx.fill();
+        ctx.fillStyle = '#f7f4ef';
+        roundRect(ctx, 280, 170, w - 360, 190, 6);
+        ctx.fill();
+        ctx.fillStyle = SADDLE;
+        ctx.font = '700 14px Nunito, system-ui, sans-serif';
+        ctx.fillText('Play a task clip', 300, 230);
+      }
+    } else if (kind === 'rms') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, headerH, w, h - headerH);
+      const y = drawModuleBar(
+        ctx,
+        w,
+        headerH,
+        ['Operation', 'Component', 'Vendors', 'Products', 'Sales', 'Reports'],
+        'Operation',
+      );
+      ctx.fillStyle = SADDLE;
+      ctx.font = '700 16px Nunito, system-ui, sans-serif';
+      ctx.fillText(title, 24, y + 30);
+      ctx.fillStyle = ORANGE;
+      roundRect(ctx, w - 160, y + 12, 136, 28, 6);
       ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.font = '600 11px Inter, system-ui, sans-serif';
-      ctx.fillText(step.hotspot.label, hx + 8, Math.max(h * 0.12, hy - 22) + 14);
+      ctx.font = '700 11px Nunito, system-ui, sans-serif';
+      ctx.fillText('+ New', w - 120, y + 30);
+      drawTable(ctx, 24, y + 52, w - 48, h - y - 70, ['Document', 'Vendor / Outlet', 'Status', 'Amount'], [
+        ['PO-1042', 'Central Kitchen', 'Open', '$1,240.00'],
+        ['PO-1041', 'Fresh Farm Co', 'Received', '$860.50'],
+        ['PO-1040', 'Dairy Supply', 'Draft', '$320.00'],
+        ['PO-1039', 'Beverage Hub', 'Closed', '$2,110.25'],
+      ]);
+    } else if (kind === 'pos' || kind === 'pos-floor') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, headerH, w, h - headerH);
+      const y = drawModuleBar(
+        ctx,
+        w,
+        headerH,
+        ['POS Menu', 'Modifier Group', 'Promotion Scheduler', 'POS Config', 'Devices'],
+        kind === 'pos-floor' ? 'POS Menu' : 'POS Config',
+      );
+      if (kind === 'pos-floor') {
+        ctx.fillStyle = SADDLE;
+        ctx.font = '700 16px Nunito, system-ui, sans-serif';
+        ctx.fillText('POS Floor · Take order', 24, y + 30);
+        for (let i = 0; i < 8; i++) {
+          const col = i % 4;
+          const row = Math.floor(i / 4);
+          const x = 24 + col * 230;
+          const ty = y + 50 + row * 160;
+          const occupied = i === 1 || i === 4;
+          ctx.fillStyle = occupied ? ORANGE : SOFT;
+          roundRect(ctx, x, ty, 210, 140, 10);
+          ctx.fill();
+          ctx.fillStyle = occupied ? '#fff' : SADDLE;
+          ctx.font = '700 18px Nunito, system-ui, sans-serif';
+          ctx.fillText(`T${i + 1}`, x + 16, ty + 36);
+          ctx.font = '400 11px Nunito, system-ui, sans-serif';
+          ctx.fillText(occupied ? '4 pax' : 'Open', x + 16, ty + 58);
+        }
+      } else {
+        ctx.fillStyle = SADDLE;
+        ctx.font = '700 16px Nunito, system-ui, sans-serif';
+        ctx.fillText(title, 24, y + 30);
+        drawTable(ctx, 24, y + 48, w - 48, h - y - 66, ['Code', 'Name', 'Group', 'Price', 'Active'], [
+          ['BURG', 'Classic Burger', 'Mains', '$12.00', 'Yes'],
+          ['BEER', 'Craft Beer', 'Beer', '$8.00', 'Yes'],
+          ['Fries', 'Shoestring Fries', 'Sides', '$5.50', 'Yes'],
+        ]);
+      }
+    } else if (kind === 'hr') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, headerH, w, h - headerH);
+      const y = drawModuleBar(
+        ctx,
+        w,
+        headerH,
+        ['Directory', 'Attendance', 'Leave', 'Schedule', 'Team', 'HR Config'],
+        'Directory',
+      );
+      ctx.fillStyle = SADDLE;
+      ctx.font = '700 16px Nunito, system-ui, sans-serif';
+      ctx.fillText(title, 24, y + 30);
+      drawTable(ctx, 24, y + 48, w - 48, h - y - 66, ['Employee', 'Department', 'Position', 'Status'], [
+        ['Alex Tan', 'FOH', 'Captain', 'Active'],
+        ['Mei Wong', 'Kitchen', 'Chef', 'Active'],
+        ['Raj Kumar', 'Bar', 'Bartender', 'Active'],
+      ]);
+    } else if (kind === 'accounting') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, headerH, w, h - headerH);
+      ctx.fillStyle = SADDLE;
+      ctx.font = '700 16px Nunito, system-ui, sans-serif';
+      ctx.fillText(title, 24, headerH + 32);
+      const cards = [
+        ['Gross pay', '$48,220'],
+        ['Deductions', '$6,140'],
+        ['Net pay', '$42,080'],
+      ];
+      cards.forEach(([label, value], i) => {
+        const x = 24 + i * 300;
+        ctx.fillStyle = '#fff';
+        roundRect(ctx, x, headerH + 56, 280, 84, 10);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(42,33,24,0.12)';
+        ctx.stroke();
+        ctx.fillStyle = MUTED;
+        ctx.font = '400 11px Nunito, system-ui, sans-serif';
+        ctx.fillText(label, x + 16, headerH + 80);
+        ctx.fillStyle = SADDLE;
+        ctx.font = '700 20px Nunito, system-ui, sans-serif';
+        ctx.fillText(value, x + 16, headerH + 112);
+      });
+    } else if (kind === 'system') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, headerH, w, h - headerH);
+      const y = drawModuleBar(
+        ctx,
+        w,
+        headerH,
+        ['Companies', 'Locations', 'Access Control', 'Audit Trail'],
+        'Companies',
+      );
+      ctx.fillStyle = SADDLE;
+      ctx.font = '700 16px Nunito, system-ui, sans-serif';
+      ctx.fillText(title, 24, y + 30);
+      drawTable(ctx, 24, y + 48, w - 48, h - y - 66, ['Name', 'Code', 'Locations', 'Status'], [
+        ['Weissbrau Group', 'WEIS', '4', 'Active'],
+        ['Demo Company', 'DEMO', '2', 'Active'],
+      ]);
     }
   }
 
-  // Step caption bar
-  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  const step = task.steps[stepIndex] ?? task.steps[0];
+  if (step?.hotspot) {
+    drawHotspot(ctx, w, h, step.hotspot, progress);
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
   ctx.fillRect(0, h * 0.88, w, h * 0.12);
-  ctx.fillStyle = '#F37021';
-  ctx.font = '700 12px Inter, system-ui, sans-serif';
-  ctx.fillText(`STEP ${stepIndex + 1}`, w * 0.04, h * 0.93);
+  ctx.fillStyle = ORANGE;
+  ctx.font = '700 11px Nunito, system-ui, sans-serif';
+  ctx.fillText(`STEP ${stepIndex + 1}`, w * 0.03, h * 0.93);
   ctx.fillStyle = '#fff';
-  ctx.font = '600 16px Inter, system-ui, sans-serif';
-  ctx.fillText(step?.title ?? '', w * 0.14, h * 0.93);
+  ctx.font = '700 15px Nunito, system-ui, sans-serif';
+  ctx.fillText(step?.title ?? '', w * 0.12, h * 0.93);
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.font = '13px Inter, system-ui, sans-serif';
-  wrapText(ctx, step?.detail ?? '', w * 0.14, h * 0.97, w * 0.8, 16);
+  ctx.font = '400 12px Nunito, system-ui, sans-serif';
+  wrapText(ctx, step?.detail ?? '', w * 0.12, h * 0.97, w * 0.8, 15);
+}
+
+function drawHotspot(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  hotspot: Bisync101Hotspot,
+  progress: number,
+) {
+  const hx = w * (hotspot.x / 100);
+  const hy = h * (hotspot.y / 100);
+  const hw = w * (hotspot.w / 100);
+  const hh = h * (hotspot.h / 100);
+  ctx.strokeStyle = ORANGE;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 6]);
+  ctx.strokeRect(hx, hy, hw, hh);
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(243,112,33,0.14)';
+  ctx.fillRect(hx, hy, hw, hh);
+
+  const cx = hx + hw * (0.35 + 0.3 * Math.sin(progress * Math.PI * 4));
+  const cy = hy + hh * 0.55;
+  drawCursor(ctx, cx, cy);
+
+  if (hotspot.label) {
+    ctx.fillStyle = ORANGE;
+    roundRect(ctx, hx, Math.max(8, hy - 22), Math.min(hw, w * 0.28), 20, 4);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 11px Nunito, system-ui, sans-serif';
+    ctx.fillText(hotspot.label, hx + 8, Math.max(8, hy - 22) + 14);
+  }
 }
 
 function drawCursor(ctx: CanvasRenderingContext2D, x: number, y: number) {
