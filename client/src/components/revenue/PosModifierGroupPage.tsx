@@ -391,9 +391,10 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Modifier Group</h2>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            Configure Compulsory, Food, Beverage, and Component SWAP modifiers. Attach each group to a
-            product group or individual product. Stock-influencing Food/Beverage options must use products
-            from the matching RMS product group.
+            Configure Compulsory, Food, Beverage, and Component SWAP modifiers. Attach each group by
+            Category, Product Group, and/or Product — Food and Beverage toolbar buttons only show groups
+            attached to the selected register item. Stock-influencing options must use products from the
+            matching RMS product group (Food Modifier / Beverage Modifier).
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -869,7 +870,8 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
               </div>
               {form.attachments.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Not attached yet. Compulsory groups need an attachment to appear on register.
+                  Not attached yet. Compulsory, Food, and Beverage groups need an attachment to appear
+                  on the register for matching products.
                 </p>
               ) : null}
               {form.attachments.map((att, idx) => {

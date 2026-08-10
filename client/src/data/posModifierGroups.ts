@@ -4,6 +4,7 @@ import {
   BEVERAGE_MODIFIER_GROUPS,
   FOOD_MODIFIER_GROUPS,
 } from '../bisync-pos/features/order/domain/ordering'
+import { normalizePosGroupLabel } from './posCatalog'
 
 export const POS_MODIFIER_KINDS: Array<{
   id: PosModifierKind
@@ -46,6 +47,14 @@ export function groupsMatchName(a: string | null | undefined, b: string | null |
   return (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase()
 }
 
+/** Match POS product groups after synonym normalize (Draft Beer ↔ Draught Beer). */
+export function groupsMatchPosLabel(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  return normalizePosGroupLabel(a || '') === normalizePosGroupLabel(b || '')
+}
+
 export type ModifierAttachProduct = {
   id: string | number
   category?: string | null
@@ -81,7 +90,7 @@ export function attachmentMatchesProduct(
   }
 
   if (group) {
-    if (!groupsMatchName(group, product.group)) return false
+    if (!groupsMatchPosLabel(group, product.group)) return false
   } else if (type === 'product-group' && !category) {
     return false
   }
@@ -153,26 +162,30 @@ function toPickerOption(o: PosModifierOption): ModifierOption {
   }
 }
 
-/** Prefer configured Food/Beverage groups; fall back to hard-coded defaults. */
+/**
+ * Food/Beverage toolbar picker groups for the selected product.
+ * When a product is provided, only groups attached to that product (and kind) are shown —
+ * never every beverage/food group company-wide.
+ * Without a product, fall back to all active groups of that kind, then hard-coded defaults.
+ */
 export function resolveToolbarModifierGroups(
   all: PosModifierGroup[],
   kind: 'food' | 'beverage',
-  product?: { id: string | number; group?: string | null } | null,
+  product?: ModifierAttachProduct | null,
 ): ModifierGroup[] {
-  const attached = product
-    ? resolveAttachedModifierGroups(all, product, kind)
-    : all.filter(g => g.active && g.kind === kind).sort((a, b) => a.sequence - b.sequence)
-  if (attached.length > 0) return toPickerGroups(attached)
+  if (product) {
+    return toPickerGroups(resolveAttachedModifierGroups(all, product, kind))
+  }
   const anyOfKind = all
     .filter(g => g.active && g.kind === kind)
-    .sort((a, b) => a.sequence - b.sequence)
+    .sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name))
   if (anyOfKind.length > 0) return toPickerGroups(anyOfKind)
   return kind === 'food' ? FOOD_MODIFIER_GROUPS : BEVERAGE_MODIFIER_GROUPS
 }
 
 export function formatCompulsorySummary(
   all: PosModifierGroup[],
-  product: { id: string | number; group?: string | null },
+  product: ModifierAttachProduct,
 ): string {
   const groups = resolveAttachedModifierGroups(all, product, 'compulsory')
   if (groups.length === 0) return '—'

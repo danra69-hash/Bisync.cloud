@@ -62,32 +62,39 @@ export function ModifierPickerModal({
         </header>
 
         <div className="combo-picker-modal__body">
-          {(groups ?? []).map(group => (
-            <section key={group.id} className="combo-picker-modal__group">
-              <h3>{group.name}</h3>
-              <div className="combo-picker-modal__grid">
-                {(group.options ?? []).map(opt => {
-                  const checked = selected.has(opt.id)
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`combo-picker-tile${checked ? ' is-selected' : ''}`}
-                      aria-pressed={checked}
-                      onClick={() => toggle(opt.id)}
-                    >
-                      <span className="combo-picker-tile__main">
-                        <span className="combo-picker-tile__name">{opt.label}</span>
-                        <span className="combo-picker-tile__code">
-                          {checked ? 'Selected' : 'Tap to add'}
+          {(groups ?? []).length === 0 ? (
+            <p className="combo-picker-modal__copy">
+              No {title.toLowerCase()} groups are attached to this product. Attach a modifier group
+              under Revenue → POS Modifier Group (Category, Product Group, or Product).
+            </p>
+          ) : (
+            (groups ?? []).map(group => (
+              <section key={group.id} className="combo-picker-modal__group">
+                <h3>{group.name}</h3>
+                <div className="combo-picker-modal__grid">
+                  {(group.options ?? []).map(opt => {
+                    const checked = selected.has(opt.id)
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        className={`combo-picker-tile${checked ? ' is-selected' : ''}`}
+                        aria-pressed={checked}
+                        onClick={() => toggle(opt.id)}
+                      >
+                        <span className="combo-picker-tile__main">
+                          <span className="combo-picker-tile__name">{opt.label}</span>
+                          <span className="combo-picker-tile__code">
+                            {checked ? 'Selected' : 'Tap to add'}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </section>
-          ))}
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            ))
+          )}
         </div>
 
         <div className="combo-picker-modal__summary">
