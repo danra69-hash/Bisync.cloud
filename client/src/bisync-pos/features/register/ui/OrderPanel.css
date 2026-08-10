@@ -307,17 +307,57 @@
 .summary-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   color: var(--color-ink-muted);
   font-size: var(--pos-font-sm);
+  gap: 8px;
+}
+
+.summary-row--editable {
+  color: var(--color-ink);
+}
+
+.summary-row--button {
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.summary-row--button:hover .summary-row__edit,
+.summary-row--button:focus-visible .summary-row__edit {
+  border-color: var(--color-primary, #0f766e);
+  background: var(--color-primary-soft, #ccfbf1);
+}
+
+.summary-row__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .summary-row__edit {
-  margin-left: 4px;
-  border: none;
-  background: transparent;
-  color: var(--color-ink-subtle);
-  cursor: pointer;
+  margin-left: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface, #fff);
+  color: var(--color-primary, #0f766e);
+  font: inherit;
   font-size: var(--pos-font-xs);
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.summary-row__value {
+  font-variant-numeric: tabular-nums;
 }
 
 .order-panel__total {
