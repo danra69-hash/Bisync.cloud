@@ -19,12 +19,12 @@ export const POS_MODIFIER_KINDS: Array<{
   {
     id: 'food',
     label: 'Food Modifier',
-    hint: 'Optional food notes / add-ons. Stock influence requires products in the Food Modifier product group.',
+    hint: 'Optional food notes / add-ons. Tie options to a component or product when Affects Stock is on so POS can deplete them.',
   },
   {
     id: 'beverage',
     label: 'Beverage Modifier',
-    hint: 'Optional drink notes / add-ons. Stock influence requires products in the Beverage Modifier product group.',
+    hint: 'Optional drink notes / add-ons. Tie options to a component or product when Affects Stock is on so POS can deplete them.',
   },
   {
     id: 'component-swap',
