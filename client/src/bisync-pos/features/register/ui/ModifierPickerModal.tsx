@@ -64,6 +64,14 @@ export function ModifierPickerModal({
               Tick modifiers for this item. They are saved on the order line note for kitchen.
             </p>
           </div>
+          <button
+            type="button"
+            className="combo-picker-modal__close"
+            aria-label="Close"
+            onClick={onCancel}
+          >
+            ×
+          </button>
         </header>
 
         <div className="combo-picker-modal__body">
