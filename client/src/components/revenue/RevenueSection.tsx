@@ -29,6 +29,7 @@ import { WastageReportPage } from './reports/WastageReportPage';
 import { BcgMatrixReportPage } from './reports/BcgMatrixReportPage';
 import { OpsExpensesAnalysisReportPage } from './reports/OpsExpensesAnalysisReportPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
+import { PosMappingSchedulerPage } from './PosMappingSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
 import { PosPromotionSchedulerPage } from './PosPromotionSchedulerPage';
@@ -179,6 +180,10 @@ function renderRevMgmtContent(
     case 'Product Audit':
       return (
         <ProductAuditPage selectedCompanyId={selectedCompanyId} />
+      );
+    case 'External POS Mapping':
+      return (
+        <PosMappingSchedulerPage selectedCompanyId={selectedCompanyId} />
       );
     case 'Production':
       return (

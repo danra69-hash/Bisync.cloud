@@ -15,11 +15,17 @@ import { ToggleSwitch } from '../admin/ToggleSwitch';
 type Props = {
   selectedCompanyId: number | null;
   embedded?: boolean;
+  /** Page heading — Products nav uses External POS Mapping; Sales tab uses POS Mapping. */
+  title?: string;
 };
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
-export function PosMappingSchedulerPage({ selectedCompanyId, embedded = false }: Props) {
+export function PosMappingSchedulerPage({
+  selectedCompanyId,
+  embedded = false,
+  title = 'External POS Mapping',
+}: Props) {
   const [rows, setRows] = useState<PosProductMapping[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
@@ -197,9 +203,9 @@ export function PosMappingSchedulerPage({ selectedCompanyId, embedded = false }:
       <section className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold">POS Mapping</h2>
+            <h2 className="text-sm font-semibold">{title}</h2>
             <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Map each catalog product to its POS PLU number (POS product number).
+              Map each catalog product to its external POS PLU number (POS product number).
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
