@@ -83,15 +83,47 @@ public class CashPurchasesController(
             ? request.DeliveryPrice / request.Quantity
             : request.DeliveryPrice;
 
+        var vendorProductId = request.VendorProductId?.Trim() ?? string.Empty;
+        decimal? pathPrincipal = null;
+        string? pathPrincipalUom = null;
+        if (!string.IsNullOrEmpty(vendorProductId))
+        {
+            var vendorProduct = await db.VendorProducts.AsNoTracking()
+                .FirstOrDefaultAsync(v => v.ExternalId == vendorProductId);
+            if (DeliveryPrincipalResolver.TryResolveFromVendorProduct(
+                    vendorProduct,
+                    ingredient,
+                    out var resolvedPrincipal,
+                    out var resolvedUom))
+            {
+                pathPrincipal = resolvedPrincipal;
+                pathPrincipalUom = resolvedUom;
+            }
+        }
+
+        if (pathPrincipal is null
+            && DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                deliveryUnit,
+                ingredient,
+                out var pathFromLabel,
+                out var pathFromLabelUom))
+        {
+            pathPrincipal = pathFromLabel;
+            pathPrincipalUom = pathFromLabelUom;
+        }
+
         var stockQty = request.Quantity;
         var stockUom = componentUom;
+        // Quantity is delivery packages; prefer delivery unit as the conversion basis.
         var inbound = IngredientUomBridge.ToInboundPrincipal(
             ingredient,
             request.Quantity,
-            componentUom,
+            string.IsNullOrWhiteSpace(deliveryUnit) ? componentUom : deliveryUnit,
             unitCost,
-            vendorProductId: null,
-            deliveryUom: deliveryUnit);
+            vendorProductId: string.IsNullOrEmpty(vendorProductId) ? null : vendorProductId,
+            deliveryUom: deliveryUnit,
+            fallbackPrincipalPerPackage: pathPrincipal,
+            fallbackPrincipalUom: pathPrincipalUom);
         stockQty = inbound.Quantity;
         stockUom = inbound.Uom;
         unitCost = inbound.UnitPrice;

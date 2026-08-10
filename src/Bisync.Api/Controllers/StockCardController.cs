@@ -72,6 +72,19 @@ public class StockCardController(
         if (locationIdList.Count == 0)
             return BadRequest(new { message = "Select at least one location." });
 
+        // Heal under-converted delivery packages → PCU for this component before rendering.
+        try
+        {
+            await receivedStockHealer.HealMissingReceivedStockAsync(
+                cancellationToken,
+                fullScan: false,
+                componentId: itemKey);
+        }
+        catch
+        {
+            // Detail must still succeed even if heal fails.
+        }
+
         try
         {
             var detail = await stockCardService.GetDetailAsync(

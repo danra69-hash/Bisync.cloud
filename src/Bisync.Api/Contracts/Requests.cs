@@ -849,6 +849,9 @@ public class CreateCashPurchaseRequest
     public decimal Quantity { get; set; }
     [MaxLength(50)]
     public string ComponentUom { get; set; } = string.Empty;
+    /// <summary>Optional tagged vendor product — used for delivery→PCU conversion.</summary>
+    [MaxLength(80)]
+    public string? VendorProductId { get; set; }
     [MaxLength(100)]
     public string? ReceiptNumber { get; set; }
     [MaxLength(500)]

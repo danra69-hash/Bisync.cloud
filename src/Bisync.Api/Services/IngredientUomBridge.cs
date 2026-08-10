@@ -148,7 +148,9 @@ public static class IngredientUomBridge
     /// <c>RoundingResidual = ExtendedAtUnitPrice − DocumentAmount</c> (e.g. 125.07 − 125.00 = +0.07).
     /// Document amount stays AP/PO authority; residual is stored and shown on Stock Card inbound.
     /// </para>
-    /// Falls back to inventory↔recipe conversion when no vendor tag exists.
+    /// Falls back to vendor-product delivery path, then inventory↔recipe conversion.
+    /// PO lines often label <paramref name="uom"/> as RecipeUom while <paramref name="quantity"/>
+    /// is still delivery packages — conversion always runs when a principal factor is known.
     /// </summary>
     public static InboundPrincipalConversion ToInboundPrincipal(
         Ingredient ingredient,
@@ -156,7 +158,9 @@ public static class IngredientUomBridge
         string uom,
         decimal unitPrice,
         string? vendorProductId = null,
-        string? deliveryUom = null)
+        string? deliveryUom = null,
+        decimal? fallbackPrincipalPerPackage = null,
+        string? fallbackPrincipalUom = null)
     {
         var sourceUom = (uom ?? string.Empty).Trim();
         if (quantity <= 0 || ingredient is null)
@@ -171,22 +175,18 @@ public static class IngredientUomBridge
         var delivery = UomCanonical.Normalize(deliveryUom);
         var documentAmount = DecimalRounding.ToDb(quantity * unitPrice);
 
-        // Prefer tagged principal qty: delivery packages × PCU-per-package.
-        if (TryGetVendorPrincipalPerPackage(
-                ingredient.DetailConfigJson,
+        // Prefer tagged principal (with VP-id fallbacks), then delivery-path principal.
+        // PO create often sets ComponentUom = RecipeUom while quantity is still packages —
+        // when principal > 1 we always convert unless qty already looks like packages×principal.
+        if (TryResolvePrincipalPerPackage(
+                ingredient,
                 vendorProductId,
+                fallbackPrincipalPerPackage,
+                fallbackPrincipalUom,
                 out var principalPerPackage,
                 out var taggedComponentUom)
             && principalPerPackage > 0)
         {
-            // Already posted in PCU (qty ≈ packages × principal): do not multiply again.
-            if (!string.IsNullOrEmpty(recipe)
-                && selected == recipe
-                && LooksAlreadyConvertedToPrincipal(quantity, unitPrice, principalPerPackage))
-            {
-                return InboundPrincipalConversion.FromStock(quantity, recipeLabel, unitPrice, documentAmount);
-            }
-
             var principalInRecipe = ResolvePrincipalInRecipeUom(
                 ingredient,
                 principalPerPackage,
@@ -195,7 +195,23 @@ public static class IngredientUomBridge
                 recipe,
                 inventory);
 
-            if (principalInRecipe > 0)
+            if (principalInRecipe > 1.0000001m)
+            {
+                if (LooksAlreadyConvertedToPrincipal(quantity, unitPrice, principalInRecipe))
+                    return InboundPrincipalConversion.FromStock(quantity, recipeLabel, unitPrice, documentAmount);
+
+                return ConvertDeliveryPackagesToPrincipal(
+                    deliveryPackages: quantity,
+                    deliveryUnitPrice: unitPrice,
+                    principalPerPackage: principalInRecipe,
+                    recipeUomLabel: recipeLabel);
+            }
+
+            // principal == 1 (1:1 package↔PCU): only rewrite UOM label when source is delivery.
+            if (principalInRecipe > 0
+                && !string.IsNullOrEmpty(delivery)
+                && delivery != recipe
+                && selected == delivery)
             {
                 return ConvertDeliveryPackagesToPrincipal(
                     deliveryPackages: quantity,
@@ -205,7 +221,7 @@ public static class IngredientUomBridge
             }
         }
 
-        // Already PCU (or convertible inventory → PCU).
+        // Already PCU — only when no convertible delivery principal was available.
         if (!string.IsNullOrEmpty(recipe) && selected == recipe)
             return InboundPrincipalConversion.FromStock(quantity, recipeLabel, unitPrice, documentAmount);
 
@@ -283,19 +299,37 @@ public static class IngredientUomBridge
         decimal postedUnitPrice,
         decimal deliveryPackageQty,
         decimal deliveryUnitPrice,
-        string? vendorProductId)
+        string? vendorProductId,
+        decimal? fallbackPrincipalPerPackage = null,
+        string? fallbackPrincipalUom = null)
     {
         if (ingredient is null || postedQty <= 0 || deliveryPackageQty <= 0)
             return false;
-        if (!TryGetVendorPrincipalPerPackage(
-                ingredient.DetailConfigJson,
+        if (!TryResolvePrincipalPerPackage(
+                ingredient,
                 vendorProductId,
+                fallbackPrincipalPerPackage,
+                fallbackPrincipalUom,
                 out var principal,
-                out _)
-            || principal <= 1.0000001m)
+                out var taggedUom)
+            || principal <= 0)
             return false;
 
-        var expectedQty = deliveryPackageQty * principal;
+        var recipeLabel = string.IsNullOrWhiteSpace(ingredient.RecipeUom)
+            ? taggedUom
+            : ingredient.RecipeUom.Trim();
+        var principalInRecipe = ResolvePrincipalInRecipeUom(
+            ingredient,
+            principal,
+            string.IsNullOrWhiteSpace(taggedUom) ? (fallbackPrincipalUom ?? string.Empty) : taggedUom,
+            recipeLabel,
+            UomCanonical.Normalize(ingredient.RecipeUom),
+            UomCanonical.Normalize(ingredient.InventoryUom));
+
+        if (principalInRecipe <= 1.0000001m)
+            return false;
+
+        var expectedQty = deliveryPackageQty * principalInRecipe;
         var poLineAmount = deliveryPackageQty * deliveryUnitPrice;
         var expectedPrice = expectedQty > 0
             ? DecimalRounding.ToDb(poLineAmount / expectedQty)
@@ -314,7 +348,68 @@ public static class IngredientUomBridge
         if (deliveryUnitPrice > 0 && NearlyEqual(postedUnitPrice, deliveryUnitPrice))
             return true;
 
+        // Posted qty is far below expected PCU (under-converted) while value ≈ package line.
+        if (postedQty + 0.0001m < expectedQty
+            && deliveryUnitPrice > 0
+            && NearlyEqual(postedQty * postedUnitPrice, poLineAmount))
+            return true;
+
         return false;
+    }
+
+    /// <summary>
+    /// Resolves principal-per-package from component tags (exact VP, primary VP, single tagged
+    /// principal &gt; 1), then optional delivery-path fallback from the vendor product catalog.
+    /// </summary>
+    public static bool TryResolvePrincipalPerPackage(
+        Ingredient ingredient,
+        string? vendorProductId,
+        decimal? fallbackPrincipalPerPackage,
+        string? fallbackPrincipalUom,
+        out decimal principalPerPackage,
+        out string componentUom)
+    {
+        principalPerPackage = 0m;
+        componentUom = string.Empty;
+        if (ingredient is null)
+            return false;
+
+        if (TryGetVendorPrincipalPerPackage(
+                ingredient.DetailConfigJson,
+                vendorProductId,
+                out principalPerPackage,
+                out componentUom)
+            && principalPerPackage > 1.0000001m)
+            return true;
+
+        // Placeholder / missing tag for this VP — try primary or sole tagged principal > 1.
+        if (TryGetBestTaggedPrincipal(
+                ingredient.DetailConfigJson,
+                out var taggedPrincipal,
+                out var taggedUom)
+            && taggedPrincipal > 1.0000001m)
+        {
+            principalPerPackage = taggedPrincipal;
+            componentUom = taggedUom;
+            return true;
+        }
+
+        if (fallbackPrincipalPerPackage is decimal fb && fb > 1.0000001m)
+        {
+            principalPerPackage = fb;
+            componentUom = (fallbackPrincipalUom ?? string.Empty).Trim();
+            return true;
+        }
+
+        // Keep exact tag of 1 when that is the only signal (1:1 package↔PCU).
+        if (principalPerPackage > 0)
+            return true;
+
+        return TryGetVendorPrincipalPerPackage(
+            ingredient.DetailConfigJson,
+            vendorProductId,
+            out principalPerPackage,
+            out componentUom);
     }
 
     public static bool TryGetVendorPrincipalPerPackage(
@@ -326,13 +421,25 @@ public static class IngredientUomBridge
         principalPerPackage = 0m;
         componentUom = string.Empty;
         var vpId = (vendorProductId ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(vpId) || string.IsNullOrWhiteSpace(detailConfigJson))
+        if (string.IsNullOrWhiteSpace(detailConfigJson))
             return false;
 
         try
         {
             using var doc = JsonDocument.Parse(detailConfigJson);
             var root = doc.RootElement;
+
+            if (string.IsNullOrEmpty(vpId))
+            {
+                // Fall back to primary vendorProductId on the component detail.
+                vpId = root.TryGetProperty("vendorProductId", out var primaryEl)
+                    && primaryEl.ValueKind == JsonValueKind.String
+                        ? primaryEl.GetString()?.Trim() ?? string.Empty
+                        : string.Empty;
+            }
+
+            if (string.IsNullOrEmpty(vpId))
+                return false;
 
             if (root.TryGetProperty("vendorProductPrincipalQty", out var qtyMap)
                 && qtyMap.ValueKind == JsonValueKind.Object)
@@ -348,6 +455,61 @@ public static class IngredientUomBridge
             }
 
             return principalPerPackage > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// When the PO line VP id is missing/mismatched, use the sole tagged principal &gt; 1
+    /// (or the largest if multiple — still better than posting raw packages).
+    /// </summary>
+    public static bool TryGetBestTaggedPrincipal(
+        string? detailConfigJson,
+        out decimal principalPerPackage,
+        out string componentUom)
+    {
+        principalPerPackage = 0m;
+        componentUom = string.Empty;
+        if (string.IsNullOrWhiteSpace(detailConfigJson))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(detailConfigJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("vendorProductPrincipalQty", out var qtyMap)
+                || qtyMap.ValueKind != JsonValueKind.Object)
+                return false;
+
+            string? bestId = null;
+            decimal bestQty = 0m;
+            foreach (var prop in qtyMap.EnumerateObject())
+            {
+                var qty = ParseDecimal(prop.Value);
+                if (qty <= 1.0000001m) continue;
+                if (qty > bestQty)
+                {
+                    bestQty = qty;
+                    bestId = prop.Name;
+                }
+            }
+
+            if (bestId is null || bestQty <= 0)
+                return false;
+
+            // Prefer a unique tagged principal; if several exist, still use the largest
+            // so under-converted stock (5 pkg @ package price) can be healed.
+            principalPerPackage = bestQty;
+            if (root.TryGetProperty("vendorProductComponentUom", out var uomMap)
+                && uomMap.ValueKind == JsonValueKind.Object)
+            {
+                componentUom = TryGetMapString(uomMap, bestId);
+            }
+
+            return true;
         }
         catch
         {
@@ -404,6 +566,10 @@ public static class IngredientUomBridge
         if (from == to)
             return true;
 
+        // SI family conversion (mass/volume) before ingredient-specific inventory↔recipe ratio.
+        if (DeliveryPrincipalResolver.TryConvertMeasure(quantity, fromUom, toUom, out convertedQty))
+            return true;
+
         var inventory = UomCanonical.Normalize(ingredient.InventoryUom);
         var recipe = UomCanonical.Normalize(ingredient.RecipeUom);
 
@@ -440,21 +606,27 @@ public static class IngredientUomBridge
     {
         var principalInRecipe = principalPerPackage;
         var tagged = UomCanonical.Normalize(taggedComponentUom);
-        if (!string.IsNullOrEmpty(tagged)
-            && !string.IsNullOrEmpty(recipe)
-            && tagged != recipe
-            && TryConvertQuantity(ingredient, principalPerPackage, taggedComponentUom, recipeLabel, out var convertedPrincipal))
-        {
-            principalInRecipe = convertedPrincipal;
-        }
-        else if (!string.IsNullOrEmpty(tagged)
-                 && !string.IsNullOrEmpty(inventory)
-                 && tagged == inventory
-                 && !string.IsNullOrEmpty(recipe)
-                 && tagged != recipe)
+        if (string.IsNullOrEmpty(tagged) || string.IsNullOrEmpty(recipe) || tagged == recipe)
+            return principalInRecipe;
+
+        // SI mass/volume first (g↔kg, ml↔Ltr) — does not require DetailConfigJson ratio.
+        if (DeliveryPrincipalResolver.TryConvertMeasure(
+                principalPerPackage,
+                taggedComponentUom,
+                recipeLabel,
+                out var siConverted)
+            && siConverted > 0)
+            return siConverted;
+
+        if (TryConvertQuantity(ingredient, principalPerPackage, taggedComponentUom, recipeLabel, out var convertedPrincipal))
+            return convertedPrincipal;
+
+        if (!string.IsNullOrEmpty(inventory)
+            && tagged == inventory
+            && tagged != recipe)
         {
             var (converted, _) = ToRecipePreferred(ingredient, principalPerPackage, taggedComponentUom);
-            principalInRecipe = converted;
+            return converted;
         }
 
         return principalInRecipe;
