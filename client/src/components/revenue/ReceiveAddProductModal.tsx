@@ -26,8 +26,12 @@ type Props = {
   vendorExternalId: string;
   vendorName: string;
   locationIds: string[];
-  /** Keys already on the receive sheet: `${componentId}::${vendorProductId}`. */
-  addedLineKeys: Set<string>;
+  /**
+   * Keys for products already added as unordered extras this receive:
+   * `${componentId}::${vendorProductId}`. Ordered PO lines are allowed again
+   * so a CN replacement can use a product already on the PO.
+   */
+  addedExtraLineKeys: Set<string>;
   onClose: () => void;
   onSelect: (selection: ReceiveAddProductSelection) => void;
 };
@@ -51,7 +55,7 @@ export function ReceiveAddProductModal({
   vendorExternalId,
   vendorName,
   locationIds,
-  addedLineKeys,
+  addedExtraLineKeys,
   onClose,
   onSelect,
 }: Props) {
@@ -180,10 +184,12 @@ export function ReceiveAddProductModal({
               <h3 className="text-sm font-semibold">Add product to receive</h3>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Freebies or credit-note replacements from {vendorName || 'this vendor'} that were not on the original order.
+              Freebies or credit-note replacements from {vendorName || 'this vendor'}.
+              Products already on this PO can be added again as replacements.
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Only tagged vendor products for this vendor are listed. Unit price defaults to 0.
+              Link a matching credit note under Add Detail.
             </p>
           </div>
           <button
@@ -224,16 +230,13 @@ export function ReceiveAddProductModal({
             </p>
           ) : (
             filtered.map(opt => {
-              const added = addedLineKeys.has(opt.lineKey);
+              const alreadyExtra = addedExtraLineKeys.has(opt.lineKey);
               return (
                 <button
                   key={opt.lineKey}
                   type="button"
-                  disabled={added}
                   onClick={() => onSelect(opt)}
-                  className={`w-full text-left px-5 py-4 text-xs transition-colors ${
-                    added ? 'bg-muted/30 text-muted-foreground cursor-default' : 'hover:bg-muted/40'
-                  }`}
+                  className="w-full text-left px-5 py-4 text-xs transition-colors hover:bg-muted/40"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -251,7 +254,7 @@ export function ReceiveAddProductModal({
                     <div className="shrink-0 text-right">
                       <p className="font-sans font-medium">{rm(opt.product.deliveryPrice)}</p>
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">
-                        {added ? 'Added' : 'Add · freebie 0'}
+                        {alreadyExtra ? 'Add again · freebie 0' : 'Add · freebie 0'}
                       </p>
                     </div>
                   </div>

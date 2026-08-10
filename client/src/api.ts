@@ -1893,6 +1893,8 @@ export interface PurchaseOrderLineWorkflowPayload {
   name?: string;
   unit?: string;
   deliveryPackage?: string;
+  /** Confirmed credit note settled by this receive line (exact vendor product). */
+  linkedCreditNoteId?: number | null;
 }
 
 export interface PurchaseOrderWorkflowPayload {

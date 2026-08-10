@@ -1402,7 +1402,8 @@ public class PurchaseOrdersController(
     LocationPartitionService locationPartitions,
     SplitUseService splitUse,
     FifoBatchIssueService fifoBatches,
-    PreCommittedPoDrawdownService preCommittedDrawdown) : ControllerBase
+    PreCommittedPoDrawdownService preCommittedDrawdown,
+    CreditNoteService creditNotes) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
@@ -1856,56 +1857,140 @@ public class PurchaseOrdersController(
             }
         }
 
+        var linkedCnLines = request.Items.Where(l => l.LinkedCreditNoteId is > 0).ToList();
+        if (linkedCnLines.Count > 0)
+        {
+            if (linkedCnLines.Any(l => l.ItemId > 0))
+            {
+                return BadRequest(new
+                {
+                    message = "Credit notes can only be linked on additional (unordered) receive lines."
+                });
+            }
+
+            var duplicateCn = linkedCnLines
+                .GroupBy(l => l.LinkedCreditNoteId!.Value)
+                .FirstOrDefault(g => g.Count() > 1);
+            if (duplicateCn is not null)
+            {
+                return BadRequest(new
+                {
+                    message = $"Credit note #{duplicateCn.Key} is linked on more than one receive line."
+                });
+            }
+
+            var companyIdForCn = order.CompanyId ?? 0;
+            if (companyIdForCn <= 0)
+                return BadRequest(new { message = "Purchase order has no company — cannot settle credit notes." });
+
+            foreach (var line in linkedCnLines)
+            {
+                try
+                {
+                    await creditNotes.ValidateLinkedCreditNoteForReceiveAsync(
+                        line.LinkedCreditNoteId!.Value,
+                        companyIdForCn,
+                        line.VendorProductId ?? string.Empty);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return BadRequest(new { message = ex.Message });
+                }
+            }
+        }
+
         await using var transaction = await db.Database.BeginTransactionAsync();
+        try
+        {
+            var unorderedError = await EnsureUnorderedReceiveLinesAsync(order, request.Items);
+            if (unorderedError is not null)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new { message = unorderedError });
+            }
 
-        var unorderedError = await EnsureUnorderedReceiveLinesAsync(order, request.Items);
-        if (unorderedError is not null)
-            return BadRequest(new { message = unorderedError });
+            ApplyWorkflowLines(order, request.Items, workflow: "receive");
+            order.VendorDoNumber = vendorDoNumber;
+            order.VendorInvoiceNumber = vendorInvoiceNumber;
+            order.ProductQualityRating = quality;
+            order.HygieneRating = hygiene;
+            order.ProductQualityComment = request.ProductQualityComment?.Trim() ?? string.Empty;
+            order.HygieneComment = request.HygieneComment?.Trim() ?? string.Empty;
+            order.Status = PurchaseOrderWorkflow.StatusReceived;
+            order.ReceivedAt = DateTime.UtcNow;
 
-        ApplyWorkflowLines(order, request.Items, workflow: "receive");
-        order.VendorDoNumber = vendorDoNumber;
-        order.VendorInvoiceNumber = vendorInvoiceNumber;
-        order.ProductQualityRating = quality;
-        order.HygieneRating = hygiene;
-        order.ProductQualityComment = request.ProductQualityComment?.Trim() ?? string.Empty;
-        order.HygieneComment = request.HygieneComment?.Trim() ?? string.Empty;
-        order.Status = PurchaseOrderWorkflow.StatusReceived;
-        order.ReceivedAt = DateTime.UtcNow;
+            var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
+            var locationIdsJson = locationIds.Count > 0
+                ? order.LocationIdsJson
+                : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+            // Keep original casing from the PO so stock-card location filters match ingredient/purchase ids.
+            var locationExternalId = locationIds.Count > 0
+                ? locationIds[0].Trim()
+                : string.Empty;
 
-        var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
-        var locationIdsJson = locationIds.Count > 0
-            ? order.LocationIdsJson
-            : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
-        // Keep original casing from the PO so stock-card location filters match ingredient/purchase ids.
-        var locationExternalId = locationIds.Count > 0
-            ? locationIds[0].Trim()
-            : string.Empty;
+            if (!string.IsNullOrEmpty(locationExternalId))
+                await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
 
-        if (!string.IsNullOrEmpty(locationExternalId))
-            await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+            var receiptCreatedAt = DateTime.UtcNow;
+            var postError = await PostReceivedStockAsync(
+                order,
+                request.Items,
+                allowPartial,
+                locationIdsJson,
+                locationExternalId,
+                receiptCreatedAt,
+                remarks: PurchaseOrderWorkflow.StockRemarkReceivedPending);
+            if (postError is not null)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new { message = postError });
+            }
 
-        var receiptCreatedAt = DateTime.UtcNow;
-        var postError = await PostReceivedStockAsync(
-            order,
-            request.Items,
-            allowPartial,
-            locationIdsJson,
-            locationExternalId,
-            receiptCreatedAt,
-            remarks: PurchaseOrderWorkflow.StockRemarkReceivedPending);
-        if (postError is not null)
-            return BadRequest(new { message = postError });
+            await db.SaveChangesAsync();
 
-        await db.SaveChangesAsync();
+            var receiptPurchases = await db.InventoryPurchases
+                .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
+                .ToListAsync();
+            foreach (var purchase in receiptPurchases)
+                await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
 
-        var receiptPurchases = await db.InventoryPurchases
-            .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
-            .ToListAsync();
-        foreach (var purchase in receiptPurchases)
-            await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
+            // Settle linked credit notes against freebie / replacement lines on this receive.
+            var companyId = order.CompanyId ?? 0;
+            if (companyId > 0)
+            {
+                foreach (var line in request.Items.Where(l => l.LinkedCreditNoteId is > 0).OrderBy(l => l.ItemId))
+                {
+                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                    var vendorProductId = !string.IsNullOrWhiteSpace(line.VendorProductId)
+                        ? line.VendorProductId
+                        : item?.VendorProductId;
+                    try
+                    {
+                        await creditNotes.SettleAgainstReplacementReceiveAsync(
+                            line.LinkedCreditNoteId!.Value,
+                            companyId,
+                            order,
+                            vendorProductId ?? string.Empty,
+                            line.Quantity,
+                            cancelledBy: null,
+                            replacementPurchaseOrderItemId: line.ItemId > 0 ? line.ItemId : item?.Id);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new { message = ex.Message });
+                    }
+                }
+            }
 
-        await transaction.CommitAsync();
-        return Ok(await MapPurchaseOrderAsync(order, allowPartial));
+            await transaction.CommitAsync();
+            return Ok(await MapPurchaseOrderAsync(order, allowPartial));
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     [HttpPost("{id:int}/reconcile")]
