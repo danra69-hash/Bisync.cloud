@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
   PERMISSION_LABEL,
   ROLE_PERMISSIONS,
@@ -178,6 +178,7 @@ export { EodPage } from './EodPage'
 export function BohSettingsPage() {
   const { qrTableMode, setQrTableMode } = useConfig()
   const session = usePosSessionOptional()
+  const companyId = session?.companyId ?? 0
   const locationId = session?.locationId ?? ''
   const [deviceSetupOpen, setDeviceSetupOpen] = useState(false)
   const [deliveryAppsOpen, setDeliveryAppsOpen] = useState(false)
