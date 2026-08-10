@@ -299,7 +299,11 @@ export function RegisterPage() {
 
     let check = loadOpenCheckForTable(active.tableId)
     if (!check) {
-      const floorTable = loadFloorPlan().tables.find(t => t.id === active.tableId)
+      const floorTables =
+        session?.companyId && session.locationId
+          ? loadFloorPlanLocal(session.companyId, session.locationId).tables
+          : loadFloorPlan().tables
+      const floorTable = floorTables.find(t => t.id === active.tableId)
       if (floorTable?.orderId) {
         // Wait for live catalog so KDS name matching can resolve real products.
         if (session && liveCatalog.length === 0) return
