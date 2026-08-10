@@ -221,14 +221,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
   const [productQualityComment, setProductQualityComment] = useState(order.productQualityComment?.trim() ?? '');
   const [hygieneRating, setHygieneRating] = useState(order.hygieneRating?.trim() ?? '');
   const [hygieneComment, setHygieneComment] = useState(order.hygieneComment?.trim() ?? '');
-  const [ratingHighlight, setRatingHighlight] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shareToken, setShareToken] = useState(order.vendorShareToken?.trim() ?? '');
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [detailLineKey, setDetailLineKey] = useState<string | null>(null);
-  const vendorRatingRef = useRef<HTMLDivElement>(null);
   const panelScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -239,7 +237,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
     setProductQualityComment(order.productQualityComment?.trim() ?? '');
     setHygieneRating(order.hygieneRating?.trim() ?? '');
     setHygieneComment(order.hygieneComment?.trim() ?? '');
-    setRatingHighlight(false);
     setError(null);
     setShareToken(order.vendorShareToken?.trim() ?? '');
     setShareLinkCopied(false);
@@ -478,14 +475,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
     }
   }
 
-  function focusVendorRating(message: string) {
-    setError(message);
-    setRatingHighlight(true);
-    window.requestAnimationFrame(() => {
-      vendorRatingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  }
-
   async function handleReceive() {
     if (!canReceive) return;
     const payload = linePayload(lines);
@@ -525,25 +514,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
       setError('Enter a Vendor DO number and/or Vendor Invoice number for the documents received.');
       return;
     }
-    if (!productQualityRating) {
-      focusVendorRating('Select product quality (Satisfied, Acceptable, or Poor).');
-      return;
-    }
-    if (!hygieneRating) {
-      focusVendorRating('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
-      return;
-    }
     setSaving(true);
     setError(null);
-    setRatingHighlight(false);
     try {
       const updated = await api.receivePurchaseOrder(order.id, {
         items: payload,
         vendorDoNumber: doNumber || undefined,
         vendorInvoiceNumber: invoiceNumber || undefined,
-        productQualityRating,
+        productQualityRating: productQualityRating || '',
         productQualityComment: productQualityComment.trim() || undefined,
-        hygieneRating,
+        hygieneRating: hygieneRating || '',
         hygieneComment: hygieneComment.trim() || undefined,
       });
       onUpdated(updated);
@@ -569,23 +549,14 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
         return;
       }
     }
-    if (!productQualityRating) {
-      focusVendorRating('Select product quality (Satisfied, Acceptable, or Poor).');
-      return;
-    }
-    if (!hygieneRating) {
-      focusVendorRating('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
-      return;
-    }
     setSaving(true);
     setError(null);
-    setRatingHighlight(false);
     try {
       const result = await api.reconcilePurchaseOrder(order.id, {
         items: payload,
-        productQualityRating,
+        productQualityRating: productQualityRating || '',
         productQualityComment: productQualityComment.trim() || undefined,
-        hygieneRating,
+        hygieneRating: hygieneRating || '',
         hygieneComment: hygieneComment.trim() || undefined,
       });
       if (result.updatedVendorProductPrices.length > 0) {
@@ -1469,27 +1440,20 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
           </div>
 
           {showVendorRatingInputs && (
-            <div
-              ref={vendorRatingRef}
-              className={`rounded-lg border p-4 space-y-3 ${
-                ratingHighlight
-                  ? 'border-destructive bg-destructive/5'
-                  : 'border-border bg-muted/10'
-              }`}
-            >
+            <div className="rounded-lg border border-border bg-muted/10 p-4 space-y-3">
               <div>
                 <p className="text-xs font-semibold text-foreground flex items-center gap-2">
                   <PackageCheck size={14} className="text-muted-foreground" />
-                  Vendor rating (required)
+                  Vendor rating (optional)
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Record product quality and hygiene when receiving. You can change these at consolidate.
+                  Optionally record product quality and hygiene when receiving. You can add or change these at consolidate.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
-                    Product quality <span className="text-destructive">*</span>
+                    Product quality
                   </p>
                   {canEditVendorRating ? (
                     <>
@@ -1503,8 +1467,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                             key={id}
                             type="button"
                             onClick={() => {
-                              setProductQualityRating(id);
-                              setRatingHighlight(false);
+                              setProductQualityRating(prev => (prev === id ? '' : id));
                               setError(null);
                             }}
                             className={`px-3 py-1.5 rounded-md text-xs border ${
@@ -1537,7 +1500,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                 </div>
                 <div className="space-y-2">
                   <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
-                    Hygiene &amp; cleanliness <span className="text-destructive">*</span>
+                    Hygiene &amp; cleanliness
                   </p>
                   {canEditVendorRating ? (
                     <>
@@ -1551,8 +1514,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                             key={id}
                             type="button"
                             onClick={() => {
-                              setHygieneRating(id);
-                              setRatingHighlight(false);
+                              setHygieneRating(prev => (prev === id ? '' : id));
                               setError(null);
                             }}
                             className={`px-3 py-1.5 rounded-md text-xs border ${
