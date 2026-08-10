@@ -67,6 +67,7 @@ import { PaymentModal, type PaymentConfirmPayload } from './PaymentModal'
 import { DiscountModal, type DiscountApplyPayload } from './DiscountModal'
 import { CompulsoryModifierModal } from './CompulsoryModifierModal'
 import { TENDER_LABEL, paymentMethodForApi, paymentTypeLabel } from '../../cashier/domain/payments'
+import { formatMoney } from '../../../core/types/money'
 import type { PosModifierGroup } from '../../../../api'
 import {
   resolveRequiredModifierGroups,
@@ -1601,22 +1602,56 @@ export function RegisterPage() {
       const paymentPurpose = discountNote && !isEntertainment
         ? `${basePurpose} · ${discountNote}`.slice(0, 240)
         : basePurpose
+      const covers = payload.covers >= 1 ? Math.min(99, Math.floor(payload.covers)) : 0
+      if (covers < 1) {
+        throw new Error('Enter number of pax before accepting payment.')
+      }
+      setCover(covers)
+      const paymentLines = (payload.payments && payload.payments.length > 0)
+        ? payload.payments.map(line => ({
+            method: isEntertainment
+              ? 'entertainment'
+              : paymentMethodForApi(line.paymentTypeCode || line.tender),
+            amountCents: Math.max(0, line.amountCents),
+            purpose: paymentPurpose,
+            label: line.paymentTypeName
+              || paymentTypeLabel(line.paymentTypeCode, null)
+              || TENDER_LABEL[line.tender]
+              || line.tender,
+          }))
+        : [{
+            method: isEntertainment
+              ? 'entertainment'
+              : paymentMethodForApi(payload.paymentTypeCode || payload.tender),
+            amountCents: grandCents,
+            purpose: paymentPurpose,
+            label: methodLabel,
+          }]
+      const paidTotal = paymentLines.reduce((sum, line) => sum + line.amountCents, 0)
+      if (!isEntertainment && paidTotal !== grandCents) {
+        throw new Error(
+          `Split payments must total ${formatMoney(grandCents)} (got ${formatMoney(paidTotal)}).`,
+        )
+      }
       const closedCheckPayload = {
         companyId: session.companyId,
         locationExternalId: locationId,
         checkNumber,
         checkLabel: activeTableSession?.tableLabel || 'POS Register',
-        covers: cover > 0 ? cover : 1,
+        covers,
         discountCents: settleCharges.discountCents,
         taxCents: isEntertainment
           ? 0
           : settleCharges.taxRegularCents + settleCharges.taxAlcoholCents,
         grossCents,
-        paymentMethod: isEntertainment
-          ? 'entertainment'
-          : paymentMethodForApi(payload.paymentTypeCode || payload.tender),
-        paymentAmountCents: grandCents,
+        paymentMethod: paymentLines[0]?.method || 'cash',
+        paymentAmountCents: paidTotal,
         paymentPurpose,
+        payments: paymentLines.map(line => ({
+          method: line.method,
+          amountCents: line.amountCents,
+          purpose: line.purpose,
+        })),
       }
       if (useOutbox) {
         await enqueueOutbox('posRecordClosedCheck', closedCheckPayload)
@@ -1680,7 +1715,9 @@ export function RegisterPage() {
       flash(
         isEntertainment
           ? `Entertainment · ${methodLabel} · ${count} item${count === 1 ? '' : 's'}`
-          : `Paid via ${methodLabel} · ${count} item${count === 1 ? '' : 's'}`,
+          : paymentLines.length > 1
+            ? `Split pay · ${paymentLines.map(l => l.label).join(' + ')} · ${count} item${count === 1 ? '' : 's'}`
+            : `Paid via ${methodLabel} · ${count} item${count === 1 ? '' : 's'}`,
       )
       session.refreshCatalog()
       goHome()
@@ -2067,6 +2104,7 @@ export function RegisterPage() {
             cartSubtotal(lines, liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS)
               - charges.discountCents,
           )}
+          initialCovers={cover}
           cartLines={lines}
           catalog={liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS}
           paymentTypes={paymentTypes}

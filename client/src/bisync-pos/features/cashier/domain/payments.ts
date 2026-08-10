@@ -12,6 +12,17 @@ export type SplitMethod = 'even' | 'by-seat' | 'by-item'
 export type PaymentLine = {
   tender: TenderType
   amountCents: number
+  paymentTypeCode?: string
+  paymentTypeName?: string
+}
+
+/** Remaining balance after applied tender lines (never negative). */
+export function remainingAfterPayments(
+  dueCents: number,
+  lines: Array<{ amountCents: number }>,
+): number {
+  const paid = lines.reduce((sum, line) => sum + Math.max(0, line.amountCents), 0)
+  return Math.max(0, dueCents - paid)
 }
 
 /** Built-in labels used when POS Config payment types are empty. */
