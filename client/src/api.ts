@@ -5013,6 +5013,12 @@ export const api = {
     paymentMethod?: string;
     paymentAmountCents?: number;
     paymentPurpose?: string;
+    /** Multi-tender lines for split pay. */
+    payments?: Array<{
+      method: string;
+      amountCents: number;
+      purpose?: string;
+    }>;
   }) =>
     fetchJsonWithMethod<{ closedCheckId: number; checkNumber: number; paidAt: string }>(
       '/api/pos/eod/record-check',

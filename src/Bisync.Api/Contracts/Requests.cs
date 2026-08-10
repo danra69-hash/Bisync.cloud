@@ -2062,6 +2062,16 @@ public class ClosePosEodSessionRequest
     public bool Force { get; set; }
 }
 
+public class RecordPosPaymentLineRequest
+{
+    /// <summary>cash | credit-card | qr-pay | entertainment | duty-meals | compliment</summary>
+    [MaxLength(40)]
+    public string Method { get; set; } = "cash";
+    public long AmountCents { get; set; }
+    [MaxLength(240)]
+    public string? Purpose { get; set; }
+}
+
 public class RecordPosClosedCheckRequest
 {
     [Range(1, int.MaxValue)]
@@ -2082,5 +2092,7 @@ public class RecordPosClosedCheckRequest
     public long? PaymentAmountCents { get; set; }
     [MaxLength(240)]
     public string? PaymentPurpose { get; set; }
+    /// <summary>Optional multi-tender lines (split pay). When present, each line becomes a PosPayment.</summary>
+    public List<RecordPosPaymentLineRequest>? Payments { get; set; }
 }
 

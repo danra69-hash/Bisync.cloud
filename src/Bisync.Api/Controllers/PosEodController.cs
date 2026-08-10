@@ -166,17 +166,42 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
         var now = DateTimeOffset.UtcNow;
         var externalId = $"chk-{Guid.NewGuid():N}";
         var method = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "cash" : request.PaymentMethod.Trim();
-        var isEntertainment = string.Equals(method, "entertainment", StringComparison.OrdinalIgnoreCase);
         var purpose = (request.PaymentPurpose ?? string.Empty).Trim();
-        if (isEntertainment && purpose.Length == 0)
+        if (purpose.Length > 240)
+            purpose = purpose[..240];
+
+        var paymentLines = (request.Payments ?? [])
+            .Where(p => p is not null && p.AmountCents > 0)
+            .Select(p => new
+            {
+                Method = string.IsNullOrWhiteSpace(p.Method) ? method : p.Method.Trim(),
+                AmountCents = Math.Max(0, p.AmountCents),
+                Purpose = string.IsNullOrWhiteSpace(p.Purpose) ? purpose : p.Purpose.Trim(),
+            })
+            .ToList();
+
+        if (paymentLines.Count == 0)
+        {
+            paymentLines.Add(new
+            {
+                Method = method,
+                AmountCents = Math.Max(
+                    0,
+                    request.PaymentAmountCents
+                    ?? Math.Max(0, request.GrossCents - request.DiscountCents)),
+                Purpose = purpose,
+            });
+        }
+
+        var isEntertainment = paymentLines.Any(p =>
+            string.Equals(p.Method, "entertainment", StringComparison.OrdinalIgnoreCase));
+        if (isEntertainment && paymentLines.Any(p =>
+                string.Equals(p.Method, "entertainment", StringComparison.OrdinalIgnoreCase)
+                && p.Purpose.Length == 0))
             return BadRequest(new { error = "Entertainment settlement requires employee name and reason (paymentPurpose)." });
 
         // Entertainment settles the full check amount with no tax / service.
         var taxCents = isEntertainment ? 0L : Math.Max(0, request.TaxCents);
-        var payAmount = request.PaymentAmountCents
-            ?? Math.Max(0, request.GrossCents - request.DiscountCents);
-        if (purpose.Length > 240)
-            purpose = purpose[..240];
 
         var closed = new PosClosedCheck
         {
@@ -194,17 +219,24 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
         };
         db.PosClosedChecks.Add(closed);
 
-        db.PosPayments.Add(new PosPayment
+        for (var i = 0; i < paymentLines.Count; i++)
         {
-            CompanyId = cid.Value,
-            LocationExternalId = loc,
-            ExternalId = $"pay-{externalId}",
-            CheckNumber = closed.CheckNumber,
-            PaidAt = now,
-            Method = method,
-            AmountCents = Math.Max(0, payAmount),
-            Purpose = purpose,
-        });
+            var line = paymentLines[i];
+            var linePurpose = line.Purpose;
+            if (linePurpose.Length > 240)
+                linePurpose = linePurpose[..240];
+            db.PosPayments.Add(new PosPayment
+            {
+                CompanyId = cid.Value,
+                LocationExternalId = loc,
+                ExternalId = paymentLines.Count == 1 ? $"pay-{externalId}" : $"pay-{externalId}-{i + 1}",
+                CheckNumber = closed.CheckNumber,
+                PaidAt = now,
+                Method = line.Method,
+                AmountCents = line.AmountCents,
+                Purpose = linePurpose,
+            });
+        }
 
         await db.SaveChangesAsync();
         return Ok(new { closedCheckId = closed.Id, checkNumber = closed.CheckNumber, paidAt = closed.PaidAt });
