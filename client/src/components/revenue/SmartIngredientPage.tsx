@@ -487,7 +487,12 @@ export function SmartIngredientPage({
       return;
     }
     setImportError(null);
-    downloadSmartComponentTemplateCsv(rows, locationScope);
+    // Full My Component catalog for the selected locations (not only alternate-UOM rows).
+    const exportRows = rows.map(row => ({
+      ...row,
+      attachedVendors: vendorCount(row),
+    }));
+    downloadSmartComponentTemplateCsv(exportRows, locationScope);
   }
 
   async function handleTemplateUpload(files: FileList | null) {
