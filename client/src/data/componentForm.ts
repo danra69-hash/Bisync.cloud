@@ -578,8 +578,8 @@ export function toForm(
 export const blankComponentRow: ComponentRow = {
   componentId: '',
   name: '',
-  category: 'Food',
-  group: 'Proteins',
+  category: '',
+  group: '',
   recipeUOM: 'g',
   inventoryUOM: 'g',
   lastPriceRecipe: 0,
