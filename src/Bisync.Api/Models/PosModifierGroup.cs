@@ -48,14 +48,18 @@ public class PosModifierOption
     public bool Active { get; set; } = true;
 }
 
-/// <summary>Attach a modifier group to a product group name and/or a specific product.</summary>
+/// <summary>
+/// Attach a modifier group by Category, Product Group, and/or Product
+/// (empty fields mean All for that level — most specific fields win at match time).
+/// </summary>
 public class PosModifierAttachment
 {
     public int Id { get; set; }
     public int PosModifierGroupId { get; set; }
     public PosModifierGroup? PosModifierGroup { get; set; }
-    /// <summary>product-group | product</summary>
+    /// <summary>category | product-group | product — most specific scope set.</summary>
     public string TargetType { get; set; } = "product-group";
+    public string TargetProductCategory { get; set; } = string.Empty;
     public string TargetProductGroup { get; set; } = string.Empty;
     public int? TargetProductId { get; set; }
     public string TargetProductName { get; set; } = string.Empty;

@@ -13,6 +13,7 @@ import {
   POS_MODIFIER_KINDS,
   STOCK_PRODUCT_GROUP_BY_KIND,
 } from '../../data/posModifierGroups'
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement'
 import { inputCls, selectCls } from '../../data/countries'
 import { useCountryFormatters } from '../../hooks/useCountryFormatters'
 import { pageShellClass } from '../layout/pageLayout'
@@ -70,10 +71,44 @@ function optionPairKey(opt: OptionDraft) {
 
 type AttachmentDraft = {
   key: string
-  targetType: 'product-group' | 'product'
+  targetProductCategory: string
   targetProductGroup: string
   targetProductId: number | null
   targetProductName: string
+}
+
+function blankAttachment(): AttachmentDraft {
+  return {
+    key: cryptoKey(),
+    targetProductCategory: '',
+    targetProductGroup: '',
+    targetProductId: null,
+    targetProductName: '',
+  }
+}
+
+function deriveAttachmentTargetType(att: AttachmentDraft): 'category' | 'product-group' | 'product' | null {
+  if (att.targetProductId != null && att.targetProductId > 0) return 'product'
+  if (att.targetProductGroup.trim()) return 'product-group'
+  if (att.targetProductCategory.trim()) return 'category'
+  return null
+}
+
+function formatAttachmentLabel(a: {
+  targetProductCategory?: string | null
+  targetProductGroup?: string | null
+  targetProductId?: number | null
+  targetProductName?: string | null
+}): string {
+  const parts: string[] = []
+  const category = (a.targetProductCategory || '').trim()
+  const group = (a.targetProductGroup || '').trim()
+  if (category) parts.push(`Category: ${category}`)
+  if (group) parts.push(`Group: ${group}`)
+  if (a.targetProductId != null && a.targetProductId > 0) {
+    parts.push(`Product: ${a.targetProductName || a.targetProductId}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : '—'
 }
 
 type FormState = {
@@ -102,11 +137,6 @@ function blankForm(kind: PosModifierKind = 'compulsory'): FormState {
     options: [blankOption()],
     attachments: [],
   }
-}
-
-function uniqueGroups(products: Product[]): string[] {
-  return [...new Set(products.map(p => (p.group || '').trim()).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b))
 }
 
 export function PosModifierGroupPage({ selectedCompanyId }: Props) {
@@ -191,7 +221,10 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
     [rows, kindTab],
   )
 
-  const productGroups = useMemo(() => uniqueGroups(products), [products])
+  const productCategories = useMemo(() => {
+    const extras = products.map(p => (p.category || '').trim()).filter(Boolean)
+    return getSiCategoryFilterOptions(extras).filter(c => c !== 'All')
+  }, [products])
 
   function openCreate(kind: PosModifierKind = 'compulsory') {
     setEditingId(null)
@@ -223,7 +256,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
       })),
       attachments: (row.attachments ?? []).map(a => ({
         key: cryptoKey(),
-        targetType: a.targetType === 'product' ? 'product' : 'product-group',
+        targetProductCategory: a.targetProductCategory || '',
         targetProductGroup: a.targetProductGroup || '',
         targetProductId: a.targetProductId ?? null,
         targetProductName: a.targetProductName || '',
@@ -255,6 +288,12 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
       setError('Add at least one option.')
       return null
     }
+    for (const att of form.attachments) {
+      if (!deriveAttachmentTargetType(att)) {
+        setError('Each attachment needs a Category, Product Group, and/or Product.')
+        return null
+      }
+    }
     return {
       companyId: selectedCompanyId,
       kind: form.kind,
@@ -266,12 +305,16 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
       affectsStock: form.affectsStock,
       active: form.active,
       options,
-      attachments: form.attachments.map(a => ({
-        targetType: a.targetType,
-        targetProductGroup: a.targetType === 'product-group' ? a.targetProductGroup : undefined,
-        targetProductId: a.targetType === 'product' ? a.targetProductId : undefined,
-        targetProductName: a.targetType === 'product' ? a.targetProductName : undefined,
-      })),
+      attachments: form.attachments.map(a => {
+        const targetType = deriveAttachmentTargetType(a)
+        return {
+          targetType: targetType ?? undefined,
+          targetProductCategory: a.targetProductCategory.trim() || undefined,
+          targetProductGroup: a.targetProductGroup.trim() || undefined,
+          targetProductId: a.targetProductId,
+          targetProductName: a.targetProductName.trim() || undefined,
+        }
+      }),
     }
   }
 
@@ -443,14 +486,10 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                         row.options?.length ?? 0
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-xs text-muted-foreground max-w-[220px]">
+                    <td className="py-2 pr-3 text-xs text-muted-foreground max-w-[280px]">
                       {(row.attachments ?? []).length === 0
                         ? '—'
-                        : row.attachments.map(a =>
-                            a.targetType === 'product'
-                              ? `Product: ${a.targetProductName || a.targetProductId}`
-                              : `Group: ${a.targetProductGroup}`,
-                          ).join(' · ')}
+                        : row.attachments.map(formatAttachmentLabel).join(' | ')}
                     </td>
                     <td className="py-2 pr-3">{row.affectsStock ? 'Yes' : '—'}</td>
                     <td className="py-2 pr-3">{row.active ? 'Active' : 'Inactive'}</td>
@@ -805,156 +844,183 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
             </section>
 
             <section className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wide">Attach by group or product</h4>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="text-xs underline"
-                    onClick={() =>
-                      setForm(f => ({
-                        ...f,
-                        attachments: [
-                          ...f.attachments,
-                          {
-                            key: cryptoKey(),
-                            targetType: 'product-group',
-                            targetProductGroup: '',
-                            targetProductId: null,
-                            targetProductName: '',
-                          },
-                        ],
-                      }))
-                    }
-                  >
-                    + Product group
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs underline"
-                    onClick={() =>
-                      setForm(f => ({
-                        ...f,
-                        attachments: [
-                          ...f.attachments,
-                          {
-                            key: cryptoKey(),
-                            targetType: 'product',
-                            targetProductGroup: '',
-                            targetProductId: null,
-                            targetProductName: '',
-                          },
-                        ],
-                      }))
-                    }
-                  >
-                    + Product
-                  </button>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="min-w-0">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide">
+                    Attach by Category, Product Group, Product
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Leave a level on All to broaden the match. Food and Beverage modifiers use this
+                    scope on the register.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  className="text-xs underline shrink-0"
+                  onClick={() =>
+                    setForm(f => ({
+                      ...f,
+                      attachments: [...f.attachments, blankAttachment()],
+                    }))
+                  }
+                >
+                  + Attachment
+                </button>
               </div>
               {form.attachments.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   Not attached yet. Compulsory groups need an attachment to appear on register.
                 </p>
               ) : null}
-              {form.attachments.map((att, idx) => (
-                <div key={att.key} className="grid sm:grid-cols-[140px_1fr_auto] gap-2 items-end">
-                  <label className="text-xs space-y-1">
-                    <span className="text-muted-foreground">Target</span>
-                    <select
-                      className={selectCls}
-                      value={att.targetType}
-                      onChange={e => {
-                        const targetType = e.target.value as 'product-group' | 'product'
-                        setForm(f => ({
-                          ...f,
-                          attachments: f.attachments.map((a, i) =>
-                            i === idx
-                              ? {
-                                  ...a,
-                                  targetType,
-                                  targetProductGroup: '',
-                                  targetProductId: null,
-                                  targetProductName: '',
-                                }
-                              : a,
-                          ),
-                        }))
-                      }}
-                    >
-                      <option value="product-group">Product group</option>
-                      <option value="product">Product</option>
-                    </select>
-                  </label>
-                  {att.targetType === 'product-group' ? (
-                    <label className="text-xs space-y-1">
-                      <span className="text-muted-foreground">Product group</span>
-                      <select
-                        className={selectCls}
-                        value={att.targetProductGroup}
-                        onChange={e => {
-                          const targetProductGroup = e.target.value
-                          setForm(f => ({
-                            ...f,
-                            attachments: f.attachments.map((a, i) =>
-                              i === idx ? { ...a, targetProductGroup } : a,
-                            ),
-                          }))
-                        }}
-                      >
-                        <option value="">— Select —</option>
-                        {productGroups.map(g => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : (
-                    <label className="text-xs space-y-1">
-                      <span className="text-muted-foreground">Product</span>
-                      <select
-                        className={selectCls}
-                        value={att.targetProductId ?? ''}
-                        onChange={e => {
-                          const id = e.target.value ? Number(e.target.value) : null
-                          const hit = products.find(p => p.id === id)
-                          setForm(f => ({
-                            ...f,
-                            attachments: f.attachments.map((a, i) =>
-                              i === idx
-                                ? {
-                                    ...a,
-                                    targetProductId: id,
-                                    targetProductName: hit?.name || '',
-                                  }
-                                : a,
-                            ),
-                          }))
-                        }}
-                      >
-                        <option value="">— Select —</option>
-                        {products
-                          .slice()
-                          .sort((a, b) => a.name.localeCompare(b.name))
-                          .map(p => (
-                            <option key={p.id} value={p.id}>{p.name} ({p.group || '—'})</option>
-                          ))}
-                      </select>
-                    </label>
-                  )}
-                  <button
-                    type="button"
-                    className="text-xs underline text-destructive pb-2"
-                    onClick={() =>
-                      setForm(f => ({
-                        ...f,
-                        attachments: f.attachments.filter((_, i) => i !== idx),
-                      }))
+              {form.attachments.map((att, idx) => {
+                const groupOptions = getSiGroupFilterOptions(
+                  products
+                    .filter(p =>
+                      !att.targetProductCategory
+                      || (p.category || '').trim().toLowerCase()
+                        === att.targetProductCategory.trim().toLowerCase(),
+                    )
+                    .map(p => (p.group || '').trim())
+                    .filter(Boolean),
+                  att.targetProductCategory || 'All',
+                ).filter(g => g !== 'All')
+                const productOptions = products
+                  .filter(p => {
+                    if (att.targetProductCategory) {
+                      if (
+                        (p.category || '').trim().toLowerCase()
+                        !== att.targetProductCategory.trim().toLowerCase()
+                      ) return false
                     }
+                    if (att.targetProductGroup) {
+                      if (
+                        (p.group || '').trim().toLowerCase()
+                        !== att.targetProductGroup.trim().toLowerCase()
+                      ) return false
+                    }
+                    return true
+                  })
+                  .slice()
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                return (
+                  <div
+                    key={att.key}
+                    className="rounded-md border border-border bg-muted/10 px-3 py-2.5 space-y-2"
                   >
-                    Remove
-                  </button>
-                </div>
-              ))}
+                    <div className="grid sm:grid-cols-3 gap-2">
+                      <label className="text-xs space-y-1">
+                        <span className="text-muted-foreground">Category</span>
+                        <select
+                          className={selectCls}
+                          value={att.targetProductCategory}
+                          onChange={e => {
+                            const targetProductCategory = e.target.value
+                            setForm(f => ({
+                              ...f,
+                              attachments: f.attachments.map((a, i) =>
+                                i === idx
+                                  ? {
+                                      ...a,
+                                      targetProductCategory,
+                                      targetProductGroup: '',
+                                      targetProductId: null,
+                                      targetProductName: '',
+                                    }
+                                  : a,
+                              ),
+                            }))
+                          }}
+                        >
+                          <option value="">All categories</option>
+                          {productCategories.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs space-y-1">
+                        <span className="text-muted-foreground">Product Group</span>
+                        <select
+                          className={selectCls}
+                          value={att.targetProductGroup}
+                          onChange={e => {
+                            const targetProductGroup = e.target.value
+                            setForm(f => ({
+                              ...f,
+                              attachments: f.attachments.map((a, i) =>
+                                i === idx
+                                  ? {
+                                      ...a,
+                                      targetProductGroup,
+                                      targetProductId: null,
+                                      targetProductName: '',
+                                    }
+                                  : a,
+                              ),
+                            }))
+                          }}
+                        >
+                          <option value="">All groups</option>
+                          {groupOptions.map(g => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs space-y-1">
+                        <span className="text-muted-foreground">Product</span>
+                        <select
+                          className={selectCls}
+                          value={att.targetProductId ?? ''}
+                          onChange={e => {
+                            const id = e.target.value ? Number(e.target.value) : null
+                            const hit = products.find(p => p.id === id)
+                            setForm(f => ({
+                              ...f,
+                              attachments: f.attachments.map((a, i) =>
+                                i === idx
+                                  ? {
+                                      ...a,
+                                      targetProductCategory: hit?.category?.trim()
+                                        || a.targetProductCategory,
+                                      targetProductGroup: hit?.group?.trim()
+                                        || a.targetProductGroup,
+                                      targetProductId: id,
+                                      targetProductName: hit?.name || '',
+                                    }
+                                  : a,
+                              ),
+                            }))
+                          }}
+                        >
+                          <option value="">All products</option>
+                          {productOptions.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                              {p.group ? ` · ${p.group}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {formatAttachmentLabel(att)}
+                      </p>
+                      <button
+                        type="button"
+                        className="text-xs underline text-destructive shrink-0"
+                        onClick={() =>
+                          setForm(f => ({
+                            ...f,
+                            attachments: f.attachments.filter((_, i) => i !== idx),
+                          }))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </section>
 
             {error ? <p className="text-sm text-destructive">{error}</p> : null}

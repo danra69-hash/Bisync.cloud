@@ -758,6 +758,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.PosModifierGroupId);
             e.HasIndex(x => x.TargetProductId);
             e.Property(x => x.TargetType).HasMaxLength(40);
+            e.Property(x => x.TargetProductCategory).HasMaxLength(120);
             e.Property(x => x.TargetProductGroup).HasMaxLength(120);
             e.Property(x => x.TargetProductName).HasMaxLength(200);
         });

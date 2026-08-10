@@ -20,6 +20,8 @@ export type Product = {
    */
   priceCents: MoneyCents
   department: ProductDepartment
+  /** RMS product category (for modifier attach matching). */
+  category?: string
   group: string
   /** Short emoji/icon stand-in for food photography */
   emoji: string

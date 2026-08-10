@@ -29,7 +29,8 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
         bool Active = true);
 
     public record AttachmentInput(
-        string TargetType,
+        string? TargetType = null,
+        string? TargetProductCategory = null,
         string? TargetProductGroup = null,
         int? TargetProductId = null,
         string? TargetProductName = null);
@@ -397,15 +398,33 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
         }
         foreach (var att in body.Attachments ?? [])
         {
-            var t = (att.TargetType ?? string.Empty).Trim().ToLowerInvariant();
-            if (t is not ("product-group" or "product"))
-                return "attachment targetType must be product-group or product.";
-            if (t == "product-group" && string.IsNullOrWhiteSpace(att.TargetProductGroup))
-                return "attachment product-group requires targetProductGroup.";
-            if (t == "product" && (att.TargetProductId is null or <= 0))
+            var category = (att.TargetProductCategory ?? string.Empty).Trim();
+            var group = (att.TargetProductGroup ?? string.Empty).Trim();
+            var productId = att.TargetProductId is > 0 ? att.TargetProductId : null;
+            var derived = DeriveAttachmentTargetType(category, group, productId, att.TargetType);
+            if (derived is null)
+                return "Each attachment needs a Category, Product Group, and/or Product.";
+            if (derived == "product" && productId is null)
                 return "attachment product requires targetProductId.";
+            if (derived == "product-group" && string.IsNullOrWhiteSpace(group))
+                return "attachment product-group requires targetProductGroup.";
+            if (derived == "category" && string.IsNullOrWhiteSpace(category))
+                return "attachment category requires targetProductCategory.";
         }
         return null;
+    }
+
+    static string? DeriveAttachmentTargetType(
+        string category,
+        string group,
+        int? productId,
+        string? rawType)
+    {
+        if (productId is > 0) return "product";
+        if (!string.IsNullOrWhiteSpace(group)) return "product-group";
+        if (!string.IsNullOrWhiteSpace(category)) return "category";
+        var legacy = (rawType ?? string.Empty).Trim().ToLowerInvariant();
+        return legacy is "category" or "product-group" or "product" ? legacy : null;
     }
 
     static void ApplyChildren(PosModifierGroup row, UpsertRequest body)
@@ -432,12 +451,16 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
 
         foreach (var a in body.Attachments ?? [])
         {
-            var t = a.TargetType.Trim().ToLowerInvariant();
+            var category = (a.TargetProductCategory ?? string.Empty).Trim();
+            var group = (a.TargetProductGroup ?? string.Empty).Trim();
+            var productId = a.TargetProductId is > 0 ? a.TargetProductId : null;
+            var t = DeriveAttachmentTargetType(category, group, productId, a.TargetType) ?? "product-group";
             row.Attachments.Add(new PosModifierAttachment
             {
                 TargetType = t,
-                TargetProductGroup = (a.TargetProductGroup ?? string.Empty).Trim(),
-                TargetProductId = a.TargetProductId is > 0 ? a.TargetProductId : null,
+                TargetProductCategory = category,
+                TargetProductGroup = group,
+                TargetProductId = productId,
                 TargetProductName = (a.TargetProductName ?? string.Empty).Trim(),
             });
         }
@@ -574,6 +597,7 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
         {
             id = a.Id,
             targetType = a.TargetType,
+            targetProductCategory = a.TargetProductCategory,
             targetProductGroup = a.TargetProductGroup,
             targetProductId = a.TargetProductId,
             targetProductName = a.TargetProductName,

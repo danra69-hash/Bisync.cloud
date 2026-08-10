@@ -46,28 +46,65 @@ export function groupsMatchName(a: string | null | undefined, b: string | null |
   return (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase()
 }
 
-/** Modifier groups attached to a product (by product id or product group name). */
+export type ModifierAttachProduct = {
+  id: string | number
+  category?: string | null
+  group?: string | null
+}
+
+/** Hierarchical attach match: Category ∧ Product Group ∧ Product (empty = All). */
+export function attachmentMatchesProduct(
+  attachment: {
+    targetType?: string
+    targetProductCategory?: string | null
+    targetProductGroup?: string | null
+    targetProductId?: number | null
+  },
+  product: ModifierAttachProduct,
+): boolean {
+  const category = (attachment.targetProductCategory || '').trim()
+  const group = (attachment.targetProductGroup || '').trim()
+  const productId = attachment.targetProductId != null && Number(attachment.targetProductId) > 0
+    ? Number(attachment.targetProductId)
+    : null
+  const type = (attachment.targetType || '').trim().toLowerCase()
+
+  if (!category && !group && productId == null) {
+    // Legacy rows that only set targetType without filled fields cannot match.
+    return false
+  }
+
+  if (productId != null) {
+    if (Number(product.id) !== productId) return false
+  } else if (type === 'product') {
+    return false
+  }
+
+  if (group) {
+    if (!groupsMatchName(group, product.group)) return false
+  } else if (type === 'product-group' && !category) {
+    return false
+  }
+
+  if (category) {
+    if (!groupsMatchName(category, product.category)) return false
+  } else if (type === 'category') {
+    return false
+  }
+
+  return true
+}
+
+/** Modifier groups attached to a product (by category, product group, and/or product id). */
 export function resolveAttachedModifierGroups(
   all: PosModifierGroup[],
-  product: { id: string | number; group?: string | null },
+  product: ModifierAttachProduct,
   kind?: PosModifierKind | string,
 ): PosModifierGroup[] {
-  const productId = Number(product.id)
-  const productGroup = (product.group || '').trim()
   return all
     .filter(g => g.active)
     .filter(g => !kind || g.kind === kind)
-    .filter(g =>
-      (g.attachments ?? []).some(a => {
-        if (a.targetType === 'product' && a.targetProductId != null) {
-          return Number(a.targetProductId) === productId
-        }
-        if (a.targetType === 'product-group') {
-          return groupsMatchName(a.targetProductGroup, productGroup)
-        }
-        return false
-      }),
-    )
+    .filter(g => (g.attachments ?? []).some(a => attachmentMatchesProduct(a, product)))
     .sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name))
 }
 
@@ -78,7 +115,7 @@ export function resolveAttachedModifierGroups(
  */
 export function resolveRequiredModifierGroups(
   all: PosModifierGroup[],
-  product: { id: string | number; group?: string | null },
+  product: ModifierAttachProduct,
 ): PosModifierGroup[] {
   const byId = new Map<number, PosModifierGroup>()
   for (const g of resolveAttachedModifierGroups(all, product, 'compulsory')) {
