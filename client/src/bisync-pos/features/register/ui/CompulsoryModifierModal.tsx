@@ -74,6 +74,14 @@ export function CompulsoryModifierModal({
               .
             </p>
           </div>
+          <button
+            type="button"
+            className="combo-picker-modal__close"
+            aria-label="Close"
+            onClick={onCancel}
+          >
+            ×
+          </button>
         </header>
 
         <div className="combo-picker-modal__body">
