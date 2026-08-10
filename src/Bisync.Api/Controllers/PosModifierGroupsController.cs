@@ -392,8 +392,10 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
         {
             foreach (var opt in body.Options ?? [])
             {
-                if (opt.LinkedProductId is null or <= 0)
-                    return $"Option '{opt.Label}' must link a product when Affects Stock is on (create it under the {kind} Modifier product group).";
+                var hasProduct = opt.LinkedProductId is > 0;
+                var hasComponent = !string.IsNullOrWhiteSpace(opt.LinkedComponentId);
+                if (!hasProduct && !hasComponent)
+                    return $"Option '{opt.Label}' must link a component or product when Affects Stock is on (for POS depletion).";
             }
         }
         foreach (var att in body.Attachments ?? [])

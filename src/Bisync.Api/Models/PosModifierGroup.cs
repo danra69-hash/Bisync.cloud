@@ -36,10 +36,13 @@ public class PosModifierOption
     public string Label { get; set; } = string.Empty;
     public int Sequence { get; set; }
     public long ExtraChargeCents { get; set; }
-    /// <summary>Optional linked B2C product for stock-influencing modifiers.</summary>
+    /// <summary>Optional linked B2C product for stock-influencing modifiers (POS depletion).</summary>
     public int? LinkedProductId { get; set; }
     public string LinkedProductName { get; set; } = string.Empty;
-    /// <summary>Chosen / alternate component id for Component SWAP.</summary>
+    /// <summary>
+    /// Linked smart-ingredient / component id for POS depletion when this option is selected
+    /// (food/beverage Affects Stock, or Component SWAP chosen component).
+    /// </summary>
     public string LinkedComponentId { get; set; } = string.Empty;
     public string LinkedComponentName { get; set; } = string.Empty;
     /// <summary>Base / original component id for Component SWAP (e.g. Garlic Mash).</summary>

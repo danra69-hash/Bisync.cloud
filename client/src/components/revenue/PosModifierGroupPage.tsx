@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   api,
+  type Ingredient,
   type PosModifierGroup,
   type PosModifierKind,
   type PosModifierStockCatalogProduct,
@@ -28,6 +29,8 @@ type Props = {
 type OptionDraft = {
   key: string
   label: string
+  /** When true, Extra is editable in major currency units (e.g. RM). */
+  chargeable: boolean
   extraChargeCents: number
   linkedProductId: number | null
   linkedProductName: string
@@ -35,6 +38,8 @@ type OptionDraft = {
   linkedComponentName: string
   baseComponentId: string
   baseComponentName: string
+  /** Ephemeral search text for Component/Product filter on this option row. */
+  linkQuery: string
 }
 
 function cryptoKey() {
@@ -45,6 +50,7 @@ function blankOption(): OptionDraft {
   return {
     key: cryptoKey(),
     label: '',
+    chargeable: false,
     extraChargeCents: 0,
     linkedProductId: null,
     linkedProductName: '',
@@ -52,6 +58,7 @@ function blankOption(): OptionDraft {
     linkedComponentName: '',
     baseComponentId: '',
     baseComponentName: '',
+    linkQuery: '',
   }
 }
 
@@ -146,6 +153,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
   const [products, setProducts] = useState<Product[]>([])
   const [stockCatalog, setStockCatalog] = useState<PosModifierStockCatalogProduct[]>([])
   const [swapPairs, setSwapPairs] = useState<PosModifierSwapPair[]>([])
+  const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -190,14 +198,25 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
     if (!selectedCompanyId || !formOpen) {
       setStockCatalog([])
       setSwapPairs([])
-      return
-    }
-    if (form.kind !== 'food' && form.kind !== 'beverage' && form.kind !== 'component-swap') {
-      setStockCatalog([])
-      setSwapPairs([])
+      setIngredients([])
       return
     }
     let cancelled = false
+    api.ingredients(selectedCompanyId)
+      .then(rows => {
+        if (!cancelled) setIngredients(rows.filter(r => r.active !== false))
+      })
+      .catch(() => {
+        if (!cancelled) setIngredients([])
+      })
+
+    if (form.kind !== 'food' && form.kind !== 'beverage' && form.kind !== 'component-swap') {
+      setStockCatalog([])
+      setSwapPairs([])
+      return () => {
+        cancelled = true
+      }
+    }
     api.posModifierStockCatalog(selectedCompanyId, form.kind)
       .then(data => {
         if (cancelled) return
@@ -246,6 +265,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
       options: (row.options?.length ? row.options : [blankOption()]).map(o => ({
         key: cryptoKey(),
         label: o.label || '',
+        chargeable: (o.extraChargeCents || 0) > 0,
         extraChargeCents: o.extraChargeCents || 0,
         linkedProductId: o.linkedProductId ?? null,
         linkedProductName: o.linkedProductName || '',
@@ -253,6 +273,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
         linkedComponentName: o.linkedComponentName || '',
         baseComponentId: o.baseComponentId || '',
         baseComponentName: o.baseComponentName || '',
+        linkQuery: '',
       })),
       attachments: (row.attachments ?? []).map(a => ({
         key: cryptoKey(),
@@ -273,7 +294,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
         return {
           label,
           sequence: i,
-          extraChargeCents: Math.max(0, Math.round(o.extraChargeCents)),
+          extraChargeCents: o.chargeable ? Math.max(0, Math.round(o.extraChargeCents)) : 0,
           linkedProductId: o.linkedProductId,
           linkedProductName: o.linkedProductName,
           linkedComponentId: o.linkedComponentId || undefined,
@@ -287,6 +308,17 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
     if (options.length === 0) {
       setError('Add at least one option.')
       return null
+    }
+    if (form.affectsStock && (form.kind === 'food' || form.kind === 'beverage')) {
+      const missing = options.find(
+        o => !(o.linkedProductId && o.linkedProductId > 0) && !(o.linkedComponentId || '').trim(),
+      )
+      if (missing) {
+        setError(
+          `Option “${missing.label}” must link a component or product when Affects Stock is on.`,
+        )
+        return null
+      }
     }
     for (const att of form.attachments) {
       if (!deriveAttachmentTargetType(att)) {
@@ -608,7 +640,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                     checked={form.affectsStock}
                     onChange={e => setForm(f => ({ ...f, affectsStock: e.target.checked }))}
                   />
-                  Affects stock (options from “{stockGroupName}” product group)
+                  Affects stock (tie each option to a component or product for POS depletion)
                 </label>
               ) : null}
               <label className="inline-flex items-center gap-2">
@@ -645,14 +677,20 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                     ? `${swapPairs.length} swappable pair(s) from RMS Variable Component. Addon RRP uses the same currency as product RRP (not cents).`
                     : 'No swappable pairs found. Configure Variable Component (base → alternate) on RMS products, then click Inherit Component SWAP.'}
                 </p>
-              ) : form.affectsStock && stockGroupName ? (
+              ) : form.affectsStock ? (
                 <p className="text-xs text-muted-foreground">
-                  Stock catalog: {stockCatalog.length} product(s) in “{stockGroupName}”.
-                  {stockCatalog.length === 0
-                    ? ' Create products under that product group in RMS Products first.'
+                  Each option must link a component and/or product so POS can deplete stock when that
+                  option is selected.
+                  {stockGroupName
+                    ? ` Products listed under “${stockGroupName}” appear first (${stockCatalog.length}).`
                     : ''}
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Optionally link a component or product on each option. Turn on Affects Stock when the
+                  selection should deplete inventory on POS.
+                </p>
+              )}
               <div className="space-y-2">
                 {form.options.map((opt, idx) =>
                   form.kind === 'component-swap' ? (
@@ -693,6 +731,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                                         ? {
                                             ...o,
                                             label: pair.label,
+                                            chargeable: pair.extraChargeCents > 0,
                                             extraChargeCents: pair.extraChargeCents,
                                             linkedProductId: pair.linkedProductId,
                                             linkedProductName: pair.linkedProductName,
@@ -700,6 +739,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                                             baseComponentName: pair.baseComponentName,
                                             linkedComponentId: pair.linkedComponentId,
                                             linkedComponentName: pair.linkedComponentName,
+                                            linkQuery: '',
                                           }
                                         : o,
                                     ),
@@ -763,81 +803,274 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                       </button>
                     </div>
                   ) : (
-                    <div key={opt.key} className="grid sm:grid-cols-[1fr_100px_1fr_auto] gap-2 items-end">
-                      <label className="text-xs space-y-1">
-                        <span className="text-muted-foreground">Label</span>
+                    <div
+                      key={opt.key}
+                      className="rounded-md border border-border/70 bg-muted/10 p-2.5 space-y-2"
+                    >
+                      <label className="text-xs space-y-1 block">
+                        <span className="text-muted-foreground">
+                          Component / Product filter
+                        </span>
                         <input
                           className={inputCls}
-                          value={opt.label}
+                          placeholder="Search component or product…"
+                          value={opt.linkQuery}
                           onChange={e => {
-                            const label = e.target.value
+                            const linkQuery = e.target.value
                             setForm(f => ({
                               ...f,
-                              options: f.options.map((o, i) => (i === idx ? { ...o, label } : o)),
+                              options: f.options.map((o, i) =>
+                                i === idx ? { ...o, linkQuery } : o,
+                              ),
                             }))
                           }}
                         />
                       </label>
-                      <label className="text-xs space-y-1">
-                        <span className="text-muted-foreground">Extra ¢</span>
-                        <input
-                          type="number"
-                          className={inputCls}
-                          value={opt.extraChargeCents}
-                          onChange={e => {
-                            const extraChargeCents = Number(e.target.value) || 0
-                            setForm(f => ({
-                              ...f,
-                              options: f.options.map((o, i) => (i === idx ? { ...o, extraChargeCents } : o)),
-                            }))
-                          }}
-                        />
-                      </label>
-                      {form.affectsStock ? (
+                      {(() => {
+                        const q = opt.linkQuery.trim().toLowerCase()
+                        if (q.length < 1) return null
+                        const componentHits = ingredients
+                          .filter(ing => {
+                            const hay = `${ing.componentId} ${ing.name} ${ing.group} ${ing.category}`.toLowerCase()
+                            return hay.includes(q)
+                          })
+                          .slice(0, 8)
+                        const productSource =
+                          form.affectsStock && stockCatalog.length > 0
+                            ? stockCatalog.map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                group: p.group,
+                              }))
+                            : products.map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                group: p.group || '',
+                              }))
+                        const productHits = productSource
+                          .filter(p => {
+                            const hay = `${p.id} ${p.name} ${p.group}`.toLowerCase()
+                            return hay.includes(q)
+                          })
+                          .slice(0, 8)
+                        if (componentHits.length === 0 && productHits.length === 0) {
+                          return (
+                            <p className="text-[11px] text-muted-foreground px-0.5">
+                              No components or products match “{opt.linkQuery.trim()}”.
+                            </p>
+                          )
+                        }
+                        return (
+                          <div className="grid sm:grid-cols-2 gap-2 max-h-40 overflow-auto rounded border border-border/60 bg-background p-1.5">
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1">
+                                Components
+                              </p>
+                              {componentHits.length === 0 ? (
+                                <p className="text-[11px] text-muted-foreground px-1">No matches</p>
+                              ) : (
+                                componentHits.map(ing => (
+                                  <button
+                                    key={`c-${ing.id}`}
+                                    type="button"
+                                    className="w-full text-left text-xs px-1.5 py-1 rounded hover:bg-muted"
+                                    onClick={() => {
+                                      setForm(f => ({
+                                        ...f,
+                                        options: f.options.map((o, i) =>
+                                          i === idx
+                                            ? {
+                                                ...o,
+                                                linkedComponentId: ing.componentId,
+                                                linkedComponentName: ing.name,
+                                                label: o.label.trim() || ing.name,
+                                                linkQuery: '',
+                                              }
+                                            : o,
+                                        ),
+                                      }))
+                                    }}
+                                  >
+                                    <span className="font-medium">{ing.name}</span>
+                                    <span className="block text-[10px] text-muted-foreground">
+                                      {ing.componentId}
+                                      {ing.group ? ` · ${ing.group}` : ''}
+                                    </span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1">
+                                Products
+                              </p>
+                              {productHits.length === 0 ? (
+                                <p className="text-[11px] text-muted-foreground px-1">No matches</p>
+                              ) : (
+                                productHits.map(p => (
+                                  <button
+                                    key={`p-${p.id}`}
+                                    type="button"
+                                    className="w-full text-left text-xs px-1.5 py-1 rounded hover:bg-muted"
+                                    onClick={() => {
+                                      setForm(f => ({
+                                        ...f,
+                                        options: f.options.map((o, i) =>
+                                          i === idx
+                                            ? {
+                                                ...o,
+                                                linkedProductId: p.id,
+                                                linkedProductName: p.name,
+                                                label: o.label.trim() || p.name,
+                                                linkQuery: '',
+                                              }
+                                            : o,
+                                        ),
+                                      }))
+                                    }}
+                                  >
+                                    <span className="font-medium">{p.name}</span>
+                                    <span className="block text-[10px] text-muted-foreground">
+                                      #{p.id}
+                                      {p.group ? ` · ${p.group}` : ''}
+                                    </span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
+                      <div className="flex flex-wrap gap-2 text-[11px]">
+                        {opt.linkedComponentId ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5">
+                            Component: {opt.linkedComponentName || opt.linkedComponentId}
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-destructive"
+                              aria-label="Clear component"
+                              onClick={() =>
+                                setForm(f => ({
+                                  ...f,
+                                  options: f.options.map((o, i) =>
+                                    i === idx
+                                      ? { ...o, linkedComponentId: '', linkedComponentName: '' }
+                                      : o,
+                                  ),
+                                }))
+                              }
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null}
+                        {opt.linkedProductId ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5">
+                            Product: {opt.linkedProductName || opt.linkedProductId}
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-destructive"
+                              aria-label="Clear product"
+                              onClick={() =>
+                                setForm(f => ({
+                                  ...f,
+                                  options: f.options.map((o, i) =>
+                                    i === idx
+                                      ? { ...o, linkedProductId: null, linkedProductName: '' }
+                                      : o,
+                                  ),
+                                }))
+                              }
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null}
+                        {!opt.linkedComponentId && !opt.linkedProductId ? (
+                          <span className="text-muted-foreground">
+                            {form.affectsStock
+                              ? 'Link a component or product (required for depletion).'
+                              : 'No stock link yet.'}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="grid sm:grid-cols-[1fr_auto_120px_auto] gap-2 items-end">
                         <label className="text-xs space-y-1">
-                          <span className="text-muted-foreground">Linked product</span>
-                          <select
-                            className={selectCls}
-                            value={opt.linkedProductId ?? ''}
+                          <span className="text-muted-foreground">Label</span>
+                          <input
+                            className={inputCls}
+                            value={opt.label}
                             onChange={e => {
-                              const id = e.target.value ? Number(e.target.value) : null
-                              const hit = stockCatalog.find(p => p.id === id)
+                              const label = e.target.value
+                              setForm(f => ({
+                                ...f,
+                                options: f.options.map((o, i) =>
+                                  i === idx ? { ...o, label } : o,
+                                ),
+                              }))
+                            }}
+                          />
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 text-xs pb-2">
+                          <input
+                            type="checkbox"
+                            checked={opt.chargeable}
+                            onChange={e => {
+                              const chargeable = e.target.checked
                               setForm(f => ({
                                 ...f,
                                 options: f.options.map((o, i) =>
                                   i === idx
                                     ? {
                                         ...o,
-                                        linkedProductId: id,
-                                        linkedProductName: hit?.name || '',
-                                        label: o.label || hit?.name || '',
+                                        chargeable,
+                                        extraChargeCents: chargeable ? o.extraChargeCents : 0,
                                       }
                                     : o,
                                 ),
                               }))
                             }}
-                          >
-                            <option value="">—</option>
-                            {stockCatalog.map(p => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </select>
+                          />
+                          Chargeable
                         </label>
-                      ) : (
-                        <div />
-                      )}
-                      <button
-                        type="button"
-                        className="text-xs underline text-destructive pb-2"
-                        onClick={() =>
-                          setForm(f => ({
-                            ...f,
-                            options: f.options.filter((_, i) => i !== idx),
-                          }))
-                        }
-                      >
-                        Remove
-                      </button>
+                        {opt.chargeable ? (
+                          <label className="text-xs space-y-1">
+                            <span className="text-muted-foreground">Extra ({symbol})</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              className={inputCls}
+                              value={Number(((opt.extraChargeCents || 0) / 100).toFixed(2))}
+                              onChange={e => {
+                                const major = Math.max(0, Number(e.target.value) || 0)
+                                const extraChargeCents = Math.round(major * 100)
+                                setForm(f => ({
+                                  ...f,
+                                  options: f.options.map((o, i) =>
+                                    i === idx ? { ...o, extraChargeCents, chargeable: true } : o,
+                                  ),
+                                }))
+                              }}
+                              title="Extra charge in ringgit / major currency (not cents)"
+                            />
+                          </label>
+                        ) : (
+                          <div />
+                        )}
+                        <button
+                          type="button"
+                          className="text-xs underline text-destructive pb-2"
+                          onClick={() =>
+                            setForm(f => ({
+                              ...f,
+                              options: f.options.filter((_, i) => i !== idx),
+                            }))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ),
                 )}
