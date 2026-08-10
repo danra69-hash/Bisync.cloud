@@ -16,8 +16,9 @@ public class PosModifierGroup
     public int MinSelect { get; set; } = 1;
     public int MaxSelect { get; set; } = 1;
     /// <summary>
-    /// When true, options that affect stock must link to products in the
-    /// Food Modifier / Beverage Modifier product groups.
+    /// When true, options that affect stock must link to a component and/or product
+    /// so POS can deplete inventory when the option is selected
+    /// (food, beverage, and compulsory kinds).
     /// </summary>
     public bool AffectsStock { get; set; }
     public bool Active { get; set; } = true;

@@ -14,7 +14,7 @@ export const POS_MODIFIER_KINDS: Array<{
   {
     id: 'compulsory',
     label: 'Compulsory Modifier',
-    hint: 'Shown in sequence when the product is selected. Guest must choose before the order continues.',
+    hint: 'Shown in sequence when the product is selected. Guest must choose before the order continues. Optionally Affects Stock so linked components/products deplete on POS.',
   },
   {
     id: 'food',

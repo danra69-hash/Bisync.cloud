@@ -184,7 +184,7 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
             Required = kind == "compulsory" || body.Required,
             MinSelect = Math.Max(0, body.MinSelect),
             MaxSelect = Math.Max(1, body.MaxSelect),
-            AffectsStock = (kind is "food" or "beverage") && body.AffectsStock,
+            AffectsStock = (kind is "food" or "beverage" or "compulsory") && body.AffectsStock,
             Active = body.Active,
             CreatedAt = now,
             UpdatedAt = now,
@@ -221,7 +221,7 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
         row.Required = kind == "compulsory" || body.Required;
         row.MinSelect = Math.Max(0, body.MinSelect);
         row.MaxSelect = Math.Max(1, body.MaxSelect);
-        row.AffectsStock = (kind is "food" or "beverage") && body.AffectsStock;
+        row.AffectsStock = (kind is "food" or "beverage" or "compulsory") && body.AffectsStock;
         row.Active = body.Active;
         row.UpdatedAt = DateTime.UtcNow;
 
@@ -388,7 +388,7 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
             return "maxSelect must be at least 1.";
         if (body.MinSelect > body.MaxSelect)
             return "minSelect cannot exceed maxSelect.";
-        if (body.AffectsStock && kind is "food" or "beverage")
+        if (body.AffectsStock && kind is "food" or "beverage" or "compulsory")
         {
             foreach (var opt in body.Options ?? [])
             {

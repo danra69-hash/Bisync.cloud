@@ -309,7 +309,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
       setError('Add at least one option.')
       return null
     }
-    if (form.affectsStock && (form.kind === 'food' || form.kind === 'beverage')) {
+    if (form.affectsStock && (form.kind === 'food' || form.kind === 'beverage' || form.kind === 'compulsory')) {
       const missing = options.find(
         o => !(o.linkedProductId && o.linkedProductId > 0) && !(o.linkedComponentId || '').trim(),
       )
@@ -578,6 +578,10 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                       kind,
                       required: kind === 'compulsory' ? true : f.required,
                       minSelect: kind === 'compulsory' ? Math.max(1, f.minSelect) : f.minSelect,
+                      affectsStock:
+                        kind === 'food' || kind === 'beverage' || kind === 'compulsory'
+                          ? f.affectsStock
+                          : false,
                     }))
                   }}
                 >
@@ -633,7 +637,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                 />
                 Required
               </label>
-              {(form.kind === 'food' || form.kind === 'beverage') ? (
+              {(form.kind === 'food' || form.kind === 'beverage' || form.kind === 'compulsory') ? (
                 <label className="inline-flex items-center gap-2">
                   <input
                     type="checkbox"
