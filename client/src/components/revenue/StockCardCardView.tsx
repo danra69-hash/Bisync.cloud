@@ -162,7 +162,7 @@ function StockCardItemCard({
             </p>
           </div>
         </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
+        <p className="mt-1.5 text-xs text-muted-foreground">
           On hand {fmtQty(detail?.onHandQty ?? row.onHandQty, countryCode)} · Avg COGS{' '}
           {(detail?.onHandAverageCogs ?? row.onHandAverageCogs) > 0
             ? uomPrice(detail?.onHandAverageCogs ?? row.onHandAverageCogs)
@@ -252,68 +252,81 @@ function StockCardItemCard({
               {outboundRows.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No outbound in this month.</p>
               ) : (
-                <ul className="space-y-1.5">
-                  {outboundRows.map((entry, idx) => (
-                    <li
-                      key={`out-${entry.id}-${entry.splitIndex ?? 0}-${idx}`}
-                      className="text-xs border border-border/70 rounded px-2 py-1.5 bg-muted/20"
-                    >
-                      <div className="flex justify-between gap-2 font-medium">
-                        <span>{fmtDate(entry.occurredAt)}</span>
-                        <span className="tabular-nums text-muted-foreground">
-                          from {formatSourceInboundSequence(entry)}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-foreground">
-                        {stockCardEntryTypeLabel(entry.entryType, entry.reason)}{' '}
-                        <span className="tabular-nums">
-                          {fmtQty(entry.quantity, countryCode)}
-                        </span>
-                        {' · '}
-                        {entry.uom}
-                        {' · '}
-                        {entry.unitPrice > 0 ? (
-                          <>
-                            {uomPrice(entry.unitPrice)}
-                            {entry.entryType === 'credit_note' && entry.subtotal > 0 ? (
-                              <span className="text-muted-foreground">
-                                {' '}· {rm(entry.subtotal)}
+                <div className="overflow-x-auto rounded border border-border/70">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-muted/40 text-muted-foreground">
+                      <tr>
+                        <th className="px-2 py-1 text-left font-semibold">Date</th>
+                        <th className="px-2 py-1 text-right font-semibold">Stock QTY</th>
+                        <th className="px-2 py-1 text-left font-semibold">UOM</th>
+                        <th className="px-2 py-1 text-right font-semibold">UOM price</th>
+                        <th className="px-2 py-1 text-right font-semibold">Value</th>
+                        <th className="px-2 py-1 text-left font-semibold">From IN</th>
+                        <th className="px-2 py-1 text-left font-semibold">Type / Ref</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {outboundRows.map((entry, idx) => {
+                        const residual = entry.roundingResidual ?? 0
+                        const isCreditNote = entry.entryType === 'credit_note'
+                        const isPrepaid = /prepaid/i.test(entry.reason ?? '')
+                        const valueAmount = isCreditNote && entry.subtotal > 0
+                          ? entry.subtotal
+                          : isPrepaid && entry.unitPrice > 0
+                            ? entry.unitPrice * entry.quantity
+                            : entry.subtotal > 0
+                              ? entry.subtotal
+                              : 0
+                        return (
+                          <tr
+                            key={`out-${entry.id}-${entry.splitIndex ?? 0}-${idx}`}
+                            className="border-t border-border/50"
+                          >
+                            <td className="px-2 py-1.5 whitespace-nowrap">{fmtDate(entry.occurredAt)}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums font-medium">
+                              {fmtQty(entry.quantity, countryCode)}
+                            </td>
+                            <td className="px-2 py-1.5">{entry.uom || '—'}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">
+                              {entry.unitPrice > 0 ? uomPrice(entry.unitPrice) : '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">
+                              {valueAmount > 0 ? rm(valueAmount) : '—'}
+                              {isCreditNote && Math.abs(residual) > 0.00005 ? (
+                                <span
+                                  className="block text-[10px] text-muted-foreground font-normal"
+                                  title={
+                                    entry.extendedAtUnitPrice && entry.extendedAtUnitPrice > 0
+                                      ? `PCU extended ${rm(entry.extendedAtUnitPrice)} at 4dp; document ${rm(entry.documentAmount ?? entry.subtotal)}`
+                                      : 'UOM rounding residual — credit note document amount is authority'
+                                  }
+                                >
+                                  Res {(residual > 0 ? '+' : '') + rm(residual)}
+                                </span>
+                              ) : null}
+                            </td>
+                            <td className="px-2 py-1.5 whitespace-nowrap tabular-nums text-muted-foreground">
+                              {formatSourceInboundSequence(entry)}
+                            </td>
+                            <td className="px-2 py-1.5 text-muted-foreground">
+                              <span className="block text-foreground">
+                                {stockCardEntryTypeLabel(entry.entryType, entry.reason)}
                               </span>
-                            ) : /prepaid/i.test(entry.reason ?? '') ? (
-                              <span className="text-muted-foreground">
-                                {' '}· val {rm(entry.unitPrice * entry.quantity)}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : '—'}
-                      </p>
-                      {entry.entryType === 'credit_note'
-                        && Math.abs(entry.roundingResidual ?? 0) > 0.00005 ? (
-                        <p
-                          className="mt-0.5 text-[10px] text-muted-foreground"
-                          title={
-                            entry.extendedAtUnitPrice && entry.extendedAtUnitPrice > 0
-                              ? `PCU extended ${rm(entry.extendedAtUnitPrice)} at 4dp; document ${rm(entry.documentAmount ?? entry.subtotal)}`
-                              : 'UOM rounding residual — credit note document amount is authority'
-                          }
-                        >
-                          Residual {(entry.roundingResidual ?? 0) > 0 ? '+' : ''}
-                          {rm(entry.roundingResidual ?? 0)}
-                        </p>
-                      ) : null}
-                      {entry.entryType === 'credit_note' && entry.referenceNumber ? (
-                        <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                          {entry.referenceNumber}
-                          {entry.reason ? ` · ${entry.reason}` : ''}
-                        </p>
-                      ) : /prepaid/i.test(entry.reason ?? '') && entry.reason ? (
-                        <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
-                          {entry.reason}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+                              {isCreditNote && entry.referenceNumber ? (
+                                <span className="block text-[10px] tabular-nums">
+                                  {entry.referenceNumber}
+                                  {entry.reason ? ` · ${entry.reason}` : ''}
+                                </span>
+                              ) : isPrepaid && entry.reason ? (
+                                <span className="block text-[10px] line-clamp-2">{entry.reason}</span>
+                              ) : null}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </section>
           </>
