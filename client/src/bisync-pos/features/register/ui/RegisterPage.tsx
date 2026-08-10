@@ -206,15 +206,20 @@ export function RegisterPage() {
     }
     if (session.offlineFirst && session.modifierGroups.length > 0) {
       setModifierGroups(session.modifierGroups)
-      return
     }
+    // Refresh from API whenever online so newly created Beverage/Food modifiers appear
+    // even on offline-first stations that already have a catalog snapshot.
+    if (session.offlineFirst && !isOnline()) return
     let cancelled = false
     api.posModifierGroups(session.companyId)
       .then(rows => {
         if (!cancelled) setModifierGroups(rows)
       })
       .catch(() => {
-        if (!cancelled) setModifierGroups([])
+        if (cancelled) return
+        if (!(session.offlineFirst && session.modifierGroups.length > 0)) {
+          setModifierGroups([])
+        }
       })
     return () => {
       cancelled = true
