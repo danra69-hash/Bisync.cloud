@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
-import { api, type Vendor } from '../../api';
+import { api, type Vendor, type ComponentTagSuggestion } from '../../api';
 import {
   getKnownRecipeUnits,
   getKnownStorageOptions,
@@ -38,6 +38,7 @@ import {
   resolveScopedTaggedVendorProducts,
   VendorProductTable,
   VendorProductTaggedSection,
+  VendorProductSuggestedSection,
   type CompanyLocationOption,
 } from './VendorProductTable';
 import { isVendorProductTagReady, countComponentTaggedVendors } from '../../data/vendorProductTagging';
@@ -45,7 +46,7 @@ import {
   formatParStock,
   resolveParStockDisplay,
 } from '../../data/componentParStock';
-import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
+import { VENDOR_PRODUCT_CATALOG, applyVendorProductOverrides, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { ComponentSplitUseSection } from './ComponentSplitUseSection';
 import { SearchableSelect } from './SearchableSelect';
 import {
@@ -428,6 +429,9 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [splitUseError, setSplitUseError] = useState<string | null>(null);
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
   const [catalogVersion, setCatalogVersion] = useState(0);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [tagSuggestions, setTagSuggestions] = useState<ComponentTagSuggestion[]>([]);
 
   const categoryExtras = useMemo(
     () => existingComponents.map(component => component.category).filter(Boolean),
@@ -539,6 +543,33 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       })
       .catch(() => setCompanyLocations([]));
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    const componentName = form.name.trim();
+    if (!selectedCompanyId || !componentName) {
+      setTagSuggestions([]);
+      setSuggestionError(null);
+      setSuggestionLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSuggestionLoading(true);
+    setSuggestionError(null);
+    void api.componentTagSuggestions(selectedCompanyId, componentName, selectedLocationIds)
+      .then(res => {
+        if (cancelled) return;
+        setTagSuggestions(Array.isArray(res.suggestions) ? res.suggestions : []);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setTagSuggestions([]);
+        setSuggestionError(e instanceof Error ? e.message : 'Failed to load suggested vendor products.');
+      })
+      .finally(() => {
+        if (!cancelled) setSuggestionLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedCompanyId, form.name, selectedLocationIds]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -735,6 +766,35 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     () => getComponentUomChoices(form.recipeUnit, form.altRecipeUnits),
     [form.recipeUnit, form.altRecipeUnits],
   );
+
+  const suggestedVendorProducts = useMemo(() => {
+    const catalog = applyVendorProductOverrides();
+    const tagged = new Set(form.taggedVendorProductIds);
+    const seen = new Set<string>();
+    const products: VendorProductCatalogItem[] = [];
+    for (const suggestion of tagSuggestions) {
+      if (suggestion.alreadyTagged) continue;
+      const id = suggestion.vendorProductId;
+      if (!id || tagged.has(id) || seen.has(id)) continue;
+      const product = catalog.find(p => p.id === id) ?? VENDOR_PRODUCT_CATALOG.find(p => p.id === id);
+      if (!product) continue;
+      seen.add(id);
+      products.push(product);
+    }
+    return products;
+  }, [tagSuggestions, form.taggedVendorProductIds]);
+
+  const suggestionProbabilityByProductId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const suggestion of tagSuggestions) {
+      if (!suggestion.vendorProductId || suggestion.alreadyTagged) continue;
+      const prev = map[suggestion.vendorProductId];
+      if (prev == null || suggestion.probability > prev) {
+        map[suggestion.vendorProductId] = suggestion.probability;
+      }
+    }
+    return map;
+  }, [tagSuggestions]);
 
   const taggedPricing = useMemo(() => {
     const primaryId = form.taggedVendorProductIds[0];
@@ -1114,6 +1174,34 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 onProductLocationsChange: handleProductLocationsChange,
               }}
             />
+
+            {selectedCompanyId && form.name.trim() ? (
+              <VendorProductSuggestedSection
+                products={suggestedVendorProducts}
+                companyLocations={companyLocations}
+                hideYieldLoss={form.splitUse.enabled}
+                loading={suggestionLoading}
+                error={suggestionError}
+                probabilityByProductId={suggestionProbabilityByProductId}
+                handlers={{
+                  defaultComponentUom: form.recipeUnit,
+                  principalComponentUom: form.recipeUnit,
+                  altRecipeUnits: form.altRecipeUnits,
+                  componentUomChoices,
+                  componentUomByProduct: form.vendorProductComponentUom,
+                  principalQtyByProduct: form.vendorProductPrincipalQty,
+                  lossYieldByProduct: form.vendorProductLossYield,
+                  locationsByProduct: form.vendorProductLocations,
+                  taggedProductIds: form.taggedVendorProductIds,
+                  activeLocationIds: selectedLocationIds,
+                  onPrincipalQtyChange: handlePrincipalQtyChange,
+                  onLossYieldChange: handleLossYieldChange,
+                  onComponentUomChange: handleVendorProductComponentUomChange,
+                  onToggleTag: handleToggleVendorProductTag,
+                  onProductLocationsChange: handleProductLocationsChange,
+                }}
+              />
+            ) : null}
 
             <SectionTitle>Vendor &amp; Pricing</SectionTitle>
 
