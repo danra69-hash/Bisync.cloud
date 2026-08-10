@@ -2,6 +2,10 @@
 /**
  * Capture Bisync101 clips from the live Bisync.cloud UI (not Pillow mocks).
  *
+ * Each clip is subject-only: login / company scope / navigation run in a fast
+ * untrimmed setup phase, then ffmpeg cuts that lead-in so the WebM starts on
+ * the lesson (e.g. company/location selection, create component, etc.).
+ *
  * Records real screens at 960×540 with a visible demo cursor, mouse moves to
  * each control, and typed example values — then writes silent VP9 WebMs to
  * client/public/bisync101/clips/.
@@ -41,6 +45,9 @@ const ONLY = new Set(
     .filter(Boolean)
     .map(s => s.replace(/\.webm$/i, '')),
 );
+
+/** When true, skip cursor animation / captions so setup stays out of the lesson. */
+let SETUP_MODE = false;
 
 function loadPlaywright() {
   const require = createRequire(import.meta.url);
@@ -124,12 +131,14 @@ async function injectDemoChrome(page) {
 }
 
 async function setCaption(page, text) {
+  if (SETUP_MODE) return;
   await page.evaluate(t => {
     if (typeof window.__bisync101SetCaption === 'function') window.__bisync101SetCaption(t);
   }, text);
 }
 
 async function moveTo(page, locator, steps = 18) {
+  if (SETUP_MODE) return null;
   const handle = locator.first();
   if (!(await handle.count())) return null;
   await handle.scrollIntoViewIfNeeded().catch(() => {});
@@ -144,7 +153,7 @@ async function moveTo(page, locator, steps = 18) {
 async function clickLoc(page, locator) {
   const handle = locator.first();
   await moveTo(page, handle);
-  await page.waitForTimeout(180);
+  if (!SETUP_MODE) await page.waitForTimeout(180);
   try {
     await handle.click({ timeout: 5000 });
   } catch {
@@ -161,16 +170,27 @@ async function typeInto(page, locator, text, { clear = true } = {}) {
   if (clear) {
     await handle.fill('').catch(() => {});
   }
-  await handle.pressSequentially(String(text), { delay: 55 }).catch(async () => {
+  if (SETUP_MODE) {
     await handle.fill(String(text));
-  });
+  } else {
+    await handle.pressSequentially(String(text), { delay: 55 }).catch(async () => {
+      await handle.fill(String(text));
+    });
+  }
   return true;
 }
 
 async function login(page) {
-  await setCaption(page, 'STEP 1 · Open Login');
+  if (!SETUP_MODE) await setCaption(page, 'STEP 1 · Open Login');
   await clickLoc(page, page.getByRole('banner').getByRole('button', { name: 'Login' }));
   await page.waitForSelector('#login-email');
+  if (SETUP_MODE) {
+    await page.fill('#login-email', EMAIL);
+    await page.fill('#login-password', PASSWORD);
+    await page.getByRole('dialog').locator('button[type="submit"]').click();
+    await page.waitForTimeout(1800);
+    return;
+  }
   await setCaption(page, 'STEP 2 · Type email example');
   await typeInto(page, page.locator('#login-email'), EMAIL);
   await setCaption(page, 'STEP 3 · Type password example');
@@ -182,22 +202,23 @@ async function login(page) {
 
 async function selectCompany(page, companyName) {
   const company = page.locator('header select').first();
-  await moveTo(page, company);
+  if (!SETUP_MODE) await moveTo(page, company);
   await company.selectOption({ label: companyName }).catch(async () => {
     await company.selectOption({ label: new RegExp(companyName.split(/\s+/)[0], 'i') });
   });
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(SETUP_MODE ? 700 : 1200);
 }
 
 async function scopeOrg(page) {
-  await setCaption(page, 'Select company');
+  if (!SETUP_MODE) await setCaption(page, 'Select company');
   await selectCompany(page, COMPANY);
-  // Single-outlet companies auto-select; otherwise open location picker.
   const locLabel = page.locator('header').getByText(/All Locations|Select location/i).first();
   if (await locLabel.count()) {
-    await setCaption(page, 'Confirm location scope');
-    await moveTo(page, locLabel);
-    await page.waitForTimeout(500);
+    if (!SETUP_MODE) {
+      await setCaption(page, 'Confirm location scope');
+      await moveTo(page, locLabel);
+      await page.waitForTimeout(500);
+    }
   }
 }
 
@@ -208,7 +229,13 @@ async function goHome(page) {
   } else {
     await page.locator('header').getByText('Bisync.').first().click().catch(() => {});
   }
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(SETUP_MODE ? 400 : 800);
+}
+
+async function prepareSession(page, companyName = COMPANY) {
+  await login(page);
+  await selectCompany(page, companyName);
+  await goHome(page);
 }
 
 async function openModuleTile(page, label) {
@@ -219,23 +246,23 @@ async function openModuleTile(page, label) {
     .or(main.getByRole('button', { name: label }).first())
     .or(main.locator('button').filter({ hasText: label }).first());
   await moveTo(page, tile);
-  await page.waitForTimeout(200);
+  if (!SETUP_MODE) await page.waitForTimeout(200);
   await tile.click({ force: true, timeout: 8000 });
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(SETUP_MODE ? 700 : 1200);
 }
 
 async function openSidebarNav(page, moduleName) {
   await setCaption(page, 'Open sidebar menu');
   const menu = page.locator('header button').first();
   await clickLoc(page, menu);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(SETUP_MODE ? 250 : 500);
   await setCaption(page, `Navigate · ${moduleName}`);
   // Sidebar drawer is typically a fixed panel; force-click if off-canvas animation lags.
   const item = page.locator('aside, nav, [data-sidebar], .fixed').getByText(moduleName, { exact: true }).first()
     .or(page.getByRole('button', { name: moduleName }).first())
     .or(page.getByText(moduleName, { exact: true }).first());
   await clickLoc(page, item).catch(async () => item.click({ force: true }));
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(SETUP_MODE ? 500 : 900);
 }
 
 const REV_SECTION_FOR_ITEM = {
@@ -275,7 +302,7 @@ async function openRevItem(page, itemLabel) {
       btn?.scrollIntoView({ block: 'center' });
       btn?.click();
     }, section);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(SETUP_MODE ? 250 : 500);
   }
   const clicked = await page.evaluate(name => {
     const buttons = [...document.querySelectorAll('button')];
@@ -289,7 +316,7 @@ async function openRevItem(page, itemLabel) {
     const item = page.getByRole('button', { name: itemLabel }).first();
     await item.evaluate(el => { el.scrollIntoView({ block: 'center' }); el.click(); });
   }
-  await page.waitForTimeout(1100);
+  await page.waitForTimeout(SETUP_MODE ? 600 : 1100);
 }
 
 async function focusSearchOrFirstInput(page, example) {
@@ -315,9 +342,9 @@ async function demoNewButton(page) {
   if (await btn.count()) {
     await setCaption(page, 'Open create / add action');
     await moveTo(page, btn);
-    await page.waitForTimeout(400);
+    if (!SETUP_MODE) await page.waitForTimeout(400);
     await btn.click().catch(() => {});
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(SETUP_MODE ? 500 : 900);
     return true;
   }
   return false;
@@ -341,7 +368,7 @@ function encodeWebm(framesDir, outFile) {
   }
 }
 
-async function recordClip(browser, clipName, run) {
+async function recordClip(browser, clipName, { setup, demo }) {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bisync101-'));
   const videoDir = path.join(tmpRoot, 'video');
   fs.mkdirSync(videoDir);
@@ -352,12 +379,26 @@ async function recordClip(browser, clipName, run) {
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
   await injectDemoChrome(page);
+  let trimStartSec = 0;
   try {
+    const clock0 = Date.now();
     await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(600);
-    await run(page);
+    await page.waitForTimeout(400);
+    if (setup) {
+      SETUP_MODE = true;
+      try {
+        await setup(page);
+        await page.waitForTimeout(250);
+      } finally {
+        SETUP_MODE = false;
+      }
+      // Cut lead-in so the WebM begins on the lesson subject (not sign-in / nav).
+      trimStartSec = Math.max(0, (Date.now() - clock0) / 1000);
+    }
+    await demo(page);
     await page.waitForTimeout(700);
   } finally {
+    SETUP_MODE = false;
     await context.close();
   }
 
@@ -365,32 +406,74 @@ async function recordClip(browser, clipName, run) {
   if (!videos.length) throw new Error(`No video recorded for ${clipName}`);
   const raw = path.join(videoDir, videos[0]);
   const out = path.join(OUT_DIR, clipName);
-  // Re-encode to silent VP9 for size/compatibility (Playwright WebM varies).
-  const r = spawnSync(
-    'ffmpeg',
-    ['-y', '-i', raw, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-an', '-vf', `scale=${W}:${H}`, out],
-    { stdio: 'pipe' },
-  );
+  const ffArgs = ['-y', '-i', raw];
+  if (trimStartSec > 0.5) {
+    ffArgs.push('-ss', trimStartSec.toFixed(2));
+  }
+  ffArgs.push('-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-an', '-vf', `scale=${W}:${H}`, out);
+  const r = spawnSync('ffmpeg', ffArgs, { stdio: 'pipe' });
   if (r.status !== 0) {
     fs.copyFileSync(raw, out);
   }
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   const kb = Math.round(fs.statSync(out).size / 1024);
-  console.log(`  ✓ ${clipName} (${kb} KB)`);
+  const trimNote = trimStartSec > 0.5 ? `, trim ${trimStartSec.toFixed(1)}s` : '';
+  console.log(`  ✓ ${clipName} (${kb} KB${trimNote})`);
 }
 
 async function ensureLoggedInHome(page) {
-  await login(page);
-  await scopeOrg(page);
-  await goHome(page);
+  await prepareSession(page, COMPANY);
 }
 
-/** Clip scenarios: each shows real UI + cursor + typing where applicable. */
+function rmsSetup(navItem, { module = 'Revenue Management', company = COMPANY, openNew = false } = {}) {
+  return async page => {
+    await prepareSession(page, company);
+    await openModuleTile(page, module);
+    await openRevItem(page, navItem).catch(async () => {
+      await page.getByText(new RegExp(navItem.split(/\s+/)[0], 'i')).first().click({ force: true }).catch(() => {});
+    });
+    if (openNew) await demoNewButton(page);
+  };
+}
+
+function posSetup(navItem) {
+  return async page => {
+    await prepareSession(page);
+    await openModuleTile(page, 'Point-of-Sales');
+    await openRevItem(page, navItem).catch(async () => {
+      await page.getByText(new RegExp(navItem.split(/\s+/)[0], 'i')).first().click({ force: true }).catch(() => {});
+    });
+  };
+}
+
+function hrSetup(navItem) {
+  return async page => {
+    await prepareSession(page);
+    await openModuleTile(page, 'Human Resources');
+    await openRevItem(page, navItem).catch(async () => {
+      await page.getByText(new RegExp(navItem.split(/\s+/)[0], 'i')).first().click({ force: true }).catch(() => {});
+    });
+  };
+}
+
+function scSetup(navItem) {
+  return async page => {
+    await prepareSession(page);
+    await openSidebarNav(page, 'System Configuration');
+    await openRevItem(page, navItem).catch(async () => {
+      await page.getByText(new RegExp(navItem.split(/\s+/)[0], 'i')).first().click({ force: true }).catch(() => {});
+    });
+  };
+}
+
+/** Clip scenarios: setup is trimmed out; demo is the subject-only lesson. */
 function scenarios() {
   return [
     {
       file: 'gs-sign-in.webm',
-      run: async page => {
+      // Entire lesson is sign-in — no setup trim.
+      demo: async page => {
+        await page.waitForTimeout(800);
         await setCaption(page, 'Landing · open Login');
         await login(page);
         await setCaption(page, 'Home after sign-in');
@@ -399,19 +482,33 @@ function scenarios() {
     },
     {
       file: 'gs-company-location.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => {
+        // Sign in only — company/location selection is the lesson.
+        await login(page);
+        await goHome(page);
+      },
+      demo: async page => {
         await setCaption(page, 'STEP 1 · Choose company');
         const company = page.locator('header select').first();
         await moveTo(page, company);
-        await company.selectOption({ label: COMPANY });
-        await page.waitForTimeout(1000);
+        // Switch away then back so the company change is visible in the lesson.
+        const options = await company.locator('option').allTextContents();
+        const other = options.map(o => o.trim()).find(o => o && o !== COMPANY);
+        if (other) {
+          await company.selectOption({ label: other }).catch(() => {});
+          await page.waitForTimeout(700);
+        }
+        await company.selectOption({ label: COMPANY }).catch(async () => {
+          await company.selectOption({ label: new RegExp(COMPANY.split(/\s+/)[0], 'i') });
+        });
+        await page.waitForTimeout(900);
         await setCaption(page, 'STEP 2 · Location scope');
-        const loc = page.locator('header').getByText(/All Locations|Select location|Weissbrau/i).first();
+        const loc = page.locator('header button').filter({ hasText: /All Locations|Select location|^\d+$/ }).first()
+          .or(page.locator('header button').filter({ has: page.locator('svg') }).nth(1));
         await moveTo(page, loc);
-        await page.waitForTimeout(700);
-        await loc.click().catch(() => {});
-        await page.waitForTimeout(800);
+        await page.waitForTimeout(500);
+        await loc.click({ timeout: 3000 }).catch(() => {});
+        await page.waitForTimeout(900);
         await page.keyboard.press('Escape').catch(() => {});
         await setCaption(page, 'STEP 3 · Org clock follows outlet timezone');
         const clock = page.locator('header p').first();
@@ -421,8 +518,10 @@ function scenarios() {
     },
     {
       file: 'gs-navigate-modules.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => {
+        await prepareSession(page);
+      },
+      demo: async page => {
         await setCaption(page, 'STEP 1 · Open Revenue Management tile');
         await openModuleTile(page, 'Revenue Management');
         await page.waitForTimeout(800);
@@ -439,8 +538,8 @@ function scenarios() {
     },
     {
       file: 'gs-language.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => { await prepareSession(page); },
+      demo: async page => {
         await setCaption(page, 'STEP 1 · Open language flag');
         const flag = page.locator('header').getByText('🇬🇧').or(page.locator('header button').filter({ hasText: /EN|🇬🇧|language/i })).first();
         await clickLoc(page, flag);
@@ -456,8 +555,8 @@ function scenarios() {
     },
     {
       file: 'gs-bisync101.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => { await prepareSession(page); },
+      demo: async page => {
         await setCaption(page, 'STEP 1 · Open Bisync101');
         await clickLoc(page, page.getByRole('button', { name: /Bisync101/i }).first());
         await page.waitForTimeout(1200);
@@ -473,132 +572,94 @@ function scenarios() {
     },
     {
       file: 'rms-create-po.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'My Order');
+      setup: rmsSetup('My Order'),
+      demo: async page => {
         await demoNewButton(page);
         await focusSearchOrFirstInput(page, 'Flour');
       },
     },
     {
       file: 'rms-active-purchase.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => {
+        await prepareSession(page);
         await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Active Purchase').catch(async () => {
-          await openRevItem(page, 'My Order');
-        });
-        await focusSearchOrFirstInput(page, 'PO-');
+        await openRevItem(page, 'Active Purchase').catch(async () => openRevItem(page, 'My Order'));
       },
+      demo: async page => { await focusSearchOrFirstInput(page, 'PO-'); },
     },
     {
       file: 'rms-returnable-goods.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Returnable Goods');
-        await focusSearchOrFirstInput(page, 'RG-');
-      },
+      setup: rmsSetup('Returnable Goods'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'RG-'); },
     },
     {
       file: 'rms-credit-note.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Credit Note');
-        await focusSearchOrFirstInput(page, 'CN-');
-      },
+      setup: rmsSetup('Credit Note'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'CN-'); },
     },
     {
       file: 'rms-cash-purchase.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Cash Purchase');
+      setup: rmsSetup('Cash Purchase'),
+      demo: async page => {
         await demoNewButton(page);
         await focusSearchOrFirstInput(page, 'Cash buy');
       },
     },
     {
       file: 'rms-order-template.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Order Template');
-        await focusSearchOrFirstInput(page, 'Weekly');
-      },
+      setup: rmsSetup('Order Template'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Weekly'); },
     },
     {
       file: 'rms-production.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Production');
-        await focusSearchOrFirstInput(page, 'Batch');
-      },
+      setup: rmsSetup('Production'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Batch'); },
     },
     {
       file: 'rms-central-store.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Central Store');
-        await focusSearchOrFirstInput(page, 'SR-');
-      },
+      setup: rmsSetup('Central Store'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'SR-'); },
     },
     {
       file: 'rms-stock-card.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Stock Card');
-        await focusSearchOrFirstInput(page, 'Sugar');
-      },
+      setup: rmsSetup('Stock Card'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Sugar'); },
     },
     {
       file: 'rms-inventory-count.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Inventory');
+      setup: rmsSetup('Inventory'),
+      demo: async page => {
         await demoNewButton(page);
         await focusSearchOrFirstInput(page, 'Count');
       },
     },
     {
       file: 'rms-wastage.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Wastage');
+      setup: rmsSetup('Wastage'),
+      demo: async page => {
         await demoNewButton(page);
         await focusSearchOrFirstInput(page, 'Spoilage');
       },
     },
     {
       file: 'rms-transfer.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Transfer');
+      setup: rmsSetup('Transfer'),
+      demo: async page => {
         await demoNewButton(page);
         await focusSearchOrFirstInput(page, 'Transfer');
       },
     },
     {
       file: 'rms-create-component.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'My Component (ingredient)');
+      setup: rmsSetup('My Component (ingredient)'),
+      demo: async page => {
         await demoNewButton(page);
-        const name = page.locator('input').filter({ hasText: '' }).first()
-          .or(page.getByPlaceholder(/name|component/i).first())
-          .or(page.locator('input[type="text"]').first());
+        const name = page.getByPlaceholder(/Wagyu|component name|e\.g\./i).first()
+          .or(page.locator('label').filter({ hasText: /COMPONENT NAME/i }).locator('..').locator('input').first());
         if (await name.count()) {
           await setCaption(page, 'Type component name example');
           await typeInto(page, name, 'Demo Flour');
+          await page.waitForTimeout(800);
         } else {
           await focusSearchOrFirstInput(page, 'Flour');
         }
@@ -606,132 +667,83 @@ function scenarios() {
     },
     {
       file: 'rms-component-config.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Component Config');
-        await focusSearchOrFirstInput(page, 'Food');
-      },
+      setup: rmsSetup('Component Config'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Food'); },
     },
     {
       file: 'rms-vendor-products.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Vendor List & Products');
-        await focusSearchOrFirstInput(page, 'Vendor');
-      },
+      setup: rmsSetup('Vendor List & Products'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Vendor'); },
     },
     {
       file: 'rms-compare-price.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Compare Price');
-        await focusSearchOrFirstInput(page, 'Oil');
-      },
+      setup: rmsSetup('Compare Price'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Oil'); },
     },
     {
       file: 'rms-products.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => {
+        await prepareSession(page);
         await openModuleTile(page, 'Revenue Management');
         await openRevItem(page, 'Products').catch(async () => openRevItem(page, 'Product List'));
-        await focusSearchOrFirstInput(page, 'Burger');
       },
+      demo: async page => { await focusSearchOrFirstInput(page, 'Burger'); },
     },
     {
       file: 'rms-sales-order.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        // Sales Order is supply-side — use a company where the nav item is enabled.
-        await selectCompany(page, 'Bisync Hospitality Sdn Bhd');
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Sales Order');
-        await focusSearchOrFirstInput(page, 'SO-1042');
-      },
+      setup: rmsSetup('Sales Order', { company: 'Bisync Hospitality Sdn Bhd' }),
+      demo: async page => { await focusSearchOrFirstInput(page, 'SO-1042'); },
     },
     {
       file: 'rms-customer-list.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await selectCompany(page, 'Bisync Hospitality Sdn Bhd');
-        await openModuleTile(page, 'Revenue Management');
-        await openRevItem(page, 'Customer List');
-        await focusSearchOrFirstInput(page, 'Hotel');
-      },
+      setup: rmsSetup('Customer List', { company: 'Bisync Hospitality Sdn Bhd' }),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Hotel'); },
     },
     {
       file: 'rms-reports.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => {
+        await prepareSession(page);
         await openModuleTile(page, 'Revenue Management');
         await openRevItem(page, 'Reports').catch(async () => openRevItem(page, 'COGS Audit'));
-        await focusSearchOrFirstInput(page, 'COGS');
       },
+      demo: async page => { await focusSearchOrFirstInput(page, 'COGS'); },
     },
     {
       file: 'pos-menu.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Point-of-Sales');
-        await openRevItem(page, 'POS Menu').catch(async () => {
-          await page.getByText(/Menu/i).first().click().catch(() => {});
-        });
-        await focusSearchOrFirstInput(page, 'Latte');
-      },
+      setup: posSetup('POS Menu'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Latte'); },
     },
     {
       file: 'pos-modifiers.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Point-of-Sales');
-        await openRevItem(page, 'POS Modifier Group').catch(async () => {
-          await page.getByText(/Modifier/i).first().click().catch(() => {});
-        });
-        await focusSearchOrFirstInput(page, 'Extra');
-      },
+      setup: posSetup('POS Modifier Group'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Extra'); },
     },
     {
       file: 'pos-promotions.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Point-of-Sales');
-        await openRevItem(page, 'Promotion Scheduler').catch(async () => {
-          await page.getByText(/Promotion/i).first().click().catch(() => {});
-        });
-        await focusSearchOrFirstInput(page, 'Happy Hour');
-      },
+      setup: posSetup('Promotion Scheduler'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Happy Hour'); },
     },
     {
       file: 'pos-config-devices.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Point-of-Sales');
-        await openRevItem(page, 'POS Config').catch(async () => {
-          await page.getByText(/Device|Config/i).first().click().catch(() => {});
-        });
-        await focusSearchOrFirstInput(page, 'Printer');
-      },
+      setup: posSetup('POS Config'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Printer'); },
     },
     {
       file: 'pos-take-order.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await setCaption(page, 'Open Point-of-Sales module');
+      setup: async page => {
+        await prepareSession(page);
         await openModuleTile(page, 'Point-of-Sales');
-        await page.waitForTimeout(800);
-        await setCaption(page, 'Open POS floor / register');
-        // Prefer in-app POS entry, then standalone /POS
         const posLink = page.getByRole('button', { name: /POS Test|Open POS|Floor|Register/i }).first()
           .or(page.getByText(/POS Test|Take order|Floor plan/i).first());
         if (await posLink.count()) {
           await posLink.click({ force: true }).catch(() => {});
-          await page.waitForTimeout(1500);
+          await page.waitForTimeout(1200);
         } else {
           await page.goto(`${BASE_URL}/POS`, { waitUntil: 'domcontentloaded' });
-          await page.waitForTimeout(2000);
+          await page.waitForTimeout(1500);
         }
+      },
+      demo: async page => {
         await setCaption(page, 'Select a table / start an order');
         const table = page.getByText(/\bT[1-9]\b|Table/i).first();
         if (await table.count()) {
@@ -744,120 +756,76 @@ function scenarios() {
     },
     {
       file: 'hr-employee-directory.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Human Resources');
-        await openRevItem(page, 'Employee Directory').catch(async () => {
-          await page.getByText(/Employee/i).first().click().catch(() => {});
-        });
-        await focusSearchOrFirstInput(page, 'Tan');
-      },
+      setup: hrSetup('Employee Directory'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Tan'); },
     },
     {
       file: 'hr-attendance.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Human Resources');
-        await openRevItem(page, 'Attendance');
-        await focusSearchOrFirstInput(page, 'Clock');
-      },
+      setup: hrSetup('Attendance'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Clock'); },
     },
     {
       file: 'hr-leave.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Human Resources');
-        await openRevItem(page, 'Leave');
-        await focusSearchOrFirstInput(page, 'Annual');
-      },
+      setup: hrSetup('Leave'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Annual'); },
     },
     {
       file: 'hr-schedule.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Human Resources');
-        await openRevItem(page, 'Schedule');
-        await focusSearchOrFirstInput(page, 'Shift');
-      },
+      setup: hrSetup('Schedule'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Shift'); },
     },
     {
       file: 'hr-team-order.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Human Resources');
-        await openRevItem(page, 'Team').catch(async () => {
-          await page.getByText(/Team|Portal/i).first().click().catch(() => {});
-        });
-        await focusSearchOrFirstInput(page, 'Order');
-      },
+      setup: hrSetup('Team'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Order'); },
     },
     {
       file: 'hr-config.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openModuleTile(page, 'Human Resources');
-        await openRevItem(page, 'HR Config').catch(async () => {
-          await page.getByText(/Config/i).first().click().catch(() => {});
-        });
-        await focusSearchOrFirstInput(page, 'Level');
-      },
+      setup: hrSetup('HR Config'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Level'); },
     },
     {
       file: 'ac-payroll.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => {
+        await prepareSession(page);
         await openModuleTile(page, 'Accounting');
-        await focusSearchOrFirstInput(page, 'Payroll');
       },
+      demo: async page => { await focusSearchOrFirstInput(page, 'Payroll'); },
     },
     {
       file: 'ac-cogs-bridge.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
+      setup: async page => {
+        await prepareSession(page);
         await openModuleTile(page, 'Revenue Management');
         await openRevItem(page, 'COGS Audit').catch(async () => openRevItem(page, 'Reports'));
-        await focusSearchOrFirstInput(page, 'COGS');
       },
+      demo: async page => { await focusSearchOrFirstInput(page, 'COGS'); },
     },
     {
       file: 'sc-create-company.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openSidebarNav(page, 'System Configuration');
-        await openRevItem(page, 'Companies').catch(async () => {
-          await page.getByText(/Compan/i).first().click().catch(() => {});
-        });
+      setup: scSetup('Companies'),
+      demo: async page => {
         await demoNewButton(page);
         await focusSearchOrFirstInput(page, 'Demo Co');
       },
     },
     {
       file: 'sc-create-location.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openSidebarNav(page, 'System Configuration');
-        await openRevItem(page, 'Locations');
+      setup: scSetup('Locations'),
+      demo: async page => {
         await demoNewButton(page);
         await focusSearchOrFirstInput(page, 'Pavilion');
       },
     },
     {
       file: 'sc-access-control.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openSidebarNav(page, 'System Configuration');
-        await openRevItem(page, 'Access Control');
-        await focusSearchOrFirstInput(page, 'Admin');
-      },
+      setup: scSetup('Access Control'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Admin'); },
     },
     {
       file: 'sc-audit-trail.webm',
-      run: async page => {
-        await ensureLoggedInHome(page);
-        await openSidebarNav(page, 'System Configuration');
-        await openRevItem(page, 'Audit Trail');
-        await focusSearchOrFirstInput(page, 'Login');
-      },
+      setup: scSetup('Audit Trail'),
+      demo: async page => { await focusSearchOrFirstInput(page, 'Login'); },
     },
   ];
 }
@@ -882,7 +850,10 @@ async function main() {
   for (const scenario of all) {
     process.stdout.write(`→ ${scenario.file}\n`);
     try {
-      await recordClip(browser, scenario.file, scenario.run);
+      await recordClip(browser, scenario.file, {
+        setup: scenario.setup,
+        demo: scenario.demo,
+      });
     } catch (err) {
       failed += 1;
       console.error(`  ✗ ${scenario.file}: ${err instanceof Error ? err.message : err}`);
@@ -897,6 +868,10 @@ async function main() {
       '',
       'Silent WebM recordings captured from the **live Bisync.cloud UI**',
       '(cursor moves + typed examples), not synthetic Pillow mockups.',
+      '',
+      'Each clip is **subject-only**: sign-in / company scope / navigation are',
+      'performed in a fast setup phase and trimmed out of the final WebM so the',
+      'lesson starts on the action being taught (e.g. company + location pickers).',
       '',
       'Regenerate:',
       '```bash',
