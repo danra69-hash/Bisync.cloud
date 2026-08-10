@@ -66,7 +66,7 @@ import { VoidCancelModal } from './VoidCancelModal'
 import { PaymentModal, type PaymentConfirmPayload } from './PaymentModal'
 import { DiscountModal, type DiscountApplyPayload } from './DiscountModal'
 import { CompulsoryModifierModal } from './CompulsoryModifierModal'
-import { TENDER_LABEL } from '../../cashier/domain/payments'
+import { TENDER_LABEL, paymentMethodForApi, paymentTypeLabel } from '../../cashier/domain/payments'
 import type { PosModifierGroup } from '../../../../api'
 import {
   resolveRequiredModifierGroups,
@@ -173,6 +173,7 @@ export function RegisterPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [entertainmentTypes, setEntertainmentTypes] = useState<PosConfigType[]>([])
   const [discountTypes, setDiscountTypes] = useState<PosConfigType[]>([])
+  const [paymentTypes, setPaymentTypes] = useState<PosConfigType[]>([])
   const [discountOpen, setDiscountOpen] = useState(false)
   const [discountError, setDiscountError] = useState<string | null>(null)
   const [prepaidPromotions, setPrepaidPromotions] = useState<PosPromotion[]>([])
@@ -249,20 +250,24 @@ export function RegisterPage() {
     if (!session?.companyId) {
       setEntertainmentTypes([])
       setDiscountTypes([])
+      setPaymentTypes([])
       return
     }
     let cancelled = false
     Promise.all([
+      api.posConfigTypes(session.companyId, { kind: 'payment', includeInactive: false }),
       api.posConfigTypes(session.companyId, { kind: 'entertainment', includeInactive: false }),
       api.posConfigTypes(session.companyId, { kind: 'discount', includeInactive: false }),
     ])
-      .then(([ent, disc]) => {
+      .then(([pay, ent, disc]) => {
         if (cancelled) return
+        setPaymentTypes(pay.filter(r => r.active !== false))
         setEntertainmentTypes(ent.filter(r => r.active !== false))
         setDiscountTypes(disc.filter(r => r.active !== false))
       })
       .catch(() => {
         if (cancelled) return
+        setPaymentTypes([])
         setEntertainmentTypes([])
         setDiscountTypes([])
       })
@@ -1228,6 +1233,19 @@ export function RegisterPage() {
     }
     if (charging) return
     setPaymentError(null)
+    // Refresh POS Config tenders so Payment Type edits show without remounting POS.
+    const companyId = session.companyId
+    if (companyId > 0) {
+      void Promise.all([
+        api.posConfigTypes(companyId, { kind: 'payment', includeInactive: false }),
+        api.posConfigTypes(companyId, { kind: 'entertainment', includeInactive: false }),
+      ])
+        .then(([pay, ent]) => {
+          setPaymentTypes(pay.filter(r => r.active !== false))
+          setEntertainmentTypes(ent.filter(r => r.active !== false))
+        })
+        .catch(() => { /* keep previously loaded types */ })
+    }
     setPaymentOpen(true)
   }
 
@@ -1564,7 +1582,10 @@ export function RegisterPage() {
 
       const methodLabel = isEntertainment
         ? (payload.entertainment?.typeName || TENDER_LABEL.entertainment)
-        : (TENDER_LABEL[payload.tender] || payload.tender)
+        : (payload.paymentTypeName
+          || paymentTypeLabel(payload.paymentTypeCode, null)
+          || TENDER_LABEL[payload.tender]
+          || payload.tender)
       const discountNote = settleCharges.discountLabel?.trim()
         || (settleCharges.discountTypeCode
           ? `${settleCharges.discountTypeCode} ${settleCharges.discountPercent ?? ''}%`
@@ -1586,7 +1607,9 @@ export function RegisterPage() {
           ? 0
           : settleCharges.taxRegularCents + settleCharges.taxAlcoholCents,
         grossCents,
-        paymentMethod: isEntertainment ? 'entertainment' : payload.tender,
+        paymentMethod: isEntertainment
+          ? 'entertainment'
+          : paymentMethodForApi(payload.paymentTypeCode || payload.tender),
         paymentAmountCents: grandCents,
         paymentPurpose,
       }
@@ -2035,6 +2058,7 @@ export function RegisterPage() {
           )}
           cartLines={lines}
           catalog={liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS}
+          paymentTypes={paymentTypes}
           entertainmentTypes={entertainmentTypes}
           defaultEmployeeName={duty?.employeeName || ''}
           busy={charging}
