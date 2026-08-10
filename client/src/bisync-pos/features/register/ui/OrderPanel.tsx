@@ -22,6 +22,8 @@ type Props = {
   onChargesChange: (charges: OrderCharges) => void
   /** Opens PosConfig discount type picker (percentage + optional reason). */
   onEditDiscount?: () => void
+  /** When true, Service / Tax rows are driven by POS Setup (not manual $ prompts). */
+  chargesFromConfig?: boolean
   onSwapLine?: (line: CartLine) => void
   /** When set, intercepts trash instead of silently removing the line. */
   onRemoveLine?: (line: CartLine) => void
@@ -57,6 +59,7 @@ export function OrderPanel({
   onChange,
   onChargesChange,
   onEditDiscount,
+  chargesFromConfig = false,
   onSwapLine,
   onRemoveLine,
   selectedLineKey = null,
@@ -280,20 +283,32 @@ export function OrderPanel({
         <SummaryRow
           label="Service"
           value={formatMoney(charges.serviceCents)}
-          editable
-          onEdit={() => editCents('serviceCents', 'Service ($)')}
+          editable={!chargesFromConfig}
+          onEdit={
+            chargesFromConfig
+              ? undefined
+              : () => editCents('serviceCents', 'Service ($)')
+          }
         />
         <SummaryRow
           label="Tax Regular"
           value={formatMoney(charges.taxRegularCents)}
-          editable
-          onEdit={() => editCents('taxRegularCents', 'Tax Regular ($)')}
+          editable={!chargesFromConfig}
+          onEdit={
+            chargesFromConfig
+              ? undefined
+              : () => editCents('taxRegularCents', 'Tax Regular ($)')
+          }
         />
         <SummaryRow
           label="Tax Alcohol"
           value={formatMoney(charges.taxAlcoholCents)}
-          editable
-          onEdit={() => editCents('taxAlcoholCents', 'Tax Alcohol ($)')}
+          editable={!chargesFromConfig}
+          onEdit={
+            chargesFromConfig
+              ? undefined
+              : () => editCents('taxAlcoholCents', 'Tax Alcohol ($)')
+          }
         />
         <div className="order-panel__total">
           <span>Grand Total</span>
