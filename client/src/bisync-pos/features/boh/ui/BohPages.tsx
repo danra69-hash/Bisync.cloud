@@ -13,7 +13,6 @@ import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import { StationDisplayPage } from './StationDisplayPage'
 import { CustomerDisplayPage } from './CustomerDisplayPage'
 import { QrOrderPage } from './QrOrderPage'
-import { TaxServiceChargeModal } from './TaxServiceChargeModal'
 import { DeviceSetupModal } from './DeviceSetupModal'
 import { DeliveryAppsModal } from './DeliveryAppsModal'
 import './BohPages.css'
@@ -179,27 +178,11 @@ export { EodPage } from './EodPage'
 export function BohSettingsPage() {
   const { qrTableMode, setQrTableMode } = useConfig()
   const session = usePosSessionOptional()
-  const companyId = session?.companyId ?? 0
   const locationId = session?.locationId ?? ''
-  const [taxServiceOpen, setTaxServiceOpen] = useState(false)
   const [deviceSetupOpen, setDeviceSetupOpen] = useState(false)
   const [deliveryAppsOpen, setDeliveryAppsOpen] = useState(false)
 
-  const productGroups = useMemo(() => {
-    const set = new Set<string>()
-    for (const p of session?.catalog ?? []) {
-      const g = (p.group || '').trim()
-      if (g) set.add(g)
-    }
-    return [...set].sort((a, b) => a.localeCompare(b))
-  }, [session?.catalog])
-
   const setupPanels: { label: string; copy: string; onClick?: () => void }[] = [
-    {
-      label: 'Tax & service charge',
-      copy: 'Define tax and service % lines, then attach them by sales type and product group.',
-      onClick: () => setTaxServiceOpen(true),
-    },
     {
       label: 'Device set up',
       copy: 'LAN check, add printers / KDS / POS, install drivers, and manage local peripherals.',
@@ -216,8 +199,17 @@ export function BohSettingsPage() {
     <FeaturePage
       crumb="POS Setup"
       title="POS Setup"
-      subtitle="Restaurant-wide settings for table QR, tax & service, devices, and integrations."
+      subtitle="Restaurant-wide settings for table QR, devices, and integrations. Tax & service charge is under Point of Sales → POS Config."
     >
+      <section className="config-section panel-card">
+        <h3>Tax &amp; service charge</h3>
+        <p className="config-section__copy">
+          Tax and service charge rates moved to{' '}
+          <strong>Point of Sales → POS Config → Tax &amp; Service Charge</strong>.
+          Configure percentages there; the register bill applies them by sales type.
+        </p>
+      </section>
+
       <section className="config-section panel-card">
         <h3>Table QR mode</h3>
         <p className="config-section__copy">
@@ -277,13 +269,6 @@ export function BohSettingsPage() {
         )}
       </div>
 
-      {taxServiceOpen && (
-        <TaxServiceChargeModal
-          companyId={companyId}
-          productGroups={productGroups}
-          onClose={() => setTaxServiceOpen(false)}
-        />
-      )}
       {deviceSetupOpen && (
         <DeviceSetupModal
           companyId={companyId}

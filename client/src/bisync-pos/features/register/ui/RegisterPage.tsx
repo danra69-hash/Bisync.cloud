@@ -83,7 +83,10 @@ import {
   type TakeawayPickup,
 } from '../domain/pickupTime'
 import { formatPosCheckNumber, nextPosCheckNumber } from '../domain/checkNumber'
-import { computeTaxServiceCharges } from '../domain/taxServiceCharges'
+import {
+  computeTaxServiceCharges,
+  configDrivesRegisterCharges,
+} from '../domain/taxServiceCharges'
 import {
   EMPTY_OPEN_CHARGES,
   lineIdentity,
@@ -1977,7 +1980,7 @@ export function RegisterPage() {
         onCoverChange={setCover}
         onChange={setLines}
         onChargesChange={setCharges}
-        chargesFromConfig={taxServiceConfig != null}
+        chargesFromConfig={configDrivesRegisterCharges(taxServiceConfig)}
         onEditDiscount={() => {
           setDiscountError(null)
           const companyId = session?.companyId

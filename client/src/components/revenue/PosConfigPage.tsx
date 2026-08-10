@@ -14,18 +14,20 @@ import { MillstoneLoader } from '../shared/MillstoneLoader'
 import { TableScrollContainer } from '../shared/TableScrollContainer'
 import { ColGroup } from '../shared/SortableTableHead'
 import { PosDeviceSetupTab } from './PosDeviceSetupTab'
+import { PosTaxServiceChargeTab } from './PosTaxServiceChargeTab'
 
 type Props = {
   selectedCompanyId: number | null
   selectedLocationIds: string[]
 }
 
-type TabId = PosConfigTypeKind | 'devices'
+type TabId = PosConfigTypeKind | 'devices' | 'tax-service'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'payment', label: 'Payment Type' },
   { id: 'entertainment', label: 'Entertainment Type' },
   { id: 'discount', label: 'Discount Type' },
+  { id: 'tax-service', label: 'Tax & Service Charge' },
   { id: 'devices', label: 'Device Set up' },
 ]
 
@@ -129,7 +131,10 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
   }, [selectedCompanyId, tab, load])
 
   useEffect(() => {
-    if (!selectedCompanyId || (tab !== 'entertainment' && tab !== 'discount')) {
+    if (
+      !selectedCompanyId
+      || (tab !== 'entertainment' && tab !== 'discount' && tab !== 'tax-service')
+    ) {
       return
     }
     void loadProducts(selectedCompanyId)
@@ -275,9 +280,8 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Config</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Payment Type, Entertainment Type, and Discount Type drive the POS register
-            (payment tenders, entertainment settle, and discount picker). Device Set up
-            configures station routing for this company/location.
+            Payment, Entertainment, Discount, and Tax &amp; Service Charge drive the POS register
+            bill. Device Set up configures station routing for this company/location.
           </p>
         </div>
         {isConfigTypeTab(tab) ? (
@@ -310,6 +314,11 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
             selectedLocationIds={selectedLocationIds}
           />
         </div>
+      ) : tab === 'tax-service' ? (
+        <PosTaxServiceChargeTab
+          selectedCompanyId={selectedCompanyId}
+          products={products}
+        />
       ) : (
         <>
           {error ? (

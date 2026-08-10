@@ -141,9 +141,9 @@ export function cartSubtotal(
   lines: CartLine[],
   products: Product[],
 ): MoneyCents {
-  const byId = new Map(products.map((p) => [p.id, p]))
+  const byId = new Map(products.map((p) => [String(p.id), p]))
   return lines.reduce((sum, line) => {
-    const product = byId.get(line.productId)
+    const product = byId.get(String(line.productId))
     if (!product) return sum
     const unit = line.unitPriceCents ?? product.priceCents
     return sum + unit * line.quantity + saleDetailExtraChargeCents(line.saleDetail)
