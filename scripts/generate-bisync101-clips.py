@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Generate short silent WebM clips that look like real Bisync.cloud screens.
+"""DEPRECATED generator — draws synthetic Pillow “platform-looking” frames.
 
-Reads task metadata from TypeScript modules and draws platform chrome
-(header, brand lockup, module content) — not abstract placeholder cards.
+Prefer live UI captures with cursor motion + typing:
 
-Usage:
-  python3 scripts/generate-bisync101-clips.py
+  BASE_URL=http://127.0.0.1:5173 \\
+  BISYNC_EMAIL=dra@cubevalue.com BISYNC_PASSWORD='Pass@123' \\
+  node scripts/capture-bisync101-clips.mjs
+
+This script remains only as an emergency offline fallback.
 """
 
 from __future__ import annotations
