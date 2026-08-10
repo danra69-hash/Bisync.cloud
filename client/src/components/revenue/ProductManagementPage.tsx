@@ -2,11 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues, type SortDirection } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
-import { tableHeaderCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderStyles';
-import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import {
+  SortableTableHeaderRow,
+  TableColGroup,
+  tableColWidth,
+  type SortableColumnDef,
+} from '../shared/SortableTableHead';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
-import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
+import { pageShellClass, TABLE_COL_ACTION, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
@@ -27,7 +31,7 @@ import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProduceBatchModal, type ProduceConfirmPayload } from './ProduceBatchModal';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
 import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
-import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -66,22 +70,10 @@ type ProduceModalTarget = {
 
 const PRODUCT_MANAGEMENT_CATEGORIES = ['Food', 'Beverage', 'Retail'] as const;
 
-const tableColGroup = (
-  <colgroup>
-    <col className="w-[16%]" />
-    <col className="w-[11%]" />
-    <col className="w-[9%]" />
-    <col className="w-[15%]" />
-    <col className="w-[12%]" />
-    <col className="w-[12%]" />
-    <col className="w-[12%]" />
-  </colgroup>
-);
-
-const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
+const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0 text-xs min-w-0';
 const filterCls = filterSelectCls;
 const actionBtnCls =
-  'inline-flex items-center justify-center px-2 py-1.5 rounded-md text-[10px] font-bold whitespace-nowrap disabled:opacity-50 shadow-sm border';
+  'inline-flex items-center justify-center w-full px-2 py-1.5 rounded-md text-[10px] font-bold whitespace-nowrap disabled:opacity-50 shadow-sm border';
 const toProduceBtnCls =
   `${actionBtnCls} border-amber-600 bg-amber-500 text-white hover:bg-amber-600`;
 const producedBtnCls =
@@ -96,17 +88,21 @@ type BatchSortColumn =
   | 'onHand'
   | 'onOrder'
   | 'incubation'
-  | 'qtyToProduce';
+  | 'qtyToProduce'
+  | 'actions';
 
 const BATCH_TABLE_COLUMNS: SortableColumnDef<BatchSortColumn>[] = [
-  { key: 'name', label: 'Product Name / Product ID' },
-  { key: 'categoryGroup', label: 'Category / Group' },
-  { key: 'batchUnit', label: 'Delivery Unit', sortable: false },
-  { key: 'onHand', label: 'QTY On Hand / Batch Date / Expiry Date' },
-  { key: 'onOrder', label: 'QTY Holdout', sortable: false },
-  { key: 'incubation', label: 'QTY in incubation / Time left', sortable: false },
-  { key: 'qtyToProduce', label: 'QTY to Produce / Date requested', align: 'center' },
+  { key: 'name', label: 'Product Name / Product ID', ...tableColWidth('18%') },
+  { key: 'categoryGroup', label: 'Category / Group', ...tableColWidth('11%') },
+  { key: 'batchUnit', label: 'Delivery Unit', sortable: false, ...tableColWidth('9%') },
+  { key: 'onHand', label: 'QTY On Hand / Batch Date / Expiry Date', ...tableColWidth('15%') },
+  { key: 'onOrder', label: 'QTY Holdout', sortable: false, ...tableColWidth('11%') },
+  { key: 'incubation', label: 'QTY in incubation / Time left', sortable: false, ...tableColWidth('12%') },
+  { key: 'qtyToProduce', label: 'QTY to Produce / Date requested', align: 'center', ...tableColWidth('12%') },
+  { key: 'actions', label: 'Actions', sortable: false, align: 'center', ...TABLE_COL_ACTION },
 ];
+
+const BATCH_TABLE_COL_SPAN = BATCH_TABLE_COLUMNS.length;
 
 function defaultBatchRowOrder(rows: ManagementBatchRow[]): ManagementBatchRow[] {
   return [...rows].sort((a, b) => {
@@ -132,7 +128,7 @@ function sortGroupedBatchRows(
   sortColumn: BatchSortColumn | null,
   sortDirection: SortDirection,
 ): ManagementBatchRow[] {
-  if (!sortColumn) return defaultBatchRowOrder(rows);
+  if (!sortColumn || sortColumn === 'actions') return defaultBatchRowOrder(rows);
 
   const groups = new Map<number, ManagementBatchRow[]>();
   for (const row of rows) {
@@ -613,7 +609,6 @@ export function ProductManagementPage({
   const {
     visibleItems: pagedVisibleProducts,
     hasMore,
-    sentinelRef,
     totalCount,
     visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(displayRows, { scrollRootRef });
 
@@ -706,268 +701,268 @@ export function ProductManagementPage({
             </p>
           ) : null}
 
-          <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
-            <div className="min-w-[52rem]">
-              <div className="flex border-b border-border bg-muted/20 sticky top-0 z-10">
-                <table className="flex-1 border-collapse">
-                  {tableColGroup}
-                  <thead>
-                    <SortableTableHeaderRow
-                      columns={BATCH_TABLE_COLUMNS}
-                      sortColumn={sortColumn}
-                      sortDirection={sortDirection}
-                      onSort={toggleSort}
-                      className="bg-muted/20"
-                    />
-                  </thead>
-                </table>
-                <div className={`${tableHeaderCls('center')} w-[5.5rem] shrink-0 border-l border-border`}>
-                  <span className={TABLE_HEADER_LABEL_CLS}>Actions</span>
-                </div>
-              </div>
-
-              {loading ? (
-                <MillstoneLoader size="sm" layout="block" label="Loading products…" />
-              ) : displayRows.length === 0 ? (
-                <p className="px-3 py-8 text-center text-xs text-muted-foreground border-b border-border">
-                  {hasActiveFilters
-                    ? 'No products match your filters.'
-                    : emptyMessage}
-                </p>
-              ) : (
-                <>
-                  {pagedVisibleProducts.map(row => {
-                    const rowBusy = savingId === row.id || actionId === row.id;
-                    const editBusy = row.batchLogId != null && editingBatchId === row.batchLogId;
-                    const isSummary = row.isSummaryRow;
-                    const isBatchLine = !row.isSummaryRow && row.batchLogId != null;
-                    const isExpanded = expandedProductIds.has(row.id);
-                    const fifoBatchCount = fifoBatchRowsByProductId.get(row.id)?.length ?? 0;
-                    return (
-                      <div
-                        key={row.rowKey}
-                        className={`flex border-b border-border ${
-                          isSummary && row.onOrderQty > row.inStock
-                            ? 'bg-yellow-300/90 dark:bg-yellow-500/30'
-                            : isSummary && row.toProduceQty > 0
-                              ? 'bg-amber-50/70 dark:bg-amber-950/20'
-                              : ''
-                        } ${isBatchLine ? 'bg-muted/10' : ''}`}
-                      >
-                        <table className="flex-1 border-collapse">
-                          {tableColGroup}
-                          <tbody>
-                            <tr className="hover:bg-muted/20">
-                              <td className={tdCls}>
-                                {isSummary ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleProductExpanded(row.id)}
-                                      className="inline-flex items-start gap-1 font-medium text-left hover:text-primary"
-                                      aria-expanded={isExpanded}
-                                      title={fifoBatchCount > 0
-                                        ? `${isExpanded ? 'Hide' : 'Show'} ${fifoBatchCount} batch line${fifoBatchCount !== 1 ? 's' : ''}`
-                                        : 'No batch lines on hand'}
-                                    >
-                                      {fifoBatchCount > 0 ? (
-                                        isExpanded
-                                          ? <ChevronDown size={14} className="shrink-0 mt-0.5" />
-                                          : <ChevronRight size={14} className="shrink-0 mt-0.5" />
-                                      ) : (
-                                        <span className="w-3.5 shrink-0" aria-hidden />
-                                      )}
-                                      <span className="hover:underline">{row.name}</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setDetailProduct(row)}
-                                      className="text-[10px] text-muted-foreground mt-0.5 font-mono hover:text-primary hover:underline text-left"
-                                      title="Open product details"
-                                    >
-                                      {row.productId}
-                                    </button>
-                                  </>
-                                ) : (
-                                  <div className="pl-3">
-                                    <p className="text-[10px] text-muted-foreground">↳ batch</p>
-                                    <p className="text-[11px] font-medium truncate">{row.batchNumber || row.name}</p>
-                                  </div>
-                                )}
-                              </td>
-                              {primaryCell(isSummary, (
-                                <>
-                                  <p>{row.category || '—'}</p>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5">{row.group || '—'}</p>
-                                </>
-                              ))}
-                              {primaryCell(isSummary, row.isSubProduct ? (
-                                <span className="font-medium text-foreground" title="Batch size from product yield (QTY/UOM)">
-                                  {row.batchUnit}
-                                </span>
-                              ) : (
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className={TABLE_SCROLL_CLS}
+            tableId="opera.production.product-management"
+          >
+            <table className="w-full min-w-[52rem] border-collapse">
+              <TableColGroup columns={BATCH_TABLE_COLUMNS} />
+              <thead className="sticky top-0 z-10 bg-muted/20">
+                <SortableTableHeaderRow
+                  columns={BATCH_TABLE_COLUMNS}
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleSort}
+                  className="bg-muted/20 border-b border-border"
+                />
+              </thead>
+              <tbody>
+                {loading ? (
+                  <TableLoadingRow colSpan={BATCH_TABLE_COL_SPAN} label="Loading products…" />
+                ) : displayRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={BATCH_TABLE_COL_SPAN}
+                      className="px-3 py-8 text-center text-xs text-muted-foreground"
+                    >
+                      {hasActiveFilters
+                        ? 'No products match your filters.'
+                        : emptyMessage}
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {pagedVisibleProducts.map(row => {
+                      const rowBusy = savingId === row.id || actionId === row.id;
+                      const editBusy = row.batchLogId != null && editingBatchId === row.batchLogId;
+                      const isSummary = row.isSummaryRow;
+                      const isBatchLine = !row.isSummaryRow && row.batchLogId != null;
+                      const isExpanded = expandedProductIds.has(row.id);
+                      const fifoBatchCount = fifoBatchRowsByProductId.get(row.id)?.length ?? 0;
+                      return (
+                        <tr
+                          key={row.rowKey}
+                          className={`hover:bg-muted/20 ${
+                            isSummary && row.onOrderQty > row.inStock
+                              ? 'bg-yellow-300/90 dark:bg-yellow-500/30'
+                              : isSummary && row.toProduceQty > 0
+                                ? 'bg-amber-50/70 dark:bg-amber-950/20'
+                                : ''
+                          } ${isBatchLine ? 'bg-muted/10' : ''}`}
+                        >
+                          <td className={tdCls}>
+                            {isSummary ? (
+                              <div className="flex items-start gap-1.5 min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleProductExpanded(row.id)}
+                                  className="inline-flex shrink-0 mt-0.5 text-muted-foreground hover:text-primary"
+                                  aria-expanded={isExpanded}
+                                  aria-label={fifoBatchCount > 0
+                                    ? `${isExpanded ? 'Hide' : 'Show'} ${fifoBatchCount} batch line${fifoBatchCount !== 1 ? 's' : ''}`
+                                    : 'No batch lines on hand'}
+                                  title={fifoBatchCount > 0
+                                    ? `${isExpanded ? 'Hide' : 'Show'} ${fifoBatchCount} batch line${fifoBatchCount !== 1 ? 's' : ''}`
+                                    : 'No batch lines on hand'}
+                                >
+                                  {fifoBatchCount > 0 ? (
+                                    isExpanded
+                                      ? <ChevronDown size={14} />
+                                      : <ChevronRight size={14} />
+                                  ) : (
+                                    <span className="w-3.5" aria-hidden />
+                                  )}
+                                </button>
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleProductExpanded(row.id)}
+                                    className="block w-full text-left font-medium truncate hover:text-primary hover:underline"
+                                    title={row.name}
+                                  >
+                                    {row.name}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailProduct(row)}
+                                    className="block w-full text-left text-[10px] text-muted-foreground font-mono truncate hover:text-primary hover:underline"
+                                    title="Open product details"
+                                  >
+                                    {row.productId}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="pl-5 min-w-0">
+                                <p className="text-[10px] text-muted-foreground">↳ batch</p>
+                                <p className="text-[11px] font-medium truncate" title={row.batchNumber || row.name}>
+                                  {row.batchNumber || row.name}
+                                </p>
+                              </div>
+                            )}
+                          </td>
+                          {primaryCell(isSummary, (
+                            <>
+                              <p className="truncate">{row.category || '—'}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{row.group || '—'}</p>
+                            </>
+                          ))}
+                          {primaryCell(isSummary, row.isSubProduct ? (
+                            <span className="font-medium text-foreground truncate block" title="Batch size from product yield (QTY/UOM)">
+                              {row.batchUnit}
+                            </span>
+                          ) : (
+                            <input
+                              type="text"
+                              defaultValue={row.batchUnit}
+                              key={`${row.id}-${row.batchUnit}`}
+                              disabled={rowBusy}
+                              onBlur={e => {
+                                const next = e.target.value.trim();
+                                if (!next || next === row.batchUnit) return;
+                                void patchManagement(row.id, {
+                                  packageUnit: next,
+                                  locationExternalIds: selectedLocationIds,
+                                });
+                              }}
+                              className={`${filterCls} w-full max-w-[5.5rem]`}
+                              aria-label={`Batch unit for ${row.name}`}
+                            />
+                          ))}
+                          <td className={tdCls}>
+                            {isSummary ? (
+                              stackedMetric(
+                                'QTY On Hand',
                                 <input
-                                  type="text"
-                                  defaultValue={row.batchUnit}
-                                  key={`${row.id}-${row.batchUnit}`}
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  defaultValue={row.inStock}
+                                  key={`${row.id}-stock-${row.inStock}`}
                                   disabled={rowBusy}
                                   onBlur={e => {
-                                    const next = e.target.value.trim();
-                                    if (!next || next === row.batchUnit) return;
+                                    const next = Number.parseFloat(e.target.value);
+                                    if (!Number.isFinite(next) || next < 0 || next === row.inStock) return;
                                     void patchManagement(row.id, {
-                                      packageUnit: next,
+                                      inStock: next,
                                       locationExternalIds: selectedLocationIds,
                                     });
                                   }}
-                                  className={`${filterCls} w-full max-w-[5.5rem]`}
-                                  aria-label={`Batch unit for ${row.name}`}
-                                />
-                              ))}
-                              <td className={tdCls}>
-                                {isSummary ? (
-                                  stackedMetric(
-                                    'QTY On Hand',
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step="any"
-                                      defaultValue={row.inStock}
-                                      key={`${row.id}-stock-${row.inStock}`}
-                                      disabled={rowBusy}
-                                      onBlur={e => {
-                                        const next = Number.parseFloat(e.target.value);
-                                        if (!Number.isFinite(next) || next < 0 || next === row.inStock) return;
-                                        void patchManagement(row.id, {
-                                          inStock: next,
-                                          locationExternalIds: selectedLocationIds,
-                                        });
-                                      }}
-                                      className={`${inlineNumberCls} ml-auto`}
-                                      aria-label={row.isSubProduct
-                                        ? `Batches in stock for ${row.name}`
-                                        : `In stock for ${row.name}`}
-                                    />,
-                                  )
-                                ) : (
-                                  <div className="space-y-1.5">
-                                    {stackedMetric(
-                                      'QTY On Hand',
-                                      <span className="font-medium tabular-nums">
-                                        {row.fifoRemainingQty != null
-                                          ? formatQty(row.fifoRemainingQty, countryCode)
-                                          : row.batchQty != null
-                                            ? formatQty(row.batchQty, countryCode)
-                                            : '—'}
-                                      </span>,
-                                    )}
-                                    {stackedMetric('Batch Date', formatDisplayDate(row.productionDate))}
-                                    {stackedMetric('Expiry Date', formatDisplayDate(row.expiryDate))}
-                                  </div>
+                                  className={`${inlineNumberCls} ml-auto`}
+                                  aria-label={row.isSubProduct
+                                    ? `Batches in stock for ${row.name}`
+                                    : `In stock for ${row.name}`}
+                                />,
+                              )
+                            ) : (
+                              <div className="space-y-1.5">
+                                {stackedMetric(
+                                  'QTY On Hand',
+                                  <span className="font-medium tabular-nums">
+                                    {row.fifoRemainingQty != null
+                                      ? formatQty(row.fifoRemainingQty, countryCode)
+                                      : row.batchQty != null
+                                        ? formatQty(row.batchQty, countryCode)
+                                        : '—'}
+                                  </span>,
                                 )}
-                              </td>
-                              <td className={tdCls}>
-                                {isSummary ? (
-                                  <div className="space-y-1.5">
-                                    {stackedMetric(
-                                      'QTY Holdout',
-                                      formatOnOrderWithLocks(row.onOrderQty, row.onOrderLocks, countryCode),
-                                    )}
-                                  </div>
-                                ) : null}
-                              </td>
-                              <td className={tdCls}>
-                                {isSummary ? (
-                                  <div className="space-y-1.5">
-                                    {stackedMetric(
-                                      'QTY in incubation',
-                                      <span className="font-medium tabular-nums">
-                                        {row.incubationQty != null && row.incubationQty > 0
-                                          ? formatQty(row.incubationQty, countryCode)
-                                          : '—'}
-                                      </span>,
-                                    )}
-                                    {stackedMetric(
-                                      'Time left',
-                                      row.incubationTimeLeft || '—',
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="space-y-1.5">
-                                    {stackedMetric(
-                                      'QTY in incubation',
-                                      <span className="font-medium tabular-nums">
-                                        {row.incubationQty != null && row.incubationQty > 0
-                                          ? formatQty(row.incubationQty, countryCode)
-                                          : '—'}
-                                      </span>,
-                                    )}
-                                    {stackedMetric('Time left', row.incubationTimeLeft || '—')}
-                                  </div>
+                                {stackedMetric('Batch Date', formatDisplayDate(row.productionDate))}
+                                {stackedMetric('Expiry Date', formatDisplayDate(row.expiryDate))}
+                              </div>
+                            )}
+                          </td>
+                          <td className={tdCls}>
+                            {isSummary ? (
+                              <div className="space-y-1.5">
+                                {stackedMetric(
+                                  'QTY Holdout',
+                                  formatOnOrderWithLocks(row.onOrderQty, row.onOrderLocks, countryCode),
                                 )}
-                              </td>
-                              {primaryCell(isSummary, (
-                                <div className="space-y-1.5 text-center">
-                                  {stackedMetric(
-                                    'QTY to Produce',
-                                    <span className="font-medium tabular-nums">
-                                      {row.toProduceQty > 0 ? formatQty(row.toProduceQty, countryCode) : '—'}
-                                    </span>,
-                                  )}
-                                  {stackedMetric(
-                                    'Date requested',
-                                    formatDisplayDate(row.dateRequested),
-                                  )}
-                                </div>
-                              ))}
-                            </tr>
-                          </tbody>
-                        </table>
-                        <div className={`w-[6.5rem] shrink-0 border-l border-border flex flex-col justify-center gap-1.5 p-2 bg-card/50 ${
-                          !isSummary && !isBatchLine ? 'opacity-0 pointer-events-none' : ''
-                        }`}>
-                          {isSummary ? (
-                            <>
-                              <button
-                                type="button"
-                                disabled={rowBusy || editBusy}
-                                onClick={() => openProduceModal(row, 'queue')}
-                                className={toProduceBtnCls}
-                              >
-                                To Produce
-                              </button>
-                              <button
-                                type="button"
-                                disabled={rowBusy || editBusy}
-                                onClick={() => openProduceModal(row, 'produce')}
-                                className={producedBtnCls}
-                              >
-                                Produced
-                              </button>
-                            </>
-                          ) : null}
-                          {isBatchLine ? (
-                            <button
-                              type="button"
-                              disabled={rowBusy || editBusy}
-                              onClick={() => openEditBatchModal(row)}
-                              className={editBtnCls}
-                            >
-                              {editBusy ? 'Saving…' : 'Edit'}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <InfiniteScrollDivSentinel
-                    hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize}
-                    sentinelRef={sentinelRef}
-                    totalCount={totalCount}
-                    visibleCount={visibleCount}
-                  />
-                </>
-              )}
-            </div>
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className={tdCls}>
+                            <div className="space-y-1.5">
+                              {stackedMetric(
+                                'QTY in incubation',
+                                <span className="font-medium tabular-nums">
+                                  {row.incubationQty != null && row.incubationQty > 0
+                                    ? formatQty(row.incubationQty, countryCode)
+                                    : '—'}
+                                </span>,
+                              )}
+                              {stackedMetric(
+                                'Time left',
+                                row.incubationTimeLeft || '—',
+                              )}
+                            </div>
+                          </td>
+                          {primaryCell(isSummary, (
+                            <div className="space-y-1.5 text-center">
+                              {stackedMetric(
+                                'QTY to Produce',
+                                <span className="font-medium tabular-nums">
+                                  {row.toProduceQty > 0 ? formatQty(row.toProduceQty, countryCode) : '—'}
+                                </span>,
+                              )}
+                              {stackedMetric(
+                                'Date requested',
+                                formatDisplayDate(row.dateRequested),
+                              )}
+                            </div>
+                          ))}
+                          <td className={`${tdCls} align-middle`}>
+                            <div className={`flex flex-col justify-center gap-1.5 ${
+                              !isSummary && !isBatchLine ? 'opacity-0 pointer-events-none' : ''
+                            }`}>
+                              {isSummary ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={rowBusy || editBusy}
+                                    onClick={() => openProduceModal(row, 'queue')}
+                                    className={toProduceBtnCls}
+                                  >
+                                    To Produce
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={rowBusy || editBusy}
+                                    onClick={() => openProduceModal(row, 'produce')}
+                                    className={producedBtnCls}
+                                  >
+                                    Produced
+                                  </button>
+                                </>
+                              ) : null}
+                              {isBatchLine ? (
+                                <button
+                                  type="button"
+                                  disabled={rowBusy || editBusy}
+                                  onClick={() => openEditBatchModal(row)}
+                                  className={editBtnCls}
+                                >
+                                  {editBusy ? 'Saving…' : 'Edit'}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <InfiniteScrollTableSentinel
+                      colSpan={BATCH_TABLE_COL_SPAN}
+                      hasMore={hasMore}
+                      onLoadMore={loadMore}
+                      nextPageSize={nextPageSize}
+                      totalCount={totalCount}
+                      visibleCount={visibleCount}
+                    />
+                  </>
+                )}
+              </tbody>
+            </table>
           </TableScrollContainer>
         </>
       )}
