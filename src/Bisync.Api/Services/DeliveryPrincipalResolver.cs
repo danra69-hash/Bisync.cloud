@@ -86,10 +86,6 @@ public static class DeliveryPrincipalResolver
         principalPerPackage = 0m;
         principalUom = string.Empty;
 
-        var recipeLabel = (ingredient.RecipeUom ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(recipeLabel))
-            return false;
-
         var oq = orderQty > 0 ? orderQty : 1m;
         var pq = packQty > 0 ? packQty : 1m;
         var uq = unitQty > 0 ? unitQty : 1m;
@@ -98,25 +94,101 @@ public static class DeliveryPrincipalResolver
             ? (string.IsNullOrWhiteSpace(packUnit) ? orderUnit : packUnit)
             : unitUnit;
 
-        if (TryConvertMeasure(smallestTotal, smallestUnit, recipeLabel, out var fromSmallest)
-            && fromSmallest > 0)
+        // Prefer Recipe UOM, then Inventory, then alternate recipe units, then SI base of the
+        // delivery content family (ml for keg/ltr beer when RecipeUom was wrongly set to g).
+        foreach (var target in BuildTargetUomCandidates(ingredient, smallestUnit))
         {
-            // Per delivery package = content of one order unit (drop orderQty).
-            principalPerPackage = fromSmallest / oq;
-            principalUom = recipeLabel;
-            return principalPerPackage > 0;
-        }
+            if (TryConvertMeasure(smallestTotal, smallestUnit, target, out var fromSmallest)
+                && fromSmallest > 0)
+            {
+                // Per delivery package = content of one order unit (drop orderQty).
+                principalPerPackage = fromSmallest / oq;
+                principalUom = target;
+                return principalPerPackage > 0;
+            }
 
-        if (pq == 1m && uq == 1m
-            && TryConvertMeasure(oq, orderUnit, recipeLabel, out var fromOrder)
-            && fromOrder > 0)
-        {
-            principalPerPackage = fromOrder / oq;
-            principalUom = recipeLabel;
-            return principalPerPackage > 0;
+            if (pq == 1m && uq == 1m
+                && TryConvertMeasure(oq, orderUnit, target, out var fromOrder)
+                && fromOrder > 0)
+            {
+                principalPerPackage = fromOrder / oq;
+                principalUom = target;
+                return principalPerPackage > 0;
+            }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Target UOMs to express delivery content in, in priority order.
+    /// When RecipeUom is mass but keg content is volume, Inventory / alt / SI ml still resolve.
+    /// </summary>
+    public static IReadOnlyList<string> BuildTargetUomCandidates(Ingredient ingredient, string contentUnit)
+    {
+        var list = new List<string>();
+        void Add(string? raw)
+        {
+            var trimmed = (raw ?? string.Empty).Trim();
+            if (trimmed.Length == 0) return;
+            if (list.Any(existing => UomCanonical.Equals(existing, trimmed))) return;
+            list.Add(trimmed);
+        }
+
+        if (ingredient is not null)
+        {
+            Add(ingredient.RecipeUom);
+            Add(ingredient.InventoryUom);
+            foreach (var alt in ReadAltRecipeUnits(ingredient.DetailConfigJson))
+                Add(alt);
+        }
+
+        // Last resort: SI base of the delivery content family so keg/30ltr still converts.
+        if (TryGetSiFamily(contentUnit, out var family))
+            Add(family == "volume" ? "ml" : "g");
+
+        return list;
+    }
+
+    public static IReadOnlyList<string> ReadAltRecipeUnits(string? detailConfigJson)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(detailConfigJson))
+            return result;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(detailConfigJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("altRecipeUnits", out var alts)
+                || alts.ValueKind != JsonValueKind.Array)
+                return result;
+
+            foreach (var alt in alts.EnumerateArray())
+            {
+                if (alt.ValueKind != JsonValueKind.Object) continue;
+                var unit = alt.TryGetProperty("unit", out var unitEl) && unitEl.ValueKind == JsonValueKind.String
+                    ? unitEl.GetString()?.Trim() ?? string.Empty
+                    : string.Empty;
+                if (unit.Length > 0) result.Add(unit);
+            }
+        }
+        catch
+        {
+            // ignore malformed detail config
+        }
+
+        return result;
+    }
+
+    public static bool TryGetSiFamily(string? uom, out string family)
+    {
+        family = string.Empty;
+        var key = UomCanonical.Normalize(uom);
+        if (string.IsNullOrEmpty(key)) return false;
+        if (!SiFactors.TryGetValue(key, out var factor)) return false;
+        family = factor.Family;
+        return true;
     }
 
     public static bool TryConvertMeasure(
