@@ -172,7 +172,8 @@ export function VendorProductImportSection({ vendor, existingProducts, onApplied
             {ocrRunning ? 'Running OCR…' : 'Run OCR on Scanned Document'}
           </button>
           <p className="text-xs text-muted-foreground">
-            Expected format: Vendor ID | Vendor Name | Category | Group | Vendor Product | Vendor Product ID | Principal Delivery unit | DU breakdown 1 | DU breakdown 2 | Delivery Unit Price
+            Expected format: Vendor ID | Vendor Name | Category | Group | Vendor Product | Vendor Product ID | Principal Delivery unit | DU breakdown 1 Unit | DU breakdown 1 Qty | DU breakdown 2 Unit | DU breakdown 2 Qty | Delivery Unit Price
+            (e.g. Principal 1 CTN · breakdown 1 BTL / 12 · breakdown 2 ML / 500)
           </p>
           {importError && <p className="text-xs text-red-500">{importError}</p>}
         </div>

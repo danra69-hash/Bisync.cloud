@@ -2,6 +2,9 @@
  * Vendor Product template CSV: headers, delivery columns, parse/upsert matching.
  * Mirrors helpers in client/src/data/vendorProductCatalog.ts + vendorProductImportCatalog.ts.
  * Run: node --experimental-strip-types --test scripts/vendor-product-template-csv.test.mjs
+ *
+ * Path shape: 1 CTN (Principal) / 12 BTL / 500 ML
+ * → Principal Delivery unit | DU breakdown 1 Unit+Qty | DU breakdown 2 Unit+Qty
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -19,13 +22,25 @@ const VENDOR_PRODUCT_TEMPLATE_HEADERS = [
   'Vendor Product',
   'Vendor Product ID',
   'Principal Delivery unit',
-  'DU breakdown 1',
-  'DU breakdown 2',
+  'DU breakdown 1 Unit',
+  'DU breakdown 1 Qty',
+  'DU breakdown 2 Unit',
+  'DU breakdown 2 Qty',
   'Delivery Unit Price',
 ];
 
 function normalizeDeliverySegment(raw) {
   return raw.trim().replace(/\s+/g, '');
+}
+
+function composeDeliveryBreakdownSegment(unit = '', qty = '') {
+  const u = String(unit ?? '').trim();
+  const qRaw = String(qty ?? '').trim();
+  if (!u && !qRaw) return '';
+  const q = qRaw.replace(/[^0-9.]/g, '');
+  if (!u) return q;
+  if (!q) return u;
+  return `${q} ${u}`;
 }
 
 function composeDeliveryUnitText(principal, breakdown1 = '', breakdown2 = '') {
@@ -44,21 +59,36 @@ function hasSmallestDeliveryBreakdown(delivery) {
 }
 
 function deliveryTemplateColumns(delivery) {
-  const orderUnit = delivery.orderUnit;
-  const hasPackLevel = delivery.packUnit !== delivery.orderUnit || delivery.packQty !== 1;
-  let firstBreakdown = null;
+  const orderQty = Number.isFinite(delivery.orderQty) && delivery.orderQty > 0
+    ? delivery.orderQty
+    : 1;
+  const orderUnit = (delivery.orderUnit || '').trim();
+  const principal = orderUnit ? `${orderQty} ${orderUnit}`.trim() : '';
+  const hasPackLevel = Boolean(delivery.packUnit?.trim())
+    && (delivery.packUnit.trim().toLowerCase() !== orderUnit.toLowerCase() || delivery.packQty !== 1);
+
+  let breakdown1Unit = '';
+  let breakdown1Qty = '';
   if (hasPackLevel) {
-    firstBreakdown = `${delivery.packQty} ${delivery.packUnit}`;
-  } else if (delivery.orderQty !== 1) {
-    firstBreakdown = `${delivery.orderQty} ${delivery.orderUnit}`;
+    breakdown1Unit = (delivery.packUnit || '').trim();
+    breakdown1Qty = String(delivery.packQty > 0 ? delivery.packQty : 1);
   }
-  const secondBreakdown = hasSmallestDeliveryBreakdown(delivery)
-    ? `${delivery.unitQty} ${delivery.unitUnit}`
-    : null;
+
+  let breakdown2Unit = '';
+  let breakdown2Qty = '';
+  if (hasSmallestDeliveryBreakdown(delivery)) {
+    breakdown2Unit = (delivery.unitUnit || '').trim();
+    breakdown2Qty = String(delivery.unitQty > 0 ? delivery.unitQty : 1);
+  }
+
   return {
-    principal: (orderUnit || '').trim(),
-    breakdown1: (firstBreakdown || '').trim(),
-    breakdown2: (secondBreakdown || '').trim(),
+    principal,
+    breakdown1Unit,
+    breakdown1Qty,
+    breakdown2Unit,
+    breakdown2Qty,
+    breakdown1: composeDeliveryBreakdownSegment(breakdown1Unit, breakdown1Qty),
+    breakdown2: composeDeliveryBreakdownSegment(breakdown2Unit, breakdown2Qty),
   };
 }
 
@@ -114,6 +144,16 @@ function isLegacyVendorProductTemplate(headers) {
     || (normalized[0] === 'vendor product id' && !normalized.includes('vendor id'));
 }
 
+function resolveBreakdown(indexMap, cols, combinedAliases, unitAliases, qtyAliases) {
+  const unit = cellAt(cols, indexMap, ...unitAliases).trim();
+  const qty = cellAt(cols, indexMap, ...qtyAliases).trim();
+  const combinedLegacy = cellAt(cols, indexMap, ...combinedAliases).trim();
+  if (unit || qty) {
+    return composeDeliveryBreakdownSegment(unit, qty);
+  }
+  return combinedLegacy;
+}
+
 function rowFromMap(cols, indexMap) {
   const vendorExternalId = cellAt(cols, indexMap, 'vendor id').trim().toUpperCase();
   const vendorName = cellAt(cols, indexMap, 'vendor name').trim();
@@ -123,8 +163,20 @@ function rowFromMap(cols, indexMap) {
   const productName = cellAt(cols, indexMap, 'vendor product', 'product name').trim();
   const vendorProductId = cellAt(cols, indexMap, 'vendor product id').trim().toUpperCase();
   const principal = cellAt(cols, indexMap, 'principal delivery unit').trim();
-  const du1 = cellAt(cols, indexMap, 'du breakdown 1').trim();
-  const du2 = cellAt(cols, indexMap, 'du breakdown 2').trim();
+  const du1 = resolveBreakdown(
+    indexMap,
+    cols,
+    ['du breakdown 1'],
+    ['du breakdown 1 unit'],
+    ['du breakdown 1 qty'],
+  );
+  const du2 = resolveBreakdown(
+    indexMap,
+    cols,
+    ['du breakdown 2'],
+    ['du breakdown 2 unit'],
+    ['du breakdown 2 qty'],
+  );
   const legacyDelivery = cellAt(cols, indexMap, 'delivery unit').trim();
   const deliveryUnitText = legacyDelivery || composeDeliveryUnitText(principal, du1, du2);
   const deliveryPrice = parseFloat(String(cellAt(cols, indexMap, 'delivery unit price', 'price')).replace(/[^0-9.]/g, '')) || 0;
@@ -183,16 +235,16 @@ function buildImportPlan(drafts, existingProducts, vendors = []) {
 }
 
 const sampleDelivery = {
-  orderUnit: 'Box',
+  orderUnit: 'CTN',
   orderQty: 1,
-  packUnit: 'Tin',
+  packUnit: 'BTL',
   packQty: 12,
-  unitUnit: 'Gr',
-  unitQty: 400,
+  unitUnit: 'ML',
+  unitQty: 500,
 };
 
 describe('vendor product template CSV', () => {
-  it('uses the requested column headers in source', () => {
+  it('uses Unit/Qty DU breakdown headers in source', () => {
     assert.deepEqual(VENDOR_PRODUCT_TEMPLATE_HEADERS, [
       'Vendor ID',
       'Vendor Name',
@@ -201,8 +253,10 @@ describe('vendor product template CSV', () => {
       'Vendor Product',
       'Vendor Product ID',
       'Principal Delivery unit',
-      'DU breakdown 1',
-      'DU breakdown 2',
+      'DU breakdown 1 Unit',
+      'DU breakdown 1 Qty',
+      'DU breakdown 2 Unit',
+      'DU breakdown 2 Qty',
       'Delivery Unit Price',
     ]);
     const source = readFileSync(
@@ -221,31 +275,42 @@ describe('vendor product template CSV', () => {
     assert.match(page, /Upload Vendor Product Template/);
   });
 
-  it('splits delivery into principal + DU breakdown columns', () => {
+  it('splits delivery into principal + Unit/Qty DU breakdown columns (1 CTN / 12 BTL / 500 ML)', () => {
     assert.deepEqual(deliveryTemplateColumns(sampleDelivery), {
-      principal: 'Box',
-      breakdown1: '12 Tin',
-      breakdown2: '400 Gr',
+      principal: '1 CTN',
+      breakdown1Unit: 'BTL',
+      breakdown1Qty: '12',
+      breakdown2Unit: 'ML',
+      breakdown2Qty: '500',
+      breakdown1: '12 BTL',
+      breakdown2: '500 ML',
     });
   });
 
-  it('composes delivery path from principal + breakdowns', () => {
-    assert.equal(composeDeliveryUnitText('Box', '12 tin', '400 gr'), 'Box/12tin/400gr');
-    assert.equal(composeDeliveryUnitText('Tin', '5 ltr', ''), 'Tin/5ltr');
-    assert.equal(composeDeliveryUnitText('Kg', '', ''), 'Kg');
+  it('composes delivery path from principal + unit/qty breakdowns', () => {
+    assert.equal(
+      composeDeliveryUnitText(
+        '1 CTN',
+        composeDeliveryBreakdownSegment('BTL', '12'),
+        composeDeliveryBreakdownSegment('ML', '500'),
+      ),
+      '1CTN/12BTL/500ML',
+    );
+    assert.equal(composeDeliveryUnitText('1 Tin', '5 ltr', ''), '1Tin/5ltr');
+    assert.equal(composeDeliveryUnitText('1 Kg', '', ''), '1Kg');
   });
 
-  it('parses the new template and plans update vs create by product ID', () => {
+  it('parses Unit/Qty template and plans update vs create by product ID', () => {
     const csv = [
       VENDOR_PRODUCT_TEMPLATE_HEADERS.join(','),
-      '"V007","Heritage Pantry Supply","","Dry Goods","Baked Beans","VP-BEAN001","Box","12 tin","400 gr","45.50"',
-      '"V007","Heritage Pantry Supply","","Dry Goods","New Beans","","Case","6 tin","400 gr","30.00"',
+      '"V007","Heritage Pantry Supply","","Dry Goods","Baked Beans","VP-BEAN001","1 Box","Tin","12","Gr","400","45.50"',
+      '"V007","Heritage Pantry Supply","","Dry Goods","New Beans","","1 Case","Tin","6","Gr","400","30.00"',
     ].join('\n');
 
     const drafts = parseVendorProductTemplateCsv(csv);
     assert.equal(drafts.length, 2);
     assert.equal(drafts[0].vendorExternalId, 'V007');
-    assert.equal(drafts[0].deliveryUnitText, 'Box/12tin/400gr');
+    assert.equal(drafts[0].deliveryUnitText, '1Box/12Tin/400Gr');
     assert.equal(drafts[0].deliveryPrice, 45.5);
 
     const plan = buildImportPlan(
@@ -258,6 +323,16 @@ describe('vendor product template CSV', () => {
     assert.equal(plan.updates[0].draft.deliveryPrice, 45.5);
     assert.equal(plan.creates.length, 1);
     assert.equal(plan.creates[0].productName, 'New Beans');
+  });
+
+  it('still parses combined DU breakdown 1/2 columns (previous template)', () => {
+    const csv = [
+      'Vendor ID,Vendor Name,Category,Group,Vendor Product,Vendor Product ID,Principal Delivery unit,DU breakdown 1,DU breakdown 2,Delivery Unit Price',
+      '"V007","Heritage Pantry Supply","","Dry Goods","Baked Beans","VP-BEAN001","Box","12 tin","400 gr","42.00"',
+    ].join('\n');
+    const drafts = parseVendorProductTemplateCsv(csv);
+    assert.equal(drafts.length, 1);
+    assert.equal(drafts[0].deliveryUnitText, 'Box/12tin/400gr');
   });
 
   it('still parses legacy template columns', () => {
@@ -274,7 +349,7 @@ describe('vendor product template CSV', () => {
   it('uses Category as Group when Group is blank', () => {
     const csv = [
       VENDOR_PRODUCT_TEMPLATE_HEADERS.join(','),
-      '"V007","Heritage Pantry Supply","Dry Goods","","Cat Beans","VP-CAT001","Kg","","","12"',
+      '"V007","Heritage Pantry Supply","Dry Goods","","Cat Beans","VP-CAT001","1 Kg","","","","","12"',
     ].join('\n');
     const drafts = parseVendorProductTemplateCsv(csv);
     assert.equal(drafts.length, 1);
