@@ -194,7 +194,7 @@ export function PreCommittedPoPage({
     Promise.all([
       api.companies(),
       api.locationsConfig(),
-      api.vendors(true),
+      api.vendors(true, selectedCompanyId),
       api.ingredients(),
     ])
       .then(([companies, locations, vendorRows, ingredientRows]) => {
@@ -227,8 +227,9 @@ export function PreCommittedPoPage({
       catalogLocationIds,
       vendors,
       orgPolicyTags,
+      selectedCompanyId,
     ),
-    [components, catalogLocationIds, vendors, orgPolicyTags],
+    [components, catalogLocationIds, vendors, orgPolicyTags, selectedCompanyId],
   );
 
   const selectedVendor = useMemo(

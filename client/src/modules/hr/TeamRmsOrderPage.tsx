@@ -208,8 +208,8 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
   }, [components, categoryFilter]);
 
   const vendorOptions = useMemo(
-    () => resolveVendorsForSelectedLocations(components, locationIds, vendors, []),
-    [components, locationIds, vendors],
+    () => resolveVendorsForSelectedLocations(components, locationIds, vendors, [], companyId),
+    [components, locationIds, vendors, companyId],
   );
 
   const filteredVendors = useMemo(() => {

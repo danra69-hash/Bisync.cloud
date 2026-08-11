@@ -680,11 +680,15 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Vendor>>> GetAll([FromQuery] bool? engaged = null)
+    public async Task<ActionResult<IEnumerable<Vendor>>> GetAll(
+        [FromQuery] bool? engaged = null,
+        [FromQuery] int? companyId = null)
     {
         var q = db.Vendors.AsQueryable();
         if (engaged.HasValue)
             q = q.Where(v => v.Engaged == engaged.Value);
+        if (companyId is int cid && cid > 0)
+            q = q.Where(v => v.CompanyId == null || v.CompanyId == cid);
         return Ok(await q.OrderByDescending(v => v.Engaged).ThenBy(v => v.Name).ToListAsync());
     }
 
