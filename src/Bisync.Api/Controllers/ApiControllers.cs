@@ -1952,20 +1952,30 @@ public class PurchaseOrdersController(
                 .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
                 .ToListAsync();
 
-            // A whole receive must not land as Received with zero stock rows — that is how
-            // every purchased line goes missing from Stock Card while CN outbound can still post.
-            var expectedStockLines = request.Items.Count(l =>
-                l.Quantity > 0
-                && order.Items.Any(i =>
-                    i.Id == l.ItemId
-                    && !i.IsReturnableDeposit
-                    && !string.IsNullOrWhiteSpace(i.ComponentId)));
-            if (expectedStockLines > 0 && receiptPurchases.Count == 0)
+            // A whole receive must not land as Received with missing stock rows — that is how
+            // purchased lines go missing from Stock Card while CN outbound can still post.
+            var expectedStockItemIds = request.Items
+                .Where(l => l.Quantity > 0)
+                .Select(l => order.Items.FirstOrDefault(i => i.Id == l.ItemId))
+                .Where(i => i is not null
+                    && !i!.IsReturnableDeposit
+                    && !string.IsNullOrWhiteSpace(i.ComponentId))
+                .Select(i => i!.Id)
+                .Distinct()
+                .ToList();
+            var postedItemIds = receiptPurchases
+                .Where(p => p.PurchaseOrderItemId > 0)
+                .Select(p => p.PurchaseOrderItemId)
+                .ToHashSet();
+            var missingStockLines = expectedStockItemIds.Count(id => !postedItemIds.Contains(id));
+            if (expectedStockItemIds.Count > 0 && (receiptPurchases.Count == 0 || missingStockLines > 0))
             {
                 await transaction.RollbackAsync();
                 return BadRequest(new
                 {
-                    message = "Receive did not post any stock for the delivered lines. Check component IDs on each PO line and try again.",
+                    message = missingStockLines > 0 && receiptPurchases.Count > 0
+                        ? $"Receive posted stock for only {postedItemIds.Count} of {expectedStockItemIds.Count} delivered line(s). Check component IDs / delivery units and try again."
+                        : "Receive did not post any stock for the delivered lines. Check component IDs on each PO line and try again.",
                 });
             }
 
@@ -2111,6 +2121,31 @@ public class PurchaseOrdersController(
             var receiptPurchases = await db.InventoryPurchases
                 .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
                 .ToListAsync();
+
+            var expectedStockItemIds = request.Items
+                .Where(l => l.Quantity > 0)
+                .Select(l => order.Items.FirstOrDefault(i => i.Id == l.ItemId))
+                .Where(i => i is not null
+                    && !i!.IsReturnableDeposit
+                    && !string.IsNullOrWhiteSpace(i.ComponentId))
+                .Select(i => i!.Id)
+                .Distinct()
+                .ToList();
+            var postedItemIds = receiptPurchases
+                .Where(p => p.PurchaseOrderItemId > 0)
+                .Select(p => p.PurchaseOrderItemId)
+                .ToHashSet();
+            if (expectedStockItemIds.Count > 0
+                && (receiptPurchases.Count == 0
+                    || expectedStockItemIds.Any(id => !postedItemIds.Contains(id))))
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new
+                {
+                    message = "Reconcile did not post stock for every delivered line. Check component IDs / delivery units and try again.",
+                });
+            }
+
             foreach (var purchase in receiptPurchases)
                 await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
         }
@@ -2208,34 +2243,12 @@ public class PurchaseOrdersController(
                 var deliveryBasis = string.IsNullOrWhiteSpace(item.Unit)
                     ? item.DeliveryPackage
                     : item.Unit;
-                decimal? pathPrincipal = null;
-                string? pathPrincipalUom = null;
                 var vendorProductId = (item.VendorProductId ?? string.Empty).Trim();
-                if (!string.IsNullOrEmpty(vendorProductId))
-                {
-                    var vendorProduct = await db.VendorProducts.AsNoTracking()
-                        .FirstOrDefaultAsync(v => v.ExternalId == vendorProductId);
-                    if (DeliveryPrincipalResolver.TryResolveFromVendorProduct(
-                            vendorProduct,
-                            parent,
-                            out var resolvedPrincipal,
-                            out var resolvedUom))
-                    {
-                        pathPrincipal = resolvedPrincipal;
-                        pathPrincipalUom = resolvedUom;
-                    }
-                }
-
-                if (pathPrincipal is null
-                    && DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
-                        deliveryBasis,
-                        parent,
-                        out var pathFromLabel,
-                        out var pathFromLabelUom))
-                {
-                    pathPrincipal = pathFromLabel;
-                    pathPrincipalUom = pathFromLabelUom;
-                }
+                var (pathPrincipal, pathPrincipalUom) = await DeliveryPrincipalResolver.ResolvePathPrincipalAsync(
+                    db,
+                    parent,
+                    vendorProductId,
+                    deliveryBasis);
 
                 // Prefer delivery UOM as the quantity basis so recipe-labeled ComponentUom
                 // cannot short-circuit conversion when packages still need × principal.

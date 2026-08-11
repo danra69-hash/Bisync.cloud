@@ -168,13 +168,27 @@ public class CreditNoteService(
         else if (ingredient is not null)
         {
             // Quantity is in delivery UOM — convert to Principal Component Unit for stock.
+            // Prefer VendorProduct.DeliveryJson (same as receive / Stock Card / healer).
+            var deliveryBasis = string.IsNullOrWhiteSpace(item.Unit)
+                ? item.DeliveryPackage
+                : item.Unit;
+            if (string.IsNullOrWhiteSpace(deliveryBasis))
+                deliveryBasis = deliveryUom;
+            var (pathPrincipal, pathPrincipalUom) = await DeliveryPrincipalResolver.ResolvePathPrincipalAsync(
+                db,
+                ingredient,
+                item.VendorProductId,
+                deliveryBasis,
+                cancellationToken);
             (stockQty, stockUom, stockUnitPrice) = IngredientUomBridge.ToInboundPrincipal(
                 ingredient,
                 quantity,
                 deliveryUom,
                 deliveryUnitPrice,
                 item.VendorProductId,
-                deliveryUom);
+                deliveryBasis,
+                pathPrincipal,
+                pathPrincipalUom);
             stockUnitPrice = stockQty > 0
                 ? StockCardFifoEngine.RoundUnitPrice(amount / stockQty)
                 : stockUnitPrice;
@@ -790,13 +804,21 @@ public class CreditNoteService(
                     : (string.IsNullOrWhiteSpace(replacementItem.Unit)
                         ? replacementItem.DeliveryPackage
                         : replacementItem.Unit);
+                var (pathPrincipal, pathPrincipalUom) = await DeliveryPrincipalResolver.ResolvePathPrincipalAsync(
+                    db,
+                    ingredient,
+                    entry.VendorProductId,
+                    deliveryBasis,
+                    cancellationToken);
                 var inbound = IngredientUomBridge.ToInboundPrincipal(
                     ingredient,
                     purchase.Quantity,
                     string.IsNullOrWhiteSpace(purchase.Uom) ? deliveryBasis : purchase.Uom,
                     entry.DeliveryUnitPrice > 0 ? entry.DeliveryUnitPrice : purchase.UnitPrice,
                     entry.VendorProductId,
-                    deliveryBasis);
+                    deliveryBasis,
+                    pathPrincipal,
+                    pathPrincipalUom);
 
                 if (inbound.Quantity > purchase.Quantity + 0.0001m
                     || UomCanonical.Equals(inbound.Uom, targetStockUom))
