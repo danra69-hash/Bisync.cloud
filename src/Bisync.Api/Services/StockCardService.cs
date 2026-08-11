@@ -979,7 +979,7 @@ public class StockCardService(
                         vendorProduct))
                     return ClonePurchaseWithQty(p, qty, price, displayUom);
 
-                // Never drop received purchases from inbound summary (BBQ tub residual).
+                // Never drop received purchases from inbound summary (delivery-package residual).
                 return p.Quantity > 0
                     ? ClonePurchaseWithQty(p, p.Quantity, p.UnitPrice, string.IsNullOrWhiteSpace(p.Uom) ? displayUom : p.Uom)
                     : null;
