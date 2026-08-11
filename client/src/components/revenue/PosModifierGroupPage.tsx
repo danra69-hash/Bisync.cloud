@@ -11,10 +11,13 @@ import {
 } from '../../api'
 import {
   kindLabel,
+  listModifierAttachCategories,
+  listModifierAttachGroups,
   POS_MODIFIER_KINDS,
+  productMatchesModifierAttachFilters,
   STOCK_PRODUCT_GROUP_BY_KIND,
 } from '../../data/posModifierGroups'
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement'
+import { normalizePosGroupLabel } from '../../data/posCatalog'
 import { inputCls, selectCls } from '../../data/countries'
 import { useCountryFormatters } from '../../hooks/useCountryFormatters'
 import { pageShellClass } from '../layout/pageLayout'
@@ -240,10 +243,10 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
     [rows, kindTab],
   )
 
-  const productCategories = useMemo(() => {
-    const extras = products.map(p => (p.category || '').trim()).filter(Boolean)
-    return getSiCategoryFilterOptions(extras).filter(c => c !== 'All')
-  }, [products])
+  const productCategories = useMemo(
+    () => listModifierAttachCategories(products),
+    [products],
+  )
 
   function openCreate(kind: PosModifierKind = 'compulsory') {
     setEditingId(null)
@@ -1112,35 +1115,29 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                 </p>
               ) : null}
               {form.attachments.map((att, idx) => {
-                const groupOptions = getSiGroupFilterOptions(
-                  products
-                    .filter(p =>
-                      !att.targetProductCategory
-                      || (p.category || '').trim().toLowerCase()
-                        === att.targetProductCategory.trim().toLowerCase(),
-                    )
-                    .map(p => (p.group || '').trim())
-                    .filter(Boolean),
-                  att.targetProductCategory || 'All',
-                ).filter(g => g !== 'All')
+                const groupOptions = listModifierAttachGroups(
+                  products,
+                  att.targetProductCategory,
+                )
                 const productOptions = products
-                  .filter(p => {
-                    if (att.targetProductCategory) {
-                      if (
-                        (p.category || '').trim().toLowerCase()
-                        !== att.targetProductCategory.trim().toLowerCase()
-                      ) return false
-                    }
-                    if (att.targetProductGroup) {
-                      if (
-                        (p.group || '').trim().toLowerCase()
-                        !== att.targetProductGroup.trim().toLowerCase()
-                      ) return false
-                    }
-                    return true
-                  })
+                  .filter(p =>
+                    productMatchesModifierAttachFilters(
+                      p,
+                      att.targetProductCategory,
+                      att.targetProductGroup,
+                    ),
+                  )
                   .slice()
                   .sort((a, b) => a.name.localeCompare(b.name))
+                // Keep a selected group visible even if catalog spelling differs (Draft vs Draught).
+                const selectedGroup = (att.targetProductGroup || '').trim()
+                const groupSelectOptions =
+                  selectedGroup
+                  && !groupOptions.some(g =>
+                    normalizePosGroupLabel(g) === normalizePosGroupLabel(selectedGroup),
+                  )
+                    ? [normalizePosGroupLabel(selectedGroup), ...groupOptions]
+                    : groupOptions
                 return (
                   <div
                     key={att.key}
@@ -1180,9 +1177,21 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                         <span className="text-muted-foreground">Product Group</span>
                         <select
                           className={selectCls}
-                          value={att.targetProductGroup}
+                          value={
+                            selectedGroup
+                              ? (
+                                groupSelectOptions.find(
+                                  g =>
+                                    normalizePosGroupLabel(g)
+                                    === normalizePosGroupLabel(selectedGroup),
+                                ) ?? normalizePosGroupLabel(selectedGroup)
+                              )
+                              : ''
+                          }
                           onChange={e => {
                             const targetProductGroup = e.target.value
+                              ? normalizePosGroupLabel(e.target.value)
+                              : ''
                             setForm(f => ({
                               ...f,
                               attachments: f.attachments.map((a, i) =>
@@ -1199,7 +1208,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                           }}
                         >
                           <option value="">All groups</option>
-                          {groupOptions.map(g => (
+                          {groupSelectOptions.map(g => (
                             <option key={g} value={g}>{g}</option>
                           ))}
                         </select>
@@ -1221,7 +1230,8 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                                       targetProductCategory: hit?.category?.trim()
                                         || a.targetProductCategory,
                                       targetProductGroup: hit?.group?.trim()
-                                        || a.targetProductGroup,
+                                        ? normalizePosGroupLabel(hit.group)
+                                        : a.targetProductGroup,
                                       targetProductId: id,
                                       targetProductName: hit?.name || '',
                                     }
@@ -1234,7 +1244,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                           {productOptions.map(p => (
                             <option key={p.id} value={p.id}>
                               {p.name}
-                              {p.group ? ` · ${p.group}` : ''}
+                              {p.group ? ` · ${normalizePosGroupLabel(p.group)}` : ''}
                             </option>
                           ))}
                         </select>

@@ -168,3 +168,89 @@ test('category Beverage attach matches when only department is set', () => {
   assert.deepEqual(names, ['Chilled'])
   assert.ok(!names.includes('Glass for Tower'))
 })
+
+// --- Modifier detail attach cascade (Product dropdown after Category / Group) ---
+
+function inferPosDepartment(category, group) {
+  const raw = `${category || ''} ${group || ''}`.toLowerCase()
+  if (/(drink|beverage|beer|wine|coffee|juice|soft)/.test(raw)) return 'Beverage'
+  if (/(retail|merch|gift)/.test(raw)) return 'Retail'
+  return 'Food'
+}
+
+function productMatchesModifierAttachCategory(product, categoryFilter) {
+  const category = (categoryFilter || '').trim()
+  if (!category) return true
+  const productCategory = (product.category || '').trim()
+  const productDepartment = (product.department || '').trim()
+    || inferPosDepartment(productCategory, product.group)
+  return (
+    groupsMatchName(category, productCategory)
+    || groupsMatchName(category, productDepartment)
+  )
+}
+
+function productMatchesPosGroupFilter(productGroup, filterGroup) {
+  if (!filterGroup || filterGroup === 'All') return true
+  return normalizePosGroupLabel(productGroup || '') === normalizePosGroupLabel(filterGroup)
+}
+
+function productMatchesModifierAttachFilters(product, categoryFilter, groupFilter) {
+  if (!productMatchesModifierAttachCategory(product, categoryFilter)) return false
+  const group = (groupFilter || '').trim()
+  if (!group) return true
+  return productMatchesPosGroupFilter(product.group || '', group)
+}
+
+function listModifierAttachGroups(products, categoryFilter) {
+  const byKey = new Map()
+  for (const p of products) {
+    if (!productMatchesModifierAttachCategory(p, categoryFilter)) continue
+    const raw = (p.group || '').trim()
+    if (!raw) continue
+    const label = normalizePosGroupLabel(raw)
+    const key = label.toLowerCase()
+    if (!byKey.has(key)) byKey.set(key, label)
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b))
+}
+
+const menuProducts = [
+  { id: 1, name: 'Weissbrau Tower', category: '', group: 'Draught Beer' },
+  { id: 2, name: 'Weissbrau Glass', category: 'Beverage', group: 'Draft Beer' },
+  { id: 3, name: 'Cabernet Glass', category: '', group: 'Red Wine' },
+  { id: 4, name: 'Sauvignon Glass', category: '', group: 'White Wine' },
+  { id: 5, name: 'Schnitzel', category: 'Food', group: 'Mains' },
+]
+
+test('attach cascade lists Red Wine / White Wine / Draught under Beverage', () => {
+  const groups = listModifierAttachGroups(menuProducts, 'Beverage')
+  assert.ok(groups.includes('Red Wine'))
+  assert.ok(groups.includes('White Wine'))
+  assert.ok(groups.includes('Draught Beer'))
+  assert.ok(!groups.includes('Mains'))
+})
+
+test('selecting Red Wine shows wine products even when category is blank', () => {
+  const hits = menuProducts.filter(p =>
+    productMatchesModifierAttachFilters(p, 'Beverage', 'Red Wine'),
+  )
+  assert.deepEqual(hits.map(p => p.name), ['Cabernet Glass'])
+})
+
+test('selecting White Wine shows white wine products', () => {
+  const hits = menuProducts.filter(p =>
+    productMatchesModifierAttachFilters(p, 'Beverage', 'White Wine'),
+  )
+  assert.deepEqual(hits.map(p => p.name), ['Sauvignon Glass'])
+})
+
+test('Draft Beer group filter matches Draught Beer products for Glass for Tower', () => {
+  const hits = menuProducts.filter(p =>
+    productMatchesModifierAttachFilters(p, 'Beverage', 'Draft Beer'),
+  )
+  assert.deepEqual(
+    hits.map(p => p.name).sort(),
+    ['Weissbrau Glass', 'Weissbrau Tower'],
+  )
+})

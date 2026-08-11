@@ -4,7 +4,7 @@ import {
   BEVERAGE_MODIFIER_GROUPS,
   FOOD_MODIFIER_GROUPS,
 } from '../bisync-pos/features/order/domain/ordering'
-import { normalizePosGroupLabel } from './posCatalog'
+import { normalizePosGroupLabel, productMatchesPosGroupFilter } from './posCatalog'
 
 export const POS_MODIFIER_KINDS: Array<{
   id: PosModifierKind
@@ -55,12 +55,84 @@ export function groupsMatchPosLabel(
   return normalizePosGroupLabel(a || '') === normalizePosGroupLabel(b || '')
 }
 
+/**
+ * Infer Food / Beverage / Retail the same way the register catalog does.
+ * Used when RMS category is blank so attach UI can still filter wine/beer.
+ */
+export function inferPosDepartment(
+  category: string | null | undefined,
+  group: string | null | undefined,
+): 'Food' | 'Beverage' | 'Retail' {
+  const raw = `${category || ''} ${group || ''}`.toLowerCase()
+  if (/(drink|beverage|beer|wine|coffee|juice|soft)/.test(raw)) return 'Beverage'
+  if (/(retail|merch|gift)/.test(raw)) return 'Retail'
+  return 'Food'
+}
+
 export type ModifierAttachProduct = {
   id: string | number
   category?: string | null
   group?: string | null
   /** POS department (Food / Beverage / Retail) — used when category is blank. */
   department?: string | null
+}
+
+/** Category filter for modifier attach UI: match product.category or inferred department. */
+export function productMatchesModifierAttachCategory(
+  product: Pick<ModifierAttachProduct, 'category' | 'group' | 'department'>,
+  categoryFilter: string | null | undefined,
+): boolean {
+  const category = (categoryFilter || '').trim()
+  if (!category) return true
+  const productCategory = (product.category || '').trim()
+  const productDepartment = (product.department || '').trim()
+    || inferPosDepartment(productCategory, product.group)
+  return (
+    groupsMatchName(category, productCategory)
+    || groupsMatchName(category, productDepartment)
+  )
+}
+
+/** Category ∧ group filters for the modifier-group detail Product dropdown. */
+export function productMatchesModifierAttachFilters(
+  product: Pick<ModifierAttachProduct, 'category' | 'group' | 'department'>,
+  categoryFilter: string | null | undefined,
+  groupFilter: string | null | undefined,
+): boolean {
+  if (!productMatchesModifierAttachCategory(product, categoryFilter)) return false
+  const group = (groupFilter || '').trim()
+  if (!group) return true
+  return productMatchesPosGroupFilter(product.group || '', group)
+}
+
+/** Unique POS categories (+ inferred departments) from live products — not SI hierarchy. */
+export function listModifierAttachCategories(
+  products: Array<Pick<ModifierAttachProduct, 'category' | 'group'>>,
+): string[] {
+  const set = new Set<string>()
+  for (const p of products) {
+    const cat = (p.category || '').trim()
+    if (cat) set.add(cat)
+    set.add(inferPosDepartment(cat, p.group))
+  }
+  return [...set].sort((a, b) => a.localeCompare(b))
+}
+
+/** Unique POS product groups for attach UI, filtered by category, with synonym collapse. */
+export function listModifierAttachGroups(
+  products: Array<Pick<ModifierAttachProduct, 'category' | 'group' | 'department'>>,
+  categoryFilter: string | null | undefined,
+): string[] {
+  const byKey = new Map<string, string>()
+  for (const p of products) {
+    if (!productMatchesModifierAttachCategory(p, categoryFilter)) continue
+    const raw = (p.group || '').trim()
+    if (!raw) continue
+    const label = normalizePosGroupLabel(raw)
+    const key = label.toLowerCase()
+    if (!byKey.has(key)) byKey.set(key, label)
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b))
 }
 
 /** Hierarchical attach match: Category ∧ Product Group ∧ Product (empty = All). */
@@ -98,15 +170,7 @@ export function attachmentMatchesProduct(
   }
 
   if (category) {
-    const productCategory = (product.category || '').trim()
-    const productDepartment = (product.department || '').trim()
-    // POS catalog sometimes leaves RMS category blank while department is Food/Beverage.
-    if (
-      !groupsMatchName(category, productCategory)
-      && !groupsMatchName(category, productDepartment)
-    ) {
-      return false
-    }
+    if (!productMatchesModifierAttachCategory(product, category)) return false
   } else if (type === 'category') {
     return false
   }
