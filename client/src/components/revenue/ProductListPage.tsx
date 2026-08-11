@@ -205,7 +205,7 @@ export function ProductListPage({
   const [filterB2c, setFilterB2c] = useState(false);
   const [filterB2b, setFilterB2b] = useState(false);
   const [filterPos, setFilterPos] = useState(false);
-  /** When false (default), deactivated products are hidden from the list. */
+  /** When true, show only deactivated products (exclusive, like Smart Components). */
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
@@ -271,9 +271,8 @@ export function ProductListPage({
   const visibleProducts = useMemo(() => {
     let scoped = products.filter(p => productMatchesLocations(p, selectedLocationIds));
 
-    if (!showDeactivated) {
-      scoped = scoped.filter(p => p.active);
-    }
+    // Exclusive modes (parity with Smart Components inactive list).
+    scoped = scoped.filter(p => (showDeactivated ? !p.active : p.active));
 
     if (categoryFilter !== 'All') {
       scoped = scoped.filter(p => labelsEqual(p.category, categoryFilter));
@@ -312,6 +311,20 @@ export function ProductListPage({
     ].join(' ').toLowerCase().includes(query));
   }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterVariableProduct, filterB2c, filterB2b, filterPos, showDeactivated]);
 
+  const listResetKey = [
+    search,
+    categoryFilter,
+    groupFilter,
+    filterProduct,
+    filterSubProduct,
+    filterVariableProduct,
+    filterB2c,
+    filterB2b,
+    filterPos,
+    showDeactivated,
+    selectedLocationIds.join(','),
+  ].join('|');
+
   const sortedVisibleProducts = useMemo(
     () =>
       sortTableRows(
@@ -341,7 +354,10 @@ export function ProductListPage({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedVisibleProducts, {
+    scrollRootRef,
+    resetKey: listResetKey,
+  });
 
   function replaceProduct(updated: Product) {
     setProducts(prev => {
@@ -379,7 +395,7 @@ export function ProductListPage({
     if (updated) setPosModalProduct(null);
   }
 
-  const hasActiveFilters = Boolean(
+  const hasFacetFilters = Boolean(
     search.trim()
     || categoryFilter !== 'All'
     || groupFilter !== 'All'
@@ -388,9 +404,9 @@ export function ProductListPage({
     || filterVariableProduct
     || filterB2c
     || filterB2b
-    || filterPos
-    || showDeactivated,
+    || filterPos,
   );
+  const hasActiveFilters = hasFacetFilters || showDeactivated;
 
   return (
     <div className={pageShellClass({ embedded })}>
@@ -502,7 +518,7 @@ export function ProductListPage({
                 <span>
                   Show deactivated
                   <span className="block text-[10px] text-muted-foreground font-normal">
-                    Include inactive products
+                    Show only inactive products
                   </span>
                 </span>
               </label>
@@ -540,7 +556,7 @@ export function ProductListPage({
               </select>
             </div>
             <p className="text-xs text-muted-foreground pb-2">
-              {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
+              {visibleProducts.length} {showDeactivated ? 'deactivated ' : ''}product{visibleProducts.length !== 1 ? 's' : ''}
             </p>
           </div>
         )}
@@ -576,13 +592,16 @@ export function ProductListPage({
                 ) : visibleProducts.length === 0 ? (
                   <tr>
                     <td colSpan={PRODUCT_LIST_COL_SPAN} className="px-3 py-8 text-center text-xs text-muted-foreground">
-                      {!showDeactivated
-                        && products.some(p => !p.active && productMatchesLocations(p, selectedLocationIds))
-                        && !hasActiveFilters
-                        ? 'No active products. Tick “Show deactivated” to view inactive ones.'
-                        : hasActiveFilters
-                          ? 'No products match your filters.'
-                          : 'No products saved yet. Create one from the Products tab.'}
+                      {showDeactivated
+                        && !hasFacetFilters
+                        ? 'No deactivated products for this location.'
+                        : !showDeactivated
+                          && products.some(p => !p.active && productMatchesLocations(p, selectedLocationIds))
+                          && !hasFacetFilters
+                          ? 'No active products. Tick “Show deactivated” to view inactive ones.'
+                          : hasActiveFilters
+                            ? 'No products match your filters.'
+                            : 'No products saved yet. Create one from the Products tab.'}
                     </td>
                   </tr>
                 ) : (

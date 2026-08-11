@@ -13,7 +13,8 @@ namespace Bisync.Api.Controllers;
 public class ProductsController(
     BisyncDbContext db,
     ProductNutrientEstimateService nutrientEstimates,
-    NutritionLibrarySyncService nutritionLibrary) : ControllerBase
+    NutritionLibrarySyncService nutritionLibrary,
+    ILogger<ProductsController> logger) : ControllerBase
 {
     static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,6 +24,17 @@ public class ProductsController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List([FromQuery] int? companyId)
     {
+        // Opportunistic: remap Ginger Ale etc. Food/Specialties → Beverage/Soft Drinks
+        // so Product List Category filters (and deactivated Soft Drinks) find them.
+        try
+        {
+            await ProductCategoryHealer.ApplyAsync(db, logger);
+        }
+        catch
+        {
+            // Listing must still succeed even if heal fails.
+        }
+
         IQueryable<Product> query = db.Products
             .AsNoTracking()
             .Include(p => p.Items)

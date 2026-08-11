@@ -10,6 +10,11 @@ type Options = {
   pageSize?: number;
   /** Ignored — kept for call-site compatibility after removing infinite scroll. */
   scrollRootRef?: unknown;
+  /**
+   * When this value changes (filters, search, deactivated toggle), reset to the
+   * first page so matches like Ginger Ale are not stuck past the first 100 rows.
+   */
+  resetKey?: string | number | boolean;
 };
 
 /**
@@ -18,9 +23,14 @@ type Options = {
  */
 export function useInfiniteScrollSlice<T>(items: T[], options: Options = {}) {
   const pageSize = options.pageSize ?? DEFAULT_TABLE_PAGE_SIZE;
+  const resetKey = options.resetKey;
   const [visibleCount, setVisibleCount] = useState(pageSize);
 
   const itemsLength = items.length;
+
+  useEffect(() => {
+    setVisibleCount(pageSize);
+  }, [resetKey, pageSize]);
 
   useEffect(() => {
     setVisibleCount(prev => {

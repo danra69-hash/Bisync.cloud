@@ -115,6 +115,19 @@ public sealed class DeferredDbStartupHostedService(
 
             try
             {
+                var categoryHealed = await ProductCategoryHealer.ApplyAsync(db, logger, cancellationToken);
+                if (categoryHealed > 0)
+                    logger.LogInformation(
+                        "Healed Category/Group on {Count} Soft Drink product(s) (e.g. Ginger Ale).",
+                        categoryHealed);
+            }
+            catch (Exception categoryEx)
+            {
+                logger.LogError(categoryEx, "Product category heal failed; continuing startup");
+            }
+
+            try
+            {
                 // Shared DB already combined in SchemaPatcher; fan-out to provisioned tenant DBs.
                 var depositLinesRemoved = await PurchaseOrderDepositCombinerMigrator
                     .ApplyAcrossProvisionedTenantsAsync(db, logger, cancellationToken);
