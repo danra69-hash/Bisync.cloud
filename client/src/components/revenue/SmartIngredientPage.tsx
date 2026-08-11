@@ -745,7 +745,7 @@ export function SmartIngredientPage({
                     </td>
                     <td className="px-4 py-3 font-sans text-muted-foreground text-right">
                       {canEditPar && row.id ? (
-                        <div className="inline-flex items-center gap-1 justify-end">
+                        <div className="inline-flex flex-col items-end gap-0.5 justify-end">
                           <input
                             type="number"
                             min={0}
@@ -764,7 +764,7 @@ export function SmartIngredientPage({
                             className="min-w-[8.5rem] w-[8.5rem] max-w-[10rem] rounded border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
                             title="Adjust par stock qty (requires permission)"
                           />
-                          <span className="text-[10px] text-muted-foreground">{displayUom}</span>
+                          <span className="text-[10px] text-muted-foreground leading-none">{displayUom}</span>
                         </div>
                       ) : (
                         formatParStock(storedPar.value, storedPar.uom, countryCode)
