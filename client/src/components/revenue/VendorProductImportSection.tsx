@@ -49,12 +49,15 @@ export function VendorProductImportSection({ vendor, existingProducts, onApplied
     setImportError(null);
     try {
       const text = await files[0].text();
-      const drafts = parseVendorProductImportCsv(text);
+      const drafts = parseVendorProductImportCsv(text, vendor);
       if (drafts.length === 0) {
         setImportError('Template file parsed no valid rows. Use the downloaded vendor product template format.');
         return;
       }
-      const plan = buildVendorProductImportPlan(drafts, existingProducts);
+      const plan = buildVendorProductImportPlan(drafts, existingProducts, {
+        defaultVendor: vendor,
+        vendors: [vendor],
+      });
       setImportPlan(plan);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Failed to read vendor product template.');
@@ -87,7 +90,10 @@ export function VendorProductImportSection({ vendor, existingProducts, onApplied
         setImportError('OCR did not extract any valid vendor product rows.');
         return;
       }
-      const plan = buildVendorProductImportPlan(drafts, existingProducts);
+      const plan = buildVendorProductImportPlan(drafts, existingProducts, {
+        defaultVendor: vendor,
+        vendors: [vendor],
+      });
       setImportPlan(plan);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'OCR failed.');
@@ -166,7 +172,7 @@ export function VendorProductImportSection({ vendor, existingProducts, onApplied
             {ocrRunning ? 'Running OCR…' : 'Run OCR on Scanned Document'}
           </button>
           <p className="text-xs text-muted-foreground">
-            Expected format: Vendor Product ID | Product Name | Group | Specification | Delivery Unit | Price
+            Expected format: Vendor ID | Vendor Name | Category | Group | Vendor Product | Vendor Product ID | Principal Delivery unit | DU breakdown 1 | DU breakdown 2 | Delivery Unit Price
           </p>
           {importError && <p className="text-xs text-red-500">{importError}</p>}
         </div>
@@ -176,6 +182,7 @@ export function VendorProductImportSection({ vendor, existingProducts, onApplied
         <VendorProductImportReviewPanel
           plan={importPlan}
           vendor={vendor}
+          vendors={[vendor]}
           existingProducts={existingProducts}
           groupOptions={groupOptions}
           onClose={() => setImportPlan(null)}

@@ -19,7 +19,10 @@ import { VendorProductImportNewProductsPanel } from './VendorProductImportNewPro
 
 type Props = {
   plan: VendorProductImportPlan;
-  vendor: Vendor;
+  /** Fallback vendor for legacy single-vendor imports. */
+  vendor?: Vendor;
+  /** Full vendor list for multi-vendor CSV apply. */
+  vendors?: Vendor[];
   existingProducts: VendorProductCatalogItem[];
   groupOptions: string[];
   onClose: () => void;
@@ -29,6 +32,7 @@ type Props = {
 export function VendorProductImportReviewPanel({
   plan,
   vendor,
+  vendors,
   existingProducts,
   groupOptions,
   onClose,
@@ -97,7 +101,10 @@ export function VendorProductImportReviewPanel({
     const planToApply: VendorProductImportPlan = { ...workingPlan, creates };
 
     try {
-      await applyVendorProductImportPlan(planToApply, vendor);
+      await applyVendorProductImportPlan(planToApply, {
+        defaultVendor: vendor,
+        vendors: vendors ?? (vendor ? [vendor] : []),
+      });
       onApplied();
       onClose();
     } catch (err) {
@@ -142,7 +149,9 @@ export function VendorProductImportReviewPanel({
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Vendor Product Import</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5">Review Template Changes</h3>
             <p className="text-xs text-muted-foreground font-sans mt-1">
-              {vendor.name} · {vendor.externalId}
+              {vendor
+                ? `${vendor.name} · ${vendor.externalId}`
+                : `${vendors?.length ?? 0} vendor${(vendors?.length ?? 0) === 1 ? '' : 's'} in catalog`}
             </p>
           </div>
           <button type="button" onClick={() => !saving && onClose()} className="p-1.5 rounded-md hover:bg-muted transition-colors shrink-0">

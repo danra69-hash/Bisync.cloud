@@ -397,7 +397,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                 {ocrRunning ? 'Running OCR…' : 'Run OCR on Scanned Document'}
               </button>
               <p className="text-xs text-muted-foreground">
-                Expected format: Vendor Product ID | Product Name | Group | Specification | Delivery Unit | Price
+                Expected format: Vendor ID | Vendor Name | Category | Group | Vendor Product | Vendor Product ID | Principal Delivery unit | DU breakdown 1 | DU breakdown 2 | Delivery Unit Price
               </p>
               {parsedRows.length > 0 && (
                 <div className="space-y-2">
