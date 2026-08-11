@@ -8,14 +8,21 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
-import { FileText, PackageOpen, Search, UserPlus } from 'lucide-react';
+import { FilePlus2, FileText, PackageOpen, Search, Upload, UserPlus } from 'lucide-react';
 import { api, ApiError, type Company, type EngageVendorContact, type LocationConfig, type Vendor, type VendorRatingSummary, type VendorTaggedComponent } from '../../api';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import {
   applyVendorProductOverrides,
+  downloadVendorProductTemplateCsv,
   filterVendorProductsByLocationVisibility,
   vendorProductPolicyTag,
 } from '../../data/vendorProductCatalog';
+import {
+  buildVendorProductImportPlan,
+  parseVendorProductImportCsv,
+  type VendorProductImportPlan,
+} from '../../data/vendorProductImportCatalog';
+import { VendorProductImportReviewPanel } from './VendorProductImportReviewPanel';
 import {
   formatVendorPolicyLabel,
   inferVendorPolicyTag,
@@ -132,6 +139,9 @@ export function VendorListPage({
   const [rfqRefresh, setRfqRefresh] = useState(0);
   const [sampleRefresh, setSampleRefresh] = useState(0);
   const [engaging, setEngaging] = useState(false);
+  const [productImportPlan, setProductImportPlan] = useState<VendorProductImportPlan | null>(null);
+  const [productImportError, setProductImportError] = useState<string | null>(null);
+  const productTemplateRef = useRef<HTMLInputElement | null>(null);
   const [showCreateVendor, setShowCreateVendor] = useState(false);
   const [showRfqPanel, setShowRfqPanel] = useState(false);
   const [showSamplePanel, setShowSamplePanel] = useState(false);
@@ -344,6 +354,33 @@ export function VendorListPage({
       return a.productName.localeCompare(b.productName);
     });
   }, [catalogProducts, productSearch, productVendorFilter, productGroupFilter, vendors, orgPolicyTags, selectedLocationIds]);
+
+  function handleDownloadProductTemplate() {
+    setProductImportError(null);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadVendorProductTemplateCsv(
+      filteredProducts,
+      `vendor-product-template-${stamp}.csv`,
+      countryCode,
+    );
+  }
+
+  async function handleProductTemplateUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setProductImportError(null);
+    try {
+      const text = await files[0].text();
+      const drafts = parseVendorProductImportCsv(text);
+      if (drafts.length === 0) {
+        setProductImportError('Template file parsed no valid rows. Use the downloaded vendor product template format.');
+        return;
+      }
+      const plan = buildVendorProductImportPlan(drafts, catalogProducts, { vendors });
+      setProductImportPlan(plan);
+    } catch (err) {
+      setProductImportError(err instanceof Error ? err.message : 'Failed to read vendor product template.');
+    }
+  }
 
   async function handleConfirmEngage(vendor: Vendor, contacts: EngageVendorContact[]) {
     setEngaging(true);
@@ -749,7 +786,36 @@ export function VendorListPage({
             {f === 'all' ? 'All' : f === 'tagged' ? 'Tagged' : 'Untagged'}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={handleDownloadProductTemplate}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] hover:bg-[#2563eb]/15"
+        >
+          <FilePlus2 size={11} />
+          Download Vendor Product Template CSV
+        </button>
+        <button
+          type="button"
+          onClick={() => productTemplateRef.current?.click()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#7c3aed]/40 bg-[#7c3aed]/10 text-[#6d28d9] hover:bg-[#7c3aed]/15"
+        >
+          <Upload size={11} />
+          Upload Vendor Product Template
+        </button>
+        <input
+          ref={productTemplateRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={e => {
+            void handleProductTemplateUpload(e.target.files);
+            e.target.value = '';
+          }}
+        />
       </div>
+      {productImportError && (
+        <p className="text-xs text-red-500">{productImportError}</p>
+      )}
 
       <VendorProductsList
         products={filteredProducts}
@@ -762,6 +828,20 @@ export function VendorListPage({
         onVendorUpdated={handleVendorUpdated}
         onProductUpdated={() => setCatalogRefresh(key => key + 1)}
       />
+
+      {productImportPlan && (
+        <VendorProductImportReviewPanel
+          plan={productImportPlan}
+          vendors={vendors}
+          existingProducts={catalogProducts}
+          groupOptions={groupOptions}
+          onClose={() => setProductImportPlan(null)}
+          onApplied={() => {
+            setProductImportPlan(null);
+            setCatalogRefresh(key => key + 1);
+          }}
+        />
+      )}
       </>
       ) : (
         <div className="space-y-4">

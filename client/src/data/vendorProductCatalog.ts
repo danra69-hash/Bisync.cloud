@@ -54,17 +54,38 @@ export type VendorProductCatalogItem = {
 };
 
 export type VendorProductImportDraft = {
+  vendorExternalId?: string;
+  vendorName?: string;
+  /** Optional template column; vendor products persist Group only (Category fills Group when Group blank). */
+  category?: string;
   vendorProductId?: string;
   productName: string;
   group: string;
   specification: string;
   deliveryUnitText: string;
+  principalDeliveryUnit?: string;
+  duBreakdown1?: string;
+  duBreakdown2?: string;
   deliveryPrice: number;
   productPolicyTag?: VendorProductPolicyTag;
   active?: boolean;
 };
 
 export const VENDOR_PRODUCT_TEMPLATE_HEADERS = [
+  'Vendor ID',
+  'Vendor Name',
+  'Category',
+  'Group',
+  'Vendor Product',
+  'Vendor Product ID',
+  'Principal Delivery unit',
+  'DU breakdown 1',
+  'DU breakdown 2',
+  'Delivery Unit Price',
+] as const;
+
+/** Legacy per-vendor template (still accepted on upload). */
+export const VENDOR_PRODUCT_TEMPLATE_HEADERS_LEGACY = [
   'Vendor Product ID',
   'Product Name',
   'Group',
@@ -74,9 +95,9 @@ export const VENDOR_PRODUCT_TEMPLATE_HEADERS = [
 ] as const;
 
 const VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS: string[][] = [
-  ['VP-BEAN001', 'Baked Beans', 'Dry Goods', 'Baked beans in tomato sauce, 400g tins', 'Box/12tin/400gr', '42.00'],
-  ['VP-OIL001', 'Olive Oil Extra Virgin', 'Dry Goods', 'Cold pressed olive oil, 5L tin', 'Tin/5ltr', '165.00'],
-  ['VP-OJ001', 'Fresh Orange Juice', 'Beverages', 'Cold-pressed orange juice, 2L bottle', 'Bottle/2ltr', '18.00'],
+  ['V007', 'Heritage Pantry Supply', '', 'Dry Goods', 'Baked Beans', 'VP-BEAN001', 'Box', '12 tin', '400 gr', '42.00'],
+  ['V015', 'Mediterranean Oil Co.', '', 'Dry Goods', 'Olive Oil Extra Virgin', 'VP-OIL001', 'Tin', '5 ltr', '', '165.00'],
+  ['V021', 'Juice Factory Direct', '', 'Beverages', 'Fresh Orange Juice', 'VP-OJ001', 'Bottle', '2 ltr', '', '18.00'],
 ];
 
 function parseCsvLine(line: string): string[] {
@@ -103,12 +124,115 @@ function parseCsvLine(line: string): string[] {
   return values.map(v => v.replace(/^"|"$/g, '').trim());
 }
 
-function isVendorProductTemplateHeader(cols: string[]): boolean {
-  const first = cols[0]?.toLowerCase() ?? '';
-  return first.includes('vendor product id') || first === 'product name';
+function normalizeTemplateHeader(header: string): string {
+  return header.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | null {
+function isVendorProductTemplateHeader(cols: string[]): boolean {
+  const normalized = cols.map(normalizeTemplateHeader);
+  const first = normalized[0] ?? '';
+  return first.includes('vendor id')
+    || first.includes('vendor product id')
+    || first === 'product name'
+    || first === 'vendor product'
+    || normalized.some(h => h.includes('principal delivery') || h === 'delivery unit');
+}
+
+/** Collapse "12 tin" → "12tin" for slash-path parsing. */
+export function normalizeDeliverySegment(raw: string): string {
+  return raw.trim().replace(/\s+/g, '');
+}
+
+/** Join Principal + DU breakdown columns into a parseable delivery path. */
+export function composeDeliveryUnitText(
+  principal: string,
+  breakdown1 = '',
+  breakdown2 = '',
+): string {
+  return [principal, breakdown1, breakdown2]
+    .map(normalizeDeliverySegment)
+    .filter(Boolean)
+    .join('/');
+}
+
+/** Split a product delivery into Principal / DU1 / DU2 template columns. */
+export function deliveryTemplateColumns(delivery: DeliveryUnitBreakdown): {
+  principal: string;
+  breakdown1: string;
+  breakdown2: string;
+} {
+  const levels = resolveDeliveryUnitLevels(delivery);
+  return {
+    principal: (levels.orderUnit || '').trim(),
+    breakdown1: (levels.firstBreakdown || '').trim(),
+    breakdown2: (levels.secondBreakdown || '').trim(),
+  };
+}
+
+function cellAt(cols: string[], indexMap: Map<string, number>, ...aliases: string[]): string {
+  for (const alias of aliases) {
+    const idx = indexMap.get(normalizeTemplateHeader(alias));
+    if (idx !== undefined) return cols[idx] ?? '';
+  }
+  return '';
+}
+
+function buildHeaderIndexMap(headers: string[]): Map<string, number> {
+  const map = new Map<string, number>();
+  headers.forEach((header, index) => {
+    const key = normalizeTemplateHeader(header);
+    if (key && !map.has(key)) map.set(key, index);
+  });
+  return map;
+}
+
+function isLegacyVendorProductTemplate(headers: string[]): boolean {
+  const normalized = headers.map(normalizeTemplateHeader);
+  return normalized.includes('delivery unit')
+    || (normalized.includes('product name') && !normalized.includes('vendor product'))
+    || (normalized[0] === 'vendor product id' && !normalized.includes('vendor id'));
+}
+
+function rowToVendorProductDraftFromMap(
+  cols: string[],
+  indexMap: Map<string, number>,
+): VendorProductImportDraft | null {
+  const vendorExternalId = cellAt(cols, indexMap, 'vendor id', 'vendor external id').trim().toUpperCase();
+  const vendorName = cellAt(cols, indexMap, 'vendor name').trim();
+  const category = cellAt(cols, indexMap, 'category').trim();
+  const groupRaw = cellAt(cols, indexMap, 'group').trim();
+  const group = groupRaw || category;
+  const productName = cellAt(cols, indexMap, 'vendor product', 'product name').trim();
+  const vendorProductId = cellAt(cols, indexMap, 'vendor product id').trim().toUpperCase();
+  const specification = cellAt(cols, indexMap, 'specification').trim();
+  const principal = cellAt(cols, indexMap, 'principal delivery unit', 'principal delivery').trim();
+  const du1 = cellAt(cols, indexMap, 'du breakdown 1', 'du breakdown1').trim();
+  const du2 = cellAt(cols, indexMap, 'du breakdown 2', 'du breakdown2').trim();
+  const legacyDelivery = cellAt(cols, indexMap, 'delivery unit').trim();
+  const deliveryUnitText = legacyDelivery || composeDeliveryUnitText(principal, du1, du2);
+  const priceRaw = cellAt(cols, indexMap, 'delivery unit price', 'price');
+  const deliveryPrice = parseFloat(String(priceRaw).replace(/[^0-9.]/g, '')) || 0;
+
+  if (!productName || !group || !deliveryUnitText || deliveryPrice <= 0) return null;
+
+  return {
+    vendorExternalId: vendorExternalId || undefined,
+    vendorName: vendorName || undefined,
+    category: category || undefined,
+    vendorProductId: vendorProductId || undefined,
+    productName,
+    group,
+    specification,
+    deliveryUnitText,
+    principalDeliveryUnit: principal || undefined,
+    duBreakdown1: du1 || undefined,
+    duBreakdown2: du2 || undefined,
+    deliveryPrice,
+  };
+}
+
+/** Positional legacy parser (Vendor Product ID | Product Name | Group | Spec | Delivery Unit | Price). */
+function rowToVendorProductDraftLegacy(cols: string[]): VendorProductImportDraft | null {
   if (cols.length >= 6) {
     const deliveryPrice = parseFloat(String(cols[5]).replace(/[^0-9.]/g, '')) || 0;
     const productName = cols[1];
@@ -142,19 +266,35 @@ function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | nul
   return null;
 }
 
+function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | null {
+  return rowToVendorProductDraftLegacy(cols);
+}
+
+export function productToVendorProductTemplateRow(
+  product: VendorProductCatalogItem,
+  countryCode = 'MY',
+): string[] {
+  const columns = deliveryTemplateColumns(product.delivery);
+  return [
+    product.vendorExternalId,
+    product.vendorName,
+    '',
+    product.group,
+    product.productName,
+    product.id,
+    columns.principal,
+    columns.breakdown1,
+    columns.breakdown2,
+    formatCountryNumber(product.deliveryPrice, countryCode),
+  ];
+}
+
 export function buildVendorProductTemplateCsv(
   existingProducts: VendorProductCatalogItem[] = [],
   countryCode = 'MY',
 ): string {
   const rows = existingProducts.length > 0
-    ? existingProducts.map(product => [
-      product.id,
-      product.productName,
-      product.group,
-      product.specification,
-      formatDeliveryUnitPath(product.delivery),
-      formatCountryNumber(product.deliveryPrice, countryCode),
-    ])
+    ? existingProducts.map(product => productToVendorProductTemplateRow(product, countryCode))
     : VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS;
 
   return [VENDOR_PRODUCT_TEMPLATE_HEADERS, ...rows]
@@ -165,21 +305,42 @@ export function buildVendorProductTemplateCsv(
 export function downloadVendorProductTemplateCsv(
   existingProducts: VendorProductCatalogItem[] = [],
   filename = 'vendor-product-template.csv',
+  countryCode = 'MY',
 ): void {
-  const blob = new Blob([buildVendorProductTemplateCsv(existingProducts)], { type: 'text/csv;charset=utf-8;' });
+  const stamp = new Date().toISOString().slice(0, 10);
+  const resolvedName = filename.includes('.csv')
+    ? filename
+    : `vendor-product-template-${stamp}.csv`;
+  const blob = new Blob([buildVendorProductTemplateCsv(existingProducts, countryCode)], {
+    type: 'text/csv;charset=utf-8;',
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = resolvedName;
   link.click();
   URL.revokeObjectURL(url);
 }
 
 export function parseVendorProductTemplateCsv(text: string): VendorProductImportDraft[] {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length <= 1) return [];
+  if (lines.length === 0) return [];
   const firstCols = parseCsvLine(lines[0]);
-  const dataLines = isVendorProductTemplateHeader(firstCols) ? lines.slice(1) : lines.slice(1);
+  const hasHeader = isVendorProductTemplateHeader(firstCols);
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  if (dataLines.length === 0) return [];
+
+  if (hasHeader) {
+    const indexMap = buildHeaderIndexMap(firstCols);
+    const useLegacy = isLegacyVendorProductTemplate(firstCols);
+    return dataLines
+      .map(parseCsvLine)
+      .map(cols => (useLegacy
+        ? rowToVendorProductDraftLegacy(cols)
+        : rowToVendorProductDraftFromMap(cols, indexMap)))
+      .filter((draft): draft is VendorProductImportDraft => draft !== null);
+  }
+
   return dataLines
     .map(parseCsvLine)
     .map(rowToVendorProductDraft)
