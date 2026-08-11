@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Services;
 
@@ -70,6 +72,40 @@ public static class DeliveryPrincipalResolver
             unitUnit,
             out principalPerPackage,
             out principalUom);
+    }
+
+    /// <summary>
+    /// Shared DU→PCU principal resolution used by receive, healer, credit notes, and Stock Card display.
+    /// Prefer VendorProduct.DeliveryJson, then slash-path delivery basis.
+    /// </summary>
+    public static async Task<(decimal? Principal, string? Uom)> ResolvePathPrincipalAsync(
+        BisyncDbContext db,
+        Ingredient ingredient,
+        string? vendorProductId,
+        string? deliveryBasis,
+        CancellationToken cancellationToken = default)
+    {
+        var vpId = (vendorProductId ?? string.Empty).Trim();
+        if (!string.IsNullOrEmpty(vpId))
+        {
+            var vendorProduct = await db.VendorProducts.AsNoTracking()
+                .FirstOrDefaultAsync(v => v.ExternalId == vpId, cancellationToken);
+            if (TryResolveFromVendorProduct(
+                    vendorProduct,
+                    ingredient,
+                    out var resolvedPrincipal,
+                    out var resolvedUom))
+                return (resolvedPrincipal, resolvedUom);
+        }
+
+        if (TryResolveFromDeliveryPath(
+                deliveryBasis,
+                ingredient,
+                out var pathPrincipal,
+                out var pathUom))
+            return (pathPrincipal, pathUom);
+
+        return (null, null);
     }
 
     public static bool TryResolvePrincipal(

@@ -8,7 +8,8 @@ namespace Bisync.Api.Services;
 public class StockCardService(
     BisyncDbContext db,
     ComponentStockService componentStock,
-    ComponentFifoCostingService fifoCosting)
+    ComponentFifoCostingService fifoCosting,
+    ReceivedPurchaseStockHealer receivedStockHealer)
 {
     public async Task<IReadOnlyList<StockCardListRow>> ListAsync(
         int? companyId,
@@ -67,6 +68,17 @@ public class StockCardService(
             }
 
             var componentIds = visibleIngredients.Select(i => i.ComponentId).ToList();
+
+            // BBQ-parity for every visible component: create missing purchases + rewrite
+            // under-converted delivery packages → PCU before summarizing the list.
+            try
+            {
+                await receivedStockHealer.HealVisibleComponentsAsync(componentIds, cancellationToken);
+            }
+            catch
+            {
+                // Listing must still succeed even if heal fails.
+            }
 
             // Batch-load purchases/movements for all components at once to avoid N+1 round-trips.
             var allPurchases = componentIds.Count == 0
@@ -967,7 +979,7 @@ public class StockCardService(
                         vendorProduct))
                     return ClonePurchaseWithQty(p, qty, price, displayUom);
 
-                // Never drop received purchases from inbound summary (BBQ tub residual).
+                // Never drop received purchases from inbound summary (delivery-package residual).
                 return p.Quantity > 0
                     ? ClonePurchaseWithQty(p, p.Quantity, p.UnitPrice, string.IsNullOrWhiteSpace(p.Uom) ? displayUom : p.Uom)
                     : null;
@@ -983,8 +995,15 @@ public class StockCardService(
 
         movements = movements
             .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
-            .Where(m => CanNormalizePurchaseUom(ingredient, m.Uom, displayUom))
-            .Select(m => NormalizeMovementToDisplayUom(ingredient, m, displayUom))
+            .Select(m =>
+            {
+                if (CanNormalizePurchaseUom(ingredient, m.Uom, displayUom))
+                    return NormalizeMovementToDisplayUom(ingredient, m, displayUom);
+
+                // Never drop outbound/inbound movements that fail direct UOM normalize
+                // (same BBQ lesson as purchases — e.g. CN still in delivery package).
+                return m;
+            })
             .ToList();
 
         var fifoResult = await BuildComponentFifoResultAsync(
@@ -1439,8 +1458,20 @@ public class StockCardService(
                 .Where(c => creditNoteIds.Contains(c.Id))
                 .ToDictionaryAsync(c => c.Id, cancellationToken);
 
+        var cnVendorProductIds = creditNotesById.Values
+            .Select(c => c.VendorProductId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var vendorProductsByCreditNote = cnVendorProductIds.Count == 0
+            ? new Dictionary<string, VendorProduct>(StringComparer.OrdinalIgnoreCase)
+            : await db.VendorProducts.AsNoTracking()
+                .Where(v => cnVendorProductIds.Contains(v.ExternalId))
+                .ToDictionaryAsync(v => v.ExternalId, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
         foreach (var movement in movements)
         {
+            var eventUom = displayUom;
             if (!TryNormalizeStockQty(
                     ingredient,
                     movement.Uom,
@@ -1449,7 +1480,35 @@ public class StockCardService(
                     movement.UnitPrice,
                     out var convertedAbsQty,
                     out var convertedPrice))
-                continue;
+            {
+                // Prefer CN DeliveryJson → PCU when movement still holds delivery packages.
+                if (string.Equals(
+                        (movement.ReferenceType ?? string.Empty).Trim(),
+                        CreditNoteService.ReferenceType,
+                        StringComparison.OrdinalIgnoreCase)
+                    && movement.ReferenceId > 0
+                    && creditNotesById.TryGetValue(movement.ReferenceId, out var cnForConvert)
+                    && TryResolveCreditNoteMovementForDisplay(
+                        ingredient,
+                        movement,
+                        cnForConvert,
+                        displayUom,
+                        vendorProductsByCreditNote,
+                        out convertedAbsQty,
+                        out convertedPrice))
+                {
+                    eventUom = displayUom;
+                }
+                else
+                {
+                    // Never hide a stock movement from the ledger when UOM conversion fails.
+                    convertedAbsQty = Math.Abs(movement.QtyDelta);
+                    convertedPrice = movement.UnitPrice;
+                    eventUom = string.IsNullOrWhiteSpace(movement.Uom) ? displayUom : movement.Uom.Trim();
+                    if (convertedAbsQty <= 0)
+                        continue;
+                }
+            }
 
             var entryType = ClassifyMovementEntryType(movement);
             var signedQty = movement.QtyDelta < 0 ? -convertedAbsQty : convertedAbsQty;
@@ -1481,7 +1540,7 @@ public class StockCardService(
                 EntryType = entryType,
                 Quantity = convertedAbsQty,
                 SignedQty = signedQty,
-                Uom = displayUom,
+                Uom = eventUom,
                 UnitPrice = entryType is "adjustment_out"
                     ? 0
                     : convertedPrice > 0
@@ -1504,10 +1563,10 @@ public class StockCardService(
         => TryNormalizeStockQty(ingredient, sourceUom, displayUom, 1m, 1m, out _, out _);
 
     /// <summary>
-    /// BBQ / CN-freebie path: purchases often remain in delivery packages (tub) while the
-    /// stock card displays Recipe UOM (Gr). Direct tub→Gr fails and previously dropped the
-    /// inbound while credit_note movements in Gr still showed — convert via principal first.
-    /// Prefer VendorProduct.DeliveryJson (same as PostReceived / healer), then delivery path.
+    /// Purchases often remain in delivery packages (tub) while the stock card displays
+    /// Recipe UOM (Gr). Direct tub→Gr fails and previously dropped the inbound while
+    /// credit_note movements in Gr still showed — convert via principal first.
+    /// Prefer VendorProduct.DeliveryJson (same as PostReceived / healer / CN), then delivery path.
     /// </summary>
     static bool TryResolvePurchaseForDisplay(
         Ingredient ingredient,
@@ -1633,6 +1692,85 @@ public class StockCardService(
 
         convertedQty = 0;
         convertedPrice = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// Convert a credit-note movement still stored in delivery packages to display PCU
+    /// using VendorProduct.DeliveryJson — same path as purchase never-drop / receive.
+    /// </summary>
+    static bool TryResolveCreditNoteMovementForDisplay(
+        Ingredient ingredient,
+        InventoryMovement movement,
+        CreditNote creditNote,
+        string displayUom,
+        IReadOnlyDictionary<string, VendorProduct> vendorProductsById,
+        out decimal convertedQty,
+        out decimal convertedPrice)
+    {
+        convertedQty = 0;
+        convertedPrice = 0;
+        var deliveryBasis = string.IsNullOrWhiteSpace(creditNote.DeliveryUom)
+            ? movement.Uom
+            : creditNote.DeliveryUom;
+        decimal? pathPrincipal = null;
+        string? pathPrincipalUom = null;
+        var vpId = (creditNote.VendorProductId ?? string.Empty).Trim();
+        if (!string.IsNullOrEmpty(vpId)
+            && vendorProductsById.TryGetValue(vpId, out var vendorProduct)
+            && DeliveryPrincipalResolver.TryResolveFromVendorProduct(
+                vendorProduct,
+                ingredient,
+                out var vpPrincipal,
+                out var vpUom))
+        {
+            pathPrincipal = vpPrincipal;
+            pathPrincipalUom = vpUom;
+        }
+        else if (DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                     deliveryBasis,
+                     ingredient,
+                     out var pathFromLabel,
+                     out var pathFromLabelUom))
+        {
+            pathPrincipal = pathFromLabel;
+            pathPrincipalUom = pathFromLabelUom;
+        }
+
+        var packageQty = Math.Abs(movement.QtyDelta);
+        var packagePrice = movement.UnitPrice > 0
+            ? movement.UnitPrice
+            : (creditNote.DeliveryUnitPrice > 0 ? creditNote.DeliveryUnitPrice : creditNote.StockUnitPrice);
+        var inbound = IngredientUomBridge.ToInboundPrincipal(
+            ingredient,
+            packageQty,
+            string.IsNullOrWhiteSpace(movement.Uom) ? deliveryBasis : movement.Uom,
+            packagePrice,
+            creditNote.VendorProductId,
+            deliveryBasis,
+            pathPrincipal,
+            pathPrincipalUom);
+
+        if (TryNormalizeStockQty(
+                ingredient,
+                inbound.Uom,
+                displayUom,
+                inbound.Quantity,
+                inbound.UnitPrice,
+                out convertedQty,
+                out convertedPrice))
+            return convertedQty > 0;
+
+        if (inbound.Quantity > 0
+            && (UomCanonical.Equals(inbound.Uom, displayUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.RecipeUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.InventoryUom)))
+        {
+            convertedQty = inbound.Quantity;
+            convertedPrice = inbound.UnitPrice;
+            return true;
+        }
+
         return false;
     }
 

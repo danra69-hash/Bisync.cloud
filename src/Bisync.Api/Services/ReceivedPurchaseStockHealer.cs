@@ -605,28 +605,68 @@ public sealed class ReceivedPurchaseStockHealer(
         string? vendorProductId,
         string? deliveryBasis,
         CancellationToken cancellationToken)
+        => await DeliveryPrincipalResolver.ResolvePathPrincipalAsync(
+            db,
+            ingredient,
+            vendorProductId,
+            deliveryBasis,
+            cancellationToken);
+
+    /// <summary>
+    /// Heal missing + under-converted purchases for the components currently shown on Stock Card list.
+    /// Caps work for latency while ensuring every visible card gets BBQ-parity DU→PCU rewrite.
+    /// </summary>
+    public async Task<int> HealVisibleComponentsAsync(
+        IReadOnlyList<string> componentIds,
+        CancellationToken cancellationToken = default)
     {
-        var vpId = (vendorProductId ?? string.Empty).Trim();
-        if (!string.IsNullOrEmpty(vpId))
+        var ids = componentIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(250)
+            .ToList();
+        if (ids.Count == 0)
+            return 0;
+
+        // Missing purchases for any of these components (batched by PO, not per-component round-trips).
+        var unpostedOrderIds = await db.PurchaseOrderItems.AsNoTracking()
+            .Where(i =>
+                ids.Contains(i.ComponentId)
+                && !i.IsReturnableDeposit
+                && (i.DeliveredQuantity > 0 || (i.ReceivedQuantity ?? 0m) > 0))
+            .Where(i => !db.InventoryPurchases.Any(p =>
+                p.PurchaseOrderItemId == i.Id && p.PurchaseOrderItemId > 0))
+            .Select(i => i.PurchaseOrderId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var missing = 0;
+        if (unpostedOrderIds.Count > 0)
         {
-            var vendorProduct = await db.VendorProducts.AsNoTracking()
-                .FirstOrDefaultAsync(v => v.ExternalId == vpId, cancellationToken);
-            if (DeliveryPrincipalResolver.TryResolveFromVendorProduct(
-                    vendorProduct,
-                    ingredient,
-                    out var resolvedPrincipal,
-                    out var resolvedUom))
-                return (resolvedPrincipal, resolvedUom);
+            var eligibleOrderIds = await db.PurchaseOrders.AsNoTracking()
+                .Where(o =>
+                    unpostedOrderIds.Contains(o.Id)
+                    && (o.Status == PurchaseOrderWorkflow.StatusReceived
+                        || o.Status == PurchaseOrderWorkflow.StatusPartiallyDelivered
+                        || o.Status == PurchaseOrderWorkflow.StatusReconciled)
+                    && !o.IsPreCommitted)
+                .OrderByDescending(o => o.Id)
+                .Select(o => o.Id)
+                .Take(200)
+                .ToListAsync(cancellationToken);
+            missing = await HealMissingOrdersAsync(eligibleOrderIds, cancellationToken);
         }
 
-        if (DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
-                deliveryBasis,
-                ingredient,
-                out var pathPrincipal,
-                out var pathUom))
-            return (pathPrincipal, pathUom);
-
-        return (null, null);
+        var purchases = await db.InventoryPurchases
+            .Where(p =>
+                p.PurchaseOrderId > 0
+                && p.PurchaseOrderItemId > 0
+                && ids.Contains(p.ComponentId))
+            .OrderBy(p => p.Id)
+            .ToListAsync(cancellationToken);
+        var rewritten = await HealPurchaseListAsync(purchases, cancellationToken);
+        return missing + rewritten;
     }
 
     static bool NearlyEqual(decimal a, decimal b, decimal tolerance = 0.00015m)
