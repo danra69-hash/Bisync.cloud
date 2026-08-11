@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   api,
   type PosTaxServiceChannelFlags,
@@ -9,7 +9,11 @@ import {
   type Product,
 } from '../../api'
 import { inputCls } from '../../data/countries'
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement'
+import {
+  normalizePosGroupLabel,
+  productMatchesPosGroupFilter,
+  productMatchesPosMenu,
+} from '../../data/posCatalog'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
 import { TableScrollContainer } from '../shared/TableScrollContainer'
 import {
@@ -20,6 +24,7 @@ import {
 
 type Props = {
   selectedCompanyId: number
+  selectedLocationIds: string[]
   products: Product[]
 }
 
@@ -82,6 +87,12 @@ function formatPct(n: number) {
 
 function chargeTypeLabel(type: PosTaxServiceChargeType) {
   return CHARGE_TYPE_OPTIONS.find(o => o.value === type)?.label ?? type
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.map(v => v.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+  )
 }
 
 function normalizeChargesFromConfig(raw: PosTaxServiceConfig | null): PosTaxServiceChargeLine[] {
@@ -169,7 +180,6 @@ function seedProductRules(
     const applyService =
       hasService && charges.some(c => serviceIds.has(c.id) && resolveChargeType(c) === 'service')
 
-    // Incomplete legacy: lines exist but nothing attached — treat as all-on for dine-in.
     const unattached =
       (config.salesTypes ?? []).every(
         r => (r.taxIds ?? []).length === 0 && (r.serviceIds ?? []).length === 0,
@@ -181,7 +191,7 @@ function seedProductRules(
         forceAll
         || sales.applyToAllProducts !== false
         || (sales.productGroups ?? []).some(
-          g => g.trim().toLowerCase() === (p.group || '').trim().toLowerCase(),
+          g => normalizePosGroupLabel(g) === normalizePosGroupLabel(p.group || ''),
         )
       if (!included) continue
       const current = map.get(p.id) ?? emptyRule(p.id)
@@ -211,8 +221,14 @@ function seedProductRules(
 /**
  * POS Config → Tax & Service Charge tab.
  * Charge definitions (type / name / %) + per-product Dine-in / Takeout / Delivery flags.
+ * Product list / Category · Group filters follow POS Menu (not raw RMS hierarchy).
+ * Matrix and definition edits persist immediately (no Save button).
  */
-export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
+export function PosTaxServiceChargeTab({
+  selectedCompanyId,
+  selectedLocationIds,
+  products,
+}: Props) {
   const [charges, setCharges] = useState<PosTaxServiceChargeLine[]>([])
   const [rulesByProductId, setRulesByProductId] = useState<Map<number, PosTaxServiceProductRule>>(
     () => new Map(),
@@ -231,6 +247,30 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
     percent: '0',
   })
 
+  const skipPersistRef = useRef(true)
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const chargesRef = useRef(charges)
+  const rulesRef = useRef(rulesByProductId)
+  chargesRef.current = charges
+  rulesRef.current = rulesByProductId
+
+  /** Same sell list as POS Menu tab — linked catalog, not full RMS. */
+  const menuProducts = useMemo(
+    () =>
+      products
+        .filter(p => productMatchesPosMenu(p, selectedCompanyId, selectedLocationIds))
+        .sort((a, b) => {
+          const c = (a.category || '').localeCompare(b.category || '')
+          if (c !== 0) return c
+          const g = normalizePosGroupLabel(a.group || '').localeCompare(
+            normalizePosGroupLabel(b.group || ''),
+          )
+          if (g !== 0) return g
+          return a.name.localeCompare(b.name)
+        }),
+    [products, selectedCompanyId, selectedLocationIds],
+  )
+
   const load = useCallback(async () => {
     if (selectedCompanyId <= 0) {
       setLoading(false)
@@ -239,66 +279,152 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
     }
     setLoading(true)
     setError(null)
+    skipPersistRef.current = true
     try {
       const raw = await api.posTaxServiceConfig(selectedCompanyId)
+      const menu = products.filter(p =>
+        productMatchesPosMenu(p, selectedCompanyId, selectedLocationIds),
+      )
       setCharges(normalizeChargesFromConfig(raw))
-      setRulesByProductId(seedProductRules(products, raw.productRules, raw))
+      setRulesByProductId(seedProductRules(menu, raw.productRules, raw))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load tax & service setup.')
     } finally {
       setLoading(false)
+      requestAnimationFrame(() => {
+        skipPersistRef.current = false
+      })
     }
-  }, [selectedCompanyId, products])
+  }, [selectedCompanyId, selectedLocationIds, products])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  // Keep matrix rows in sync when the product catalog refreshes.
   useEffect(() => {
     setRulesByProductId(prev => {
       const next = new Map(prev)
-      for (const p of products) {
+      for (const p of menuProducts) {
         if (!next.has(p.id)) next.set(p.id, emptyRule(p.id))
       }
       for (const id of [...next.keys()]) {
-        if (!products.some(p => p.id === id)) next.delete(id)
+        if (!menuProducts.some(p => p.id === id)) next.delete(id)
       }
       return next
     })
-  }, [products])
+  }, [menuProducts])
 
+  // Category / Group options from POS Menu products only (same approach as PosMenuPage).
   const categoryOptions = useMemo(
-    () => getSiCategoryFilterOptions(products.map(p => p.category || '')),
-    [products],
+    () => ['All', ...uniqueSorted(menuProducts.map(p => p.category || ''))],
+    [menuProducts],
   )
 
   const groupOptions = useMemo(() => {
     const scoped =
       filterCategory === 'All'
-        ? products
-        : products.filter(p => (p.category || '') === filterCategory)
-    return getSiGroupFilterOptions(
-      scoped.map(p => p.group || ''),
-      filterCategory,
-    )
-  }, [products, filterCategory])
+        ? menuProducts
+        : menuProducts.filter(p => (p.category || '') === filterCategory)
+    return [
+      'All',
+      ...uniqueSorted(scoped.map(p => normalizePosGroupLabel(p.group || ''))),
+    ]
+  }, [menuProducts, filterCategory])
+
+  useEffect(() => {
+    if (filterCategory !== 'All' && !categoryOptions.includes(filterCategory)) {
+      setFilterCategory('All')
+    }
+  }, [filterCategory, categoryOptions])
+
+  useEffect(() => {
+    if (filterGroup !== 'All' && !groupOptions.includes(filterGroup)) {
+      setFilterGroup('All')
+    }
+  }, [filterGroup, groupOptions])
 
   const sortedProducts = useMemo(() => {
-    return [...products]
-      .filter(p => {
-        if (filterCategory !== 'All' && (p.category || '') !== filterCategory) return false
-        if (filterGroup !== 'All' && (p.group || '') !== filterGroup) return false
-        return true
-      })
-      .sort((a, b) => {
-        const c = (a.category || '').localeCompare(b.category || '')
-        if (c !== 0) return c
-        const g = (a.group || '').localeCompare(b.group || '')
-        if (g !== 0) return g
-        return a.name.localeCompare(b.name)
-      })
-  }, [products, filterCategory, filterGroup])
+    return menuProducts.filter(p => {
+      if (filterCategory !== 'All' && (p.category || '') !== filterCategory) return false
+      if (!productMatchesPosGroupFilter(p.group || '', filterGroup)) return false
+      return true
+    })
+  }, [menuProducts, filterCategory, filterGroup])
+
+  const persistNow = useCallback(
+    async (
+      nextCharges: PosTaxServiceChargeLine[],
+      nextRules: Map<number, PosTaxServiceProductRule>,
+    ) => {
+      if (selectedCompanyId <= 0 || skipPersistRef.current) return
+      for (let i = 0; i < nextCharges.length; i++) {
+        if (!nextCharges[i].name.trim()) {
+          setError(`Charge ${i + 1}: enter a name.`)
+          return
+        }
+        if (
+          Number.isNaN(nextCharges[i].percent)
+          || nextCharges[i].percent < 0
+          || nextCharges[i].percent > 100
+        ) {
+          setError(`Charge ${i + 1}: percent must be 0–100.`)
+          return
+        }
+      }
+
+      setSaving(true)
+      setError(null)
+      try {
+        const productRules = menuProducts.map(
+          p => nextRules.get(p.id) ?? emptyRule(p.id),
+        )
+        const payloadCharges = nextCharges.map(c => ({
+          id: c.id,
+          name: c.name.trim(),
+          percent: Number(c.percent) || 0,
+          type: resolveChargeType(c),
+        }))
+        const saved = await api.savePosTaxServiceConfig({
+          companyId: selectedCompanyId,
+          charges: payloadCharges,
+          productRules,
+        })
+        skipPersistRef.current = true
+        setCharges(normalizeChargesFromConfig(saved))
+        setRulesByProductId(seedProductRules(menuProducts, saved.productRules, saved))
+        setSavedHint('Saved')
+        requestAnimationFrame(() => {
+          skipPersistRef.current = false
+        })
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to save.')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [selectedCompanyId, menuProducts],
+  )
+
+  const schedulePersist = useCallback(
+    (
+      nextCharges: PosTaxServiceChargeLine[],
+      nextRules: Map<number, PosTaxServiceProductRule>,
+    ) => {
+      chargesRef.current = nextCharges
+      rulesRef.current = nextRules
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+      persistTimerRef.current = setTimeout(() => {
+        void persistNow(chargesRef.current, rulesRef.current)
+      }, 350)
+    },
+    [persistNow],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current)
+    }
+  }, [])
 
   function openCreate() {
     setDraft({ id: null, type: 'tax-regular', name: '', percent: '0' })
@@ -328,87 +454,76 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
       setError('Percent must be between 0 and 100.')
       return
     }
-    setCharges(rows => {
-      if (draft.id) {
-        return rows.map(r =>
+    const nextCharges = draft.id
+      ? charges.map(r =>
           r.id === draft.id
             ? { ...r, type: draft.type, name, percent }
             : r,
         )
-      }
-      return [
-        ...rows,
-        {
-          id: newId(draft.type === 'service' ? 'svc' : 'tax'),
-          type: draft.type,
-          name,
-          percent,
-        },
-      ]
-    })
+      : [
+          ...charges,
+          {
+            id: newId(draft.type === 'service' ? 'svc' : 'tax'),
+            type: draft.type,
+            name,
+            percent,
+          },
+        ]
+    setCharges(nextCharges)
     setEditorOpen(false)
     setSavedHint(null)
     setError(null)
+    schedulePersist(nextCharges, rulesByProductId)
   }
 
   function removeCharge(id: string) {
-    setCharges(rows => rows.filter(r => r.id !== id))
+    const nextCharges = charges.filter(r => r.id !== id)
+    setCharges(nextCharges)
     if (draft.id === id) setEditorOpen(false)
+    schedulePersist(nextCharges, rulesByProductId)
   }
 
   function toggleFlag(productId: number, channel: ChannelKey, flag: FlagKey) {
-    setRulesByProductId(prev => {
-      const next = new Map(prev)
-      const current = next.get(productId) ?? emptyRule(productId)
-      const channelFlags = { ...current[channel] }
-      channelFlags[flag] = !channelFlags[flag]
-      const enforced = enforceTaxMutex(channelFlags, flag)
-      next.set(productId, { ...current, [channel]: enforced })
-      return next
-    })
+    const prev = rulesByProductId
+    const next = new Map(prev)
+    const current = next.get(productId) ?? emptyRule(productId)
+    const channelFlags = { ...current[channel] }
+    channelFlags[flag] = !channelFlags[flag]
+    const enforced = enforceTaxMutex(channelFlags, flag)
+    next.set(productId, { ...current, [channel]: enforced })
+    setRulesByProductId(next)
     setSavedHint(null)
+    schedulePersist(charges, next)
   }
 
-  async function save() {
-    if (selectedCompanyId <= 0) return
-    for (let i = 0; i < charges.length; i++) {
-      if (!charges[i].name.trim()) {
-        setError(`Charge ${i + 1}: enter a name.`)
-        return
-      }
-      if (
-        Number.isNaN(charges[i].percent)
-        || charges[i].percent < 0
-        || charges[i].percent > 100
-      ) {
-        setError(`Charge ${i + 1}: percent must be 0–100.`)
-        return
-      }
-    }
-
-    setSaving(true)
-    setError(null)
-    setSavedHint(null)
-    try {
-      const productRules = products.map(p => rulesByProductId.get(p.id) ?? emptyRule(p.id))
-      const payloadCharges = charges.map(c => ({
-        id: c.id,
-        name: c.name.trim(),
-        percent: Number(c.percent) || 0,
-        type: resolveChargeType(c),
-      }))
-      const saved = await api.savePosTaxServiceConfig({
-        companyId: selectedCompanyId,
-        charges: payloadCharges,
-        productRules,
+  function setFlagForVisible(channel: ChannelKey, flag: FlagKey, checked: boolean) {
+    const next = new Map(rulesByProductId)
+    for (const product of sortedProducts) {
+      const current = next.get(product.id) ?? emptyRule(product.id)
+      const channelFlags = { ...current[channel], [flag]: checked }
+      next.set(product.id, {
+        ...current,
+        [channel]: enforceTaxMutex(channelFlags, flag),
       })
-      setCharges(normalizeChargesFromConfig(saved))
-      setRulesByProductId(seedProductRules(products, saved.productRules, saved))
-      setSavedHint('Saved. Open a POS check — tax / service apply from the product matrix by sales type.')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save.')
-    } finally {
-      setSaving(false)
+    }
+    setRulesByProductId(next)
+    setSavedHint(null)
+    schedulePersist(charges, next)
+  }
+
+  function columnCheckState(channel: ChannelKey, flag: FlagKey): {
+    checked: boolean
+    indeterminate: boolean
+  } {
+    if (sortedProducts.length === 0) return { checked: false, indeterminate: false }
+    let on = 0
+    for (const product of sortedProducts) {
+      const rule = rulesByProductId.get(product.id) ?? emptyRule(product.id)
+      if (rule[channel][flag]) on += 1
+    }
+    return {
+      checked: on === sortedProducts.length,
+      indeterminate: on > 0 && on < sortedProducts.length,
     }
   }
 
@@ -421,17 +536,15 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-xs text-muted-foreground max-w-3xl">
           Define tax and service charge rates, then tick which apply per product for Dine in,
-          Takeout, and Delivery. Tax Regular and Tax Alcohol cannot both be selected for the same
-          product under the same sales type.
+          Takeout, and Delivery. Products and Category / Group filters follow the POS Menu tab.
+          Changes save automatically. Tax Regular and Tax Alcohol cannot both be selected for the
+          same product under the same sales type.
         </p>
-        <button
-          type="button"
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-          onClick={() => void save()}
-          disabled={saving || selectedCompanyId <= 0}
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        {saving ? (
+          <span className="text-[11px] text-muted-foreground tabular-nums">Saving…</span>
+        ) : savedHint ? (
+          <span className="text-[11px] text-emerald-700 dark:text-emerald-400">{savedHint}</span>
+        ) : null}
       </div>
 
       {error ? (
@@ -439,7 +552,6 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
           {error}
         </p>
       ) : null}
-      {savedHint ? <p className="text-xs text-emerald-700 dark:text-emerald-400">{savedHint}</p> : null}
 
       <section className="rounded-lg border border-border bg-card p-3 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -579,7 +691,7 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
           <div>
             <h3 className="text-xs font-semibold text-foreground">Product assignment</h3>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Category · Group · Product Name, then Dine in / Takeout / Delivery checkboxes.
+              POS Menu products — Category · Group · Product Name, then Dine in / Takeout / Delivery.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -642,14 +754,31 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
               </tr>
               <tr className="border-b border-border bg-muted/30">
                 {CHANNELS.map(ch =>
-                  FLAG_COLS.map(flag => (
-                    <th
-                      key={`${ch.key}-${flag.key}`}
-                      className="px-1 py-1 text-center text-[10px] font-medium text-muted-foreground border-l border-border/70 whitespace-nowrap"
-                    >
-                      {flag.label}
-                    </th>
-                  )),
+                  FLAG_COLS.map(flag => {
+                    const state = columnCheckState(ch.key, flag.key)
+                    return (
+                      <th
+                        key={`${ch.key}-${flag.key}`}
+                        className="px-1 py-1 text-center text-[10px] font-medium text-muted-foreground border-l border-border/70 whitespace-nowrap"
+                      >
+                        <label className="inline-flex flex-col items-center gap-0.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            aria-label={`Check all ${ch.label} ${flag.label}`}
+                            checked={state.checked}
+                            ref={el => {
+                              if (el) el.indeterminate = state.indeterminate
+                            }}
+                            disabled={sortedProducts.length === 0}
+                            onChange={e =>
+                              setFlagForVisible(ch.key, flag.key, e.target.checked)
+                            }
+                          />
+                          <span>{flag.label}</span>
+                        </label>
+                      </th>
+                    )
+                  }),
                 )}
               </tr>
             </thead>
@@ -657,7 +786,7 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
               {sortedProducts.length === 0 ? (
                 <tr>
                   <td colSpan={3 + CHANNELS.length * 3} className="px-2 py-6 text-center text-muted-foreground">
-                    No products match the selected filters for this company.
+                    No POS Menu products match the selected filters for this company.
                   </td>
                 </tr>
               ) : (
@@ -669,7 +798,7 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
                         {product.category || '—'}
                       </td>
                       <td className="px-2 py-1.5 text-foreground whitespace-nowrap">
-                        {product.group || '—'}
+                        {normalizePosGroupLabel(product.group || '') || '—'}
                       </td>
                       <td className="px-2 py-1.5 text-foreground">{product.name}</td>
                       {CHANNELS.map(ch =>
