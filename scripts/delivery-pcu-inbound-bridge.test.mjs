@@ -122,6 +122,30 @@ describe('delivery→PCU inbound bridge', () => {
     assert.equal(r.documentAmount, 625);
   });
 
+  it('Leffe when RecipeUom is g but keg content is 30ltr → convert into ml', () => {
+    // Mirrors DeliveryPrincipalResolver.BuildTargetUomCandidates fallback to SI volume base.
+    const parsed = parseDeliveryPath2Segment('1keg/30ltr');
+    assert.ok(parsed);
+    // Recipe g cannot convert from ltr — use ml (content family) instead of silent 5 g @ 125.
+    const principal = convertSi(parsed.contentQty, parsed.contentUnit, 'ml');
+    assert.equal(principal, 30000);
+    const r = toInboundPrincipal({
+      quantity: 5,
+      unitPrice: 125,
+      recipeUom: 'ml', // stock posts in resolvable content UOM
+      uomLabel: 'g', // wrongly labeled packages
+      principalPerPackage: principal,
+    });
+    assert.equal(r.stockQty, 150000);
+    assert.equal(r.stockUnitPrice, round4AwayFromZero(625 / 150000));
+    assert.notEqual(r.stockQty, 5);
+  });
+
+  it('never treats unconverted packages as already-PCU when qty equals package count', () => {
+    assert.equal(looksAlreadyConverted(5, 125, 30000), false);
+    assert.equal(looksAlreadyConverted(150000, 0.0042, 30000), true);
+  });
+
   it('does not double-convert already-PCU inbound', () => {
     const r = toInboundPrincipal({
       quantity: 22740,
