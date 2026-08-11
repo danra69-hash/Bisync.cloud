@@ -923,10 +923,35 @@ public class StockCardService(
         if (companyId is int cid)
             purchases = purchases.Where(p => p.CompanyId is null || p.CompanyId == cid).ToList();
 
+        // Load PO lines so delivery-package rows (CN freebie tub) can convert to display UOM.
+        var summarizeItemIds = purchases
+            .Where(p => p.PurchaseOrderItemId > 0)
+            .Select(p => p.PurchaseOrderItemId)
+            .Distinct()
+            .ToList();
+        var summarizePoItems = summarizeItemIds.Count == 0
+            ? new Dictionary<int, PurchaseOrderItem>()
+            : await db.PurchaseOrderItems.AsNoTracking()
+                .Where(i => summarizeItemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, cancellationToken);
+
         purchases = purchases
-            .Where(p => LocationMatchesAny(p.LocationIdsJson, locationIds))
-            .Where(p => CanNormalizePurchaseUom(ingredient, p.Uom, displayUom))
-            .Select(p => NormalizePurchaseToDisplayUom(ingredient, p, displayUom))
+            .Where(p => PurchaseMatchesSelectedLocations(p, locationIds))
+            .Select(p =>
+            {
+                summarizePoItems.TryGetValue(p.PurchaseOrderItemId, out var poItem);
+                return TryResolvePurchaseForDisplay(
+                        ingredient,
+                        p,
+                        poItem,
+                        displayUom,
+                        out var qty,
+                        out var price)
+                    ? ClonePurchaseWithQty(p, qty, price, displayUom)
+                    : null;
+            })
+            .Where(p => p is not null)
+            .Select(p => p!)
             .ToList();
 
         var movements = preloadedMovements;
@@ -1252,14 +1277,15 @@ public class StockCardService(
 
         foreach (var purchase in purchases)
         {
-            if (!LocationMatchesAny(purchase.LocationIdsJson, locationIds))
+            if (!PurchaseMatchesSelectedLocations(purchase, locationIds))
                 continue;
-            if (!TryNormalizeStockQty(
+
+            poItemsById.TryGetValue(purchase.PurchaseOrderItemId, out var poItem);
+            if (!TryResolvePurchaseForDisplay(
                     ingredient,
-                    purchase.Uom,
+                    purchase,
+                    poItem,
                     displayUom,
-                    purchase.Quantity,
-                    purchase.UnitPrice,
                     out var convertedQty,
                     out var convertedPrice))
                 continue;
@@ -1427,6 +1453,167 @@ public class StockCardService(
 
     static bool CanNormalizePurchaseUom(Ingredient ingredient, string sourceUom, string displayUom)
         => TryNormalizeStockQty(ingredient, sourceUom, displayUom, 1m, 1m, out _, out _);
+
+    /// <summary>
+    /// BBQ / CN-freebie path: purchases often remain in delivery packages (tub) while the
+    /// stock card displays Recipe UOM (Gr). Direct tub→Gr fails and previously dropped the
+    /// inbound while credit_note movements in Gr still showed — convert via principal first.
+    /// </summary>
+    static bool TryResolvePurchaseForDisplay(
+        Ingredient ingredient,
+        InventoryPurchase purchase,
+        PurchaseOrderItem? poItem,
+        string displayUom,
+        out decimal convertedQty,
+        out decimal convertedPrice)
+    {
+        if (TryNormalizeStockQty(
+                ingredient,
+                purchase.Uom,
+                displayUom,
+                purchase.Quantity,
+                purchase.UnitPrice,
+                out convertedQty,
+                out convertedPrice))
+            return true;
+
+        var deliveryBasis = poItem is null
+            ? purchase.Uom
+            : (string.IsNullOrWhiteSpace(poItem.Unit) ? poItem.DeliveryPackage : poItem.Unit);
+        decimal? pathPrincipal = null;
+        string? pathPrincipalUom = null;
+        if (DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                deliveryBasis,
+                ingredient,
+                out var resolvedPrincipal,
+                out var resolvedUom))
+        {
+            pathPrincipal = resolvedPrincipal;
+            pathPrincipalUom = resolvedUom;
+        }
+
+        var packageQty = purchase.Quantity;
+        var packagePrice = purchase.UnitPrice;
+        if (poItem is not null)
+        {
+            var linePackages = poItem.DeliveredQuantity > 0
+                ? poItem.DeliveredQuantity
+                : (poItem.ReceivedQuantity ?? poItem.Quantity);
+            var deliveryUnitPrice = poItem.ReceivedUnitPrice ?? poItem.UnitPrice;
+            if (linePackages > 0
+                && NearlyEqualQty(purchase.Quantity, linePackages)
+                && (deliveryUnitPrice <= StockCardFifoEngine.QtyEpsilon
+                    || NearlyEqualQty(purchase.UnitPrice, deliveryUnitPrice)
+                    || purchase.UnitPrice <= StockCardFifoEngine.QtyEpsilon))
+            {
+                packageQty = linePackages;
+                // Prefer a non-zero delivery price so principal conversion yields a stock rate;
+                // CN-revalued freebies may already carry a package-level extended value.
+                packagePrice = deliveryUnitPrice > StockCardFifoEngine.QtyEpsilon
+                    ? deliveryUnitPrice
+                    : (purchase.UnitPrice > StockCardFifoEngine.QtyEpsilon
+                        ? purchase.UnitPrice
+                        : deliveryUnitPrice);
+            }
+        }
+
+        var priorExtended = DecimalRounding.ToDb(purchase.Quantity * purchase.UnitPrice);
+        var inbound = IngredientUomBridge.ToInboundPrincipal(
+            ingredient,
+            packageQty,
+            string.IsNullOrWhiteSpace(deliveryBasis) ? purchase.Uom : deliveryBasis,
+            packagePrice > StockCardFifoEngine.QtyEpsilon ? packagePrice : purchase.UnitPrice,
+            poItem?.VendorProductId,
+            deliveryBasis,
+            pathPrincipal,
+            pathPrincipalUom);
+
+        // Preserve CN-revalued extended value when conversion used a $0 freebie delivery price.
+        if (priorExtended > StockCardFifoEngine.QtyEpsilon
+            && inbound.Quantity > 0
+            && inbound.DocumentAmount <= StockCardFifoEngine.QtyEpsilon)
+        {
+            var preservedPrice = DecimalRounding.ToDb(priorExtended / inbound.Quantity);
+            if (TryNormalizeStockQty(
+                    ingredient,
+                    inbound.Uom,
+                    displayUom,
+                    inbound.Quantity,
+                    preservedPrice,
+                    out convertedQty,
+                    out convertedPrice))
+                return true;
+        }
+
+        if (TryNormalizeStockQty(
+                ingredient,
+                inbound.Uom,
+                displayUom,
+                inbound.Quantity,
+                inbound.UnitPrice,
+                out convertedQty,
+                out convertedPrice))
+            return true;
+
+        convertedQty = 0;
+        convertedPrice = 0;
+        return false;
+    }
+
+    static bool NearlyEqualQty(decimal a, decimal b, decimal tolerance = 0.00015m)
+        => Math.Abs(a - b) <= Math.Max(tolerance, Math.Abs(a) * 0.0001m);
+
+    static InventoryPurchase ClonePurchaseWithQty(
+        InventoryPurchase purchase,
+        decimal quantity,
+        decimal unitPrice,
+        string uom)
+        => new()
+        {
+            Id = purchase.Id,
+            ComponentId = purchase.ComponentId,
+            ComponentName = purchase.ComponentName,
+            Quantity = quantity,
+            Uom = uom,
+            UnitPrice = unitPrice,
+            DocumentAmount = purchase.DocumentAmount,
+            RoundingResidual = purchase.RoundingResidual,
+            DateOrdered = purchase.DateOrdered,
+            DateCreatedInStock = purchase.DateCreatedInStock,
+            PurchaseOrderId = purchase.PurchaseOrderId,
+            PurchaseOrderItemId = purchase.PurchaseOrderItemId,
+            ProductExpiryDate = purchase.ProductExpiryDate,
+            Remarks = purchase.Remarks,
+            CompanyId = purchase.CompanyId,
+            LocationIdsJson = purchase.LocationIdsJson,
+            LocationExternalId = purchase.LocationExternalId,
+            SplitSourceType = purchase.SplitSourceType,
+            SplitSourceId = purchase.SplitSourceId,
+            SplitLineKey = purchase.SplitLineKey,
+            SplitParentComponentId = purchase.SplitParentComponentId,
+        };
+
+    /// <summary>
+    /// Match purchases by LocationIdsJson, with LocationExternalId fallback so CN movements
+    /// (matched on ExternalId) and their offsetting inbound stay on the same stock card.
+    /// </summary>
+    static bool PurchaseMatchesSelectedLocations(
+        InventoryPurchase purchase,
+        IReadOnlyList<string> locationIds)
+    {
+        var locs = PurchaseOrderWorkflow.DeserializeLocationIds(purchase.LocationIdsJson);
+        if (locs.Count > 0)
+        {
+            if (LocationListMatches(locs, locationIds))
+                return true;
+            return StockLocationRules.MovementMatchesAny(purchase.LocationExternalId, locationIds);
+        }
+
+        if (!string.IsNullOrWhiteSpace(purchase.LocationExternalId))
+            return StockLocationRules.MovementMatchesAny(purchase.LocationExternalId, locationIds);
+
+        return true;
+    }
 
     static bool TryNormalizeStockQty(
         Ingredient ingredient,
@@ -1904,7 +2091,7 @@ public class StockCardService(
         {
             if (companyId is int cid && purchase.CompanyId is int pcid && pcid != cid)
                 continue;
-            if (!LocationMatchesAny(purchase.LocationIdsJson, locationIds))
+            if (!PurchaseMatchesSelectedLocations(purchase, locationIds))
                 continue;
             if (last is null || purchase.DateCreatedInStock > last)
                 last = purchase.DateCreatedInStock;
