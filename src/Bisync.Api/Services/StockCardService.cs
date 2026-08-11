@@ -1555,6 +1555,20 @@ public class StockCardService(
                 out convertedPrice))
             return true;
 
+        // Last resort: if principal conversion produced recipe/inventory UOM, accept it even
+        // when display mode aliases differ slightly — keep the whole receive visible.
+        if (inbound.Quantity > 0
+            && (UomCanonical.Equals(inbound.Uom, displayUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.RecipeUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.InventoryUom)))
+        {
+            convertedQty = inbound.Quantity;
+            convertedPrice = inbound.UnitPrice > 0
+                ? inbound.UnitPrice
+                : (priorExtended > 0 ? DecimalRounding.ToDb(priorExtended / inbound.Quantity) : purchase.UnitPrice);
+            return true;
+        }
+
         convertedQty = 0;
         convertedPrice = 0;
         return false;
@@ -1596,23 +1610,21 @@ public class StockCardService(
     /// <summary>
     /// Match purchases by LocationIdsJson, with LocationExternalId fallback so CN movements
     /// (matched on ExternalId) and their offsetting inbound stay on the same stock card.
+    /// Empty LocationIdsJson matches any selected location (same as PurchaseMatchesAny) so a
+    /// whole receive is not wiped to inbound=0 when only ExternalId is set/mismatched.
     /// </summary>
     static bool PurchaseMatchesSelectedLocations(
         InventoryPurchase purchase,
         IReadOnlyList<string> locationIds)
     {
         var locs = PurchaseOrderWorkflow.DeserializeLocationIds(purchase.LocationIdsJson);
-        if (locs.Count > 0)
-        {
-            if (LocationListMatches(locs, locationIds))
-                return true;
-            return StockLocationRules.MovementMatchesAny(purchase.LocationExternalId, locationIds);
-        }
+        if (locs.Count == 0)
+            return true;
 
-        if (!string.IsNullOrWhiteSpace(purchase.LocationExternalId))
-            return StockLocationRules.MovementMatchesAny(purchase.LocationExternalId, locationIds);
+        if (LocationListMatches(locs, locationIds))
+            return true;
 
-        return true;
+        return StockLocationRules.MovementMatchesAny(purchase.LocationExternalId, locationIds);
     }
 
     static bool TryNormalizeStockQty(
@@ -2176,54 +2188,59 @@ public class StockCardService(
 
     const int HistoryRetentionYears = 2;
 
-    static StockCardPeriod ResolvePeriod(string? period)
+    static StockCardPeriod ResolvePeriod(string? period, Company? company = null)
     {
-        var now = DateTime.UtcNow;
-        var archiveCutoff = now.Date.AddYears(-HistoryRetentionYears);
-        var earliestMonth = new DateTime(archiveCutoff.Year, archiveCutoff.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var nowLocal = OrgClock.NowLocal(company);
+        var archiveCutoffLocal = DateOnly.FromDateTime(nowLocal).AddYears(-HistoryRetentionYears);
+        var archiveCutoff = OrgClock.StartOfLocalDayUtc(archiveCutoffLocal, company);
 
         int year;
         int month;
         if (string.IsNullOrWhiteSpace(period)
             || string.Equals(period, "month", StringComparison.OrdinalIgnoreCase))
         {
-            year = now.Year;
-            month = now.Month;
+            year = nowLocal.Year;
+            month = nowLocal.Month;
         }
         else if (TryParseWeekKey(period.Trim(), out var weekYear, out var weekNumber))
         {
             var weekStartDate = ISOWeek.ToDateTime(weekYear, weekNumber, DayOfWeek.Monday);
-            var weekStart = DateTime.SpecifyKind(weekStartDate.Date, DateTimeKind.Utc);
-            if (weekStart < earliestMonth)
-                weekStart = earliestMonth;
-            var weekEndExclusive = weekStart.AddDays(7);
-            var weekEnd = weekEndExclusive.AddSeconds(-1);
-            if (weekEnd > now)
-                weekEnd = now;
+            var weekStartLocal = DateOnly.FromDateTime(weekStartDate);
+            var weekStart = OrgClock.StartOfLocalDayUtc(weekStartLocal, company);
+            if (weekStart < archiveCutoff)
+                weekStart = archiveCutoff;
+            var weekEnd = OrgClock.EndOfLocalDayUtc(weekStartLocal.AddDays(6), company);
+            var nowUtc = DateTime.UtcNow;
+            if (weekEnd > nowUtc)
+                weekEnd = nowUtc;
             return new StockCardPeriod(
                 $"{weekYear:D4}-W{weekNumber:D2}",
                 weekStart,
                 weekEnd,
                 archiveCutoff,
-                weekEnd >= now.Date);
+                weekEnd >= nowUtc.Date);
         }
         else if (!TryParseMonthKey(period.Trim(), out year, out month))
         {
-            year = now.Year;
-            month = now.Month;
+            year = nowLocal.Year;
+            month = nowLocal.Month;
         }
 
-        var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        if (monthStart < earliestMonth)
-            monthStart = earliestMonth;
+        var monthStartLocal = new DateOnly(year, month, 1);
+        var monthStart = OrgClock.StartOfLocalDayUtc(monthStartLocal, company);
+        if (monthStart < archiveCutoff)
+        {
+            monthStartLocal = new DateOnly(archiveCutoffLocal.Year, archiveCutoffLocal.Month, 1);
+            monthStart = OrgClock.StartOfLocalDayUtc(monthStartLocal, company);
+        }
 
-        var isCurrentMonth = monthStart.Year == now.Year && monthStart.Month == now.Month;
+        var isCurrentMonth = monthStartLocal.Year == nowLocal.Year && monthStartLocal.Month == nowLocal.Month;
         var periodEnd = isCurrentMonth
-            ? now
-            : monthStart.AddMonths(1).AddSeconds(-1);
+            ? DateTime.UtcNow
+            : OrgClock.EndOfLocalDayUtc(monthStartLocal.AddMonths(1).AddDays(-1), company);
 
         return new StockCardPeriod(
-            $"{monthStart:yyyy-MM}",
+            $"{monthStartLocal:yyyy-MM}",
             monthStart,
             periodEnd,
             archiveCutoff,
@@ -2231,7 +2248,7 @@ public class StockCardService(
     }
 
     /// <summary>
-    /// Calendar month window, shifted when prior-month full inventory was consolidated
+    /// Company-local calendar month window, shifted when prior-month full inventory was consolidated
     /// on a later EffectiveDate (C/F). Next period starts the day after EffectiveDate;
     /// prior period extends through end of EffectiveDate.
     /// </summary>
@@ -2240,9 +2257,16 @@ public class StockCardService(
         int? companyId,
         CancellationToken cancellationToken)
     {
-        var basePeriod = ResolvePeriod(period);
+        Company? company = null;
+        if (companyId is int cid && cid > 0)
+        {
+            company = await db.Companies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+        }
+
+        var basePeriod = ResolvePeriod(period, company);
         // Carry-forward inventory shifts apply to calendar months only.
-        if (basePeriod.MonthKey.Contains('-') && basePeriod.MonthKey.Contains('W', StringComparison.OrdinalIgnoreCase))
+        if (basePeriod.MonthKey.Contains('W', StringComparison.OrdinalIgnoreCase))
             return basePeriod;
 
         var carryForward = await FindCarryForwardEffectiveDateAsync(
@@ -2254,32 +2278,35 @@ public class StockCardService(
             return basePeriod;
 
         var cf = carryForward.Value;
-        var calendarStart = basePeriod.MonthStart;
-        var nextCalendarStart = calendarStart.AddMonths(1);
+        if (!TryParseMonthKey(basePeriod.MonthKey, out var viewYear, out var viewMonth))
+            return basePeriod with { CarryForwardDate = cf.EffectiveDate };
+
+        var monthStartLocal = new DateOnly(viewYear, viewMonth, 1);
+        var nextMonthStartLocal = monthStartLocal.AddMonths(1);
 
         // Viewing the inventory's own PeriodMonth: extend PeriodEnd through EffectiveDate.
         if (string.Equals(cf.PeriodMonth, basePeriod.MonthKey, StringComparison.OrdinalIgnoreCase))
         {
-            var extendedEnd = EndOfUtcDay(cf.EffectiveDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            var extendedEnd = OrgClock.EndOfLocalDayUtc(cf.EffectiveDate, company);
             if (extendedEnd <= basePeriod.PeriodEnd)
                 return basePeriod with { CarryForwardDate = cf.EffectiveDate };
 
             var now = DateTime.UtcNow;
             var cappedEnd = extendedEnd > now ? now : extendedEnd;
+            var localNow = OrgClock.NowLocal(company);
             return basePeriod with
             {
                 PeriodEnd = cappedEnd,
                 CarryForwardDate = cf.EffectiveDate,
-                IsCurrentMonth = cappedEnd >= now.Date,
+                IsCurrentMonth = DateOnly.FromDateTime(localNow) <= cf.EffectiveDate
+                    || (localNow.Year == viewYear && localNow.Month == viewMonth),
             };
         }
 
         // Viewing the month after a late C/F: start day after EffectiveDate.
-        if (cf.EffectiveDate >= DateOnly.FromDateTime(calendarStart)
-            && cf.EffectiveDate < DateOnly.FromDateTime(nextCalendarStart))
+        if (cf.EffectiveDate >= monthStartLocal && cf.EffectiveDate < nextMonthStartLocal)
         {
-            var shiftedStart = cf.EffectiveDate.AddDays(1)
-                .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            var shiftedStart = OrgClock.StartOfLocalDayUtc(cf.EffectiveDate.AddDays(1), company);
             if (shiftedStart <= basePeriod.PeriodEnd)
             {
                 return basePeriod with

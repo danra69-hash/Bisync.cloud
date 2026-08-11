@@ -29,14 +29,32 @@ public sealed class ReceivedPurchaseStockHealer(
         bool fullScan = false,
         string? componentId = null)
     {
-        var missingHealed = await HealMissingAsync(cancellationToken);
+        var missingHealed = await HealMissingAsync(fullScan, cancellationToken);
         var rewritten = await HealUnderConvertedAsync(fullScan, cancellationToken);
         if (!string.IsNullOrWhiteSpace(componentId))
             rewritten += await HealUnderConvertedForComponentAsync(componentId.Trim(), cancellationToken);
         return missingHealed + rewritten;
     }
 
-    async Task<int> HealMissingAsync(CancellationToken cancellationToken)
+    async Task<int> HealMissingAsync(bool fullScan, CancellationToken cancellationToken)
+    {
+        // Newest first so recent receives (BBQ / multi-line POs) heal before ancient backlog.
+        // fullScan pages until drained; opportunistic stock-card opens take one page.
+        const int pageSize = 120;
+        var totalHealed = 0;
+        var guard = 0;
+        while (guard++ < (fullScan ? 40 : 1))
+        {
+            var pageHealed = await HealMissingPageAsync(pageSize, cancellationToken);
+            totalHealed += pageHealed;
+            if (!fullScan || pageHealed == 0)
+                break;
+        }
+
+        return totalHealed;
+    }
+
+    async Task<int> HealMissingPageAsync(int take, CancellationToken cancellationToken)
     {
         // 1) Received POs with no InventoryPurchases at all (legacy receive-before-stock).
         var fullyMissingIds = await db.PurchaseOrders.AsNoTracking()
@@ -46,14 +64,12 @@ public sealed class ReceivedPurchaseStockHealer(
                     || o.Status == PurchaseOrderWorkflow.StatusReconciled)
                 && !o.IsPreCommitted)
             .Where(o => !db.InventoryPurchases.Any(p => p.PurchaseOrderId == o.Id))
-            .OrderBy(o => o.Id)
+            .OrderByDescending(o => o.Id)
             .Select(o => o.Id)
-            .Take(100)
+            .Take(take)
             .ToListAsync(cancellationToken);
 
-        // 2) Received POs where some lines posted but others never did (e.g. BBQ line
-        //    missing while sibling lines have purchases). Credit notes can still post
-        //    outbound from DeliveredQuantity alone — inbound must be healed per line.
+        // 2) Received POs where some lines posted but others never did.
         var partialCandidateIds = await db.PurchaseOrders.AsNoTracking()
             .Where(o =>
                 (o.Status == PurchaseOrderWorkflow.StatusReceived
@@ -63,12 +79,14 @@ public sealed class ReceivedPurchaseStockHealer(
             .Where(o => db.InventoryPurchases.Any(p => p.PurchaseOrderId == o.Id))
             .OrderByDescending(o => o.Id)
             .Select(o => o.Id)
-            .Take(80)
+            .Take(take)
             .ToListAsync(cancellationToken);
 
         var orderIds = fullyMissingIds
             .Concat(partialCandidateIds)
             .Distinct()
+            .OrderByDescending(id => id)
+            .Take(take)
             .ToList();
 
         if (orderIds.Count == 0)
@@ -87,7 +105,7 @@ public sealed class ReceivedPurchaseStockHealer(
         var postedItemIdSet = postedItemIds.ToHashSet();
 
         var healed = 0;
-        foreach (var order in candidates)
+        foreach (var order in candidates.OrderByDescending(o => o.Id))
         {
             var lines = order.Items
                 .Where(i => !i.IsReturnableDeposit)
@@ -195,7 +213,7 @@ public sealed class ReceivedPurchaseStockHealer(
                         continue;
                     }
 
-                    var purchase = new InventoryPurchase
+                    db.InventoryPurchases.Add(new InventoryPurchase
                     {
                         ComponentId = item.ComponentId,
                         ComponentName = string.IsNullOrWhiteSpace(item.ComponentName)
@@ -215,8 +233,7 @@ public sealed class ReceivedPurchaseStockHealer(
                         CompanyId = order.CompanyId,
                         LocationIdsJson = locationIdsJson,
                         LocationExternalId = locationExternalId,
-                    };
-                    db.InventoryPurchases.Add(purchase);
+                    });
                     postedItemIdSet.Add(item.Id);
                 }
 

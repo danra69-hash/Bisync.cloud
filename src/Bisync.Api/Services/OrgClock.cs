@@ -51,6 +51,20 @@ public static class OrgClock
             location?.Company?.CountryCode ?? company?.CountryCode,
             location?.StateProvince);
 
+    /// <summary>Start of the given local calendar day, as UTC (stock-card period bounds).</summary>
+    public static DateTime StartOfLocalDayUtc(DateOnly localDate, Company? company, Location? location = null)
+    {
+        var localStart = localDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return ToUtc(localStart, company, location);
+    }
+
+    /// <summary>End of the given local calendar day, as UTC (stock-card period bounds).</summary>
+    public static DateTime EndOfLocalDayUtc(DateOnly localDate, Company? company, Location? location = null)
+    {
+        var localEnd = localDate.ToDateTime(new TimeOnly(23, 59, 59, 999), DateTimeKind.Unspecified);
+        return ToUtc(localEnd, company, location);
+    }
+
     /// <summary>
     /// Persist timezone id on a location from its company country + state/province.
     /// </summary>

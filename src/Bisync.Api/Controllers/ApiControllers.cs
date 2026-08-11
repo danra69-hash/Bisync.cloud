@@ -1951,6 +1951,24 @@ public class PurchaseOrdersController(
             var receiptPurchases = await db.InventoryPurchases
                 .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
                 .ToListAsync();
+
+            // A whole receive must not land as Received with zero stock rows — that is how
+            // every purchased line goes missing from Stock Card while CN outbound can still post.
+            var expectedStockLines = request.Items.Count(l =>
+                l.Quantity > 0
+                && order.Items.Any(i =>
+                    i.Id == l.ItemId
+                    && !i.IsReturnableDeposit
+                    && !string.IsNullOrWhiteSpace(i.ComponentId)));
+            if (expectedStockLines > 0 && receiptPurchases.Count == 0)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new
+                {
+                    message = "Receive did not post any stock for the delivered lines. Check component IDs on each PO line and try again.",
+                });
+            }
+
             foreach (var purchase in receiptPurchases)
                 await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
 
@@ -2136,7 +2154,12 @@ public class PurchaseOrdersController(
         foreach (var line in lines)
         {
             var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
-            if (item is null) continue;
+            if (item is null)
+            {
+                if (line.ItemId > 0)
+                    return $"Receive line item #{line.ItemId} was not found on this purchase order.";
+                continue;
+            }
 
             var shipmentQty = line.Quantity;
             if (bumpDeliveredQuantity)

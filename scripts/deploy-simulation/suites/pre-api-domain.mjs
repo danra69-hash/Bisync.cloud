@@ -11,6 +11,7 @@ const focused = [
   'scripts/fifo-batch-pcu-sync.test.mjs',
   'scripts/stockcard-credit-note-outbound.test.mjs',
   'scripts/stockcard-bbq-cn-inbound-visibility.test.mjs',
+  'scripts/stockcard-whole-receive-inbound.test.mjs',
   'scripts/stock-inbound-step1-bbq.mjs',
   'scripts/credit-note-outbound-residual.mjs',
   'scripts/active-purchase-buckets.mjs',
