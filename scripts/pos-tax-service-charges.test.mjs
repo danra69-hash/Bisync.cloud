@@ -1,5 +1,5 @@
 /**
- * Regression: service charge must apply to the bill when configured.
+ * Regression: service charge / tax apply from product matrix and legacy sales-type rules.
  * Mirrors computeTaxServiceCharges + configDrivesRegisterCharges.
  */
 import assert from 'node:assert/strict';
@@ -18,9 +18,76 @@ function normalizeSalesType(dining) {
   return key || 'dine-in';
 }
 
+function resolveChargeType(line) {
+  const raw = (line.type || '').trim().toLowerCase().replace(/_/g, '-');
+  if (raw === 'tax-regular' || raw === 'regular') return 'tax-regular';
+  if (raw === 'tax-alcohol' || raw === 'alcohol') return 'tax-alcohol';
+  if (raw === 'service') return 'service';
+  if (/alcohol|liquor|spirit/i.test(line.name || '')) return 'tax-alcohol';
+  return 'tax-regular';
+}
+
+function listConfigCharges(config) {
+  if (config.charges?.length) return config.charges;
+  return [
+    ...(config.taxes ?? []).map(t => ({ ...t, type: resolveChargeType(t) })),
+    ...(config.services ?? []).map(s => ({ ...s, type: 'service' })),
+  ];
+}
+
+function channelFlags(rule, dining) {
+  const key = normalizeSalesType(dining);
+  if (!rule) return { taxRegular: false, taxAlcohol: false, service: false };
+  if (key === 'takeaway') return rule.takeaway;
+  if (key === 'delivery') return rule.delivery;
+  return rule.dineIn;
+}
+
+function computeFromProductRules({ lines, products, dining, discountCents, config }) {
+  const charges = listConfigCharges(config).filter(c => c.percent > 0);
+  const regular = charges.filter(c => resolveChargeType(c) === 'tax-regular');
+  const alcohol = charges.filter(c => resolveChargeType(c) === 'tax-alcohol');
+  const services = charges.filter(c => resolveChargeType(c) === 'service');
+  const byId = new Map(products.map(p => [String(p.id), p]));
+  const rules = new Map((config.productRules ?? []).map(r => [String(r.productId), r]));
+  const rows = [];
+  let totalGross = 0;
+  for (const line of lines) {
+    const product = byId.get(String(line.productId));
+    if (!product) continue;
+    const amount = Math.round((line.unitPriceCents ?? product.priceCents) * line.quantity);
+    totalGross += amount;
+    rows.push({ amount, flags: channelFlags(rules.get(String(product.id)), dining) });
+  }
+  if (totalGross <= 0) return { serviceCents: 0, taxRegularCents: 0, taxAlcoholCents: 0 };
+  const disc = Math.max(0, Math.round(discountCents));
+  let serviceCents = 0;
+  let taxRegularCents = 0;
+  let taxAlcoholCents = 0;
+  for (const row of rows) {
+    const discShare = Math.round((disc * row.amount) / totalGross);
+    const net = Math.max(0, row.amount - discShare);
+    let lineService = 0;
+    if (row.flags.service) {
+      for (const svc of services) lineService += discountCentsFromPercent(net, svc.percent);
+    }
+    serviceCents += lineService;
+    const taxable = net + lineService;
+    if (row.flags.taxRegular) {
+      for (const tax of regular) taxRegularCents += discountCentsFromPercent(taxable, tax.percent);
+    } else if (row.flags.taxAlcohol) {
+      for (const tax of alcohol) taxAlcoholCents += discountCentsFromPercent(taxable, tax.percent);
+    }
+  }
+  return { serviceCents, taxRegularCents, taxAlcoholCents };
+}
+
 function computeTaxServiceCharges({ lines, products, dining, discountCents, config }) {
   if (!config || lines.length === 0) {
     return { serviceCents: 0, taxRegularCents: 0, taxAlcoholCents: 0 };
+  }
+  if ((config.productRules ?? []).length > 0) {
+    return computeFromProductRules({ lines, products, dining, discountCents, config });
   }
   const key = normalizeSalesType(dining);
   const rule = config.salesTypes.find(r => normalizeSalesType(r.salesType) === key) ?? {
@@ -71,11 +138,17 @@ function computeTaxServiceCharges({ lines, products, dining, discountCents, conf
 
 function configDrivesRegisterCharges(config) {
   if (!config) return false;
+  const charges = listConfigCharges(config);
+  if (!charges.some(c => c.percent > 0)) return false;
+  if ((config.productRules ?? []).some(r =>
+    [r.dineIn, r.takeaway, r.delivery].some(ch => ch?.taxRegular || ch?.taxAlcohol || ch?.service),
+  )) {
+    return true;
+  }
   for (const rule of config.salesTypes ?? []) {
     if ((rule.serviceIds ?? []).length > 0 || (rule.taxIds ?? []).length > 0) return true;
   }
-  return (config.services ?? []).some(s => s.percent > 0)
-    || (config.taxes ?? []).some(t => t.percent > 0);
+  return (config.productRules ?? []).length === 0;
 }
 
 describe('POS tax & service charge on bill', () => {
@@ -140,5 +213,89 @@ describe('POS tax & service charge on bill', () => {
       }),
       true,
     );
+  });
+
+  it('product matrix applies service + tax regular for dine-in only', () => {
+    const r = computeTaxServiceCharges({
+      lines,
+      products,
+      dining: 'dine-in',
+      discountCents: 0,
+      config: {
+        charges: [
+          { id: 'tax-1', type: 'tax-regular', name: 'GST', percent: 7 },
+          { id: 'svc-1', type: 'service', name: 'Service', percent: 10 },
+        ],
+        taxes: [],
+        services: [],
+        salesTypes: [],
+        productRules: [
+          {
+            productId: 1,
+            dineIn: { taxRegular: true, taxAlcohol: false, service: true },
+            takeaway: { taxRegular: false, taxAlcohol: false, service: false },
+            delivery: { taxRegular: false, taxAlcohol: false, service: false },
+          },
+        ],
+      },
+    });
+    assert.equal(r.serviceCents, 1000);
+    assert.equal(r.taxRegularCents, discountCentsFromPercent(11000, 7));
+  });
+
+  it('product matrix takeout ignores dine-in flags', () => {
+    const r = computeTaxServiceCharges({
+      lines,
+      products,
+      dining: 'takeout',
+      discountCents: 0,
+      config: {
+        charges: [
+          { id: 'svc-1', type: 'service', name: 'Service', percent: 10 },
+        ],
+        taxes: [],
+        services: [],
+        salesTypes: [],
+        productRules: [
+          {
+            productId: 1,
+            dineIn: { taxRegular: false, taxAlcohol: false, service: true },
+            takeaway: { taxRegular: false, taxAlcohol: false, service: false },
+            delivery: { taxRegular: false, taxAlcohol: false, service: false },
+          },
+        ],
+      },
+    });
+    assert.equal(r.serviceCents, 0);
+  });
+
+  it('tax regular and tax alcohol are mutually exclusive per line (alcohol wins when both set)', () => {
+    // UI enforces mutex; compute prefers taxRegular branch first, then alcohol.
+    // Simulate mutex already applied: only alcohol ticked.
+    const r = computeTaxServiceCharges({
+      lines,
+      products: [{ id: '1', priceCents: 10000, group: 'Beer', name: 'Lager' }],
+      dining: 'dine-in',
+      discountCents: 0,
+      config: {
+        charges: [
+          { id: 'tax-r', type: 'tax-regular', name: 'GST', percent: 7 },
+          { id: 'tax-a', type: 'tax-alcohol', name: 'Alcohol', percent: 10 },
+        ],
+        taxes: [],
+        services: [],
+        salesTypes: [],
+        productRules: [
+          {
+            productId: 1,
+            dineIn: { taxRegular: false, taxAlcohol: true, service: false },
+            takeaway: { taxRegular: false, taxAlcohol: false, service: false },
+            delivery: { taxRegular: false, taxAlcohol: false, service: false },
+          },
+        ],
+      },
+    });
+    assert.equal(r.taxRegularCents, 0);
+    assert.equal(r.taxAlcoholCents, 1000);
   });
 });

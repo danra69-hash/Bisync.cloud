@@ -1,62 +1,78 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   api,
+  type PosTaxServiceChannelFlags,
   type PosTaxServiceChargeLine,
+  type PosTaxServiceChargeType,
   type PosTaxServiceConfig,
-  type PosTaxServiceSalesTypeRule,
+  type PosTaxServiceProductRule,
   type Product,
 } from '../../api'
 import { inputCls } from '../../data/countries'
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
-
-const SALES_TYPES: { id: string; label: string }[] = [
-  { id: 'dine-in', label: 'Dine In' },
-  { id: 'takeaway', label: 'Takeaway' },
-  { id: 'delivery', label: 'Delivery' },
-]
+import { TableScrollContainer } from '../shared/TableScrollContainer'
+import {
+  isAlcoholTaxLineName,
+  listConfigCharges,
+  resolveChargeType,
+} from '../../bisync-pos/features/register/domain/taxServiceCharges'
 
 type Props = {
   selectedCompanyId: number
   products: Product[]
 }
 
+type ChannelKey = 'dineIn' | 'takeaway' | 'delivery'
+type FlagKey = keyof PosTaxServiceChannelFlags
+
+type ChargeDraft = {
+  id: string | null
+  type: PosTaxServiceChargeType
+  name: string
+  percent: string
+}
+
+const CHANNELS: { key: ChannelKey; label: string }[] = [
+  { key: 'dineIn', label: 'Dine in' },
+  { key: 'takeaway', label: 'Takeout' },
+  { key: 'delivery', label: 'Delivery' },
+]
+
+const FLAG_COLS: { key: FlagKey; label: string; isTax: boolean }[] = [
+  { key: 'taxRegular', label: 'Tax Regular', isTax: true },
+  { key: 'taxAlcohol', label: 'Tax Alcohol', isTax: true },
+  { key: 'service', label: 'Service', isTax: false },
+]
+
+const CHARGE_TYPE_OPTIONS: { value: PosTaxServiceChargeType; label: string }[] = [
+  { value: 'tax-regular', label: 'Tax Regular' },
+  { value: 'tax-alcohol', label: 'Tax Alcohol' },
+  { value: 'service', label: 'Service' },
+]
+
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-function emptyRule(salesType: string): PosTaxServiceSalesTypeRule {
+function emptyFlags(): PosTaxServiceChannelFlags {
+  return { taxRegular: false, taxAlcohol: false, service: false }
+}
+
+function emptyRule(productId: number): PosTaxServiceProductRule {
   return {
-    salesType,
-    taxIds: [],
-    serviceIds: [],
-    applyToAllProducts: true,
-    productGroups: [],
+    productId,
+    dineIn: emptyFlags(),
+    takeaway: emptyFlags(),
+    delivery: emptyFlags(),
   }
 }
 
-function normalizeConfig(raw: PosTaxServiceConfig | null, companyId: number): PosTaxServiceConfig {
-  const taxes = raw?.taxes ?? []
-  const services = raw?.services ?? []
-  const byType = new Map((raw?.salesTypes ?? []).map(r => [r.salesType.toLowerCase(), r]))
-  const salesTypes = SALES_TYPES.map(({ id }) => {
-    const existing = byType.get(id)
-    return existing
-      ? {
-          salesType: id,
-          taxIds: existing.taxIds ?? [],
-          serviceIds: existing.serviceIds ?? [],
-          applyToAllProducts: existing.applyToAllProducts !== false,
-          productGroups: existing.applyToAllProducts !== false ? [] : existing.productGroups ?? [],
-        }
-      : emptyRule(id)
-  })
-  return {
-    companyId,
-    taxes,
-    services,
-    salesTypes,
-    updatedAt: raw?.updatedAt ?? null,
-  }
+function enforceTaxMutex(flags: PosTaxServiceChannelFlags, toggled: FlagKey): PosTaxServiceChannelFlags {
+  const next = { ...flags }
+  if (toggled === 'taxRegular' && next.taxRegular) next.taxAlcohol = false
+  if (toggled === 'taxAlcohol' && next.taxAlcohol) next.taxRegular = false
+  return next
 }
 
 function formatPct(n: number) {
@@ -64,36 +80,156 @@ function formatPct(n: number) {
   return `${v % 1 === 0 ? v.toFixed(0) : String(v)}%`
 }
 
+function chargeTypeLabel(type: PosTaxServiceChargeType) {
+  return CHARGE_TYPE_OPTIONS.find(o => o.value === type)?.label ?? type
+}
+
+function normalizeChargesFromConfig(raw: PosTaxServiceConfig | null): PosTaxServiceChargeLine[] {
+  return listConfigCharges(raw).map(c => ({
+    id: c.id,
+    name: c.name,
+    percent: Number(c.percent) || 0,
+    type: resolveChargeType(c),
+  }))
+}
+
+function seedProductRules(
+  products: Product[],
+  saved: PosTaxServiceProductRule[] | undefined,
+  config: PosTaxServiceConfig | null,
+): Map<number, PosTaxServiceProductRule> {
+  const map = new Map<number, PosTaxServiceProductRule>()
+  for (const p of products) {
+    map.set(p.id, emptyRule(p.id))
+  }
+
+  if (saved && saved.length > 0) {
+    for (const rule of saved) {
+      if (!map.has(rule.productId)) continue
+      map.set(rule.productId, {
+        productId: rule.productId,
+        dineIn: enforceTaxMutex(
+          {
+            taxRegular: !!rule.dineIn?.taxRegular,
+            taxAlcohol: !!rule.dineIn?.taxAlcohol,
+            service: !!rule.dineIn?.service,
+          },
+          rule.dineIn?.taxAlcohol ? 'taxAlcohol' : 'taxRegular',
+        ),
+        takeaway: enforceTaxMutex(
+          {
+            taxRegular: !!rule.takeaway?.taxRegular,
+            taxAlcohol: !!rule.takeaway?.taxAlcohol,
+            service: !!rule.takeaway?.service,
+          },
+          rule.takeaway?.taxAlcohol ? 'taxAlcohol' : 'taxRegular',
+        ),
+        delivery: enforceTaxMutex(
+          {
+            taxRegular: !!rule.delivery?.taxRegular,
+            taxAlcohol: !!rule.delivery?.taxAlcohol,
+            service: !!rule.delivery?.service,
+          },
+          rule.delivery?.taxAlcohol ? 'taxAlcohol' : 'taxRegular',
+        ),
+      })
+    }
+    return map
+  }
+
+  // Migrate legacy sales-type + group rules into the product matrix once.
+  if (!config) return map
+  const charges = normalizeChargesFromConfig(config)
+  const hasRegular = charges.some(c => resolveChargeType(c) === 'tax-regular' && c.percent > 0)
+  const hasAlcohol = charges.some(c => resolveChargeType(c) === 'tax-alcohol' && c.percent > 0)
+  const hasService = charges.some(c => resolveChargeType(c) === 'service' && c.percent > 0)
+  if (!hasRegular && !hasAlcohol && !hasService) return map
+
+  for (const sales of config.salesTypes ?? []) {
+    const channel: ChannelKey =
+      sales.salesType === 'takeaway' || sales.salesType === 'takeout'
+        ? 'takeaway'
+        : sales.salesType === 'delivery'
+          ? 'delivery'
+          : 'dineIn'
+    const taxIds = new Set(sales.taxIds ?? [])
+    const serviceIds = new Set(sales.serviceIds ?? [])
+    const applyTaxRegular =
+      hasRegular
+      && charges.some(
+        c => taxIds.has(c.id) && resolveChargeType(c) === 'tax-regular',
+      )
+    const applyTaxAlcohol =
+      hasAlcohol
+      && charges.some(
+        c =>
+          taxIds.has(c.id)
+          && (resolveChargeType(c) === 'tax-alcohol' || isAlcoholTaxLineName(c.name)),
+      )
+    const applyService =
+      hasService && charges.some(c => serviceIds.has(c.id) && resolveChargeType(c) === 'service')
+
+    // Incomplete legacy: lines exist but nothing attached — treat as all-on for dine-in.
+    const unattached =
+      (config.salesTypes ?? []).every(
+        r => (r.taxIds ?? []).length === 0 && (r.serviceIds ?? []).length === 0,
+      )
+    const forceAll = unattached && channel === 'dineIn'
+
+    for (const p of products) {
+      const included =
+        forceAll
+        || sales.applyToAllProducts !== false
+        || (sales.productGroups ?? []).some(
+          g => g.trim().toLowerCase() === (p.group || '').trim().toLowerCase(),
+        )
+      if (!included) continue
+      const current = map.get(p.id) ?? emptyRule(p.id)
+      const alcoholProduct = /alcohol|beer|wine|spirit|liquor|cocktail/i.test(
+        `${p.group} ${p.name}`,
+      )
+      let taxRegular = forceAll ? hasRegular : applyTaxRegular
+      let taxAlcohol = forceAll ? hasAlcohol : applyTaxAlcohol
+      if (taxRegular && taxAlcohol) {
+        if (alcoholProduct) taxRegular = false
+        else taxAlcohol = false
+      }
+      const flags = enforceTaxMutex(
+        {
+          taxRegular,
+          taxAlcohol,
+          service: forceAll ? hasService : applyService,
+        },
+        taxAlcohol ? 'taxAlcohol' : 'taxRegular',
+      )
+      map.set(p.id, { ...current, [channel]: flags })
+    }
+  }
+  return map
+}
+
 /**
  * POS Config → Tax & Service Charge tab.
- * Defines tax/service % lines and attaches them by sales type + product group.
+ * Charge definitions (type / name / %) + per-product Dine-in / Takeout / Delivery flags.
  */
 export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
-  const [taxes, setTaxes] = useState<PosTaxServiceChargeLine[]>([])
-  const [services, setServices] = useState<PosTaxServiceChargeLine[]>([])
-  const [salesTypes, setSalesTypes] = useState<PosTaxServiceSalesTypeRule[]>(
-    SALES_TYPES.map(({ id }) => emptyRule(id)),
+  const [charges, setCharges] = useState<PosTaxServiceChargeLine[]>([])
+  const [rulesByProductId, setRulesByProductId] = useState<Map<number, PosTaxServiceProductRule>>(
+    () => new Map(),
   )
-  const [activeSalesType, setActiveSalesType] = useState(SALES_TYPES[0].id)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedHint, setSavedHint] = useState<string | null>(null)
-
-  const productGroups = useMemo(() => {
-    const set = new Set<string>()
-    for (const p of products) {
-      const g = (p.group || '').trim()
-      if (g) set.add(g)
-    }
-    for (const r of salesTypes) {
-      for (const g of r.productGroups) {
-        const t = g.trim()
-        if (t) set.add(t)
-      }
-    }
-    return [...set].sort((a, b) => a.localeCompare(b))
-  }, [products, salesTypes])
+  const [filterCategory, setFilterCategory] = useState('All')
+  const [filterGroup, setFilterGroup] = useState('All')
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [draft, setDraft] = useState<ChargeDraft>({
+    id: null,
+    type: 'tax-regular',
+    name: '',
+    percent: '0',
+  })
 
   const load = useCallback(async () => {
     if (selectedCompanyId <= 0) {
@@ -105,104 +241,148 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
     setError(null)
     try {
       const raw = await api.posTaxServiceConfig(selectedCompanyId)
-      const cfg = normalizeConfig(raw, selectedCompanyId)
-      setTaxes(cfg.taxes)
-      setServices(cfg.services)
-      setSalesTypes(cfg.salesTypes)
+      setCharges(normalizeChargesFromConfig(raw))
+      setRulesByProductId(seedProductRules(products, raw.productRules, raw))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load tax & service setup.')
     } finally {
       setLoading(false)
     }
-  }, [selectedCompanyId])
+  }, [selectedCompanyId, products])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const activeRule = useMemo(
-    () => salesTypes.find(r => r.salesType === activeSalesType) ?? emptyRule(activeSalesType),
-    [salesTypes, activeSalesType],
+  // Keep matrix rows in sync when the product catalog refreshes.
+  useEffect(() => {
+    setRulesByProductId(prev => {
+      const next = new Map(prev)
+      for (const p of products) {
+        if (!next.has(p.id)) next.set(p.id, emptyRule(p.id))
+      }
+      for (const id of [...next.keys()]) {
+        if (!products.some(p => p.id === id)) next.delete(id)
+      }
+      return next
+    })
+  }, [products])
+
+  const categoryOptions = useMemo(
+    () => getSiCategoryFilterOptions(products.map(p => p.category || '')),
+    [products],
   )
 
-  function updateLine(
-    kind: 'tax' | 'service',
-    id: string,
-    patch: Partial<Pick<PosTaxServiceChargeLine, 'name' | 'percent'>>,
-  ) {
-    const setter = kind === 'tax' ? setTaxes : setServices
-    setter(rows => rows.map(r => (r.id === id ? { ...r, ...patch } : r)))
-  }
-
-  function addLine(kind: 'tax' | 'service') {
-    const line: PosTaxServiceChargeLine = {
-      id: newId(kind === 'tax' ? 'tax' : 'svc'),
-      name: '',
-      percent: 0,
-    }
-    if (kind === 'tax') {
-      setTaxes(rows => [...rows, line])
-      // Auto-attach new tax to every sales type so it appears on the bill without a second step.
-      setSalesTypes(rules => rules.map(r => ({ ...r, taxIds: [...r.taxIds, line.id] })))
-    } else {
-      setServices(rows => [...rows, line])
-      setSalesTypes(rules => rules.map(r => ({ ...r, serviceIds: [...r.serviceIds, line.id] })))
-    }
-  }
-
-  function removeLine(kind: 'tax' | 'service', id: string) {
-    if (kind === 'tax') {
-      setTaxes(rows => rows.filter(r => r.id !== id))
-      setSalesTypes(rules => rules.map(r => ({ ...r, taxIds: r.taxIds.filter(x => x !== id) })))
-    } else {
-      setServices(rows => rows.filter(r => r.id !== id))
-      setSalesTypes(rules =>
-        rules.map(r => ({ ...r, serviceIds: r.serviceIds.filter(x => x !== id) })),
-      )
-    }
-  }
-
-  function patchRule(salesType: string, patch: Partial<PosTaxServiceSalesTypeRule>) {
-    setSalesTypes(rules => rules.map(r => (r.salesType === salesType ? { ...r, ...patch } : r)))
-  }
-
-  function toggleId(salesType: string, field: 'taxIds' | 'serviceIds', id: string) {
-    setSalesTypes(rules =>
-      rules.map(r => {
-        if (r.salesType !== salesType) return r
-        const list = r[field]
-        const next = list.includes(id) ? list.filter(x => x !== id) : [...list, id]
-        return { ...r, [field]: next }
-      }),
+  const groupOptions = useMemo(() => {
+    const scoped =
+      filterCategory === 'All'
+        ? products
+        : products.filter(p => (p.category || '') === filterCategory)
+    return getSiGroupFilterOptions(
+      scoped.map(p => p.group || ''),
+      filterCategory,
     )
+  }, [products, filterCategory])
+
+  const sortedProducts = useMemo(() => {
+    return [...products]
+      .filter(p => {
+        if (filterCategory !== 'All' && (p.category || '') !== filterCategory) return false
+        if (filterGroup !== 'All' && (p.group || '') !== filterGroup) return false
+        return true
+      })
+      .sort((a, b) => {
+        const c = (a.category || '').localeCompare(b.category || '')
+        if (c !== 0) return c
+        const g = (a.group || '').localeCompare(b.group || '')
+        if (g !== 0) return g
+        return a.name.localeCompare(b.name)
+      })
+  }, [products, filterCategory, filterGroup])
+
+  function openCreate() {
+    setDraft({ id: null, type: 'tax-regular', name: '', percent: '0' })
+    setEditorOpen(true)
+    setError(null)
   }
 
-  function toggleGroup(salesType: string, group: string) {
-    setSalesTypes(rules =>
-      rules.map(r => {
-        if (r.salesType !== salesType) return r
-        const list = r.productGroups
-        const next = list.includes(group) ? list.filter(x => x !== group) : [...list, group]
-        return { ...r, productGroups: next, applyToAllProducts: false }
-      }),
-    )
+  function openEdit(line: PosTaxServiceChargeLine) {
+    setDraft({
+      id: line.id,
+      type: resolveChargeType(line),
+      name: line.name,
+      percent: String(line.percent ?? 0),
+    })
+    setEditorOpen(true)
+    setError(null)
+  }
+
+  function saveDraft() {
+    const name = draft.name.trim()
+    if (!name) {
+      setError('Enter a name for the tax or service charge.')
+      return
+    }
+    const percent = Number(draft.percent)
+    if (Number.isNaN(percent) || percent < 0 || percent > 100) {
+      setError('Percent must be between 0 and 100.')
+      return
+    }
+    setCharges(rows => {
+      if (draft.id) {
+        return rows.map(r =>
+          r.id === draft.id
+            ? { ...r, type: draft.type, name, percent }
+            : r,
+        )
+      }
+      return [
+        ...rows,
+        {
+          id: newId(draft.type === 'service' ? 'svc' : 'tax'),
+          type: draft.type,
+          name,
+          percent,
+        },
+      ]
+    })
+    setEditorOpen(false)
+    setSavedHint(null)
+    setError(null)
+  }
+
+  function removeCharge(id: string) {
+    setCharges(rows => rows.filter(r => r.id !== id))
+    if (draft.id === id) setEditorOpen(false)
+  }
+
+  function toggleFlag(productId: number, channel: ChannelKey, flag: FlagKey) {
+    setRulesByProductId(prev => {
+      const next = new Map(prev)
+      const current = next.get(productId) ?? emptyRule(productId)
+      const channelFlags = { ...current[channel] }
+      channelFlags[flag] = !channelFlags[flag]
+      const enforced = enforceTaxMutex(channelFlags, flag)
+      next.set(productId, { ...current, [channel]: enforced })
+      return next
+    })
+    setSavedHint(null)
   }
 
   async function save() {
     if (selectedCompanyId <= 0) return
-    for (const [label, rows] of [
-      ['Tax', taxes],
-      ['Service', services],
-    ] as const) {
-      for (let i = 0; i < rows.length; i++) {
-        if (!rows[i].name.trim()) {
-          setError(`${label} line ${i + 1}: enter a name.`)
-          return
-        }
-        if (Number.isNaN(rows[i].percent) || rows[i].percent < 0 || rows[i].percent > 100) {
-          setError(`${label} line ${i + 1}: percent must be 0–100.`)
-          return
-        }
+    for (let i = 0; i < charges.length; i++) {
+      if (!charges[i].name.trim()) {
+        setError(`Charge ${i + 1}: enter a name.`)
+        return
+      }
+      if (
+        Number.isNaN(charges[i].percent)
+        || charges[i].percent < 0
+        || charges[i].percent > 100
+      ) {
+        setError(`Charge ${i + 1}: percent must be 0–100.`)
+        return
       }
     }
 
@@ -210,31 +390,21 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
     setError(null)
     setSavedHint(null)
     try {
+      const productRules = products.map(p => rulesByProductId.get(p.id) ?? emptyRule(p.id))
+      const payloadCharges = charges.map(c => ({
+        id: c.id,
+        name: c.name.trim(),
+        percent: Number(c.percent) || 0,
+        type: resolveChargeType(c),
+      }))
       const saved = await api.savePosTaxServiceConfig({
         companyId: selectedCompanyId,
-        taxes: taxes.map(t => ({
-          id: t.id,
-          name: t.name.trim(),
-          percent: Number(t.percent) || 0,
-        })),
-        services: services.map(s => ({
-          id: s.id,
-          name: s.name.trim(),
-          percent: Number(s.percent) || 0,
-        })),
-        salesTypes: salesTypes.map(r => ({
-          salesType: r.salesType,
-          taxIds: r.taxIds,
-          serviceIds: r.serviceIds,
-          applyToAllProducts: r.applyToAllProducts,
-          productGroups: r.applyToAllProducts ? [] : r.productGroups,
-        })),
+        charges: payloadCharges,
+        productRules,
       })
-      const cfg = normalizeConfig(saved, selectedCompanyId)
-      setTaxes(cfg.taxes)
-      setServices(cfg.services)
-      setSalesTypes(cfg.salesTypes)
-      setSavedHint('Saved. Open a POS check to see service / tax on the bill.')
+      setCharges(normalizeChargesFromConfig(saved))
+      setRulesByProductId(seedProductRules(products, saved.productRules, saved))
+      setSavedHint('Saved. Open a POS check — tax / service apply from the product matrix by sales type.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save.')
     } finally {
@@ -249,10 +419,10 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
   return (
     <div className="mt-3 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="text-xs text-muted-foreground max-w-2xl">
-          Define tax and service charge percentages, then attach them by sales type (Dine In /
-          Takeaway / Delivery). New lines are attached to every sales type automatically — uncheck
-          a sales type if it should not apply.
+        <p className="text-xs text-muted-foreground max-w-3xl">
+          Define tax and service charge rates, then tick which apply per product for Dine in,
+          Takeout, and Delivery. Tax Regular and Tax Alcohol cannot both be selected for the same
+          product under the same sales type.
         </p>
         <button
           type="button"
@@ -271,214 +441,263 @@ export function PosTaxServiceChargeTab({ selectedCompanyId, products }: Props) {
       ) : null}
       {savedHint ? <p className="text-xs text-emerald-700 dark:text-emerald-400">{savedHint}</p> : null}
 
-      <ChargeSection
-        title="Tax"
-        rows={taxes}
-        onAdd={() => addLine('tax')}
-        onChange={(id, patch) => updateLine('tax', id, patch)}
-        onRemove={id => removeLine('tax', id)}
-        addLabel="+ Add tax"
-      />
-      <ChargeSection
-        title="Service charge"
-        rows={services}
-        onAdd={() => addLine('service')}
-        onChange={(id, patch) => updateLine('service', id, patch)}
-        onRemove={id => removeLine('service', id)}
-        addLabel="+ Add service"
-      />
-
-      <section className="rounded-lg border border-border bg-card p-3 space-y-3">
-        <div>
-          <h3 className="text-xs font-semibold text-foreground">Sales type attachment</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Choose which tax and service apply for each sales type. Use All products when one rate
-            covers the whole menu, or filter specific product groups.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Sales type">
-          {SALES_TYPES.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={activeSalesType === id}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium border ${
-                activeSalesType === id
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={() => setActiveSalesType(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2" role="tabpanel">
-          <fieldset className="rounded-md border border-border p-2 space-y-1">
-            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Tax applied
-            </legend>
-            {taxes.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Add a tax above first.</p>
-            ) : (
-              taxes.map(t => (
-                <label key={t.id} className="flex items-center gap-2 text-xs text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={activeRule.taxIds.includes(t.id)}
-                    onChange={() => toggleId(activeSalesType, 'taxIds', t.id)}
-                  />
-                  <span>
-                    {t.name || 'Untitled'} ({formatPct(t.percent)})
-                  </span>
-                </label>
-              ))
-            )}
-          </fieldset>
-          <fieldset className="rounded-md border border-border p-2 space-y-1">
-            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Service applied
-            </legend>
-            {services.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Add a service above first.</p>
-            ) : (
-              services.map(s => (
-                <label key={s.id} className="flex items-center gap-2 text-xs text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={activeRule.serviceIds.includes(s.id)}
-                    onChange={() => toggleId(activeSalesType, 'serviceIds', s.id)}
-                  />
-                  <span>
-                    {s.name || 'Untitled'} ({formatPct(s.percent)})
-                  </span>
-                </label>
-              ))
-            )}
-          </fieldset>
-        </div>
-
-        <label className="flex items-start gap-2 text-xs text-foreground">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={activeRule.applyToAllProducts}
-            onChange={e =>
-              patchRule(activeSalesType, {
-                applyToAllProducts: e.target.checked,
-                productGroups: e.target.checked ? [] : activeRule.productGroups,
-              })
-            }
-          />
-          <span>
-            <strong>All products</strong>
-            <span className="text-muted-foreground">
-              {' '}
-              — apply selected tax / service % to every product for this sales type
-            </span>
-          </span>
-        </label>
-
-        {!activeRule.applyToAllProducts && (
-          <fieldset className="rounded-md border border-border p-2 space-y-1">
-            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Product groups
-            </legend>
-            {productGroups.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No product groups in the catalog yet. Load products for this company first.
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 max-h-40 overflow-auto">
-                {productGroups.map(g => (
-                  <label key={g} className="flex items-center gap-2 text-xs text-foreground">
-                    <input
-                      type="checkbox"
-                      checked={activeRule.productGroups.includes(g)}
-                      onChange={() => toggleGroup(activeSalesType, g)}
-                    />
-                    <span className="truncate">{g}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </fieldset>
-        )}
-      </section>
-    </div>
-  )
-}
-
-function ChargeSection({
-  title,
-  rows,
-  onAdd,
-  onChange,
-  onRemove,
-  addLabel,
-}: {
-  title: string
-  rows: PosTaxServiceChargeLine[]
-  onAdd: () => void
-  onChange: (id: string, patch: Partial<Pick<PosTaxServiceChargeLine, 'name' | 'percent'>>) => void
-  onRemove: (id: string) => void
-  addLabel: string
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-card p-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold text-foreground">{title}</h3>
-        <button
-          type="button"
-          className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
-          onClick={onAdd}
-        >
-          {addLabel}
-        </button>
-      </div>
-      {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">None yet — use {addLabel} to create a line.</p>
-      ) : (
-        <div className="space-y-2">
-          <div className="grid grid-cols-[minmax(0,1fr)_72px_auto] gap-2 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-            <span>Name</span>
-            <span>%</span>
-            <span />
+      <section className="rounded-lg border border-border bg-card p-3 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-semibold text-foreground">Tax &amp; service definitions</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Create or edit a charge: type, name, and percent. Ticking a column on the product
+              table applies every definition of that type.
+            </p>
           </div>
-          {rows.map(row => (
-            <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_72px_auto] gap-2 items-center">
-              <input
-                type="text"
-                className={inputCls}
-                placeholder={`${title} name`}
-                value={row.name}
-                onChange={e => onChange(row.id, { name: e.target.value })}
-                maxLength={80}
-              />
-              <input
-                type="number"
-                className={inputCls}
-                min={0}
-                max={100}
-                step={0.01}
-                value={row.percent}
-                onChange={e => onChange(row.id, { percent: Number(e.target.value) })}
-                aria-label={`${title} percent`}
-              />
+          <button
+            type="button"
+            className="rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-foreground hover:bg-muted"
+            onClick={openCreate}
+          >
+            Create / Edit
+          </button>
+        </div>
+
+        {charges.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No charges yet — use Create / Edit to add Tax Regular, Tax Alcohol, or Service.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <th className="py-1 pr-2 font-semibold">Type</th>
+                  <th className="py-1 pr-2 font-semibold">Name</th>
+                  <th className="py-1 pr-2 font-semibold">%</th>
+                  <th className="py-1 font-semibold" />
+                </tr>
+              </thead>
+              <tbody>
+                {charges.map(line => (
+                  <tr key={line.id} className="border-t border-border/60">
+                    <td className="py-1.5 pr-2 text-foreground">
+                      {chargeTypeLabel(resolveChargeType(line))}
+                    </td>
+                    <td className="py-1.5 pr-2 text-foreground">{line.name || '—'}</td>
+                    <td className="py-1.5 pr-2 text-foreground">{formatPct(line.percent)}</td>
+                    <td className="py-1.5 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-muted mr-1"
+                        onClick={() => openEdit(line)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-destructive/40 px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10"
+                        onClick={() => removeCharge(line.id)}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {editorOpen ? (
+          <div className="rounded-md border border-border bg-background p-3 space-y-2">
+            <h4 className="text-xs font-semibold text-foreground">
+              {draft.id ? 'Edit charge' : 'Create charge'}
+            </h4>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="text-[11px] text-muted-foreground space-y-1">
+                <span>Type</span>
+                <select
+                  className={inputCls}
+                  value={draft.type}
+                  onChange={e =>
+                    setDraft(d => ({
+                      ...d,
+                      type: e.target.value as PosTaxServiceChargeType,
+                    }))
+                  }
+                >
+                  {CHARGE_TYPE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-[11px] text-muted-foreground space-y-1 sm:col-span-1">
+                <span>Name</span>
+                <input
+                  type="text"
+                  className={inputCls}
+                  value={draft.name}
+                  maxLength={80}
+                  placeholder="e.g. GST / Service charge"
+                  onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                />
+              </label>
+              <label className="text-[11px] text-muted-foreground space-y-1">
+                <span>%</span>
+                <input
+                  type="number"
+                  className={inputCls}
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={draft.percent}
+                  onChange={e => setDraft(d => ({ ...d, percent: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                className="rounded-md border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
-                onClick={() => onRemove(row.id)}
-                aria-label={`Remove ${row.name || title}`}
+                className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
+                onClick={saveDraft}
               >
-                Remove
+                {draft.id ? 'Update' : 'Add'}
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-muted"
+                onClick={() => setEditorOpen(false)}
+              >
+                Cancel
               </button>
             </div>
-          ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-lg border border-border bg-card p-3 space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-semibold text-foreground">Product assignment</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Category · Group · Product Name, then Dine in / Takeout / Delivery checkboxes.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <label className="text-[11px] text-muted-foreground space-y-0.5">
+              <span>Category</span>
+              <select
+                className={inputCls}
+                value={filterCategory}
+                onChange={e => {
+                  setFilterCategory(e.target.value)
+                  setFilterGroup('All')
+                }}
+              >
+                {categoryOptions.map(opt => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-[11px] text-muted-foreground space-y-0.5">
+              <span>Group</span>
+              <select
+                className={inputCls}
+                value={filterGroup}
+                onChange={e => setFilterGroup(e.target.value)}
+              >
+                {groupOptions.map(opt => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
-      )}
-    </section>
+
+        <TableScrollContainer tableId="pos-tax-service-product-matrix" showColumnAdjust={false}>
+          <table className="w-full min-w-[1100px] text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-border bg-muted/40">
+                <th rowSpan={2} className="sticky left-0 z-10 bg-muted/40 px-2 py-2 text-left font-semibold text-foreground">
+                  Category
+                </th>
+                <th rowSpan={2} className="px-2 py-2 text-left font-semibold text-foreground">
+                  Group
+                </th>
+                <th rowSpan={2} className="px-2 py-2 text-left font-semibold text-foreground min-w-[140px]">
+                  Product Name
+                </th>
+                {CHANNELS.map(ch => (
+                  <th
+                    key={ch.key}
+                    colSpan={3}
+                    className="px-2 py-1 text-center font-semibold text-foreground border-l border-border"
+                  >
+                    {ch.label}
+                  </th>
+                ))}
+              </tr>
+              <tr className="border-b border-border bg-muted/30">
+                {CHANNELS.map(ch =>
+                  FLAG_COLS.map(flag => (
+                    <th
+                      key={`${ch.key}-${flag.key}`}
+                      className="px-1 py-1 text-center text-[10px] font-medium text-muted-foreground border-l border-border/70 whitespace-nowrap"
+                    >
+                      {flag.label}
+                    </th>
+                  )),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedProducts.length === 0 ? (
+                <tr>
+                  <td colSpan={3 + CHANNELS.length * 3} className="px-2 py-6 text-center text-muted-foreground">
+                    No products match the selected filters for this company.
+                  </td>
+                </tr>
+              ) : (
+                sortedProducts.map(product => {
+                  const rule = rulesByProductId.get(product.id) ?? emptyRule(product.id)
+                  return (
+                    <tr key={product.id} className="border-b border-border/50 hover:bg-muted/20">
+                      <td className="sticky left-0 z-10 bg-card px-2 py-1.5 text-foreground whitespace-nowrap">
+                        {product.category || '—'}
+                      </td>
+                      <td className="px-2 py-1.5 text-foreground whitespace-nowrap">
+                        {product.group || '—'}
+                      </td>
+                      <td className="px-2 py-1.5 text-foreground">{product.name}</td>
+                      {CHANNELS.map(ch =>
+                        FLAG_COLS.map(flag => {
+                          const checked = !!rule[ch.key][flag.key]
+                          return (
+                            <td
+                              key={`${product.id}-${ch.key}-${flag.key}`}
+                              className="px-1 py-1 text-center border-l border-border/40"
+                            >
+                              <input
+                                type="checkbox"
+                                aria-label={`${product.name} ${ch.label} ${flag.label}`}
+                                checked={checked}
+                                onChange={() => toggleFlag(product.id, ch.key, flag.key)}
+                              />
+                            </td>
+                          )
+                        }),
+                      )}
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </TableScrollContainer>
+      </section>
+    </div>
   )
 }

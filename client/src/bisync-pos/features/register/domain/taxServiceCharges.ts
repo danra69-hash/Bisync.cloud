@@ -1,4 +1,11 @@
-import type { PosTaxServiceConfig, PosTaxServiceSalesTypeRule } from '../../../../api'
+import type {
+  PosTaxServiceChannelFlags,
+  PosTaxServiceChargeLine,
+  PosTaxServiceChargeType,
+  PosTaxServiceConfig,
+  PosTaxServiceProductRule,
+  PosTaxServiceSalesTypeRule,
+} from '../../../../api'
 import { discountCentsFromPercent } from '../../../../data/entertainmentSettlement'
 import { saleDetailExtraChargeCents } from './saleDetail'
 import type { CartLine, Product } from './types'
@@ -13,6 +20,12 @@ const EMPTY: TaxServiceChargeCents = {
   serviceCents: 0,
   taxRegularCents: 0,
   taxAlcoholCents: 0,
+}
+
+const EMPTY_FLAGS: PosTaxServiceChannelFlags = {
+  taxRegular: false,
+  taxAlcohol: false,
+  service: false,
 }
 
 /** Normalize dining / sales-type keys for rule lookup. */
@@ -33,6 +46,29 @@ export function isAlcoholProduct(product: Product): boolean {
   return /alcohol|beer|wine|spirit|liquor|cocktail|sake|soju|cider|champagne|whisky|whiskey|vodka|gin\b|rum\b|tequila|brandy|aperitif|digestif/.test(
     hay,
   )
+}
+
+export function resolveChargeType(line: PosTaxServiceChargeLine): PosTaxServiceChargeType {
+  const raw = (line.type || '').trim().toLowerCase().replace(/_/g, '-')
+  if (raw === 'tax-regular' || raw === 'taxregular' || raw === 'regular') return 'tax-regular'
+  if (raw === 'tax-alcohol' || raw === 'taxalcohol' || raw === 'alcohol') return 'tax-alcohol'
+  if (raw === 'service' || raw === 'service-charge' || raw === 'svc') return 'service'
+  if (isAlcoholTaxLineName(line.name)) return 'tax-alcohol'
+  return 'tax-regular'
+}
+
+export function listConfigCharges(config: PosTaxServiceConfig | null | undefined): PosTaxServiceChargeLine[] {
+  if (!config) return []
+  if (config.charges && config.charges.length > 0) return config.charges
+  const taxes = (config.taxes ?? []).map(t => ({
+    ...t,
+    type: resolveChargeType(t),
+  }))
+  const services = (config.services ?? []).map(s => ({
+    ...s,
+    type: 'service' as const,
+  }))
+  return [...taxes, ...services]
 }
 
 function lineAmountCents(line: CartLine, product: Product): number {
@@ -58,11 +94,36 @@ function ruleForSalesType(
   )
 }
 
-/** True when config has at least one tax/service line attached to a sales type. */
+function channelFlagsForProduct(
+  rule: PosTaxServiceProductRule | undefined,
+  salesType: string,
+): PosTaxServiceChannelFlags {
+  if (!rule) return EMPTY_FLAGS
+  const key = normalizeSalesType(salesType)
+  if (key === 'takeaway') return rule.takeaway ?? EMPTY_FLAGS
+  if (key === 'delivery') return rule.delivery ?? EMPTY_FLAGS
+  return rule.dineIn ?? EMPTY_FLAGS
+}
+
+function hasAnyProductRuleFlag(config: PosTaxServiceConfig): boolean {
+  for (const rule of config.productRules ?? []) {
+    for (const ch of [rule.dineIn, rule.takeaway, rule.delivery]) {
+      if (ch?.taxRegular || ch?.taxAlcohol || ch?.service) return true
+    }
+  }
+  return false
+}
+
+/** True when config has rates that should drive (and lock) register charge fields. */
 export function configDrivesRegisterCharges(
   config: PosTaxServiceConfig | null | undefined,
 ): boolean {
   if (!config) return false
+  const charges = listConfigCharges(config)
+  const hasOpenLines = charges.some(c => c.percent > 0)
+  if (!hasOpenLines) return false
+  if ((config.productRules ?? []).length > 0 && hasAnyProductRuleFlag(config)) return true
+
   const taxById = new Map((config.taxes ?? []).map(t => [t.id, t]))
   const svcById = new Map((config.services ?? []).map(s => [s.id, s]))
   for (const rule of config.salesTypes ?? []) {
@@ -75,25 +136,90 @@ export function configDrivesRegisterCharges(
       if (line && line.percent > 0) return true
     }
   }
-  // Incomplete setup: lines exist but none attached yet — still treat as config-driven
-  // once we auto-apply (see computeTaxServiceCharges fallback).
-  const hasOpenLines =
-    (config.services ?? []).some(s => s.percent > 0)
-    || (config.taxes ?? []).some(t => t.percent > 0)
-  return hasOpenLines
+  // Incomplete legacy setup: lines exist but none attached yet.
+  return hasOpenLines && (config.productRules ?? []).length === 0
+}
+
+function computeFromProductRules(args: {
+  lines: CartLine[]
+  products: Product[]
+  dining: string
+  discountCents: number
+  config: PosTaxServiceConfig
+}): TaxServiceChargeCents {
+  const { lines, products, dining, discountCents, config } = args
+  const charges = listConfigCharges(config).filter(c => c.percent > 0)
+  if (charges.length === 0) return EMPTY
+
+  const regularCharges = charges.filter(c => resolveChargeType(c) === 'tax-regular')
+  const alcoholCharges = charges.filter(c => resolveChargeType(c) === 'tax-alcohol')
+  const serviceCharges = charges.filter(c => resolveChargeType(c) === 'service')
+
+  const byProductId = new Map(products.map(p => [String(p.id), p]))
+  const ruleByProductId = new Map(
+    (config.productRules ?? []).map(r => [String(r.productId), r]),
+  )
+
+  type Row = {
+    amount: number
+    flags: PosTaxServiceChannelFlags
+  }
+  const rows: Row[] = []
+  let totalGross = 0
+
+  for (const line of lines) {
+    const product = byProductId.get(String(line.productId))
+    if (!product) continue
+    const amount = lineAmountCents(line, product)
+    totalGross += amount
+    const flags = channelFlagsForProduct(ruleByProductId.get(String(product.id)), dining)
+    rows.push({ amount, flags })
+  }
+
+  if (totalGross <= 0 || rows.length === 0) return EMPTY
+
+  const disc = Math.max(0, Math.round(discountCents))
+  let serviceCents = 0
+  let taxRegularCents = 0
+  let taxAlcoholCents = 0
+
+  for (const row of rows) {
+    const discShare =
+      totalGross > 0 ? Math.min(row.amount, Math.round((disc * row.amount) / totalGross)) : 0
+    const net = Math.max(0, row.amount - discShare)
+
+    let lineService = 0
+    if (row.flags.service) {
+      for (const svc of serviceCharges) {
+        lineService += discountCentsFromPercent(net, svc.percent)
+      }
+    }
+    serviceCents += lineService
+
+    const taxable = net + lineService
+    if (row.flags.taxRegular) {
+      for (const tax of regularCharges) {
+        taxRegularCents += discountCentsFromPercent(taxable, tax.percent)
+      }
+    } else if (row.flags.taxAlcohol) {
+      for (const tax of alcoholCharges) {
+        taxAlcoholCents += discountCentsFromPercent(taxable, tax.percent)
+      }
+    }
+  }
+
+  return {
+    serviceCents: Math.max(0, serviceCents),
+    taxRegularCents: Math.max(0, taxRegularCents),
+    taxAlcoholCents: Math.max(0, taxAlcoholCents),
+  }
 }
 
 /**
  * Apply POS Config → Tax & service charge rates to the current check.
  *
- * - Picks the sales-type rule from dining mode (dine-in / takeaway / delivery).
- * - Eligible base = lines matching All products or selected product groups.
- * - Discount is allocated proportionally onto the eligible base.
- * - Service % applies to post-discount eligible base.
- * - Non-alcohol tax % applies to (eligible base + service).
- * - Alcohol-named tax % applies to the alcohol product share of that taxable base.
- * - If charge lines exist but no sales type has attachments yet, apply all lines
- *   (covers incomplete saves before auto-attach existed).
+ * Prefers per-product × sales-type flags (productRules). Falls back to legacy
+ * sales-type + product-group attachment when no product matrix is configured.
  */
 export function computeTaxServiceCharges(args: {
   lines: CartLine[]
@@ -104,6 +230,10 @@ export function computeTaxServiceCharges(args: {
 }): TaxServiceChargeCents {
   const { lines, products, dining, discountCents, config } = args
   if (!config || lines.length === 0) return EMPTY
+
+  if ((config.productRules ?? []).length > 0) {
+    return computeFromProductRules({ lines, products, dining, discountCents, config })
+  }
 
   const rule = ruleForSalesType(config, dining)
     ?? {
@@ -172,7 +302,7 @@ export function computeTaxServiceCharges(args: {
   let taxRegularCents = 0
   let taxAlcoholCents = 0
   for (const tax of taxes) {
-    if (isAlcoholTaxLineName(tax.name)) {
+    if (resolveChargeType(tax) === 'tax-alcohol' || isAlcoholTaxLineName(tax.name)) {
       taxAlcoholCents += discountCentsFromPercent(alcoholTaxable, tax.percent)
     } else {
       taxRegularCents += discountCentsFromPercent(taxableBase, tax.percent)

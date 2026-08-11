@@ -1486,10 +1486,14 @@ export interface UpsertPosDeviceSetupRulePayload {
   active?: boolean;
 }
 
+export type PosTaxServiceChargeType = 'tax-regular' | 'tax-alcohol' | 'service';
+
 export interface PosTaxServiceChargeLine {
   id: string;
   name: string;
   percent: number;
+  /** Present on new saves; inferred from name for legacy tax lines. */
+  type?: PosTaxServiceChargeType | string;
 }
 
 export interface PosTaxServiceSalesTypeRule {
@@ -1500,8 +1504,23 @@ export interface PosTaxServiceSalesTypeRule {
   productGroups: string[];
 }
 
+export interface PosTaxServiceChannelFlags {
+  taxRegular: boolean;
+  taxAlcohol: boolean;
+  service: boolean;
+}
+
+export interface PosTaxServiceProductRule {
+  productId: number;
+  dineIn: PosTaxServiceChannelFlags;
+  takeaway: PosTaxServiceChannelFlags;
+  delivery: PosTaxServiceChannelFlags;
+}
+
 export interface PosTaxServiceConfig {
   companyId: number;
+  charges?: PosTaxServiceChargeLine[];
+  productRules?: PosTaxServiceProductRule[];
   taxes: PosTaxServiceChargeLine[];
   services: PosTaxServiceChargeLine[];
   salesTypes: PosTaxServiceSalesTypeRule[];
@@ -1510,9 +1529,11 @@ export interface PosTaxServiceConfig {
 
 export interface UpsertPosTaxServiceConfigPayload {
   companyId: number;
-  taxes: PosTaxServiceChargeLine[];
-  services: PosTaxServiceChargeLine[];
-  salesTypes: PosTaxServiceSalesTypeRule[];
+  charges?: PosTaxServiceChargeLine[];
+  productRules?: PosTaxServiceProductRule[];
+  taxes?: PosTaxServiceChargeLine[];
+  services?: PosTaxServiceChargeLine[];
+  salesTypes?: PosTaxServiceSalesTypeRule[];
 }
 
 export interface UpsertPosModifierGroupPayload {
