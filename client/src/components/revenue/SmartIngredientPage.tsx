@@ -53,6 +53,14 @@ import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { canEditComponentParStock, parseUserAccess } from '../../data/userAccess';
 import { formatCountryNumber } from '../../utils/numberFormat';
+import {
+  UOM_FILTER_OPTIONS,
+  resolveDisplayUomForFilter,
+  type UomFilterMode,
+} from '../../data/myComponentUomFilter';
+
+export type { UomFilterMode };
+export { UOM_FILTER_OPTIONS };
 
 type IngredientSortColumn =
   | 'componentId'
@@ -72,7 +80,7 @@ type IngredientSortColumn =
 const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
   { key: 'componentId', label: 'Component ID', ...tableColWidth('10%') },
   { key: 'name', label: 'Component Name', ...tableColWidth('14%') },
-  { key: 'uom', label: 'Principal Component UOM', ...tableColWidth('10%') },
+  { key: 'uom', label: 'Component UOM', ...tableColWidth('10%') },
   { key: 'lastPrice', label: 'Last UOM Price', align: 'right', ...tableColWidth('8%') },
   { key: 'dailyUsage', label: 'Daily Usage', align: 'right', ...tableColWidth('7%') },
   { key: 'orderFreq', label: 'Order Freq (days)', align: 'right', ...tableColWidth('7%') },
@@ -84,8 +92,6 @@ const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
   { key: 'tagSuggest', label: 'Tag suggest', align: 'center', sortable: false, ...tableColWidth(88) },
   { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
 ];
-
-type UomFilterMode = 'principal' | string;
 
 function FilterSelect({ label, value, options, onChange }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
@@ -122,10 +128,14 @@ function uomSourceForRow(row: ComponentRow): ComponentUomSource {
   };
 }
 
-function displayUomForRow(row: ComponentRow, mode: UomFilterMode): string {
+/**
+ * Resolve the UOM shown for a row under the UOM filter.
+ * Alternate N falls back to the highest filled alternate ≤ N, else Principal.
+ */
+export function displayUomForRow(row: ComponentRow, mode: UomFilterMode): string {
   const source = uomSourceForRow(row);
-  if (mode === 'principal') return source.recipeUom;
-  return mode || source.recipeUom;
+  const altUnits = [0, 1, 2, 3, 4].map(i => fromApiUom(source.altRecipeUnits[i]?.unit || ''));
+  return resolveDisplayUomForFilter(source.recipeUom || '', altUnits, mode);
 }
 
 function convertFromRecipe(
@@ -328,24 +338,21 @@ export function SmartIngredientPage({
     if (!stillValid) setGrpFilter('All');
   }, [catFilter, groupFilterOptions, grpFilter]);
 
-  const alternateUomOptions = useMemo(() => {
-    const units = new Set<string>();
-    for (const row of activityScopedRows) {
-      const source = uomSourceForRow(row);
-      for (const alt of source.altRecipeUnits) {
-        const unit = fromApiUom(alt.unit);
-        if (unit) units.add(unit);
-      }
-    }
-    return [...units].sort((a, b) => a.localeCompare(b));
-  }, [activityScopedRows]);
-
   const vendorCatalog = useMemo(
     () => applyVendorProductOverrides(),
     [catalogRevision],
   );
 
-  const price = (r: ComponentRow) => resolveMyComponentLastUomPrice(r, uomFilter, vendorCatalog);
+  const price = (r: ComponentRow) => {
+    // Price follows the UOM actually shown for this row (with alternate fallback).
+    const displayUom = displayUomForRow(r, uomFilter);
+    const principal = fromApiUom(r.recipeUOM);
+    const mode: 'principal' | string =
+      uomFilter === 'principal' || !displayUom || displayUom === principal
+        ? 'principal'
+        : displayUom;
+    return resolveMyComponentLastUomPrice(r, mode, vendorCatalog);
+  };
   const vendorCount = (r: ComponentRow) => countComponentTaggedVendors(r, selectedLocationIds);
 
   const qtyInDisplayUom = (r: ComponentRow, recipeQty: number) => {
@@ -612,16 +619,15 @@ export function SmartIngredientPage({
           <FilterSelect label="Group" value={grpFilter} options={groupFilterOptions} onChange={setGrpFilter} />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-              Principal Component UOM
+              UOM
             </label>
             <select
               value={uomFilter}
-              onChange={e => setUomFilter(e.target.value)}
+              onChange={e => setUomFilter(e.target.value as UomFilterMode)}
               className={`${filterSelectCls} min-w-[180px]`}
             >
-              <option value="principal">Principal Component UOM</option>
-              {alternateUomOptions.map(unit => (
-                <option key={unit} value={unit}>Alternate: {unit}</option>
+              {UOM_FILTER_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
           </div>
@@ -723,10 +729,7 @@ export function SmartIngredientPage({
                       </button>
                     </td>
                     <td className="px-4 py-3 font-sans text-foreground">
-                      <span>{displayUom || '—'}</span>
-                      {uomFilter !== 'principal' && fromApiUom(row.recipeUOM) !== displayUom ? (
-                        <span className="block text-[10px] text-muted-foreground">Principal: {fromApiUom(row.recipeUOM)}</span>
-                      ) : null}
+                      {displayUom || '—'}
                     </td>
                     {!hidePrices && (
                       <td className="px-4 py-3 font-sans text-foreground text-right">{uomPrice(price(row))}</td>
