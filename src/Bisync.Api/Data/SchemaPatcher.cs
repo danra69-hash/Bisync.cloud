@@ -224,6 +224,7 @@ public static class SchemaPatcher
         await ComponentIdentityMigrator.ApplyAsync(db);
         await ProductCostRecalculator.RemountAllSubProductRecipeUnitsAsync(db);
         await IngredientCatalogNormalizer.NormalizeExistingAsync(db);
+        await CategoryGroupRenameService.RemountPosGroupSynonymsAsync(db);
         await EnsureTenantConnectionsTableAsync(db);
         await BackfillTenantConnectionsAsync(db);
         await EnsureTenantRollupSnapshotsTableAsync(db);

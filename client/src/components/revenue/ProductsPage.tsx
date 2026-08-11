@@ -1166,12 +1166,42 @@ export function ProductsPage({
     setIsNewGroup(true);
   }
 
-  function saveGroup(updated: GroupRow) {
+  function openRenameGroup() {
+    const current = group.trim();
+    if (!current) return;
+    setEditingGroup({
+      id: Date.now(),
+      name: current,
+      category: category || 'Food',
+      items: findProductsUsingGroup(savedProducts, current).length,
+    });
+    setIsNewGroup(false);
+  }
+
+  async function saveGroup(updated: GroupRow) {
     const name = updated.name.trim();
     if (!name) return;
 
+    const previousName = isNewGroup ? '' : (editingGroup?.name.trim() || group.trim());
+    if (!isNewGroup && previousName && previousName !== name && selectedCompanyId) {
+      try {
+        await api.renameCompanyCategoryGroup(selectedCompanyId, 'group', previousName, name);
+        setSavedProducts(prev => prev.map(product => (
+          groupsMatch(product.group, previousName)
+            ? { ...product, group: name, category: updated.category || product.category }
+            : product
+        )));
+      } catch (err) {
+        setDeletingGroupError(err instanceof Error ? err.message : 'Failed to rename group across products/POS.');
+        return;
+      }
+    }
+
     setExtraGroups(prev => {
-      const next = prev.includes(name) ? prev : [...prev, name];
+      const withoutOld = previousName && previousName !== name
+        ? prev.filter(item => !groupsMatch(item, previousName))
+        : prev;
+      const next = withoutOld.includes(name) ? withoutOld : [...withoutOld, name];
       saveExtraGroups(next, selectedCompanyId);
       return next;
     });
@@ -1946,6 +1976,16 @@ export function ProductsPage({
                     aria-label="Add new group"
                   >
                     <Plus size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openRenameGroup}
+                    disabled={!group.trim() || !selectedCompanyId}
+                    className={addBtnCls}
+                    title="Rename selected group (updates products + POS)"
+                    aria-label="Rename selected group"
+                  >
+                    <Pencil size={14} />
                   </button>
                 </div>
               </div>

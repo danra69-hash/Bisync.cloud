@@ -97,6 +97,9 @@ export function ComponentConfigPage({
   const [nextEntryId, setNextEntryId] = useState(() => initialAssignment.nextEntryId);
   const [createAreaOpen, setCreateAreaOpen] = useState(false);
   const [createStorageOpen, setCreateStorageOpen] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameInfo, setRenameInfo] = useState<string | null>(null);
 
   function persistAssignment(next: StorageAssignmentState) {
     setStorageAreas(uniqueAreas(next.areas, next.entries));
@@ -108,6 +111,52 @@ export function ComponentConfigPage({
   function updateHierarchy(next: ComponentHierarchyState) {
     setHierarchy(next);
     saveComponentHierarchy(next, selectedCompanyId);
+  }
+
+  async function reloadHierarchyFromCompany() {
+    if (!selectedCompanyId) return;
+    const [nextHierarchy, ingredients] = await Promise.all([
+      loadComponentHierarchyForCompany(selectedCompanyId),
+      api.ingredients(selectedCompanyId).catch(() => [] as Ingredient[]),
+    ]);
+    const reconciled = reconcileHierarchyWithComponents(nextHierarchy, ingredients);
+    if (reconciled.changed) {
+      saveComponentHierarchy(reconciled.state, selectedCompanyId);
+    }
+    setHierarchy(reconciled.state);
+    setAttachmentCounts(buildHierarchyAttachmentCounts(ingredients));
+  }
+
+  async function handleRenameLabel(args: { kind: 'category' | 'group'; from: string; to: string }) {
+    if (!selectedCompanyId) {
+      setRenameError('Select a company before renaming category or group.');
+      return;
+    }
+    setRenameBusy(true);
+    setRenameError(null);
+    setRenameInfo(null);
+    try {
+      const result = await api.renameCompanyCategoryGroup(
+        selectedCompanyId,
+        args.kind,
+        args.from,
+        args.to,
+      );
+      await reloadHierarchyFromCompany();
+      const parts = Object.entries(result.counts)
+        .filter(([, count]) => count > 0)
+        .map(([key, count]) => `${count} ${key}`);
+      setRenameInfo(
+        result.total > 0
+          ? `Renamed “${args.from}” → “${args.to}” and updated ${parts.join(', ') || `${result.total} records`} (including POS).`
+          : `Renamed “${args.from}” → “${args.to}”.`,
+      );
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : 'Failed to rename category/group.');
+      throw err;
+    } finally {
+      setRenameBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -268,6 +317,11 @@ export function ComponentConfigPage({
           state={hierarchy}
           onChange={updateHierarchy}
           attachmentCounts={attachmentCounts}
+          companyId={selectedCompanyId}
+          onRenameLabel={handleRenameLabel}
+          renameBusy={renameBusy}
+          renameError={renameError}
+          renameInfo={renameInfo}
         />
       ) : tab === 'storage' ? (
         <div className="space-y-3">

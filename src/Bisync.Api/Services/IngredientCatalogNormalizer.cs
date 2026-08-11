@@ -53,6 +53,16 @@ public static class IngredientCatalogNormalizer
         ["mar comm"] = "MarComm",
     };
 
+    static readonly Dictionary<string, string> GroupAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["beer draft"] = "Draught Beer",
+        ["draft beer"] = "Draught Beer",
+        ["draught beer"] = "Draught Beer",
+        ["bottle beer"] = "Bottled Beer",
+        ["beer bottle"] = "Bottled Beer",
+        ["bottled beer"] = "Bottled Beer",
+    };
+
     public static string NormalizeCategory(string? raw)
     {
         var trimmed = (raw ?? string.Empty).Trim();
@@ -71,6 +81,8 @@ public static class IngredientCatalogNormalizer
     {
         var trimmed = (raw ?? string.Empty).Trim();
         if (trimmed.Length == 0) return trimmed;
+        if (GroupAliases.TryGetValue(trimmed, out var alias))
+            return alias;
         foreach (var canonical in CanonicalGroups)
         {
             if (string.Equals(canonical, trimmed, StringComparison.OrdinalIgnoreCase))

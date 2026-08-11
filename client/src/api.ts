@@ -4511,6 +4511,20 @@ export const api = {
       total: number;
       counts: Record<string, number>;
     }>(`/api/companies/${companyId}/uoms/rename`, 'POST', { from, to }),
+  renameCompanyCategoryGroup: (
+    companyId: number,
+    kind: 'category' | 'group',
+    from: string,
+    to: string,
+  ) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      kind: string;
+      from: string;
+      to: string;
+      total: number;
+      counts: Record<string, number>;
+    }>(`/api/companies/${companyId}/category-groups/rename`, 'POST', { kind, from, to }),
   inventoryPurchases: (companyId?: number) =>
     fetchJson<InventoryPurchase[]>(`/api/inventory/purchases${companyId ? `?companyId=${companyId}` : ''}`),
   cashPurchases: (companyId?: number) =>
