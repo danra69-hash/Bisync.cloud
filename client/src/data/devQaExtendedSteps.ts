@@ -161,9 +161,24 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           'Template CSV missing Alternate Component Unit 1 header',
         );
         await assert(csv.includes('Storage'), 'Template CSV missing Storage header');
-        await assert(csv.includes('Daily Usage'), 'Template CSV missing Daily Usage header');
+        await assert(csv.includes('Par Stock'), 'Template CSV missing Par Stock header');
         await assert(csv.includes('Active'), 'Template CSV missing Active header');
         await assert(!csv.includes('Inventory UOM'), 'Template CSV still contains legacy Inventory UOM header');
+        const headerLine = csv.split(/\r?\n/)[0] ?? '';
+        for (const omitted of [
+          'Last UOM Price',
+          'Daily Usage',
+          'Order Freq (days)',
+          'Qty on Hand',
+          'Location',
+          'Products',
+          'Vendors',
+        ]) {
+          await assert(
+            !headerLine.includes(`"${omitted}"`),
+            `Template CSV header should omit ${omitted}`,
+          );
+        }
         await assert(
           SMART_COMPONENT_TEMPLATE_HEADERS.every(h => csv.includes(h)),
           'Template CSV missing one or more current headers',
@@ -171,7 +186,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         await assert(csv.split('\n').length > 2, 'Template CSV should include existing component rows');
         ctx.componentTemplateCsv = csv;
         update({
-          detail: `Exported full My Component table template with ${rows.length} row(s)`,
+          detail: `Exported My Component template with ${rows.length} row(s)`,
           facts: { rowCount: rows.length, csvBytes: csv.length, headerCount: SMART_COMPONENT_TEMPLATE_HEADERS.length },
           fixActions: defaultFixActions('component-download-template'),
         });
@@ -213,7 +228,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           'Kg',
           'Kitchen',
           'Dry Store',
-          'QA Restaurant; QA Kitchen',
+          'Yes',
           '',
         ].map(v => `"${v}"`).join(',');
         const csv = `${(ctx.componentTemplateCsv ?? '').trim()}\n${extraLine}\n`;

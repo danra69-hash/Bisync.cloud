@@ -116,7 +116,7 @@ export type SmartComponentImportPlan = {
   deactivations: SmartComponentImportDeactivation[];
 };
 
-/** Full My Component table export/import headers (not just alternate-UOM columns). */
+/** My Component template export/import headers (editable catalog fields only). */
 export const SMART_COMPONENT_TEMPLATE_HEADERS = [
   'Component ID',
   'Category',
@@ -133,17 +133,10 @@ export const SMART_COMPONENT_TEMPLATE_HEADERS = [
   'Conversion 4',
   'Alternate Component Unit 5',
   'Conversion 5',
-  'Last UOM Price',
-  'Daily Usage',
-  'Order Freq (days)',
   'Par Stock',
   'Par Stock UOM',
-  'Qty on Hand',
   'Area',
   'Storage',
-  'Location',
-  'Products',
-  'Vendors',
   'Active',
   'Last Updated',
 ] as const;
@@ -578,6 +571,8 @@ function mergeDraftWithExisting(
     convertFromInventoryQty: draft.convertFromInventoryQty || detail.convertFromInventoryQty || '1',
     convertToRecipeQty: draft.convertToRecipeQty || detail.convertToRecipeQty || '1',
     dailyUsage: draft.dailyUsage > 0 ? draft.dailyUsage : existing.dailyUsage,
+    // Location is no longer on the download template — keep existing when omitted.
+    locations: draft.locations.length > 0 ? draft.locations : existing.locations,
   };
 
   if (draft.templateParStock !== undefined && draft.templateParStock > 0) {
@@ -614,9 +609,6 @@ function rowToCsvLine(row: ComponentRow, scope?: SmartComponentLocationScope): s
   });
   const altPairs = [0, 1, 2, 3, 4].map(i => formatAltUnitPair(migrated.altRecipeUnits[i]));
   const parStockFields = exportComponentParStockFields(row);
-  const onHand = row.onHandQty ?? 0;
-  const products = row.attachedProducts ?? 0;
-  const vendors = row.attachedVendors ?? countComponentTaggedVendors(row);
 
   return [
     row.componentId || '',
@@ -625,17 +617,10 @@ function rowToCsvLine(row: ComponentRow, scope?: SmartComponentLocationScope): s
     row.name,
     migrated.recipeUnit,
     ...altPairs.flatMap(pair => [pair[0], pair[1]]),
-    row.lastPriceRecipe > 0 ? String(row.lastPriceRecipe) : '',
-    row.dailyUsage > 0 ? String(row.dailyUsage) : '',
-    row.orderFreqDays > 0 ? String(row.orderFreqDays) : '',
     parStockFields.parStock,
     parStockFields.parStockUom,
-    onHand !== 0 ? String(onHand) : '',
     resolveTemplateArea(row, scope),
     formatListField(row.storage),
-    resolveTemplateLocationNames(row.locations, scope),
-    products > 0 ? String(products) : '',
-    vendors > 0 ? String(vendors) : '',
     row.active ? 'Yes' : 'No',
     formatDisplayDate(row.updatedAt),
   ];
@@ -661,21 +646,27 @@ function rowToDraft(
   const principalInventoryConversion = parsePrincipalInventoryConversion(
     get(['Principal inventory Conversion'], 10),
   );
-  const storage = parseListField(get(['Storage'], 22));
-  const locations = resolveLocationsFromTemplate(
-    parseListField(get(['Location'], 23)),
-    scope,
-  );
-  const parStockRaw = get(['Par Stock'], 18);
-  const parStockUomRaw = get(['Par Stock UOM'], 19);
+  const storage = parseListField(get(['Storage'], 18));
+  const hasLocationColumn = headers.some(h => {
+    const key = normalizeTemplateHeader(h);
+    return key === 'location' || key === 'locations';
+  });
+  const locations = hasLocationColumn
+    ? resolveLocationsFromTemplate(
+      parseListField(get(['Location', 'Locations'], -1)),
+      scope,
+    )
+    : [];
+  const parStockRaw = get(['Par Stock'], 15);
+  const parStockUomRaw = get(['Par Stock UOM'], 16);
   const templateParStock = parseFloat(String(parStockRaw).replace(/[^0-9.-]/g, '')) || 0;
-  // Newer full-table columns — header-name only so older templates keep Storage/Par Stock intact.
+  // Optional / removed-from-template columns — header-name only (fallback -1).
   const lastPriceRecipe = parseFloat(String(get(['Last UOM Price', 'Last Price (Recipe)'], -1)).replace(/[^0-9.-]/g, '')) || 0;
   const dailyUsageRaw = get(['Daily Usage'], -1);
   const dailyUsage = parseFloat(String(dailyUsageRaw).replace(/[^0-9.-]/g, '')) || 0;
   const orderFreqRaw = get(['Order Freq (days)', 'Order Freq'], -1);
   const orderFreqDays = parseInt(String(orderFreqRaw).replace(/[^0-9]/g, ''), 10) || 7;
-  const activeRaw = get(['Active'], -1);
+  const activeRaw = get(['Active'], 19);
 
   const altRecipeUnits = parseAltUnitsFromColumns(
     get(['Alternate Component Unit 1', 'Unit Alternate Component Unit 1'], 5),
@@ -720,8 +711,8 @@ function rowToDraft(
     active: activeRaw ? parseActive(activeRaw) : true,
     templateParStock: templateParStock > 0 ? templateParStock : undefined,
     parStockUom: parStockUomRaw || undefined,
-    templateLastUpdated: get(['Last Updated'], 27) || undefined,
-    area: get(['Area'], 21) || resolveTemplateArea(
+    templateLastUpdated: get(['Last Updated'], 20) || undefined,
+    area: get(['Area'], 17) || resolveTemplateArea(
       { storage, locations } as ComponentRow,
       scope,
     ),
@@ -776,7 +767,6 @@ export function buildSmartComponentTemplateCsv(
   const sorted = [...scopedRows].sort((a, b) =>
     (a.componentId || a.name).localeCompare(b.componentId || b.name),
   );
-  const scopedLocationNames = getScopedLocations(scope).map(location => location.name);
   const rows = sorted.length > 0
     ? sorted.map(row => rowToCsvLine(row, scope))
     : [[
@@ -795,17 +785,10 @@ export function buildSmartComponentTemplateCsv(
       '',
       '',
       '',
-      '12.50',
-      '2',
-      '7',
       '14',
       'Gr',
-      '',
       'Kitchen',
       'Chiller',
-      scopedLocationNames.length > 0 ? formatListField(scopedLocationNames) : 'All',
-      '',
-      '',
       'Yes',
       '',
     ]];

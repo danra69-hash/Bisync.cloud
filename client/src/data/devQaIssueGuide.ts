@@ -140,13 +140,13 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'component-download-template': {
     area: "Component \u00b7 My Component",
-    expected: "CSV template exports the full My Component table (Principal/Alternate UOMs, Daily Usage, Storage, Active, etc.) and no legacy Inventory UOM column.",
+    expected: "CSV template exports editable My Component fields (Principal/Alternate UOMs, Par Stock, Storage, Active) and omits Last UOM Price, Daily Usage, Order Freq, Qty on Hand, Location, Products, Vendors, and legacy Inventory UOM.",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
       'Check SMART_COMPONENT_TEMPLATE_HEADERS / My Component export.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',
     ],
-    checks: ['Principal Component header present', 'Storage/Daily Usage/Active present', 'No Inventory UOM header'],
+    checks: ['Principal Component header present', 'Par Stock/Storage/Active present', 'Omitted operational columns', 'No Inventory UOM header'],
   },
   'component-upload-import': {
     area: "Component \u00b7 My Component",
