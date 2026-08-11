@@ -1141,6 +1141,17 @@
       "notes": "Company-scoped UOM rename remap across components, products, vendor products, and operations"
     },
     {
+      "id": "dr.api.category-group-rename",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CategoryGroupRenameController.cs",
+      "symbol": "CategoryGroupRenameController",
+      "route": "api/companies/{companyId}/category-groups",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-11",
+      "notes": "Remount RMS category/group renames onto ingredients, products, and POS configs"
+    },
+    {
       "id": "dr.api.transfers",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/TransfersController.cs",

@@ -7,6 +7,7 @@ import type {
   PosTaxServiceSalesTypeRule,
 } from '../../../../api'
 import { discountCentsFromPercent } from '../../../../data/entertainmentSettlement'
+import { normalizePosGroupLabel } from '../../../../data/posCatalog'
 import { saleDetailExtraChargeCents } from './saleDetail'
 import type { CartLine, Product } from './types'
 
@@ -77,9 +78,9 @@ function lineAmountCents(line: CartLine, product: Product): number {
 }
 
 function groupsMatch(productGroup: string, configured: string[]): boolean {
-  const needle = productGroup.trim().toLowerCase()
-  if (!needle) return false
-  return configured.some(g => g.trim().toLowerCase() === needle)
+  const needle = normalizePosGroupLabel(productGroup || '')
+  if (!needle || needle === 'General') return false
+  return configured.some(g => normalizePosGroupLabel(g || '') === needle)
 }
 
 function ruleForSalesType(
