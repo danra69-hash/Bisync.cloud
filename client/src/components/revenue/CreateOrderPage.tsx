@@ -6,6 +6,7 @@ import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { api, type OrderTemplate, type PurchaseOrder, type Vendor } from '../../api';
 import {
   applyCommitmentOverlays,
+  appendMissingCommittedOrderLines,
   buildCartItems,
   buildCreateOrderLines,
   countCartItems,
@@ -180,10 +181,20 @@ export function CreateOrderPage({
     [components, selectedLocationIds, vendorFilter, categoryFilter, search, vendors, orgPolicyTags],
   );
 
-  const lines = useMemo(
-    () => applyCommitmentOverlays(baseLines, committedPos),
-    [baseLines, committedPos],
-  );
+  const lines = useMemo(() => {
+    const withCommitted = appendMissingCommittedOrderLines(
+      baseLines,
+      committedPos,
+      components,
+      {
+        vendorExternalId: vendorFilter,
+        locationIds: selectedLocationIds,
+        categoryFilter,
+        search,
+      },
+    );
+    return applyCommitmentOverlays(withCommitted, committedPos);
+  }, [baseLines, committedPos, components, vendorFilter, selectedLocationIds, categoryFilter, search]);
 
   const sortedLines = useMemo(
     () =>

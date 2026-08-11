@@ -27,6 +27,7 @@ import {
   canReceivePurchaseOrder,
   parseUserAccess,
 } from '../../data/userAccess';
+import { commitmentVendorProductLabel } from '../../data/createOrder';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 import { formatPriceOrHidden } from '../../data/priceVisibility';
 import {
@@ -126,7 +127,7 @@ function buildEditableLines(
       isExtra: false,
       componentId: item.componentId ?? '',
       componentName: item.componentName || item.name,
-      productName: item.name,
+      productName: commitmentVendorProductLabel(item),
       vendorProductId: item.vendorProductId ?? '',
       orderedQuantity: String(orderedQty),
       quantity: String(qty),

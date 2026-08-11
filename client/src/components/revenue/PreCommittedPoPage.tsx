@@ -27,9 +27,11 @@ import {
 import { fromApiUom, resolveDetailConfigForRow } from '../../data/componentForm';
 import {
   catalogProductAllowedByOrgPolicy,
+  commitmentVendorProductLabel,
   componentMatchesLocations,
   resolveTaggedProductsForComponent,
   resolveVendorsForSelectedLocations,
+  type OrderCartVendorGroup,
 } from '../../data/createOrder';
 import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { ingredientToRow } from './smartIngredientShared';
@@ -54,7 +56,6 @@ import {
 } from '../../data/vendorOrderShare';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { formatCommitmentDate } from '../../data/preCommittedProgress';
-import type { OrderCartVendorGroup } from '../../data/createOrder';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -658,6 +659,45 @@ export function PreCommittedPoPage({
                     {order.status}
                   </p>
                 </div>
+                {order.items.length > 0 ? (
+                  <ul className="rounded-md border border-border/70 bg-background/70 divide-y divide-border/60">
+                    {order.items.map(item => {
+                      const remaining = item.remainingCommitmentQuantity
+                        ?? item.remainingQuantity
+                        ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+                      const productLabel = commitmentVendorProductLabel(item);
+                      return (
+                        <li
+                          key={item.id}
+                          className="px-2.5 py-1.5 flex items-start justify-between gap-3 text-[11px]"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground truncate" title={productLabel}>
+                              {productLabel}
+                            </p>
+                            <p className="text-muted-foreground truncate mt-0.5">
+                              {[
+                                item.componentName && item.componentName !== productLabel
+                                  ? item.componentName
+                                  : null,
+                                item.deliveryPackage || item.unit || null,
+                                item.vendorProductId ? `ID ${item.vendorProductId}` : null,
+                              ].filter(Boolean).join(' · ') || 'Committed line'}
+                            </p>
+                          </div>
+                          <p className="shrink-0 text-right tabular-nums text-muted-foreground font-sans leading-snug">
+                            <span className="text-foreground font-medium">{remaining}</span>
+                            <span className="text-[10px]"> left</span>
+                            <br />
+                            <span className="text-[10px]">of {item.quantity}</span>
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No vendor products on this commitment.</p>
+                )}
                 <PreCommittedProgressSummary order={order} />
               </article>
             ))

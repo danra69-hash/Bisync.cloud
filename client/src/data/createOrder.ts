@@ -5,6 +5,7 @@ import { resolveComparePriceCell } from './comparePrice';
 import {
   applyVendorProductOverrides,
   formatDeliveryUnitPath,
+  parseDeliveryUnitPath,
   resolveComponentUomQty,
   vendorProductPolicyTag,
   vendorProductVisibleToLocations,
@@ -43,11 +44,15 @@ export type CreateOrderLine = {
 type PurchaseOrderLike = {
   id: number;
   poNumber: string;
+  vendorName: string;
+  vendorExternalId?: string;
   orderDate?: string;
   commitmentStartDate?: string | null;
   items: Array<{
     vendorProductId?: string;
     componentId?: string;
+    componentName?: string;
+    name?: string;
     quantity: number;
     unitPrice: number;
     unit?: string;
@@ -57,6 +62,188 @@ type PurchaseOrderLike = {
     remainingCommitmentQuantity?: number;
   }>;
 };
+
+/** Display label for a pre-committed line (vendor product name preferred). */
+export function commitmentVendorProductLabel(item: {
+  name?: string;
+  componentName?: string;
+  vendorProductId?: string;
+}): string {
+  const name = (item.name || '').trim();
+  if (name) return name;
+  const fromCatalog = (item.vendorProductId || '').trim();
+  if (fromCatalog) {
+    const catalog = applyVendorProductOverrides();
+    const hit = catalog.find(p => p.id === fromCatalog);
+    const catalogName = (hit?.productName || '').trim();
+    if (catalogName) return catalogName;
+  }
+  return (item.componentName || '').trim() || '—';
+}
+
+function commitmentRemaining(item: PurchaseOrderLike['items'][number]): number {
+  return item.remainingCommitmentQuantity
+    ?? item.remainingQuantity
+    ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+}
+
+function stubComponentFromCommitment(
+  item: PurchaseOrderLike['items'][number],
+  locationIds: string[],
+): ComponentRow {
+  const componentId = (item.componentId || '').trim() || `committed-${item.vendorProductId || item.name || 'line'}`;
+  const name = (item.componentName || '').trim() || commitmentVendorProductLabel(item);
+  return {
+    componentId,
+    name,
+    category: 'Committed',
+    group: 'Committed',
+    recipeUOM: item.unit || 'Unit',
+    inventoryUOM: item.unit || 'Unit',
+    lastPriceRecipe: item.unitPrice,
+    lastPriceInventory: item.unitPrice,
+    dailyUsage: 0,
+    orderFreqDays: 0,
+    attachedProducts: 0,
+    attachedVendors: 0,
+    active: true,
+    locations: locationIds.length > 0 ? [...locationIds] : ['all'],
+    storage: [],
+  };
+}
+
+function synthesizeVendorProductFromCommitment(
+  item: PurchaseOrderLike['items'][number],
+  vendorExternalId: string,
+  vendorName: string,
+): VendorProductCatalogItem {
+  const deliveryText = (item.deliveryPackage || item.unit || '').trim();
+  const delivery = parseDeliveryUnitPath(deliveryText) ?? {
+    orderUnit: deliveryText || 'Unit',
+    orderQty: 1,
+    packUnit: deliveryText || 'Unit',
+    packQty: 1,
+    unitUnit: deliveryText || 'Unit',
+    unitQty: 1,
+  };
+  const id = (item.vendorProductId || '').trim() || `committed-line-${vendorExternalId}-${item.name || 'x'}`;
+  return {
+    id,
+    vendorExternalId,
+    vendorName,
+    productName: commitmentVendorProductLabel(item),
+    group: 'Committed',
+    specification: '',
+    deliveryPrice: item.unitPrice,
+    delivery,
+  };
+}
+
+/**
+ * Ensure active Pre-committed vendor products appear on My Order even when they are
+ * not currently tagged on a component for the selected location.
+ * Drawdown / Apply need these lines present to open a release PO.
+ */
+export function appendMissingCommittedOrderLines(
+  lines: CreateOrderLine[],
+  committedPos: PurchaseOrderLike[],
+  components: ComponentRow[],
+  options: {
+    vendorExternalId: string;
+    locationIds: string[];
+    categoryFilter: string;
+    search: string;
+  },
+): CreateOrderLine[] {
+  if (committedPos.length === 0) return lines;
+
+  const existingVp = new Set(lines.map(line => line.vendorProduct.id));
+  const existingKeys = new Set(lines.map(line => line.key));
+  const catalog = applyVendorProductOverrides();
+  const query = options.search.trim().toLowerCase();
+  const extras: CreateOrderLine[] = [];
+
+  for (const po of committedPos) {
+    const vendorExternalId = (po.vendorExternalId || '').trim();
+    if (options.vendorExternalId && vendorExternalId
+      && options.vendorExternalId !== vendorExternalId) {
+      continue;
+    }
+
+    for (const item of po.items) {
+      const remaining = commitmentRemaining(item);
+      if (remaining <= 0.0001) continue;
+
+      const vpId = (item.vendorProductId || '').trim();
+      if (vpId && existingVp.has(vpId)) continue;
+
+      const catalogProduct = vpId ? catalog.find(p => p.id === vpId) : undefined;
+      if (options.vendorExternalId && catalogProduct
+        && catalogProduct.vendorExternalId !== options.vendorExternalId) {
+        continue;
+      }
+
+      const component = (item.componentId || '').trim()
+        ? components.find(c => c.componentId === item.componentId) ?? null
+        : null;
+
+      if (component) {
+        if (!component.active) continue;
+        if (options.categoryFilter && options.categoryFilter !== 'All'
+          && component.category !== options.categoryFilter) {
+          continue;
+        }
+      } else if (options.categoryFilter && options.categoryFilter !== 'All') {
+        continue;
+      }
+
+      const resolvedVendorExternalId = vendorExternalId
+        || catalogProduct?.vendorExternalId
+        || options.vendorExternalId
+        || 'unknown';
+      const product = catalogProduct ?? synthesizeVendorProductFromCommitment(
+        item,
+        resolvedVendorExternalId,
+        po.vendorName,
+      );
+
+      const rowComponent = component ?? stubComponentFromCommitment(item, options.locationIds);
+      if (query) {
+        const haystack = [
+          rowComponent.componentId,
+          rowComponent.name,
+          rowComponent.category,
+          product.productName,
+          product.id,
+          po.poNumber,
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(query)) continue;
+      }
+
+      const key = `${rowComponent.id ?? rowComponent.componentId}::${product.id}::committed-${po.id}`;
+      if (existingKeys.has(key) || (vpId && existingVp.has(vpId))) continue;
+      existingKeys.add(key);
+      if (vpId) existingVp.add(vpId);
+
+      extras.push({
+        key,
+        component: rowComponent,
+        vendorProduct: product,
+        stockOnHand: null,
+        parStock: component ? calcParStock(component) : 0,
+        parStockUom: fromApiUom(rowComponent.recipeUOM) || rowComponent.recipeUOM,
+        suggestedDeliveryUnits: null,
+        deliveryUnitLabel: formatDeliveryUnitPath(product.delivery)
+          || (item.deliveryPackage || item.unit || '').trim(),
+        deliveryPrice: item.unitPrice,
+        commitment: null,
+      });
+    }
+  }
+
+  if (extras.length === 0) return lines;
+  return [...lines, ...extras].sort((a, b) => a.component.name.localeCompare(b.component.name));
+}
 
 /** Overlay active Pre-committed price / delivery unit onto My Order lines. */
 export function applyCommitmentOverlays(
@@ -71,9 +258,7 @@ export function applyCommitmentOverlays(
 
   for (const po of committedPos) {
     for (const item of po.items) {
-      const remaining = item.remainingCommitmentQuantity
-        ?? item.remainingQuantity
-        ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+      const remaining = commitmentRemaining(item);
       if (remaining <= 0.0001) continue;
       const match: Match = {
         poId: po.id,
