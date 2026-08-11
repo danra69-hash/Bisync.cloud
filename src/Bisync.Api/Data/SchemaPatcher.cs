@@ -1415,6 +1415,14 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "IsReturnableDeposit", "boolean NOT NULL DEFAULT false");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "ReturnableItemName", "TEXT NOT NULL DEFAULT ''");
         await PurchaseOrderDepositCombinerMigrator.ApplyAsync(db);
+        // Vendor accept used to flip pre-committed masters to Accepted, blocking drawdown.
+        // Restore Committed status and re-link orphan release POs (e.g. WEIS-WPK-001-20260811).
+        if (await DatabaseSchemaHelper.TableExistsAsync(db, "PurchaseOrders")
+            && await DatabaseSchemaHelper.ColumnExistsAsync(db, "PurchaseOrders", "IsPreCommitted"))
+        {
+            await new PreCommittedPoDrawdownService(db)
+                .RepairAcceptedMastersAndOrphanReleasesAsync();
+        }
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "ReturnableGoodsReturns" (

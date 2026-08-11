@@ -27,9 +27,27 @@ public static class PurchaseOrderWorkflow
         !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
         && !string.Equals(order.Status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Open company commitment available for drawdown. Vendor acceptance must not close this —
+    /// only full drawdown sets <see cref="StatusCommitmentClosed"/>.
+    /// </summary>
     public static bool IsPreCommittedActive(PurchaseOrder order) =>
         order.IsPreCommitted
-        && string.Equals(order.Status, StatusCommitted, StringComparison.OrdinalIgnoreCase);
+        && !string.Equals(order.Status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>DB statuses that still allow release POs to draw from a pre-committed master.</summary>
+    public static bool IsOpenPreCommitmentStatus(string? status)
+    {
+        var normalized = status?.Trim() ?? string.Empty;
+        if (normalized.Length == 0) return false;
+        if (string.Equals(normalized, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase))
+            return false;
+        // Committed is canonical; Accepted/Open/Confirmed may appear after vendor accept bugs or legacy rows.
+        return string.Equals(normalized, StatusCommitted, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, StatusAccepted, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, StatusOpen, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, StatusConfirmed, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Pre-committed masters are company-scoped; LocationIdsJson lists outlets allowed to draw down.
@@ -229,15 +247,22 @@ public static class PurchaseOrderWorkflow
             : order.DocumentType;
 
         var status = order.Status?.Trim() ?? string.Empty;
-        var isTerminalReceipt =
-            string.Equals(status, StatusReceived, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, StatusCommitted, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase);
+        // Pre-committed masters stay Committed / Commitment Closed even after vendor accept.
+        if (order.IsPreCommitted)
+        {
+            if (!string.Equals(status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase))
+                status = StatusCommitted;
+        }
+        else
+        {
+            var isTerminalReceipt =
+                string.Equals(status, StatusReceived, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
 
-        if (order.VendorAcceptedAt is not null && !isTerminalReceipt)
-            status = StatusAccepted;
+            if (order.VendorAcceptedAt is not null && !isTerminalReceipt)
+                status = StatusAccepted;
+        }
 
         var committedQuantity = order.Items.Sum(i => i.Quantity);
         var drawnQuantityTotal = order.Items.Sum(i => i.DrawnQuantity);

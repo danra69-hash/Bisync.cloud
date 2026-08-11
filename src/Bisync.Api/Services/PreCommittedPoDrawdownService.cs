@@ -44,7 +44,7 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
 
         var mastersQuery = db.PurchaseOrders
             .Include(p => p.Items)
-            .Where(p => p.IsPreCommitted && p.Status == PurchaseOrderWorkflow.StatusCommitted)
+            .Where(p => p.IsPreCommitted && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed)
             .Where(p =>
                 (p.CommitmentStartDate == null || p.CommitmentStartDate <= today)
                 && (p.CommitmentEndDate == null || p.CommitmentEndDate >= today));
@@ -55,6 +55,7 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
         var masters = await mastersQuery.ToListAsync(cancellationToken);
 
         masters = masters
+            .Where(m => PurchaseOrderWorkflow.IsOpenPreCommitmentStatus(m.Status))
             .Where(m =>
             {
                 var ext = (m.VendorExternalId ?? string.Empty).Trim();
@@ -70,6 +71,16 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
         if (masters.Count == 0)
             return;
 
+        // Restore canonical status when vendor-accept incorrectly flipped Committed → Accepted.
+        foreach (var master in masters)
+        {
+            if (!string.Equals(master.Status, PurchaseOrderWorkflow.StatusCommitted, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(master.Status, PurchaseOrderWorkflow.StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase))
+            {
+                master.Status = PurchaseOrderWorkflow.StatusCommitted;
+            }
+        }
+
         foreach (var release in releaseOrders)
         {
             if (release.IsPreCommitted)
@@ -78,6 +89,10 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
             var preferredMasterId = release.SourceCommittedPurchaseOrderId;
             foreach (var item in release.Items)
             {
+                // Already linked to a commitment line — do not double-count DrawnQuantity.
+                if (item.SourceCommittedPurchaseOrderItemId is > 0)
+                    continue;
+
                 var remainingToCover = item.Quantity;
                 if (remainingToCover <= 0)
                     continue;
@@ -86,6 +101,7 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
                     .Where(m => PurchaseOrderWorkflow.AllowsDrawdownFrom(m, release))
                     .Where(m => VendorMatches(m, release))
                     .Where(m => preferredMasterId is null || m.Id == preferredMasterId)
+                    .Where(m => ReleaseFallsInCommitmentWindow(m, release))
                     .SelectMany(m => m.Items.Select(ci => (Master: m, Line: ci)))
                     .Where(x => LineMatches(x.Line, item))
                     .Where(x => x.Line.Quantity - x.Line.DrawnQuantity > 0.0001m)
@@ -119,6 +135,51 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
         }
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Repair rows broken when vendor accept flipped pre-committed masters to Accepted
+    /// (blocking drawdown) and re-link release POs that should have drawn down.
+    /// </summary>
+    public async Task RepairAcceptedMastersAndOrphanReleasesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var flipped = await db.PurchaseOrders
+            .Where(p => p.IsPreCommitted
+                && p.Status != PurchaseOrderWorkflow.StatusCommitted
+                && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed)
+            .ToListAsync(cancellationToken);
+
+        foreach (var master in flipped)
+            master.Status = PurchaseOrderWorkflow.StatusCommitted;
+
+        if (flipped.Count > 0)
+            await db.SaveChangesAsync(cancellationToken);
+
+        var orphans = await db.PurchaseOrders
+            .Include(p => p.Items)
+            .Where(p => !p.IsPreCommitted
+                && p.SourceCommittedPurchaseOrderId == null
+                && p.Items.Any(i =>
+                    i.SourceCommittedPurchaseOrderItemId == null
+                    && !i.IsReturnableDeposit
+                    && i.Quantity > 0))
+            .ToListAsync(cancellationToken);
+
+        if (orphans.Count == 0)
+            return;
+
+        await ApplyDrawdownsAsync(orphans, cancellationToken);
+    }
+
+    static bool ReleaseFallsInCommitmentWindow(PurchaseOrder master, PurchaseOrder release)
+    {
+        var orderDate = release.OrderDate;
+        if (master.CommitmentStartDate is DateOnly start && orderDate < start)
+            return false;
+        if (master.CommitmentEndDate is DateOnly end && orderDate > end)
+            return false;
+        return true;
     }
 
     static bool VendorMatches(PurchaseOrder master, PurchaseOrder release)

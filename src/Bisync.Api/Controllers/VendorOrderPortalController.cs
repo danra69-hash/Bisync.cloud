@@ -45,7 +45,9 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         order.VendorAcceptedAt = DateTime.UtcNow;
         order.VendorAcceptedBy = acceptedBy;
 
-        if (string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+        // Pre-committed masters stay Committed so drawdown matching continues after vendor accept.
+        if (!order.IsPreCommitted
+            && string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReceived, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
         {

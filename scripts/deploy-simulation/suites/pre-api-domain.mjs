@@ -18,6 +18,7 @@ const focused = [
   'scripts/precommitted-my-order-drawdown.test.mjs',
   'scripts/precommitted-drawdown-line-indicators.test.mjs',
   'scripts/precommitted-received-qty-reflect.test.mjs',
+  'scripts/precommitted-accepted-drawdown.test.mjs',
   'scripts/pr-summary-view-by-detail.test.mjs',
   'scripts/stockcard-whole-receive-inbound.test.mjs',
   'scripts/stock-inbound-step1-bbq.mjs',

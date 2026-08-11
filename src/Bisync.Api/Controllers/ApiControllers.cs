@@ -1452,7 +1452,7 @@ public class PurchaseOrdersController(
         }
         var today = OrgClock.TodayLocal(countryCode);
         var query = BaseQuery()
-            .Where(p => p.IsPreCommitted && p.Status == PurchaseOrderWorkflow.StatusCommitted)
+            .Where(p => p.IsPreCommitted && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed)
             .Where(p =>
                 (p.CommitmentStartDate == null || p.CommitmentStartDate <= today)
                 && (p.CommitmentEndDate == null || p.CommitmentEndDate >= today));
@@ -1461,8 +1461,9 @@ public class PurchaseOrdersController(
             query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
 
         var orders = await query.ToListAsync();
-        // Only those with remaining commitment qty.
+        // Only open commitments with remaining qty (tolerate legacy Accepted status until repair runs).
         orders = orders
+            .Where(o => PurchaseOrderWorkflow.IsOpenPreCommitmentStatus(o.Status))
             .Where(o => o.Items.Any(i => i.Quantity - i.DrawnQuantity > 0.0001m))
             .ToList();
 
@@ -1539,7 +1540,9 @@ public class PurchaseOrdersController(
 
         order.VendorAcceptedAt = DateTime.UtcNow;
         order.VendorAcceptedBy = acceptedBy;
-        if (string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+        // Pre-committed masters stay Committed so drawdown matching continues after vendor accept.
+        if (!order.IsPreCommitted
+            && string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReceived, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
         {
