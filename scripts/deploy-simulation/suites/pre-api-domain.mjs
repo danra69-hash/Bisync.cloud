@@ -16,6 +16,7 @@ const focused = [
   'scripts/product-list-ginger-ale-visibility.test.mjs',
   'scripts/my-order-engaged-vendors-filter.test.mjs',
   'scripts/precommitted-my-order-drawdown.test.mjs',
+  'scripts/precommitted-drawdown-line-indicators.test.mjs',
   'scripts/stockcard-whole-receive-inbound.test.mjs',
   'scripts/stock-inbound-step1-bbq.mjs',
   'scripts/credit-note-outbound-residual.mjs',

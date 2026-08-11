@@ -1825,6 +1825,10 @@ export interface PurchaseOrderItem {
   remainingCommitmentQuantity?: number;
   /** On Pre-committed lines: qty received & consolidated via linked release POs. */
   consolidatedQuantity?: number;
+  /** Release line: master commitment line this qty drew from. */
+  sourceCommittedPurchaseOrderItemId?: number | null;
+  /** Release line: true when this line draws from a Pre-committed volume. */
+  isCommitmentDrawdown?: boolean;
   taxAmount?: number;
   halalCertNo?: string;
   productExpiryDate?: string | null;
@@ -1857,6 +1861,8 @@ export interface PurchaseOrder {
   commitmentStartDate?: string | null;
   commitmentEndDate?: string | null;
   sourceCommittedPurchaseOrderId?: number | null;
+  /** Release PO: master Pre-committed PO number when drawn down. */
+  sourceCommittedPoNumber?: string | null;
   /** On Pre-committed masters: outlets allowed to draw down (same as locationExternalIds). */
   drawdownLocationExternalIds?: string[] | null;
   /** Pre-committed totals (company blanket). */

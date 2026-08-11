@@ -73,6 +73,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrders", "SourceCommittedPurchaseOrderId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrderItems", "DeliveredQuantity", "NUMERIC NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrderItems", "DrawnQuantity", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrderItems", "SourceCommittedPurchaseOrderItemId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "OrderTemplates", "TemplateKind", "TEXT NOT NULL DEFAULT 'schedule'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "HalalCertNo", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "ProductExpiryDate", "TEXT NOT NULL DEFAULT ''");

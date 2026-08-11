@@ -665,7 +665,12 @@ export function PreCommittedPoPage({
                       const remaining = item.remainingCommitmentQuantity
                         ?? item.remainingQuantity
                         ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+                      const issued = item.drawnQuantity ?? 0;
+                      const received = item.consolidatedQuantity ?? 0;
                       const productLabel = commitmentVendorProductLabel(item);
+                      const receivedTone = received > 0.0001
+                        ? 'text-teal-800 dark:text-teal-300'
+                        : 'text-muted-foreground';
                       return (
                         <li
                           key={item.id}
@@ -683,6 +688,19 @@ export function PreCommittedPoPage({
                                 item.deliveryPackage || item.unit || null,
                                 item.vendorProductId ? `ID ${item.vendorProductId}` : null,
                               ].filter(Boolean).join(' · ') || 'Committed line'}
+                            </p>
+                            <p className={`mt-1 tabular-nums font-sans ${receivedTone}`}>
+                              {received > 0.0001 ? (
+                                <>
+                                  <span className="font-semibold">Received {received}</span>
+                                  <span className="text-muted-foreground"> · </span>
+                                </>
+                              ) : (
+                                <span>Received 0 · </span>
+                              )}
+                              <span className="text-muted-foreground">
+                                Issued {issued} · {remaining} left of {item.quantity}
+                              </span>
                             </p>
                           </div>
                           <p className="shrink-0 text-right tabular-nums text-muted-foreground font-sans leading-snug">

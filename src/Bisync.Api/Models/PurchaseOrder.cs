@@ -81,6 +81,11 @@ public class PurchaseOrderItem
     public decimal DeliveredQuantity { get; set; }
     /// <summary>Qty already drawn from a pre-committed (blanket) line via release orders.</summary>
     public decimal DrawnQuantity { get; set; }
+    /// <summary>
+    /// On a release PO line: the pre-committed master line this quantity drew from.
+    /// Null when the line is a normal (non-drawdown) purchase.
+    /// </summary>
+    public int? SourceCommittedPurchaseOrderItemId { get; set; }
     public decimal TaxAmount { get; set; }
     public string HalalCertNo { get; set; } = string.Empty;
     /// <summary>Optional vendor product expiry date (yyyy-MM-dd) captured at receive.</summary>

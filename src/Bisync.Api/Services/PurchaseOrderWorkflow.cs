@@ -216,11 +216,13 @@ public static class PurchaseOrderWorkflow
     /// For pre-committed masters: qty received &amp; consolidated on linked release POs, keyed by master item id.
     /// </param>
     /// <param name="deliveryLocation">Optional resolved ship-to address when DeliveryLocationExternalId is set.</param>
+    /// <param name="sourceCommittedPoNumber">Release POs: master Pre-committed PO number when drawn down.</param>
     public static object MapOrder(
         PurchaseOrder order,
         bool allowPartialDelivery = false,
         IReadOnlyDictionary<int, decimal>? consolidatedByItemId = null,
-        DeliveryLocation? deliveryLocation = null)
+        DeliveryLocation? deliveryLocation = null,
+        string? sourceCommittedPoNumber = null)
     {
         var documentType = IsPendingApprovalStatus(order.Status)
             ? DocumentTypePr
@@ -287,6 +289,9 @@ public static class PurchaseOrderWorkflow
             commitmentStartDate = order.CommitmentStartDate,
             commitmentEndDate = order.CommitmentEndDate,
             sourceCommittedPurchaseOrderId = order.SourceCommittedPurchaseOrderId,
+            sourceCommittedPoNumber = string.IsNullOrWhiteSpace(sourceCommittedPoNumber)
+                ? null
+                : sourceCommittedPoNumber.Trim(),
             // Alias for UI: on masters these are the outlets permitted to draw down.
             drawdownLocationExternalIds = order.IsPreCommitted
                 ? DeserializeLocationIds(order.LocationIdsJson)
@@ -349,6 +354,8 @@ public static class PurchaseOrderWorkflow
             remainingCommitmentQuantity = remainingCommitment,
             // Stocked qty from release POs that drew from this master line (receive + consolidate).
             consolidatedQuantity = isPreCommitted ? consolidatedQuantity : delivered,
+            sourceCommittedPurchaseOrderItemId = item.SourceCommittedPurchaseOrderItemId,
+            isCommitmentDrawdown = item.SourceCommittedPurchaseOrderItemId is > 0,
             taxAmount = item.TaxAmount,
             halalCertNo = item.HalalCertNo,
             productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,

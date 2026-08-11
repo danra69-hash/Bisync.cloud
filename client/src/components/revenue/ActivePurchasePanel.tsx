@@ -4,7 +4,7 @@ import { InfiniteScrollDivSentinel, InfiniteScrollTableSentinel } from '../share
 import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
-import { Check, Copy, PackageCheck, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, Copy, Handshake, PackageCheck, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
 import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import {
@@ -90,6 +90,8 @@ type EditableLine = {
   linkedCreditNoteId: number | null;
   deliveredQuantity: number;
   remainingQuantity: number;
+  /** True when this release line draws from a Pre-committed master volume. */
+  isCommitmentDrawdown: boolean;
 };
 
 function buildEditableLines(
@@ -120,6 +122,9 @@ function buildEditableLines(
         ? (item.reconciledUnitPrice ?? item.receivedUnitPrice ?? orderedPrice)
         : (item.receivedUnitPrice ?? orderedPrice);
     const tax = item.taxAmount ?? 0;
+    const isCommitmentDrawdown = Boolean(item.isCommitmentDrawdown)
+      || Boolean(item.sourceCommittedPurchaseOrderItemId)
+      || (Boolean(order.sourceCommittedPurchaseOrderId) && !order.isPreCommitted && !item.isReturnableDeposit);
 
     return {
       clientKey: `po-item-${item.id}`,
@@ -145,6 +150,7 @@ function buildEditableLines(
       linkedCreditNoteId: null,
       deliveredQuantity: delivered,
       remainingQuantity: remaining,
+      isCommitmentDrawdown,
     };
   });
 }
@@ -482,6 +488,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
         linkedCreditNoteId: null,
         deliveredQuantity: 0,
         remainingQuantity: Number.POSITIVE_INFINITY,
+        isCommitmentDrawdown: false,
       },
     ]);
     setShowAddProduct(false);
@@ -758,6 +765,22 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
               </div>
             </div>
           ) : null}
+          {!order.isPreCommitted && order.sourceCommittedPurchaseOrderId ? (
+            <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-800 dark:text-teal-300">
+              <p className="font-semibold inline-flex items-center gap-1.5">
+                <Handshake size={14} />
+                Drawn from Pre-committed volume
+              </p>
+              <p className="mt-0.5 leading-relaxed">
+                Line items marked Pre-committed count against
+                {' '}
+                <span className="font-sans font-semibold">
+                  {order.sourceCommittedPoNumber || `commitment #${order.sourceCommittedPurchaseOrderId}`}
+                </span>
+                . Receiving this PO updates received qty on that commitment.
+              </p>
+            </div>
+          ) : null}
           {order.allowPartialDelivery || order.status === 'Partially Delivered' ? (
             <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-800 dark:text-orange-300">
               <p className="font-semibold">Partial delivery enabled for this vendor</p>
@@ -1026,6 +1049,22 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                         <p className="text-[10px] font-sans text-muted-foreground mt-0.5">
                           Vendor Product ID: {line.vendorProductId || '—'}
                         </p>
+                        {line.isCommitmentDrawdown ? (
+                          <p
+                            className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300"
+                            title={
+                              order.sourceCommittedPoNumber
+                                ? `Counts against Pre-committed ${order.sourceCommittedPoNumber}`
+                                : 'Counts against Pre-committed purchase volume'
+                            }
+                          >
+                            <Handshake size={11} />
+                            Pre-committed
+                            {order.sourceCommittedPoNumber
+                              ? ` · ${order.sourceCommittedPoNumber}`
+                              : ''}
+                          </p>
+                        ) : null}
                         {line.isExtra ? (
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
@@ -1316,6 +1355,22 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                             <p className="text-[10px] font-sans text-muted-foreground">
                               Vendor Product ID: {line.vendorProductId || '—'}
                             </p>
+                            {line.isCommitmentDrawdown ? (
+                              <p
+                                className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300"
+                                title={
+                                  order.sourceCommittedPoNumber
+                                    ? `Counts against Pre-committed ${order.sourceCommittedPoNumber}`
+                                    : 'Counts against Pre-committed purchase volume'
+                                }
+                              >
+                                <Handshake size={11} />
+                                Pre-committed
+                                {order.sourceCommittedPoNumber
+                                  ? ` · ${order.sourceCommittedPoNumber}`
+                                  : ''}
+                              </p>
+                            ) : null}
                             {line.isExtra ? (
                               <div className="mt-1 flex items-center gap-2">
                                 <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">

@@ -108,6 +108,7 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
                     // Special committed (bulk) price for the release line.
                     item.UnitPrice = committedLine.UnitPrice;
                     item.IssuedUnitPrice = committedLine.UnitPrice;
+                    item.SourceCommittedPurchaseOrderItemId ??= committedLine.Id;
                     release.SourceCommittedPurchaseOrderId ??= master.Id;
                     remainingToCover -= take;
 

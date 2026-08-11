@@ -2589,6 +2589,17 @@ public class PurchaseOrdersController(
         var consolidatedByMaster = await ResolveConsolidatedByMasterItemAsync(
             orders.Where(o => o.IsPreCommitted).Select(o => o.Id).ToList());
 
+        var sourceMasterIds = orders
+            .Where(o => !o.IsPreCommitted && o.SourceCommittedPurchaseOrderId is > 0)
+            .Select(o => o.SourceCommittedPurchaseOrderId!.Value)
+            .Distinct()
+            .ToList();
+        var sourcePoNumberById = sourceMasterIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await db.PurchaseOrders.AsNoTracking()
+                .Where(p => sourceMasterIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.PoNumber);
+
         var deliveryIds = orders
             .Select(o => (o.DeliveryLocationExternalId ?? string.Empty).Trim())
             .Where(id => id.Length > 0)
@@ -2607,11 +2618,15 @@ public class PurchaseOrdersController(
                 var deliveryId = (o.DeliveryLocationExternalId ?? string.Empty).Trim();
                 if (deliveryId.Length > 0)
                     deliveryByExternalId.TryGetValue(deliveryId, out delivery);
+                string? sourcePoNumber = null;
+                if (o.SourceCommittedPurchaseOrderId is int sourceId)
+                    sourcePoNumberById.TryGetValue(sourceId, out sourcePoNumber);
                 return PurchaseOrderWorkflow.MapOrder(
                     o,
                     flags.GetValueOrDefault(o.Id),
                     consolidatedByMaster.GetValueOrDefault(o.Id),
-                    delivery);
+                    delivery,
+                    sourcePoNumber);
             })
             .Cast<object>()
             .ToList();
@@ -2657,7 +2672,12 @@ public class PurchaseOrdersController(
             {
                 foreach (var releaseItem in release.Items)
                 {
-                    var masterItem = master.Items.FirstOrDefault(mi =>
+                    PurchaseOrderItem? masterItem = null;
+                    if (releaseItem.SourceCommittedPurchaseOrderItemId is int linkedMasterItemId)
+                    {
+                        masterItem = master.Items.FirstOrDefault(mi => mi.Id == linkedMasterItemId);
+                    }
+                    masterItem ??= master.Items.FirstOrDefault(mi =>
                         !string.IsNullOrWhiteSpace(mi.VendorProductId)
                         && string.Equals(mi.VendorProductId, releaseItem.VendorProductId, StringComparison.OrdinalIgnoreCase))
                         ?? master.Items.FirstOrDefault(mi =>
