@@ -793,7 +793,7 @@ public class CreditNoteService(
                 var inbound = IngredientUomBridge.ToInboundPrincipal(
                     ingredient,
                     purchase.Quantity,
-                    purchase.Uom,
+                    string.IsNullOrWhiteSpace(purchase.Uom) ? deliveryBasis : purchase.Uom,
                     entry.DeliveryUnitPrice > 0 ? entry.DeliveryUnitPrice : purchase.UnitPrice,
                     entry.VendorProductId,
                     deliveryBasis);
@@ -803,7 +803,9 @@ public class CreditNoteService(
                 {
                     var takeQty = Math.Min(inbound.Quantity, remaining);
                     purchase.Quantity = takeQty;
-                    purchase.Uom = string.IsNullOrWhiteSpace(inbound.Uom) ? targetStockUom : inbound.Uom;
+                    purchase.Uom = string.IsNullOrWhiteSpace(inbound.Uom)
+                        ? (targetStockUom ?? string.Empty)
+                        : inbound.Uom;
                     purchase.UnitPrice = targetStockPrice;
                     purchase.DocumentAmount = DecimalRounding.ToDb(takeQty * targetStockPrice);
                     purchase.RoundingResidual = 0m;
