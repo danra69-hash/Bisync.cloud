@@ -20,6 +20,7 @@ import {
 import { formatCommitmentDate } from '../../data/preCommittedProgress';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { filterSelectCls } from '../layout/formControls';
+import { commitmentVendorProductLabel } from '../../data/createOrder';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -36,6 +37,20 @@ type SummaryBucket =
   | 'reconciled'
   | 'pre_committed';
 
+/** Purchase Request summary — group detail lines by one of these dimensions. */
+type PrViewBy = 'location' | 'vendor' | 'vendor_product' | 'po_number';
+
+type PrSummaryLine = {
+  key: string;
+  orderId: number;
+  poNumber: string;
+  vendorName: string;
+  vendorProductName: string;
+  deliveryUnit: string;
+  qtyOrdered: number;
+  location: string;
+};
+
 type ActivePurchaseSortColumn =
   | 'type'
   | 'number'
@@ -47,6 +62,14 @@ type ActivePurchaseSortColumn =
   | 'total'
   | 'status'
   | 'action';
+
+type PrLineSortColumn =
+  | 'poNumber'
+  | 'vendor'
+  | 'vendorProduct'
+  | 'deliveryUnit'
+  | 'qtyOrdered'
+  | 'location';
 
 const ACTIVE_PURCHASE_TABLE_COLUMNS: SortableColumnDef<ActivePurchaseSortColumn>[] = [
   { key: 'type', label: 'Type', ...tableColWidth('7%') },
@@ -61,6 +84,22 @@ const ACTIVE_PURCHASE_TABLE_COLUMNS: SortableColumnDef<ActivePurchaseSortColumn>
   { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
 ];
 
+const PR_SUMMARY_TABLE_COLUMNS: SortableColumnDef<PrLineSortColumn>[] = [
+  { key: 'poNumber', label: 'PO Number', ...tableColWidth('14%') },
+  { key: 'vendor', label: 'Vendor', ...tableColWidth('18%') },
+  { key: 'vendorProduct', label: 'Vendor Product', ...tableColWidth('22%') },
+  { key: 'deliveryUnit', label: 'Delivery Unit', ...tableColWidth('14%') },
+  { key: 'qtyOrdered', label: 'QTY Ordered', align: 'right', ...tableColWidth('12%') },
+  { key: 'location', label: 'Location', ...tableColWidth('20%') },
+];
+
+const PR_VIEW_BY_OPTIONS: { id: PrViewBy; label: string }[] = [
+  { id: 'location', label: 'Location' },
+  { id: 'vendor', label: 'Vendor' },
+  { id: 'vendor_product', label: 'Vendor Product' },
+  { id: 'po_number', label: 'PO Number' },
+];
+
 function shipToLabel(order: PurchaseOrder, outletsById: Map<string, string>): string {
   if (order.deliveryLocation?.name?.trim()) return order.deliveryLocation.name.trim();
   const ids = order.locationExternalIds ?? [];
@@ -68,6 +107,44 @@ function shipToLabel(order: PurchaseOrder, outletsById: Map<string, string>): st
   const names = ids.map(id => outletsById.get(id) || id);
   if (names.length === 1) return names[0];
   return `${names[0]} +${names.length - 1}`;
+}
+
+function buildPurchaseRequestSummaryLines(
+  orders: PurchaseOrder[],
+  outletsById: Map<string, string>,
+): PrSummaryLine[] {
+  const lines: PrSummaryLine[] = [];
+  for (const order of orders) {
+    const location = shipToLabel(order, outletsById);
+    for (const item of order.items) {
+      if (item.isReturnableDeposit) continue;
+      lines.push({
+        key: `${order.id}-${item.id}`,
+        orderId: order.id,
+        poNumber: order.poNumber,
+        vendorName: order.vendorName,
+        vendorProductName: commitmentVendorProductLabel(item),
+        deliveryUnit: (item.deliveryPackage || item.unit || '').trim() || '—',
+        qtyOrdered: item.quantity,
+        location,
+      });
+    }
+  }
+  return lines;
+}
+
+function prViewByGroupKey(line: PrSummaryLine, viewBy: PrViewBy): string {
+  if (viewBy === 'location') return line.location || '—';
+  if (viewBy === 'vendor') return line.vendorName || '—';
+  if (viewBy === 'vendor_product') return line.vendorProductName || '—';
+  return line.poNumber || '—';
+}
+
+function prViewByGroupLabel(viewBy: PrViewBy, key: string): string {
+  if (viewBy === 'location') return `Location: ${key}`;
+  if (viewBy === 'vendor') return `Vendor: ${key}`;
+  if (viewBy === 'vendor_product') return `Vendor Product: ${key}`;
+  return `PO Number: ${key}`;
 }
 
 const SUMMARY_BOXES: {
@@ -80,7 +157,7 @@ const SUMMARY_BOXES: {
     id: 'purchase_request',
     label: 'Purchase Request',
     empty: 'No purchase requests awaiting approval.',
-    hint: 'Pending approval — click a line to open and approve.',
+    hint: 'Line detail of pending PRs — click a PO Number to open and adjust or approve.',
   },
   {
     id: 'po_accepted',
@@ -172,10 +249,17 @@ export function ActivePurchasePage({
   const [error, setError] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<SummaryBucket | null>(null);
+  const [prViewBy, setPrViewBy] = useState<PrViewBy>('vendor');
   const [deliveryLocationFilter, setDeliveryLocationFilter] = useState('');
   const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>([]);
   const [outletNameById, setOutletNameById] = useState<Map<string, string>>(() => new Map());
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ActivePurchaseSortColumn>();
+  const {
+    sortColumn: prSortColumn,
+    sortDirection: prSortDirection,
+    toggleSort: togglePrSort,
+    resetSort: resetPrSort,
+  } = useTableSort<PrLineSortColumn>();
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -252,9 +336,11 @@ export function ActivePurchasePage({
 
   useEffect(() => {
     resetSort();
+    resetPrSort();
     setSelectedBucket(null);
     setSelectedOrderId(null);
-  }, [selectedCompanyId, resetSort]);
+    setPrViewBy('vendor');
+  }, [selectedCompanyId, resetSort, resetPrSort]);
 
   const filteredOrders = useMemo(() => {
     if (!deliveryLocationFilter) return orders;
@@ -308,6 +394,43 @@ export function ActivePurchasePage({
     [summaryOrders, sortColumn, sortDirection, outletNameById],
   );
 
+  const prSummaryLines = useMemo(
+    () => (selectedBucket === 'purchase_request'
+      ? buildPurchaseRequestSummaryLines(summaryOrders, outletNameById)
+      : []),
+    [selectedBucket, summaryOrders, outletNameById],
+  );
+
+  const sortedPrLines = useMemo(
+    () =>
+      sortTableRows(
+        prSummaryLines,
+        prSortColumn,
+        prSortDirection,
+        {
+          poNumber: line => line.poNumber,
+          vendor: line => line.vendorName,
+          vendorProduct: line => line.vendorProductName,
+          deliveryUnit: line => line.deliveryUnit,
+          qtyOrdered: line => line.qtyOrdered,
+          location: line => line.location,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.poNumber, b.poNumber) },
+      ),
+    [prSummaryLines, prSortColumn, prSortDirection],
+  );
+
+  const groupedPrLines = useMemo(() => {
+    const groups = new Map<string, PrSummaryLine[]>();
+    for (const line of sortedPrLines) {
+      const key = prViewByGroupKey(line, prViewBy);
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(line);
+      else groups.set(key, [line]);
+    }
+    return [...groups.entries()].map(([key, rows]) => ({ key, rows }));
+  }, [sortedPrLines, prViewBy]);
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedOrders,
@@ -318,6 +441,16 @@ export function ActivePurchasePage({
     nextPageSize,
     loadMore,
   } = useInfiniteScrollSlice(sortedOrders, { scrollRootRef });
+
+  const {
+    visibleItems: pagedPrGroups,
+    hasMore: prHasMore,
+    sentinelRef: prSentinelRef,
+    totalCount: prGroupTotal,
+    visibleCount: prGroupVisible,
+    nextPageSize: prNextPageSize,
+    loadMore: loadMorePrGroups,
+  } = useInfiniteScrollSlice(groupedPrLines, { scrollRootRef });
 
   function handleOrderUpdated(updated: PurchaseOrder) {
     setOrders(prev => {
@@ -339,10 +472,15 @@ export function ActivePurchasePage({
   }
 
   function toggleBucket(bucket: SummaryBucket) {
-    setSelectedBucket(prev => (prev === bucket ? null : bucket));
+    setSelectedBucket(prev => {
+      const next = prev === bucket ? null : bucket;
+      if (next === 'purchase_request') resetPrSort();
+      return next;
+    });
   }
 
   const activeBox = SUMMARY_BOXES.find(b => b.id === selectedBucket) ?? null;
+  const isPurchaseRequestSummary = selectedBucket === 'purchase_request';
   const tableColumns = useMemo(() => {
     if (selectedBucket !== 'pre_committed') return ACTIVE_PURCHASE_TABLE_COLUMNS;
     return ACTIVE_PURCHASE_TABLE_COLUMNS.map(col => {
@@ -424,90 +562,182 @@ export function ActivePurchasePage({
 
       {activeBox ? (
         <div className="bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-0">
-          <div className="px-4 py-3 border-b border-border shrink-0 bg-card">
-            <h2 className="text-sm font-semibold">{activeBox.label}</h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{activeBox.hint}</p>
+          <div className="px-4 py-3 border-b border-border shrink-0 bg-card space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold">{activeBox.label} Summary</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{activeBox.hint}</p>
+            </div>
+            {isPurchaseRequestSummary ? (
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+                  View by
+                </span>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  {PR_VIEW_BY_OPTIONS.map(option => (
+                    <label
+                      key={option.id}
+                      className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={prViewBy === option.id}
+                        onChange={() => setPrViewBy(option.id)}
+                        className="rounded border-border"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
           <TableScrollContainer
             ref={scrollRootRef}
             className="max-h-[calc(100vh-12rem)] overflow-y-auto min-h-0"
             tableId={`revenue.active-purchase.${activeBox.id}`}
           >
-            <table className="w-full">
-              <TableColGroup columns={tableColumns} />
-              <thead className="bg-muted/30">
-                <SortableTableHeaderRow
-                  columns={tableColumns}
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSort={toggleSort}
-                  className="border-b border-border"
-                />
-              </thead>
-              <tbody>
-                {loading && summaryOrders.length === 0 ? (
-                  <TableLoadingRow colSpan={10} label="Loading…" />
-                ) : summaryOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      {activeBox.empty}
-                    </td>
-                  </tr>
-                ) : (
-                  pagedOrders.map(order => (
-                    <tr
-                      key={order.id}
-                      className="hover:bg-muted/20 cursor-pointer"
-                      onClick={() => setSelectedOrderId(order.id)}
-                    >
-                      <td className={tdCls}>{documentTypeLabel(order)}</td>
-                      <td className={`${tdCls} font-sans text-primary`}>
-                        <p>{order.poNumber}</p>
-                        {order.isPreCommitted ? (
-                          <div className="mt-1">
-                            <PreCommittedProgressSummary order={order} compact />
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className={tdCls}>{order.vendorName}</td>
-                      <td className={tdCls}>
-                        <p className="font-medium">{shipToLabel(order, outletNameById)}</p>
-                        {order.deliveryLocation ? (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            {[order.deliveryLocation.city, order.deliveryLocation.postcode].filter(Boolean).join(' · ') || 'Delivery location'}
-                          </p>
-                        ) : (
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            {order.isPreCommitted ? 'Drawdown outlets' : 'Outlet'}
-                          </p>
-                        )}
-                      </td>
-                      <td className={`${tdCls} font-sans text-muted-foreground`}>{order.orderDate}</td>
-                      <td className={`${tdCls} font-sans text-muted-foreground`}>
-                        {order.isPreCommitted
-                          ? formatCommitmentDate(order.commitmentEndDate)
-                          : order.deliveryDate}
-                      </td>
-                      <td className={tdCls}>{order.items.length}</td>
-                      <td className={`${tdCls} font-sans`}>{rm(orderTotal(order))}</td>
-                      <td className={tdCls}>{statusBadge(order)}</td>
-                      <td className={tdCls}>
-                        <span className="text-xs font-medium text-primary">{nextActionLabel(order)}</span>
+            {isPurchaseRequestSummary ? (
+              <table className="w-full">
+                <TableColGroup columns={PR_SUMMARY_TABLE_COLUMNS} />
+                <thead className="bg-muted/30">
+                  <SortableTableHeaderRow
+                    columns={PR_SUMMARY_TABLE_COLUMNS}
+                    sortColumn={prSortColumn}
+                    sortDirection={prSortDirection}
+                    onSort={togglePrSort}
+                    className="border-b border-border"
+                  />
+                </thead>
+                <tbody>
+                  {loading && prSummaryLines.length === 0 ? (
+                    <TableLoadingRow colSpan={6} label="Loading…" />
+                  ) : prSummaryLines.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        {activeBox.empty}
                       </td>
                     </tr>
-                  ))
-                )}
-                <InfiniteScrollTableSentinel
-                  colSpan={10}
-                  hasMore={hasMore}
-                  onLoadMore={loadMore}
-                  nextPageSize={nextPageSize}
-                  sentinelRef={sentinelRef}
-                  totalCount={totalCount}
-                  visibleCount={visibleCount}
-                />
-              </tbody>
-            </table>
+                  ) : (
+                    pagedPrGroups.flatMap(group => [
+                      <tr key={`pr-group-${group.key}`} className="bg-muted/30 border-b border-border">
+                        <td colSpan={6} className="px-3 py-2 text-[11px] font-semibold text-foreground">
+                          {prViewByGroupLabel(prViewBy, group.key)}
+                          <span className="text-muted-foreground font-normal ml-2">
+                            ({group.rows.length} line{group.rows.length === 1 ? '' : 's'})
+                          </span>
+                        </td>
+                      </tr>,
+                      ...group.rows.map(line => (
+                        <tr key={line.key} className="hover:bg-muted/20 border-b border-border">
+                          <td className={tdCls}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrderId(line.orderId)}
+                              className="font-sans text-primary font-medium hover:underline text-left"
+                              title="Open purchase request detail"
+                            >
+                              {line.poNumber}
+                            </button>
+                          </td>
+                          <td className={tdCls}>{line.vendorName}</td>
+                          <td className={tdCls}>{line.vendorProductName}</td>
+                          <td className={tdCls}>{line.deliveryUnit}</td>
+                          <td className={`${tdCls} text-right font-sans tabular-nums`}>
+                            {line.qtyOrdered}
+                          </td>
+                          <td className={tdCls}>{line.location}</td>
+                        </tr>
+                      )),
+                    ])
+                  )}
+                  <InfiniteScrollTableSentinel
+                    colSpan={6}
+                    hasMore={prHasMore}
+                    onLoadMore={loadMorePrGroups}
+                    nextPageSize={prNextPageSize}
+                    sentinelRef={prSentinelRef}
+                    totalCount={prGroupTotal}
+                    visibleCount={prGroupVisible}
+                  />
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full">
+                <TableColGroup columns={tableColumns} />
+                <thead className="bg-muted/30">
+                  <SortableTableHeaderRow
+                    columns={tableColumns}
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleSort}
+                    className="border-b border-border"
+                  />
+                </thead>
+                <tbody>
+                  {loading && summaryOrders.length === 0 ? (
+                    <TableLoadingRow colSpan={10} label="Loading…" />
+                  ) : summaryOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        {activeBox.empty}
+                      </td>
+                    </tr>
+                  ) : (
+                    pagedOrders.map(order => (
+                      <tr
+                        key={order.id}
+                        className="hover:bg-muted/20 cursor-pointer"
+                        onClick={() => setSelectedOrderId(order.id)}
+                      >
+                        <td className={tdCls}>{documentTypeLabel(order)}</td>
+                        <td className={`${tdCls} font-sans text-primary`}>
+                          <p>{order.poNumber}</p>
+                          {order.isPreCommitted ? (
+                            <div className="mt-1">
+                              <PreCommittedProgressSummary order={order} compact />
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className={tdCls}>{order.vendorName}</td>
+                        <td className={tdCls}>
+                          <p className="font-medium">{shipToLabel(order, outletNameById)}</p>
+                          {order.deliveryLocation ? (
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {[order.deliveryLocation.city, order.deliveryLocation.postcode].filter(Boolean).join(' · ') || 'Delivery location'}
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {order.isPreCommitted ? 'Drawdown outlets' : 'Outlet'}
+                            </p>
+                          )}
+                        </td>
+                        <td className={`${tdCls} font-sans text-muted-foreground`}>{order.orderDate}</td>
+                        <td className={`${tdCls} font-sans text-muted-foreground`}>
+                          {order.isPreCommitted
+                            ? formatCommitmentDate(order.commitmentEndDate)
+                            : order.deliveryDate}
+                        </td>
+                        <td className={tdCls}>{order.items.length}</td>
+                        <td className={`${tdCls} font-sans`}>{rm(orderTotal(order))}</td>
+                        <td className={tdCls}>{statusBadge(order)}</td>
+                        <td className={tdCls}>
+                          <span className="text-xs font-medium text-primary">{nextActionLabel(order)}</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                  <InfiniteScrollTableSentinel
+                    colSpan={10}
+                    hasMore={hasMore}
+                    onLoadMore={loadMore}
+                    nextPageSize={nextPageSize}
+                    sentinelRef={sentinelRef}
+                    totalCount={totalCount}
+                    visibleCount={visibleCount}
+                  />
+                </tbody>
+              </table>
+            )}
           </TableScrollContainer>
         </div>
       ) : (
