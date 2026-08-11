@@ -4,7 +4,7 @@ import { InfiniteScrollDivSentinel, InfiniteScrollTableSentinel } from '../share
 import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
-import { Check, Copy, PackageCheck, Plus, Trash2, X } from 'lucide-react';
+import { Check, Copy, PackageCheck, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
 import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import {
@@ -20,7 +20,10 @@ import { orgRequiresHalalCertOnReceive } from '../../data/vendorPolicyRules';
 import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { applyVendorProductPriceUpdates } from '../../data/vendorProductPrices';
 import {
+  canAmendReceivedPurchaseOrder,
+  canAmendReconciledPurchaseOrder,
   canApprovePurchaseOrder,
+  canConsolidatePurchaseOrder,
   canReceivePurchaseOrder,
   parseUserAccess,
 } from '../../data/userAccess';
@@ -88,8 +91,13 @@ type EditableLine = {
   remainingQuantity: number;
 };
 
-function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 'reconcile' | 'view'): EditableLine[] {
+function buildEditableLines(
+  order: PurchaseOrder,
+  mode: 'approve' | 'receive' | 'reconcile' | 'view',
+  amending = false,
+): EditableLine[] {
   const partial = Boolean(order.allowPartialDelivery);
+  const amendReconciled = amending && order.status === 'Reconciled';
   return order.items.map(item => {
     const issued = item.issuedUnitPrice ?? item.unitPrice;
     const orderedQty = item.quantity;
@@ -100,12 +108,16 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
     // Otherwise use last received qty or full ordered.
     const qty = mode === 'approve'
       ? orderedQty
-      : mode === 'receive' && partial
+      : mode === 'receive' && partial && !amending
         ? remaining
-        : (item.receivedQuantity ?? (partial ? remaining : orderedQty));
+        : amendReconciled
+          ? (item.reconciledQuantity ?? item.receivedQuantity ?? orderedQty)
+          : (item.receivedQuantity ?? (partial ? remaining : orderedQty));
     const price = mode === 'approve'
       ? orderedPrice
-      : (item.receivedUnitPrice ?? orderedPrice);
+      : amendReconciled
+        ? (item.reconciledUnitPrice ?? item.receivedUnitPrice ?? orderedPrice)
+        : (item.receivedUnitPrice ?? orderedPrice);
     const tax = item.taxAmount ?? 0;
 
     return {
@@ -204,6 +216,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
     || Boolean(order.finalDeliveryCompletedAt);
   const rmsReceiveOk = Boolean(access && canReceivePurchaseOrder(access));
   const rmsApproveOk = Boolean(access && canApprovePurchaseOrder(access));
+  const rmsConsolidateOk = Boolean(access && canConsolidatePurchaseOrder(access));
+  const rmsAmendReceivedOk = Boolean(access && canAmendReceivedPurchaseOrder(access));
+  const rmsAmendReconciledOk = Boolean(access && canAmendReconciledPurchaseOrder(access));
   const canFinalizeDelivery = Boolean(
     (teamWorkflow || rmsReceiveOk || rmsApproveOk) && order.canFinalizeDelivery,
   );
@@ -215,7 +230,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
       || order.status === 'Partially Delivered'
       || order.items.some(i => (i.deliveredQuantity ?? 0) > 0)
     );
-  const [lines, setLines] = useState(() => buildEditableLines(order, mode));
+  const [amending, setAmending] = useState(false);
+  const [lines, setLines] = useState(() => buildEditableLines(order, mode, false));
   const [vendorDoNumber, setVendorDoNumber] = useState(order.vendorDoNumber?.trim() ?? '');
   const [vendorInvoiceNumber, setVendorInvoiceNumber] = useState(order.vendorInvoiceNumber?.trim() ?? '');
   const [productQualityRating, setProductQualityRating] = useState(order.productQualityRating?.trim() ?? '');
@@ -231,7 +247,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
   const panelScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setLines(buildEditableLines(order, mode));
+    setAmending(false);
+    setLines(buildEditableLines(order, mode, false));
     setVendorDoNumber(order.vendorDoNumber?.trim() ?? '');
     setVendorInvoiceNumber(order.vendorInvoiceNumber?.trim() ?? '');
     setProductQualityRating(order.productQualityRating?.trim() ?? '');
@@ -285,9 +302,36 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
   );
   const canReceive = Boolean((teamWorkflow || rmsReceiveOk) && order.canReceive);
   const canReconcile = Boolean(
-    (teamWorkflow || rmsReceiveOk || rmsApproveOk) && order.canReconcile,
+    (teamWorkflow || rmsConsolidateOk) && order.canReconcile,
   );
-  const readOnly = mode === 'view' || (mode === 'approve' && !canApprove) || (mode === 'receive' && !canReceive) || (mode === 'reconcile' && !canReconcile);
+  const canAmendReceived = Boolean(
+    (teamWorkflow || rmsAmendReceivedOk)
+    && (order.canAmendReceived || order.status === 'Received' || order.status === 'Partially Delivered'),
+  );
+  const canAmendReconciled = Boolean(
+    (teamWorkflow || rmsAmendReconciledOk)
+    && (order.canAmendReconciled || order.status === 'Reconciled'),
+  );
+  const canStartAmend = !amending && (
+    (canAmendReceived && (order.status === 'Received' || order.status === 'Partially Delivered')
+      && (mode === 'view' || mode === 'reconcile'))
+    || (canAmendReconciled && order.status === 'Reconciled' && (mode === 'view' || mode === 'reconcile'))
+  );
+  const amendPhase: 'received' | 'reconciled' | null = amending
+    ? (order.status === 'Reconciled' ? 'reconciled' : 'received')
+    : null;
+  const readOnly = amending
+    ? false
+    : mode === 'view'
+      || (mode === 'approve' && !canApprove)
+      || (mode === 'receive' && !canReceive)
+      || (mode === 'reconcile' && !canReconcile);
+  // When Received opens in reconcile mode, keep consolidate editable unless user chose Amend.
+  const canEditReceived = amending
+    || ((mode === 'receive' || mode === 'reconcile') && !readOnly);
+  const canEditVendorRating = canEditReceived;
+  const canEditReceiveDocs = amending || (mode === 'receive' && !readOnly);
+  const canEditTaxHalal = amending || (mode === 'receive' && !readOnly);
 
   const totals = useMemo(() => {
     let subtotal = 0;
@@ -304,21 +348,20 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
 
   const showCommitmentColumns = Boolean(order.isPreCommitted);
   const showTaxColumn = !showCommitmentColumns && !isPurchaseRequest
-    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view' || amending);
   // Halal cert is optional — show when org is under a halal policy (or value already stored).
   const showHalalCertColumn = !showCommitmentColumns
     && (requiresHalalCert || lines.some(line => line.halalCertNo.trim()))
-    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view' || amending);
   /** Expiry / temp live in Add Detail popup (not as table columns). */
   const showLineDetailColumn = !showCommitmentColumns
-    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const showReceiveDocs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const showVendorRatingInputs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view' || amending);
+  const showReceiveDocs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view' || amending);
+  const showVendorRatingInputs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view' || amending);
   /** Receive / reconcile / view: ordered vs received qty & price + variances. */
   const showOrderedReceivedColumns = !showCommitmentColumns
-    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const canEditReceived = (mode === 'receive' || mode === 'reconcile') && !readOnly;
-  const canEditVendorRating = (mode === 'receive' || mode === 'reconcile') && !readOnly;
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view' || amending);
+
   const lineHeaders = [
     'Component',
     'Product',
@@ -536,7 +579,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
   }
 
   async function handleReconcile() {
-    if (!canReconcile) return;
+    if (!canReconcile || amending) return;
     const payload = linePayload(lines);
     if (payload.some(line => line.quantity < 0)) {
       setError('Reconciled quantity cannot be negative. Use 0 for out of stock.');
@@ -571,6 +614,64 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
     }
   }
 
+  function startAmend() {
+    if (!canStartAmend) return;
+    setError(null);
+    setAmending(true);
+    setLines(buildEditableLines(order, mode, true));
+  }
+
+  function cancelAmend() {
+    if (saving) return;
+    setAmending(false);
+    setError(null);
+    setLines(buildEditableLines(order, mode, false));
+    setVendorDoNumber(order.vendorDoNumber?.trim() ?? '');
+    setVendorInvoiceNumber(order.vendorInvoiceNumber?.trim() ?? '');
+    setProductQualityRating(order.productQualityRating?.trim() ?? '');
+    setProductQualityComment(order.productQualityComment?.trim() ?? '');
+    setHygieneRating(order.hygieneRating?.trim() ?? '');
+    setHygieneComment(order.hygieneComment?.trim() ?? '');
+  }
+
+  async function handleAmend() {
+    if (!amending || !amendPhase) return;
+    if (amendPhase === 'received' && !canAmendReceived) return;
+    if (amendPhase === 'reconciled' && !canAmendReconciled) return;
+    const payload = linePayload(lines.filter(line => !line.isExtra));
+    if (payload.length === 0) {
+      setError('At least one line is required to save the correction.');
+      return;
+    }
+    if (payload.some(line => line.quantity < 0)) {
+      setError('Amended quantity cannot be negative. Use 0 for out of stock.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await api.amendPurchaseOrder(order.id, {
+        items: payload,
+        phase: amendPhase,
+        vendorDoNumber: vendorDoNumber.trim() || undefined,
+        vendorInvoiceNumber: vendorInvoiceNumber.trim() || undefined,
+        productQualityRating: productQualityRating || '',
+        productQualityComment: productQualityComment.trim() || undefined,
+        hygieneRating: hygieneRating || '',
+        hygieneComment: hygieneComment.trim() || undefined,
+      });
+      if (result.updatedVendorProductPrices && result.updatedVendorProductPrices.length > 0) {
+        applyVendorProductPriceUpdates(result.updatedVendorProductPrices);
+      }
+      setAmending(false);
+      onUpdated(result.order);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save purchase order correction.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleFinalizeDelivery() {
     if (!canFinalizeDelivery) return;
     setSaving(true);
@@ -585,31 +686,35 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
     }
   }
 
-  const title = order.isPreCommitted
-    ? 'Pre-committed PO'
-    : mode === 'approve'
-      ? 'Approve purchase request'
-      : mode === 'receive'
-        ? (order.status === 'Partially Delivered' ? 'Receive next shipment' : 'Receive purchase order')
-        : mode === 'reconcile'
-          ? (order.allowPartialDelivery ? 'Consolidate shipment' : 'Reconcile purchase order')
-          : 'Purchase details';
+  const title = amending
+    ? (amendPhase === 'reconciled' ? 'Edit reconciled purchase order' : 'Edit received purchase order')
+    : order.isPreCommitted
+      ? 'Pre-committed PO'
+      : mode === 'approve'
+        ? 'Approve purchase request'
+        : mode === 'receive'
+          ? (order.status === 'Partially Delivered' ? 'Receive next shipment' : 'Receive purchase order')
+          : mode === 'reconcile'
+            ? (order.allowPartialDelivery ? 'Consolidate shipment' : 'Reconcile purchase order')
+            : 'Purchase details';
 
-  const subtitle = order.isPreCommitted
-    ? 'View commitment dates, special price, and remaining quantity available for drawdown.'
-    : mode === 'approve'
-      ? 'Approve to convert this PR into an open purchase order.'
-      : mode === 'receive'
-        ? (order.allowPartialDelivery
-          ? 'Enter qty for this shipment (defaults to remaining). Confirm receive posts stock in Principal Component Units (PCU) at 4dp; any UOM rounding residual vs the PO line amount is shown on the Stock Card. PO stays Partially Delivered until Final delivery completed.'
-          : 'Confirm quantities and prices received — stock posts in PCU at 4dp (document PO amount stays authority; UOM rounding residual appears on the Stock Card inbound).')
-        : mode === 'reconcile'
+  const subtitle = amending
+    ? 'Correct quantities, prices, or documents. Status stays the same; stock cards update to match.'
+    : order.isPreCommitted
+      ? 'View commitment dates, special price, and remaining quantity available for drawdown.'
+      : mode === 'approve'
+        ? 'Approve to convert this PR into an open purchase order.'
+        : mode === 'receive'
           ? (order.allowPartialDelivery
-            ? 'Accounting affirmation for this shipment — clears received remarks on the stock card. PO stays Partially Delivered until Final delivery completed.'
-            : 'Accounting affirmation — clears received remarks; stock was already posted at receive.')
-          : order.canFinalizeDelivery
-            ? 'Shipments are received into stock and consolidated for Accounting. Click Final delivery completed to close this PO (delivery rating uses final qty/price vs issued).'
-            : 'This purchase has no pending workflow action.';
+            ? 'Enter qty for this shipment (defaults to remaining). Confirm receive posts stock in Principal Component Units (PCU) at 4dp; any UOM rounding residual vs the PO line amount is shown on the Stock Card. PO stays Partially Delivered until Final delivery completed.'
+            : 'Confirm quantities and prices received — stock posts in PCU at 4dp (document PO amount stays authority; UOM rounding residual appears on the Stock Card inbound).')
+          : mode === 'reconcile'
+            ? (order.allowPartialDelivery
+              ? 'Accounting affirmation for this shipment — clears received remarks on the stock card. PO stays Partially Delivered until Final delivery completed.'
+              : 'Accounting affirmation — clears received remarks; stock was already posted at receive.')
+            : order.canFinalizeDelivery
+              ? 'Shipments are received into stock and consolidated for Accounting. Click Final delivery completed to close this PO (delivery rating uses final qty/price vs issued).'
+              : 'This purchase has no pending workflow action.';
 
   return createPortal(
     <>
@@ -823,7 +928,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                 <label className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
                   Vendor DO number
                 </label>
-                {mode === 'receive' && !readOnly ? (
+                {canEditReceiveDocs ? (
                   <input
                     type="text"
                     value={vendorDoNumber}
@@ -839,7 +944,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                 <label className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
                   Vendor Invoice number
                 </label>
-                {mode === 'receive' && !readOnly ? (
+                {canEditReceiveDocs ? (
                   <input
                     type="text"
                     value={vendorInvoiceNumber}
@@ -851,7 +956,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                   <p className="text-xs font-medium text-foreground">{vendorInvoiceNumber || '—'}</p>
                 )}
               </div>
-              {mode === 'receive' && !readOnly ? (
+              {canEditReceiveDocs ? (
                 <p className="sm:col-span-2 text-[10px] text-muted-foreground">
                   Enter at least one of Vendor DO number or Vendor Invoice number (or both), matching the document(s) received.
                 </p>
@@ -863,13 +968,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
             <div className="px-4 py-2 border-b border-border bg-muted/30 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold">Line items</p>
-                {mode === 'receive' && !readOnly ? (
+                {mode === 'receive' && !readOnly && !amending ? (
                   <p className="text-[10px] text-muted-foreground mt-0.5">
                     Add freebies or credit-note replacements that were not on the original order.
                   </p>
                 ) : null}
               </div>
-              {mode === 'receive' && !readOnly ? (
+              {mode === 'receive' && !readOnly && !amending ? (
                 <button
                   type="button"
                   onClick={() => setShowAddProduct(true)}
@@ -1099,7 +1204,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                         {!hidePrices && showTaxColumn ? (
                           <div>
                             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tax</p>
-                            {mode === 'receive' && !readOnly ? (
+                            {canEditTaxHalal ? (
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -1125,9 +1230,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                         {showHalalCertColumn ? (
                           <div className="col-span-2">
                             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Halal cert no.</p>
-                            {readOnly || mode !== 'receive' ? (
-                              <p className="mt-0.5 break-words">{line.halalCertNo || '—'}</p>
-                            ) : (
+                            {canEditTaxHalal ? (
                               <input
                                 type="text"
                                 value={line.halalCertNo}
@@ -1135,6 +1238,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                                 placeholder="Optional"
                                 className="mt-0.5 w-full rounded border border-border bg-background px-2 py-1.5 text-xs"
                               />
+                            ) : (
+                              <p className="mt-0.5 break-words">{line.halalCertNo || '—'}</p>
                             )}
                           </div>
                         ) : null}
@@ -1358,7 +1463,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                           )}
                           {!hidePrices && showTaxColumn && (
                             <td className="px-3 py-2">
-                              {mode === 'receive' && !readOnly ? (
+                              {canEditTaxHalal ? (
                                 <input
                                   type="text"
                                   inputMode="decimal"
@@ -1377,9 +1482,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                           )}
                           {showHalalCertColumn && (
                             <td className="px-3 py-2">
-                              {readOnly || mode !== 'receive' ? (
-                                <span>{line.halalCertNo || '—'}</span>
-                              ) : (
+                              {canEditTaxHalal ? (
                                 <input
                                   type="text"
                                   value={line.halalCertNo}
@@ -1387,6 +1490,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                                   placeholder="Optional"
                                   className="w-32 rounded border border-border bg-background px-2 py-1"
                                 />
+                              ) : (
+                                <span>{line.halalCertNo || '—'}</span>
                               )}
                             </td>
                           )}
@@ -1575,16 +1680,50 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
           )}
         </div>
 
-        <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="px-4 py-2 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
-          >
-            Close
-          </button>
-          {isPendingApproval && (
+        <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-2 flex-wrap">
+          {amending ? (
+            <button
+              type="button"
+              onClick={cancelAmend}
+              disabled={saving}
+              className="px-4 py-2 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
+            >
+              Cancel edit
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
+            >
+              Close
+            </button>
+          )}
+          {canStartAmend && (
+            <button
+              type="button"
+              onClick={startAmend}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-border text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              title="Correct quantities, prices, or documents without changing status"
+            >
+              <Pencil size={14} />
+              Edit
+            </button>
+          )}
+          {amending && (
+            <button
+              type="button"
+              onClick={() => void handleAmend()}
+              disabled={saving || !amendPhase}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
+            >
+              <Check size={14} />
+              {saving ? 'Saving…' : 'Save correction'}
+            </button>
+          )}
+          {isPendingApproval && !amending && (
             <button
               type="button"
               onClick={() => void handleApprove()}
@@ -1595,7 +1734,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
               {saving ? 'Approving…' : 'Approve'}
             </button>
           )}
-          {mode === 'receive' && (
+          {mode === 'receive' && !amending && (
             <button
               type="button"
               onClick={() => void handleReceive()}
@@ -1606,7 +1745,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
               {saving ? 'Receiving…' : 'Confirm receive'}
             </button>
           )}
-          {mode === 'reconcile' && (
+          {mode === 'reconcile' && !amending && (
             <button
               type="button"
               onClick={() => void handleReconcile()}
@@ -1621,7 +1760,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated, teamActorName }
                   : 'Confirm consolidate'}
             </button>
           )}
-          {canFinalizeDelivery && (
+          {canFinalizeDelivery && !amending && (
             <button
               type="button"
               onClick={() => void handleFinalizeDelivery()}

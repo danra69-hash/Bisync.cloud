@@ -1877,6 +1877,10 @@ export interface PurchaseOrder {
   canApprove?: boolean;
   canReceive?: boolean;
   canReconcile?: boolean;
+  /** Correct receive fields while staying Received / Partially Delivered. */
+  canAmendReceived?: boolean;
+  /** Correct consolidated fields while staying Reconciled. */
+  canAmendReconciled?: boolean;
   canFinalizeDelivery?: boolean;
   items: PurchaseOrderItem[];
 }
@@ -1948,6 +1952,9 @@ export interface PurchaseOrderWorkflowPayload {
   productQualityComment?: string;
   hygieneRating?: string;
   hygieneComment?: string;
+  /** Amend only: received | reconciled */
+  phase?: 'received' | 'reconciled' | string;
+  reason?: string;
 }
 
 export interface ReconcilePurchaseOrderResult {
@@ -4439,6 +4446,16 @@ export const api = {
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/receive`, 'POST', payload),
   reconcilePurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
     fetchJsonWithMethod<ReconcilePurchaseOrderResult>(`/api/purchaseorders/${id}/reconcile`, 'POST', payload),
+  amendPurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
+    fetchJsonWithMethod<{
+      order: PurchaseOrder;
+      updatedVendorProductPrices?: { id: string; deliveryPrice: number }[];
+      phase?: string;
+    }>(
+      `/api/purchaseorders/${id}/amend`,
+      'POST',
+      payload,
+    ),
   finalizePurchaseOrderDelivery: (id: number) =>
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/finalize-delivery`, 'POST', {}),
   userNotifications: (userId: number, recipientName: string, unreadOnly = false) => {

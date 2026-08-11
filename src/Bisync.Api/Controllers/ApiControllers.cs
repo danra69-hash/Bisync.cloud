@@ -2363,6 +2363,202 @@ public class PurchaseOrdersController(
         return Ok(await MapPurchaseOrderAsync(order, allowPartial));
     }
 
+    /// <summary>
+    /// Correct a Received or Reconciled PO without changing status.
+    /// Rewrites linked InventoryPurchases + FIFO batches to match amended delivery qty/price.
+    /// </summary>
+    [HttpPost("{id:int}/amend")]
+    public async Task<ActionResult<object>> Amend(int id, [FromBody] PurchaseOrderWorkflowRequest request)
+    {
+        var order = await LoadOrderAsync(id, tracking: true);
+        if (order is null) return NotFound();
+
+        var phase = (request.Phase ?? string.Empty).Trim().ToLowerInvariant();
+        var isReceivedPhase = phase is "received" or "receive";
+        var isReconciledPhase = phase is "reconciled" or "reconcile";
+        if (!isReceivedPhase && !isReconciledPhase)
+            return BadRequest(new { message = "Amend phase must be 'received' or 'reconciled'." });
+
+        if (isReceivedPhase && !PurchaseOrderWorkflow.CanAmendReceived(order))
+            return Conflict(new { message = "Only Received / Partially Delivered purchase orders can be amended in the received phase." });
+        if (isReconciledPhase && !PurchaseOrderWorkflow.CanAmendReconciled(order))
+            return Conflict(new { message = "Only Reconciled purchase orders can be amended in the reconciled phase." });
+
+        if (request.Items is null || request.Items.Count == 0)
+            return BadRequest(new { message = "At least one line is required to amend." });
+        if (request.Items.Any(l => l.ItemId <= 0))
+            return BadRequest(new { message = "Amend cannot add new unordered lines. Correct existing lines only." });
+        if (request.Items.Any(l => l.Quantity < 0))
+            return BadRequest(new { message = "Amended quantity cannot be negative." });
+
+        var allowPartial = await ResolveAllowPartialAsync(order);
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        try
+        {
+            ApplyWorkflowLines(
+                order,
+                request.Items,
+                workflow: isReceivedPhase ? "receive" : "reconcile");
+
+            if (isReconciledPhase)
+            {
+                // Keep received snapshot aligned with the corrected consolidated truth.
+                foreach (var line in request.Items)
+                {
+                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                    if (item is null) continue;
+                    item.ReceivedQuantity = line.Quantity;
+                    item.ReceivedUnitPrice = line.UnitPrice;
+                    if (!allowPartial)
+                        item.DeliveredQuantity = DecimalRounding.ToDb(line.Quantity);
+                }
+            }
+            else if (!allowPartial)
+            {
+                foreach (var line in request.Items)
+                {
+                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                    if (item is null) continue;
+                    item.DeliveredQuantity = DecimalRounding.ToDb(line.Quantity);
+                }
+            }
+
+            if (request.VendorDoNumber is not null)
+                order.VendorDoNumber = request.VendorDoNumber.Trim();
+            if (request.VendorInvoiceNumber is not null)
+                order.VendorInvoiceNumber = request.VendorInvoiceNumber.Trim();
+            if (request.ProductQualityRating is not null)
+                order.ProductQualityRating = request.ProductQualityRating.Trim();
+            if (request.ProductQualityComment is not null)
+                order.ProductQualityComment = request.ProductQualityComment.Trim();
+            if (request.HygieneRating is not null)
+                order.HygieneRating = request.HygieneRating.Trim();
+            if (request.HygieneComment is not null)
+                order.HygieneComment = request.HygieneComment.Trim();
+
+            var stockError = await RewriteAmendedStockAsync(order, request.Items, isReconciledPhase);
+            if (stockError is not null)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new { message = stockError });
+            }
+
+            await db.SaveChangesAsync();
+
+            List<object>? updatedVendorProductPrices = null;
+            if (isReconciledPhase)
+            {
+                updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
+                    db, order.Items, order.Id);
+                await db.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+            var mapped = await MapPurchaseOrderAsync(order, allowPartial);
+            return Ok(new { order = mapped, updatedVendorProductPrices, phase });
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Recompute principal qty/price on InventoryPurchases for amended delivery packages.
+    /// </summary>
+    async Task<string?> RewriteAmendedStockAsync(
+        PurchaseOrder order,
+        List<PurchaseOrderLineWorkflowRequest> lines,
+        bool reconciledPhase)
+    {
+        foreach (var line in lines)
+        {
+            var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+            if (item is null)
+                return $"Amend line item #{line.ItemId} was not found on this purchase order.";
+            if (item.IsReturnableDeposit || string.IsNullOrWhiteSpace(item.ComponentId))
+                continue;
+
+            var packages = line.Quantity;
+            var packagePrice = line.UnitPrice;
+            var purchases = await db.InventoryPurchases
+                .Where(p => p.PurchaseOrderItemId == item.Id && p.PurchaseOrderId == order.Id)
+                .ToListAsync();
+            if (purchases.Count == 0)
+                continue;
+
+            var parent = await db.Ingredients.FirstOrDefaultAsync(ingredient =>
+                ingredient.ComponentId == item.ComponentId
+                && (order.CompanyId == null
+                    || ingredient.CompanyId == null
+                    || ingredient.CompanyId == order.CompanyId));
+
+            decimal stockQty = packages;
+            string stockUom = string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom;
+            decimal stockPrice = packagePrice;
+            decimal documentAmount = DecimalRounding.ToDb(packages * packagePrice);
+            decimal roundingResidual = 0m;
+
+            if (parent is not null)
+            {
+                var deliveryBasis = string.IsNullOrWhiteSpace(item.Unit)
+                    ? item.DeliveryPackage
+                    : item.Unit;
+                var (pathPrincipal, pathPrincipalUom) = await DeliveryPrincipalResolver.ResolvePathPrincipalAsync(
+                    db,
+                    parent,
+                    item.VendorProductId,
+                    deliveryBasis);
+                var inbound = IngredientUomBridge.ToInboundPrincipal(
+                    parent,
+                    packages,
+                    string.IsNullOrWhiteSpace(deliveryBasis) ? stockUom : deliveryBasis,
+                    packagePrice,
+                    item.VendorProductId,
+                    deliveryBasis,
+                    pathPrincipal,
+                    pathPrincipalUom);
+                stockQty = inbound.Quantity;
+                stockUom = inbound.Uom;
+                stockPrice = inbound.UnitPrice;
+                documentAmount = inbound.DocumentAmount;
+                roundingResidual = inbound.RoundingResidual;
+            }
+
+            // Prefer a single purchase row per PO line; if splits exist, rewrite the first and zero the rest.
+            var primary = purchases.OrderBy(p => p.Id).First();
+            primary.Quantity = stockQty;
+            primary.Uom = stockUom;
+            primary.UnitPrice = stockPrice;
+            primary.DocumentAmount = documentAmount;
+            primary.RoundingResidual = roundingResidual;
+            if (reconciledPhase
+                && string.Equals(
+                    primary.Remarks,
+                    PurchaseOrderWorkflow.StockRemarkReceivedPending,
+                    StringComparison.Ordinal))
+            {
+                primary.Remarks = string.Empty;
+            }
+
+            foreach (var extra in purchases.Where(p => p.Id != primary.Id))
+            {
+                extra.Quantity = 0;
+                extra.DocumentAmount = 0;
+                extra.RoundingResidual = 0;
+            }
+
+            await fifoBatches.SyncBatchFromPurchaseAsync(primary);
+            if (reconciledPhase)
+                await fifoBatches.UpdateBatchUnitCostFromPurchaseAsync(primary);
+            foreach (var extra in purchases.Where(p => p.Id != primary.Id))
+                await fifoBatches.SyncBatchFromPurchaseAsync(extra);
+        }
+
+        return null;
+    }
+
     IQueryable<PurchaseOrder> BaseQuery() =>
         db.PurchaseOrders
             .AsNoTracking()

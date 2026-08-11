@@ -94,6 +94,19 @@ public static class PurchaseOrderWorkflow
         string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase)
         && string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Correct receive qty/price/docs while staying Received (before consolidate).</summary>
+    public static bool CanAmendReceived(PurchaseOrder order) =>
+        string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+        && !order.IsPreCommitted
+        && (string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.Status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Correct consolidated qty/price/docs while staying Reconciled.</summary>
+    public static bool CanAmendReconciled(PurchaseOrder order) =>
+        string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+        && !order.IsPreCommitted
+        && string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
+
     public static bool CanFinalizeDelivery(PurchaseOrder order, bool allowPartialDelivery) =>
         allowPartialDelivery
         && string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase)
@@ -294,6 +307,8 @@ public static class PurchaseOrderWorkflow
             canApprove = CanApprove(order),
             canReceive = CanReceive(order, allowPartialDelivery),
             canReconcile = CanReconcile(order),
+            canAmendReceived = CanAmendReceived(order),
+            canAmendReconciled = CanAmendReconciled(order),
             canFinalizeDelivery = CanFinalizeDelivery(order, allowPartialDelivery),
             items = order.Items.Select(i => MapItem(
                 i,

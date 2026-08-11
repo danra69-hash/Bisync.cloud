@@ -1205,6 +1205,12 @@ public class PurchaseOrderWorkflowRequest
     public string? HygieneRating { get; set; }
     [MaxLength(2000)]
     public string? HygieneComment { get; set; }
+    /// <summary>Amend only: "received" | "reconciled".</summary>
+    [MaxLength(32)]
+    public string? Phase { get; set; }
+    /// <summary>Optional free-text reason for the correction.</summary>
+    [MaxLength(500)]
+    public string? Reason { get; set; }
 }
 
 public class B2bCustomerContactRequest

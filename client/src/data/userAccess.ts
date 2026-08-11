@@ -236,11 +236,32 @@ export function rmsGroupSomeEnabled(access: UserAccess, groupId: string): boolea
 
 export const RMS_APPROVE_ORDER_TASK = 'approveOrder';
 export const RMS_RECEIVE_ORDER_TASK = 'receiveOrder';
+export const RMS_CONSOLIDATE_ORDER_TASK = 'consolidateOrder';
+export const RMS_CREATE_EDIT_ORDER_TASK = 'createEditOrder';
 export const RMS_INVENTORY_POST_TASK = 'inventoryPost';
 export const RMS_INVENTORY_CONFIRM_TASK = 'inventoryConfirmation';
 
 export function canReceivePurchaseOrder(access: UserAccess): boolean {
   return hasRmsTask(access, RMS_RECEIVE_ORDER_TASK);
+}
+
+export function canConsolidatePurchaseOrder(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_CONSOLIDATE_ORDER_TASK)
+    || hasRmsTask(access, RMS_RECEIVE_ORDER_TASK)
+    || hasRmsTask(access, RMS_APPROVE_ORDER_TASK);
+}
+
+/** Correct a Received / Partially Delivered PO without consolidating. */
+export function canAmendReceivedPurchaseOrder(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_RECEIVE_ORDER_TASK)
+    || hasRmsTask(access, RMS_CREATE_EDIT_ORDER_TASK);
+}
+
+/** Correct a Reconciled PO (qty/price/docs) after consolidation. */
+export function canAmendReconciledPurchaseOrder(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_CONSOLIDATE_ORDER_TASK)
+    || hasRmsTask(access, RMS_CREATE_EDIT_ORDER_TASK)
+    || hasRmsTask(access, RMS_APPROVE_ORDER_TASK);
 }
 
 export function canSaveInventoryCount(access: UserAccess): boolean {
