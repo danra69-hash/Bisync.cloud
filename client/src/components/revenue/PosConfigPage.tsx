@@ -317,6 +317,7 @@ export function PosConfigPage({ selectedCompanyId, selectedLocationIds }: Props)
       ) : tab === 'tax-service' ? (
         <PosTaxServiceChargeTab
           selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
           products={products}
         />
       ) : (
