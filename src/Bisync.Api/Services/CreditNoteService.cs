@@ -738,27 +738,95 @@ public class CreditNoteService(
                 var uom = (p.Uom ?? string.Empty).Trim().ToUpperInvariant();
                 return string.IsNullOrEmpty(uom)
                     || uom == stockUomNorm
-                    || uom == deliveryUomNorm;
+                    || uom == deliveryUomNorm
+                    || UomCanonical.Equals(p.Uom, entry.StockUom)
+                    || UomCanonical.Equals(p.Uom, entry.DeliveryUom);
             })
             .ToList();
 
         if (candidates.Count == 0)
             return 0m;
 
-        var useStockUnits = candidates.Any(p =>
-            string.Equals((p.Uom ?? string.Empty).Trim(), entry.StockUom, StringComparison.OrdinalIgnoreCase));
-        var targetQty = useStockUnits ? entry.StockQuantity : entry.Quantity;
-        var targetPrice = useStockUnits ? entry.StockUnitPrice : entry.DeliveryUnitPrice;
+        var ingredient = await db.Ingredients.AsNoTracking()
+            .FirstOrDefaultAsync(
+                i => i.ComponentId == entry.ComponentId
+                    && (i.CompanyId == null || i.CompanyId == entry.CompanyId),
+                cancellationToken)
+            ?? await db.Ingredients.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ComponentId == entry.ComponentId, cancellationToken);
+
+        PurchaseOrderItem? replacementItem = null;
+        if (replacementPurchaseOrderItemId is > 0)
+        {
+            replacementItem = await db.PurchaseOrderItems.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == replacementPurchaseOrderItemId.Value, cancellationToken);
+        }
+
         var revalued = 0m;
+        var targetStockQty = entry.StockQuantity > 0 ? entry.StockQuantity : entry.Quantity;
+        var targetStockPrice = entry.StockUnitPrice > 0 ? entry.StockUnitPrice : entry.DeliveryUnitPrice;
+        var targetStockUom = !string.IsNullOrWhiteSpace(entry.StockUom)
+            ? entry.StockUom.Trim()
+            : entry.DeliveryUom;
 
         foreach (var purchase in candidates)
         {
-            if (revalued >= targetQty - StockCardFifoEngine.QtyEpsilon)
+            if (revalued >= targetStockQty - StockCardFifoEngine.QtyEpsilon)
                 break;
+
+            var remaining = DecimalRounding.ToDb(targetStockQty - revalued);
+            if (remaining <= StockCardFifoEngine.QtyEpsilon)
+                break;
+
+            // Freebie often still sits in delivery packages (tub). Convert to the CN stock
+            // UOM/qty so Stock Card inbound can normalize against Recipe UOM (e.g. Gr).
+            if (ingredient is not null
+                && !UomCanonical.Equals(purchase.Uom, targetStockUom)
+                && purchase.Quantity > 0
+                && purchase.Quantity + 0.0001m <= entry.Quantity + 0.0001m)
+            {
+                var deliveryBasis = replacementItem is null
+                    ? (string.IsNullOrWhiteSpace(entry.DeliveryUom) ? purchase.Uom : entry.DeliveryUom)
+                    : (string.IsNullOrWhiteSpace(replacementItem.Unit)
+                        ? replacementItem.DeliveryPackage
+                        : replacementItem.Unit);
+                var inbound = IngredientUomBridge.ToInboundPrincipal(
+                    ingredient,
+                    purchase.Quantity,
+                    purchase.Uom,
+                    entry.DeliveryUnitPrice > 0 ? entry.DeliveryUnitPrice : purchase.UnitPrice,
+                    entry.VendorProductId,
+                    deliveryBasis);
+
+                if (inbound.Quantity > purchase.Quantity + 0.0001m
+                    || UomCanonical.Equals(inbound.Uom, targetStockUom))
+                {
+                    var takeQty = Math.Min(inbound.Quantity, remaining);
+                    purchase.Quantity = takeQty;
+                    purchase.Uom = string.IsNullOrWhiteSpace(inbound.Uom) ? targetStockUom : inbound.Uom;
+                    purchase.UnitPrice = targetStockPrice;
+                    purchase.DocumentAmount = DecimalRounding.ToDb(takeQty * targetStockPrice);
+                    purchase.RoundingResidual = 0m;
+                    await UpdateBatchUnitCostAsync(purchase.Id, targetStockPrice, cancellationToken);
+                    revalued += takeQty;
+                    continue;
+                }
+            }
+
+            var useStockUnits = UomCanonical.Equals(purchase.Uom, entry.StockUom)
+                || (string.IsNullOrWhiteSpace(entry.StockUom)
+                    && !UomCanonical.Equals(purchase.Uom, entry.DeliveryUom));
+            var targetPrice = useStockUnits ? targetStockPrice : entry.DeliveryUnitPrice;
+            if (targetPrice <= 0)
+                targetPrice = targetStockPrice;
 
             purchase.UnitPrice = targetPrice;
             await UpdateBatchUnitCostAsync(purchase.Id, targetPrice, cancellationToken);
-            revalued += purchase.Quantity;
+            revalued += useStockUnits
+                ? purchase.Quantity
+                : (entry.StockQuantity > 0 && entry.Quantity > 0
+                    ? DecimalRounding.ToDb(purchase.Quantity * (entry.StockQuantity / entry.Quantity))
+                    : purchase.Quantity);
         }
 
         return revalued;

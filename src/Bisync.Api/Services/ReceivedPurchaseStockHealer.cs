@@ -38,11 +38,12 @@ public sealed class ReceivedPurchaseStockHealer(
 
     async Task<int> HealMissingAsync(CancellationToken cancellationToken)
     {
-        // Cheap existence probe — most requests find nothing to heal.
-        var missingIds = await db.PurchaseOrders.AsNoTracking()
+        // 1) Received POs with no InventoryPurchases at all (legacy receive-before-stock).
+        var fullyMissingIds = await db.PurchaseOrders.AsNoTracking()
             .Where(o =>
                 (o.Status == PurchaseOrderWorkflow.StatusReceived
-                    || o.Status == PurchaseOrderWorkflow.StatusPartiallyDelivered)
+                    || o.Status == PurchaseOrderWorkflow.StatusPartiallyDelivered
+                    || o.Status == PurchaseOrderWorkflow.StatusReconciled)
                 && !o.IsPreCommitted)
             .Where(o => !db.InventoryPurchases.Any(p => p.PurchaseOrderId == o.Id))
             .OrderBy(o => o.Id)
@@ -50,19 +51,47 @@ public sealed class ReceivedPurchaseStockHealer(
             .Take(100)
             .ToListAsync(cancellationToken);
 
-        if (missingIds.Count == 0)
+        // 2) Received POs where some lines posted but others never did (e.g. BBQ line
+        //    missing while sibling lines have purchases). Credit notes can still post
+        //    outbound from DeliveredQuantity alone — inbound must be healed per line.
+        var partialCandidateIds = await db.PurchaseOrders.AsNoTracking()
+            .Where(o =>
+                (o.Status == PurchaseOrderWorkflow.StatusReceived
+                    || o.Status == PurchaseOrderWorkflow.StatusPartiallyDelivered
+                    || o.Status == PurchaseOrderWorkflow.StatusReconciled)
+                && !o.IsPreCommitted)
+            .Where(o => db.InventoryPurchases.Any(p => p.PurchaseOrderId == o.Id))
+            .OrderByDescending(o => o.Id)
+            .Select(o => o.Id)
+            .Take(80)
+            .ToListAsync(cancellationToken);
+
+        var orderIds = fullyMissingIds
+            .Concat(partialCandidateIds)
+            .Distinct()
+            .ToList();
+
+        if (orderIds.Count == 0)
             return 0;
 
         var candidates = await db.PurchaseOrders
             .Include(o => o.Items)
-            .Where(o => missingIds.Contains(o.Id))
+            .Where(o => orderIds.Contains(o.Id))
             .ToListAsync(cancellationToken);
+
+        var postedItemIds = await db.InventoryPurchases.AsNoTracking()
+            .Where(p => orderIds.Contains(p.PurchaseOrderId) && p.PurchaseOrderItemId > 0)
+            .Select(p => p.PurchaseOrderItemId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var postedItemIdSet = postedItemIds.ToHashSet();
 
         var healed = 0;
         foreach (var order in candidates)
         {
             var lines = order.Items
                 .Where(i => !i.IsReturnableDeposit)
+                .Where(i => !postedItemIdSet.Contains(i.Id))
                 .Select(i =>
                 {
                     var qty = i.DeliveredQuantity > 0
@@ -162,10 +191,11 @@ public sealed class ReceivedPurchaseStockHealer(
                             documentAmount,
                             roundingResidual,
                             cancellationToken);
+                        postedItemIdSet.Add(item.Id);
                         continue;
                     }
 
-                    db.InventoryPurchases.Add(new InventoryPurchase
+                    var purchase = new InventoryPurchase
                     {
                         ComponentId = item.ComponentId,
                         ComponentName = string.IsNullOrWhiteSpace(item.ComponentName)
@@ -185,19 +215,22 @@ public sealed class ReceivedPurchaseStockHealer(
                         CompanyId = order.CompanyId,
                         LocationIdsJson = locationIdsJson,
                         LocationExternalId = locationExternalId,
-                    });
+                    };
+                    db.InventoryPurchases.Add(purchase);
+                    postedItemIdSet.Add(item.Id);
                 }
 
                 await db.SaveChangesAsync(cancellationToken);
 
+                var healedItemIds = lines.Select(l => l.Item.Id).ToList();
                 var receiptPurchases = await db.InventoryPurchases
-                    .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
+                    .Where(p => p.PurchaseOrderId == order.Id && healedItemIds.Contains(p.PurchaseOrderItemId))
                     .ToListAsync(cancellationToken);
                 foreach (var purchase in receiptPurchases)
                     await fifoBatches.RecordReceiptFromPurchaseAsync(purchase, cancellationToken);
 
                 await transaction.CommitAsync(cancellationToken);
-                healed++;
+                healed += lines.Count;
                 logger.LogInformation(
                     "Healed missing received stock for PO {PoNumber} (id {OrderId}) — {LineCount} line(s).",
                     order.PoNumber,
@@ -436,17 +469,33 @@ public sealed class ReceivedPurchaseStockHealer(
                 pathPrincipal,
                 pathPrincipalUom);
 
-            if (NearlyEqual(inbound.Quantity, purchase.Quantity) && NearlyEqual(inbound.UnitPrice, purchase.UnitPrice)
+            // CN-settled freebies keep PO delivery price at 0 but already carry a revalued
+            // unit price on the purchase — preserve extended value across PCU conversion.
+            var preserveRevalued = deliveryUnitPrice <= StockCardFifoEngine.QtyEpsilon
+                && purchase.UnitPrice > StockCardFifoEngine.QtyEpsilon
+                && purchase.Quantity > 0
+                && inbound.Quantity > 0;
+            var revaluedUnitPrice = preserveRevalued
+                ? DecimalRounding.ToDb((purchase.Quantity * purchase.UnitPrice) / inbound.Quantity)
+                : inbound.UnitPrice;
+            var revaluedDocument = preserveRevalued
+                ? DecimalRounding.ToDb(purchase.Quantity * purchase.UnitPrice)
+                : inbound.DocumentAmount;
+            var revaluedResidual = preserveRevalued
+                ? DecimalRounding.ToDb((inbound.Quantity * revaluedUnitPrice) - revaluedDocument)
+                : inbound.RoundingResidual;
+
+            if (NearlyEqual(inbound.Quantity, purchase.Quantity) && NearlyEqual(revaluedUnitPrice, purchase.UnitPrice)
                 && UomCanonical.Equals(inbound.Uom, purchase.Uom)
-                && NearlyEqual(inbound.DocumentAmount, purchase.DocumentAmount)
-                && NearlyEqual(inbound.RoundingResidual, purchase.RoundingResidual))
+                && NearlyEqual(revaluedDocument, purchase.DocumentAmount)
+                && NearlyEqual(revaluedResidual, purchase.RoundingResidual))
                 continue;
 
             purchase.Quantity = inbound.Quantity;
-            purchase.UnitPrice = inbound.UnitPrice;
+            purchase.UnitPrice = revaluedUnitPrice;
             purchase.Uom = inbound.Uom;
-            purchase.DocumentAmount = inbound.DocumentAmount;
-            purchase.RoundingResidual = inbound.RoundingResidual;
+            purchase.DocumentAmount = revaluedDocument;
+            purchase.RoundingResidual = revaluedResidual;
             rewritten++;
             rewrittenPurchaseIds.Add(purchase.Id);
             logger.LogInformation(
