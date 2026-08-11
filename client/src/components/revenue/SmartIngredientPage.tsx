@@ -578,6 +578,9 @@ export function SmartIngredientPage({
           </button>
         </div>
       </div>
+      <p className="text-[11px] text-muted-foreground font-sans -mt-1">
+        Template CSV is catalog fields only — excludes Last UOM Price, Daily Usage, Order Freq, Qty on Hand, Location, Products, and Vendors.
+      </p>
 
       {importError && (
         <p className="text-xs text-red-500 border border-red-300/50 rounded-lg px-3 py-2">{importError}</p>
