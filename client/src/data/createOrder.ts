@@ -273,30 +273,49 @@ export function resolveLowestEngagedTaggedVendorPrice(
   return best;
 }
 
+export function parseVendorEngagedLocationIds(vendor: Vendor): string[] {
+  const raw = vendor.engagedLocationIdsJson?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(value => String(value ?? '').trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Engaged at selected outlets. Empty EngagedLocationIdsJson = company-wide (tag-suggestion parity). */
+export function vendorEngagedAtLocations(vendor: Vendor, locationIds: string[]): boolean {
+  if (!vendor.engaged) return false;
+  if (locationIds.length === 0) return false;
+  const engagedLocs = parseVendorEngagedLocationIds(vendor);
+  if (engagedLocs.length === 0) return true;
+  const selected = new Set(locationIds.map(id => id.trim()).filter(Boolean));
+  return engagedLocs.some(id => selected.has(id));
+}
+
+/**
+ * My Order / templates vendor dropdown: every active engaged vendor for the selected
+ * locations (and org policy) — not only vendors that currently have tagged lines.
+ * Tagged-only filtering previously hid engaged vendors from "All vendors".
+ */
 export function resolveVendorsForSelectedLocations(
-  components: ComponentRow[],
+  _components: ComponentRow[],
   locationIds: string[],
   vendors: Vendor[],
   orgPolicyTags: CompanyVendorPolicyTag[] = [],
+  companyId: number | null = null,
 ): Vendor[] {
-  const catalog = applyVendorProductOverrides();
-  const vendorsByExternalId = new Map(vendors.map(v => [v.externalId, v]));
-  const vendorIds = new Set<string>();
-
-  for (const component of components) {
-    if (!component.active) continue;
-    if (!componentMatchesLocations(component, locationIds)) continue;
-
-    for (const product of resolveTaggedProductsForComponent(component, catalog, { locationIds })) {
-      if (!productAllowedByOrgPolicy(product, vendorsByExternalId, orgPolicyTags)) continue;
-      vendorIds.add(product.vendorExternalId);
-    }
-  }
-
   return vendors
-    .filter(v => v.engaged
-      && vendorIds.has(v.externalId)
-      && vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v))
+    .filter(v => {
+      if (v.active === false) return false;
+      if (companyId != null && v.companyId != null && v.companyId !== companyId) return false;
+      if (!vendorEngagedAtLocations(v, locationIds)) return false;
+      return vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v);
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

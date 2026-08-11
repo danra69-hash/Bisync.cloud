@@ -111,7 +111,7 @@ export function CreateOrderPage({
       setVendors([]);
       return;
     }
-    api.vendors()
+    api.vendors(true, selectedCompanyId)
       .then(setVendors)
       .catch(() => setVendors([]));
   }, [selectedCompanyId]);
@@ -140,8 +140,14 @@ export function CreateOrderPage({
   );
 
   const vendorOptions = useMemo(
-    () => resolveVendorsForSelectedLocations(components, selectedLocationIds, vendors, orgPolicyTags),
-    [components, selectedLocationIds, vendors, orgPolicyTags],
+    () => resolveVendorsForSelectedLocations(
+      components,
+      selectedLocationIds,
+      vendors,
+      orgPolicyTags,
+      selectedCompanyId,
+    ),
+    [components, selectedLocationIds, vendors, orgPolicyTags, selectedCompanyId],
   );
 
   useEffect(() => {
