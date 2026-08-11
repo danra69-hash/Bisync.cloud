@@ -8,12 +8,17 @@ import {
   setCachedComponentCatalog,
   type ComponentCatalogState,
 } from './revMgmtConfigStore';
+import {
+  ensureAreaStorageAssignmentFromPlan,
+  loadStorageAssignment,
+} from './storageAssignment';
 
 export type CatalogEnsureResult = {
   groups: string[];
   recipeUoms: string[];
   inventoryUoms: string[];
   storages: string[];
+  areas: string[];
 };
 
 function uniqueSorted(values: string[]): string[] {
@@ -524,11 +529,13 @@ export function previewCatalogEnsuresFromPlan(
 ): CatalogEnsureResult {
   const drafts = collectDraftsFromPlan(plan);
   const uoms = collectDraftUoms(drafts).map(normalizeRecipeUnitInput);
+  const knownAreas = loadStorageAssignment().areas;
   return {
     groups: findNewValues(drafts.map(draft => draft.group), getKnownGroups(existingRows)),
     recipeUoms: findNewValues(uoms, getKnownRecipeUnits()),
     inventoryUoms: findNewValues(uoms, getKnownRecipeUnits()),
     storages: findNewValues(drafts.flatMap(draft => draft.storage), getKnownStorageOptions()),
+    areas: findNewValues(drafts.map(draft => draft.area), knownAreas),
   };
 }
 
@@ -565,6 +572,28 @@ export function ensureComponentCatalogFromPlan(
     recipeUoms: ensureRecipeUnitsExist(uoms, companyId).added,
     inventoryUoms: ensureRecipeUnitsExist(uoms, companyId).added,
     storages: ensureStorageOptionsExist(drafts.flatMap(draft => draft.storage), companyId).added,
+    areas: [],
+  };
+}
+
+/** Catalog extras + My Storage areas/entries from non-blank Area / Storage cells. */
+export async function ensureComponentCatalogAndStorageFromPlan(
+  plan: SmartComponentImportPlan,
+  existingRows: ComponentRow[] = [],
+  companyId?: number | null,
+  locationIds: string[] = [],
+): Promise<CatalogEnsureResult> {
+  const base = ensureComponentCatalogFromPlan(plan, existingRows, companyId);
+  const drafts = collectDraftsFromPlan(plan);
+  const areaStorage = await ensureAreaStorageAssignmentFromPlan(drafts, locationIds, companyId);
+  // Storage types also land in component catalog extras when brand-new.
+  if (areaStorage.storages.length > 0) {
+    ensureStorageOptionsExist(areaStorage.storages, companyId);
+  }
+  return {
+    ...base,
+    areas: areaStorage.areas,
+    storages: uniqueSorted([...base.storages, ...areaStorage.storages]),
   };
 }
 
@@ -581,8 +610,12 @@ export function normalizeImportDraft(
 ): SmartComponentImportDraft {
   return {
     ...draft,
-    category: resolveCategoryName(draft.category, existingRows),
-    group: resolveGroupName(draft.group, existingRows),
+    category: draft.category.trim()
+      ? resolveCategoryName(draft.category, existingRows)
+      : draft.category,
+    group: draft.group.trim()
+      ? resolveGroupName(draft.group, existingRows)
+      : draft.group,
     recipeUom: normalizeRecipeUnitInput(draft.recipeUom),
     inventoryUom: normalizeRecipeUnitInput(draft.inventoryUom),
     altRecipeUnits: normalizeAltUnits(draft.altRecipeUnits),

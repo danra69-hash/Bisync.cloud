@@ -150,13 +150,13 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'component-upload-import': {
     area: "Component \u00b7 My Component",
-    expected: "CSV import creates a component with Principal Component Unit and Alternate Component UOM (Bag).",
+    expected: "CSV import is absolute by Component ID: update when ID exists, create (+ assign ID) when blank, deactivate active rows missing from the upload, and create new Area/Storage values while leaving blank Area/Storage unchanged.",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
-      'Check CSV parse/import plan and altRecipeUnits persistence.',
+      'Check CSV parse/import plan (buildSmartComponentImportPlan) and altRecipeUnits persistence.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',
     ],
-    checks: ['Import plan create exists', 'Alternate Bag parsed', 'Component created'],
+    checks: ['ID update / empty-ID create', 'Missing rows deactivated', 'Area/Storage ensure + blank preserve', 'Component created'],
   },
   'component-edit-par-stock': {
     area: "Component \u00b7 My Component",

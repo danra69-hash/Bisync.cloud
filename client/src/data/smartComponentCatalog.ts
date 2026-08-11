@@ -54,6 +54,17 @@ export type SmartComponentImportDraft = {
   parStockUom?: string;
   templateParStock?: number;
   templateLastUpdated?: string;
+  /**
+   * Blank cells in the uploaded template. On update, these preserve existing
+   * values instead of applying parse defaults.
+   */
+  blankFields?: {
+    category?: boolean;
+    group?: boolean;
+    storage?: boolean;
+    area?: boolean;
+    active?: boolean;
+  };
 };
 
 export type SmartComponentMergeCandidate = {
@@ -561,18 +572,34 @@ function mergeDraftWithExisting(
   existing: ComponentRow,
 ): SmartComponentImportDraft {
   const detail = resolveDetailConfigForRow(existing);
+  const blank = draft.blankFields ?? {};
+  const existingArea = resolveTemplateArea(existing);
   const merged: SmartComponentImportDraft = {
     ...draft,
+    // Absolute when provided; blank template cells keep existing values.
+    category: blank.category || !draft.category.trim()
+      ? existing.category
+      : draft.category,
+    group: blank.group || !draft.group.trim()
+      ? existing.group
+      : draft.group,
+    storage: blank.storage || draft.storage.length === 0
+      ? [...(existing.storage ?? [])]
+      : draft.storage,
+    area: blank.area || !draft.area.trim()
+      ? existingArea
+      : draft.area.trim(),
+    active: blank.active ? existing.active : draft.active,
     lastPriceRecipe: draft.lastPriceRecipe > 0 ? draft.lastPriceRecipe : existing.lastPriceRecipe,
     lastPriceInventory: draft.lastPriceInventory > 0 ? draft.lastPriceInventory : existing.lastPriceInventory,
     orderFreqDays: draft.orderFreqDays > 0 ? draft.orderFreqDays : existing.orderFreqDays,
     storageNote: draft.storageNote || existing.storageNote || '',
-    active: draft.active,
     convertFromInventoryQty: draft.convertFromInventoryQty || detail.convertFromInventoryQty || '1',
     convertToRecipeQty: draft.convertToRecipeQty || detail.convertToRecipeQty || '1',
     dailyUsage: draft.dailyUsage > 0 ? draft.dailyUsage : existing.dailyUsage,
     // Location is no longer on the download template — keep existing when omitted.
     locations: draft.locations.length > 0 ? draft.locations : existing.locations,
+    blankFields: undefined,
   };
 
   if (draft.templateParStock !== undefined && draft.templateParStock > 0) {
@@ -584,6 +611,20 @@ function mergeDraftWithExisting(
   }
 
   return merged;
+}
+
+/** Defaults for brand-new creates when the template left optional cells blank. */
+export function finalizeCreateDraft(draft: SmartComponentImportDraft): SmartComponentImportDraft {
+  const blank = draft.blankFields ?? {};
+  return {
+    ...draft,
+    category: blank.category || !draft.category.trim() ? 'Food' : draft.category.trim(),
+    group: blank.group || !draft.group.trim() ? 'Dry Goods' : draft.group.trim(),
+    area: blank.area ? '' : draft.area.trim(),
+    storage: blank.storage ? [] : draft.storage,
+    active: blank.active ? true : draft.active,
+    blankFields: undefined,
+  };
 }
 
 export function prepareImportDraftForSave(draft: SmartComponentImportDraft): SmartComponentImportDraft {
@@ -646,7 +687,8 @@ function rowToDraft(
   const principalInventoryConversion = parsePrincipalInventoryConversion(
     get(['Principal inventory Conversion'], 10),
   );
-  const storage = parseListField(get(['Storage'], 18));
+  const storageRaw = get(['Storage'], 18);
+  const storage = parseListField(storageRaw);
   const hasLocationColumn = headers.some(h => {
     const key = normalizeTemplateHeader(h);
     return key === 'location' || key === 'locations';
@@ -667,6 +709,9 @@ function rowToDraft(
   const orderFreqRaw = get(['Order Freq (days)', 'Order Freq'], -1);
   const orderFreqDays = parseInt(String(orderFreqRaw).replace(/[^0-9]/g, ''), 10) || 7;
   const activeRaw = get(['Active'], 19);
+  const categoryRaw = get(['Category'], 1);
+  const groupRaw = get(['Group'], 2);
+  const areaRaw = get(['Area'], 17);
 
   const altRecipeUnits = parseAltUnitsFromColumns(
     get(['Alternate Component Unit 1', 'Unit Alternate Component Unit 1'], 5),
@@ -681,11 +726,19 @@ function rowToDraft(
     get(['Conversion 5'], 14),
   );
 
+  const blankFields = {
+    category: !categoryRaw.trim(),
+    group: !groupRaw.trim(),
+    storage: !storageRaw.trim(),
+    area: !areaRaw.trim(),
+    active: !activeRaw.trim(),
+  };
+
   const draftRow: SmartComponentImportDraft = {
     ...blankImportDraftDefaults(),
     componentId: get(['Component ID'], 0).toUpperCase(),
-    category: get(['Category'], 1) || 'Food',
-    group: get(['Group'], 2) || 'Dry Goods',
+    category: categoryRaw.trim(),
+    group: groupRaw.trim(),
     name,
     recipeUom,
     inventoryUom: recipeUom,
@@ -708,14 +761,12 @@ function rowToDraft(
     orderFreqDays,
     storage,
     locations,
-    active: activeRaw ? parseActive(activeRaw) : true,
+    active: activeRaw.trim() ? parseActive(activeRaw) : true,
     templateParStock: templateParStock > 0 ? templateParStock : undefined,
     parStockUom: parStockUomRaw || undefined,
     templateLastUpdated: get(['Last Updated'], 20) || undefined,
-    area: get(['Area'], 17) || resolveTemplateArea(
-      { storage, locations } as ComponentRow,
-      scope,
-    ),
+    area: areaRaw.trim(),
+    blankFields,
   };
 
   if (templateParStock > 0) {
@@ -856,6 +907,8 @@ function buildTemplateComparable(
     orderFreqDays?: number;
     parStockUom?: string;
     active?: boolean;
+    /** Explicit Area cell from template (preferred over inferred area). */
+    templateArea?: string;
   },
   scope?: SmartComponentLocationScope,
 ): TemplateComparable {
@@ -933,13 +986,14 @@ function buildTemplateComparable(
     orderFreqDays: row.orderFreqDays && row.orderFreqDays > 0 ? String(row.orderFreqDays) : '',
     parStock: parStockFields.parStock,
     parStockUom: parStockFields.parStockUom,
-    area: resolveTemplateArea(
-      {
-        storage: row.storage,
-        locations: row.locations,
-      } as ComponentRow,
-      scope,
-    ),
+    area: (row.templateArea || '').trim()
+      || resolveTemplateArea(
+        {
+          storage: row.storage,
+          locations: row.locations,
+        } as ComponentRow,
+        scope,
+      ),
     storage: formatListField(row.storage),
     locations: resolveTemplateLocationNames(row.locations, scope),
     active: row.active === false ? 'No' : 'Yes',
@@ -947,7 +1001,7 @@ function buildTemplateComparable(
   };
 }
 
-function draftToComparableRow(draft: SmartComponentImportDraft): ComponentRow {
+function draftToComparableRow(draft: SmartComponentImportDraft, existing?: ComponentRow): ComponentRow {
   const migrated = migrateInventoryUomsIntoComponentAlts({
     recipeUnit: fromApiUom(draft.recipeUom) || draft.recipeUom,
     inventoryUnit: fromApiUom(draft.inventoryUom) || draft.inventoryUom || draft.recipeUom,
@@ -956,6 +1010,9 @@ function draftToComparableRow(draft: SmartComponentImportDraft): ComponentRow {
     convertFromInventoryQty: draft.convertFromInventoryQty || '1',
     convertToRecipeQty: draft.convertToRecipeQty || '1',
   });
+  const storage = draft.storage.length > 0
+    ? draft.storage
+    : (existing?.storage ?? []);
   return {
     componentId: draft.componentId,
     name: draft.name,
@@ -967,12 +1024,12 @@ function draftToComparableRow(draft: SmartComponentImportDraft): ComponentRow {
     lastPriceInventory: draft.lastPriceInventory,
     dailyUsage: draft.dailyUsage,
     orderFreqDays: draft.orderFreqDays,
-    storage: draft.storage.length > 0 ? draft.storage : ['Dry Store'],
+    storage,
     storageNote: draft.storageNote,
     attachedProducts: 0,
     attachedVendors: 0,
     active: draft.active,
-    locations: draft.locations.length > 0 ? draft.locations : ['all'],
+    locations: draft.locations.length > 0 ? draft.locations : (existing?.locations ?? ['all']),
     detailConfig: {
       altRecipeUnits: migrated.altRecipeUnits,
       altInventoryUnits: [],
@@ -1012,7 +1069,7 @@ function diffRows(
   );
   const next = buildTemplateComparable(
     {
-      ...draftToComparableRow(draft),
+      ...draftToComparableRow(draft, existing),
       altRecipeUnits: draft.altRecipeUnits,
       altInventoryUnits: draft.altInventoryUnits,
       convertFromInventoryQty: draft.convertFromInventoryQty,
@@ -1022,6 +1079,7 @@ function diffRows(
       orderFreqDays: draft.orderFreqDays,
       parStockUom: draft.parStockUom,
       active: draft.active,
+      templateArea: draft.area,
     },
     scope,
   );
@@ -1411,7 +1469,7 @@ export function applyMergeResolutions(
       continue;
     }
 
-    nextPlan.creates.push(winnerDraft);
+    nextPlan.creates.push(finalizeCreateDraft(winnerDraft));
   }
 
   return nextPlan;
@@ -1478,10 +1536,8 @@ export function buildSmartComponentImportPlan(
       .filter(row => row.componentId)
       .map(row => [row.componentId.trim().toUpperCase(), row]),
   );
-  const byName = new Map(
-    existingRows.map(row => [row.name.trim().toLowerCase(), row]),
-  );
   const seenIds = new Map<string, string>();
+  const matchedExistingIds = new Set<number>();
 
   for (let index = 0; index < drafts.length; index++) {
     if (blocked.has(index)) continue;
@@ -1505,13 +1561,13 @@ export function buildSmartComponentImportPlan(
       seenIds.set(componentId, nameKey);
     }
 
-    const existing = componentId
-      ? byComponentId.get(componentId)
-      : byName.get(nameKey);
-
-    const draft = existing ? mergeDraftWithExisting(rawDraft, existing) : rawDraft;
+    // Absolute sync: match updates by Component ID only.
+    // Empty ID + filled details → create (API assigns Component ID).
+    const existing = componentId ? byComponentId.get(componentId) : undefined;
 
     if (existing) {
+      if (existing.id != null) matchedExistingIds.add(existing.id);
+      const draft = mergeDraftWithExisting(rawDraft, existing);
       const changes = diffRows(existing, draft, scope);
       if (changes.length === 0) {
         plan.unchanged.push(existing);
@@ -1521,12 +1577,33 @@ export function buildSmartComponentImportPlan(
       continue;
     }
 
-    if (!draft.name.trim()) {
+    if (!rawDraft.name.trim()) {
       plan.errors.push('Skipped row with empty component name.');
       continue;
     }
 
-    plan.creates.push(draft);
+    plan.creates.push(finalizeCreateDraft(rawDraft));
+  }
+
+  // Active components in scope that are absent from the upload are deactivated.
+  const conflictExistingIds = new Set<number>();
+  for (const conflict of conflicts) {
+    for (const candidate of conflict.candidates) {
+      if (candidate.existing?.id != null) conflictExistingIds.add(candidate.existing.id);
+    }
+  }
+
+  const scopedExisting = filterRowsForLocationScope(existingRows, scope);
+  for (const row of scopedExisting) {
+    if (!row.active) continue;
+    if (row.id != null && matchedExistingIds.has(row.id)) continue;
+    if (row.id != null && conflictExistingIds.has(row.id)) continue;
+    const id = (row.componentId || '').trim().toUpperCase();
+    if (id && seenIds.has(id)) continue;
+    plan.deactivations.push({
+      existing: row,
+      reason: 'Not present in uploaded template',
+    });
   }
 
   return plan;
@@ -1537,7 +1614,7 @@ export function draftToComponentRow(
   existingComponentIds: string[],
   existing?: ComponentRow,
 ): ComponentRow {
-  const comparable = draftToComparableRow(draft);
+  const comparable = draftToComparableRow(draft, existing);
   const existingDetail = resolveDetailConfigForRow(existing ?? {});
   const componentId = draft.componentId.trim().toUpperCase()
     || existing?.componentId

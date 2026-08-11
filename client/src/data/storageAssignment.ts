@@ -155,6 +155,91 @@ export function storageEntryKey(entry: Pick<MyStorageEntry, 'location' | 'area' 
   return `${entry.location}::${entry.area}::${entry.sourceStorageId}::${entry.name}`;
 }
 
+export type AreaStorageEnsureResult = {
+  areas: string[];
+  storages: string[];
+};
+
+/**
+ * Ensure My Storage areas and storage entries exist for non-blank Area / Storage
+ * values from a component import plan (selected locations).
+ */
+export async function ensureAreaStorageAssignmentFromPlan(
+  drafts: Array<{ area?: string; storage?: string[] }>,
+  locationIds: string[],
+  companyId?: number | null,
+): Promise<AreaStorageEnsureResult> {
+  if (!companyId || locationIds.length === 0) {
+    return { areas: [], storages: [] };
+  }
+
+  const state = await ensureStorageAssignment(companyId);
+  let areas = [...state.areas];
+  let entries = [...state.entries];
+  let nextId = state.nextEntryId;
+  const addedAreas: string[] = [];
+  const addedStorages: string[] = [];
+  const areaKeys = new Set(areas.map(a => a.trim().toLowerCase()).filter(Boolean));
+  const entryKeys = new Set(entries.map(storageEntryKey));
+
+  for (const draft of drafts) {
+    const area = (draft.area || '').trim();
+    if (area) {
+      const key = area.toLowerCase();
+      if (!areaKeys.has(key)) {
+        areas.push(area);
+        areaKeys.add(key);
+        addedAreas.push(area);
+      }
+    }
+
+    const storageNames = (draft.storage ?? []).map(s => s.trim()).filter(Boolean);
+    if (storageNames.length === 0) continue;
+
+    const entryArea = area || 'Kitchen';
+    if (!areaKeys.has(entryArea.toLowerCase())) {
+      areas.push(entryArea);
+      areaKeys.add(entryArea.toLowerCase());
+      if (entryArea !== area) addedAreas.push(entryArea);
+    }
+
+    for (const name of storageNames) {
+      for (const locationId of locationIds) {
+        const location = normalizeStorageLocationKey(locationId) || locationId;
+        const candidate: MyStorageEntry = {
+          id: nextId,
+          location,
+          area: entryArea,
+          sourceStorageId: 0,
+          name,
+          type: name,
+          items: 0,
+        };
+        const key = storageEntryKey(candidate);
+        if (entryKeys.has(key)) continue;
+        entries.push(candidate);
+        entryKeys.add(key);
+        nextId += 1;
+        if (!addedStorages.some(s => s.toLowerCase() === name.toLowerCase())) {
+          addedStorages.push(name);
+        }
+      }
+    }
+  }
+
+  if (addedAreas.length === 0 && addedStorages.length === 0) {
+    return { areas: [], storages: [] };
+  }
+
+  await saveStorageAssignmentApi(companyId, {
+    areas: [...new Set(areas)].sort((a, b) => a.localeCompare(b)),
+    entries,
+    nextEntryId: nextId,
+  });
+
+  return { areas: addedAreas, storages: addedStorages };
+}
+
 /** Default Kitchen storages seeded when a location has no My Storage rows yet. */
 const DEFAULT_LOCATION_STORAGE_TEMPLATES: Omit<MyStorageEntry, 'id' | 'location'>[] = [
   { area: 'Kitchen', sourceStorageId: 1, name: 'Walk-in Freezer', type: 'Freezer', items: 0 },

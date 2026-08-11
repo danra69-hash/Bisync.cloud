@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileUp, GitMerge, X } from 'lucide-react';
 import { api } from '../../api';
 import {
-  ensureComponentCatalogFromPlan,
+  ensureComponentCatalogAndStorageFromPlan,
   normalizeImportDraft,
   previewCatalogEnsuresFromPlan,
 } from '../../data/componentCatalogConfig';
@@ -75,7 +75,8 @@ export function SmartComponentImportReviewPanel({
     catalogAdds.groups.length > 0
     || catalogAdds.recipeUoms.length > 0
     || catalogAdds.inventoryUoms.length > 0
-    || catalogAdds.storages.length > 0;
+    || catalogAdds.storages.length > 0
+    || catalogAdds.areas.length > 0;
 
   function handleMergeComplete(resolutions: Record<string, string>) {
     const mergedPlan = applyMergeResolutions(workingPlan, resolutions, existingRows, locationScope);
@@ -120,7 +121,12 @@ export function SmartComponentImportReviewPanel({
     const planToApply: SmartComponentImportPlan = { ...workingPlan, creates };
 
     try {
-      ensureComponentCatalogFromPlan(planToApply, existingRows, selectedCompanyId);
+      await ensureComponentCatalogAndStorageFromPlan(
+        planToApply,
+        existingRows,
+        selectedCompanyId,
+        locationScope?.selectedLocationIds ?? [],
+      );
 
       const existingIds = existingRows.map(row => row.componentId).filter(Boolean);
       const nextRows = [...existingRows];
@@ -263,6 +269,9 @@ export function SmartComponentImportReviewPanel({
                 {catalogAdds.storages.length > 0 && (
                   <p><span className="font-medium text-foreground">Storage:</span> {catalogAdds.storages.join(', ')}</p>
                 )}
+                {catalogAdds.areas.length > 0 && (
+                  <p><span className="font-medium text-foreground">Areas:</span> {catalogAdds.areas.join(', ')}</p>
+                )}
               </div>
             </section>
           )}
@@ -317,9 +326,13 @@ export function SmartComponentImportReviewPanel({
             <section className="space-y-2">
               <h4 className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Will Be Deactivated</h4>
               <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground space-y-1">
+                <p className="mb-2">
+                  These active components are not in the uploaded template and will be set inactive.
+                </p>
                 {workingPlan.deactivations.map(item => (
                   <p key={item.existing.id ?? item.existing.componentId}>
                     {item.existing.componentId || item.existing.name} · {item.existing.name}
+                    {item.reason ? ` — ${item.reason}` : ''}
                   </p>
                 ))}
               </div>
