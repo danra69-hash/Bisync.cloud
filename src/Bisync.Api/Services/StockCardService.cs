@@ -935,19 +935,41 @@ public class StockCardService(
                 .Where(i => summarizeItemIds.Contains(i.Id))
                 .ToDictionaryAsync(i => i.Id, cancellationToken);
 
+        var summarizeVpIds = summarizePoItems.Values
+            .Select(i => i.VendorProductId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var summarizeVendorProducts = summarizeVpIds.Count == 0
+            ? new Dictionary<string, VendorProduct>(StringComparer.OrdinalIgnoreCase)
+            : await db.VendorProducts.AsNoTracking()
+                .Where(v => summarizeVpIds.Contains(v.ExternalId))
+                .ToDictionaryAsync(v => v.ExternalId, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
         purchases = purchases
             .Where(p => PurchaseMatchesSelectedLocations(p, locationIds))
             .Select(p =>
             {
                 summarizePoItems.TryGetValue(p.PurchaseOrderItemId, out var poItem);
-                return TryResolvePurchaseForDisplay(
+                VendorProduct? vendorProduct = null;
+                if (poItem is not null
+                    && !string.IsNullOrWhiteSpace(poItem.VendorProductId)
+                    && summarizeVendorProducts.TryGetValue(poItem.VendorProductId.Trim(), out var vp))
+                    vendorProduct = vp;
+
+                if (TryResolvePurchaseForDisplay(
                         ingredient,
                         p,
                         poItem,
                         displayUom,
                         out var qty,
-                        out var price)
-                    ? ClonePurchaseWithQty(p, qty, price, displayUom)
+                        out var price,
+                        vendorProduct))
+                    return ClonePurchaseWithQty(p, qty, price, displayUom);
+
+                // Never drop received purchases from inbound summary (BBQ tub residual).
+                return p.Quantity > 0
+                    ? ClonePurchaseWithQty(p, p.Quantity, p.UnitPrice, string.IsNullOrWhiteSpace(p.Uom) ? displayUom : p.Uom)
                     : null;
             })
             .Where(p => p is not null)
@@ -1273,6 +1295,17 @@ public class StockCardService(
                     .ToDictionaryAsync(i => i.Id, cancellationToken);
         }
 
+        var vendorProductIds = poItemsById.Values
+            .Select(i => i.VendorProductId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var vendorProductsById = vendorProductIds.Count == 0
+            ? new Dictionary<string, VendorProduct>(StringComparer.OrdinalIgnoreCase)
+            : await db.VendorProducts.AsNoTracking()
+                .Where(v => vendorProductIds.Contains(v.ExternalId))
+                .ToDictionaryAsync(v => v.ExternalId, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
         var events = new List<FifoEvent>();
 
         foreach (var purchase in purchases)
@@ -1281,14 +1314,30 @@ public class StockCardService(
                 continue;
 
             poItemsById.TryGetValue(purchase.PurchaseOrderItemId, out var poItem);
+            VendorProduct? vendorProduct = null;
+            if (poItem is not null
+                && !string.IsNullOrWhiteSpace(poItem.VendorProductId)
+                && vendorProductsById.TryGetValue(poItem.VendorProductId.Trim(), out var vp))
+                vendorProduct = vp;
+
+            var eventUom = displayUom;
             if (!TryResolvePurchaseForDisplay(
                     ingredient,
                     purchase,
                     poItem,
                     displayUom,
                     out var convertedQty,
-                    out var convertedPrice))
-                continue;
+                    out var convertedPrice,
+                    vendorProduct))
+            {
+                // Never hide a received PO inbound from Stock Card — keep package qty visible
+                // with its stored UOM when DU→PCU principal cannot be resolved.
+                convertedQty = purchase.Quantity;
+                convertedPrice = purchase.UnitPrice;
+                eventUom = string.IsNullOrWhiteSpace(purchase.Uom) ? displayUom : purchase.Uom.Trim();
+                if (convertedQty <= 0)
+                    continue;
+            }
 
             var entryType = purchase.PurchaseOrderId > 0 ? "purchase" : "cash_purchase";
             var poNumber = purchase.PurchaseOrderId > 0 && poNumbers.TryGetValue(purchase.PurchaseOrderId, out var num)
@@ -1341,7 +1390,7 @@ public class StockCardService(
                 EntryType = entryType,
                 Quantity = convertedQty,
                 SignedQty = convertedQty,
-                Uom = displayUom,
+                Uom = eventUom,
                 UnitPrice = convertedPrice,
                 Reason = reason,
                 ReferenceNumber = poNumber,
@@ -1458,6 +1507,7 @@ public class StockCardService(
     /// BBQ / CN-freebie path: purchases often remain in delivery packages (tub) while the
     /// stock card displays Recipe UOM (Gr). Direct tub→Gr fails and previously dropped the
     /// inbound while credit_note movements in Gr still showed — convert via principal first.
+    /// Prefer VendorProduct.DeliveryJson (same as PostReceived / healer), then delivery path.
     /// </summary>
     static bool TryResolvePurchaseForDisplay(
         Ingredient ingredient,
@@ -1465,7 +1515,8 @@ public class StockCardService(
         PurchaseOrderItem? poItem,
         string displayUom,
         out decimal convertedQty,
-        out decimal convertedPrice)
+        out decimal convertedPrice,
+        VendorProduct? vendorProduct = null)
     {
         if (TryNormalizeStockQty(
                 ingredient,
@@ -1482,11 +1533,22 @@ public class StockCardService(
             : (string.IsNullOrWhiteSpace(poItem.Unit) ? poItem.DeliveryPackage : poItem.Unit);
         decimal? pathPrincipal = null;
         string? pathPrincipalUom = null;
-        if (DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
-                deliveryBasis,
+        // Parity with PostReceivedStockAsync / healer: DeliveryJson before slash-path Unit label.
+        if (vendorProduct is not null
+            && DeliveryPrincipalResolver.TryResolveFromVendorProduct(
+                vendorProduct,
                 ingredient,
-                out var resolvedPrincipal,
-                out var resolvedUom))
+                out var vpPrincipal,
+                out var vpUom))
+        {
+            pathPrincipal = vpPrincipal;
+            pathPrincipalUom = vpUom;
+        }
+        else if (DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                     deliveryBasis,
+                     ingredient,
+                     out var resolvedPrincipal,
+                     out var resolvedUom))
         {
             pathPrincipal = resolvedPrincipal;
             pathPrincipalUom = resolvedUom;

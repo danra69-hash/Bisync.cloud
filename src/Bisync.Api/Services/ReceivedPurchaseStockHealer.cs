@@ -30,10 +30,53 @@ public sealed class ReceivedPurchaseStockHealer(
         string? componentId = null)
     {
         var missingHealed = await HealMissingAsync(fullScan, cancellationToken);
+        // Stock-card detail: also create any missing purchases for THIS component
+        // (global newest-120 page can miss an older BBQ line while sibling lines posted).
+        if (!string.IsNullOrWhiteSpace(componentId))
+            missingHealed += await HealMissingForComponentAsync(componentId.Trim(), cancellationToken);
         var rewritten = await HealUnderConvertedAsync(fullScan, cancellationToken);
         if (!string.IsNullOrWhiteSpace(componentId))
             rewritten += await HealUnderConvertedForComponentAsync(componentId.Trim(), cancellationToken);
         return missingHealed + rewritten;
+    }
+
+    /// <summary>
+    /// Creates InventoryPurchases for received PO lines of <paramref name="componentId"/>
+    /// that still have no purchase row (partial/legacy receive gaps).
+    /// </summary>
+    async Task<int> HealMissingForComponentAsync(string componentId, CancellationToken cancellationToken)
+    {
+        var unpostedItemIds = await db.PurchaseOrderItems.AsNoTracking()
+            .Where(i =>
+                i.ComponentId == componentId
+                && !i.IsReturnableDeposit
+                && (i.DeliveredQuantity > 0 || (i.ReceivedQuantity ?? 0m) > 0))
+            .Where(i => !db.InventoryPurchases.Any(p =>
+                p.PurchaseOrderItemId == i.Id && p.PurchaseOrderItemId > 0))
+            .Select(i => i.PurchaseOrderId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (unpostedItemIds.Count == 0)
+            return 0;
+
+        var eligibleOrderIds = await db.PurchaseOrders.AsNoTracking()
+            .Where(o =>
+                unpostedItemIds.Contains(o.Id)
+                && (o.Status == PurchaseOrderWorkflow.StatusReceived
+                    || o.Status == PurchaseOrderWorkflow.StatusPartiallyDelivered
+                    || o.Status == PurchaseOrderWorkflow.StatusReconciled)
+                && !o.IsPreCommitted)
+            .OrderByDescending(o => o.Id)
+            .Select(o => o.Id)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        if (eligibleOrderIds.Count == 0)
+            return 0;
+
+        // Reuse page healer by temporarily scoping candidates — process these order ids directly.
+        return await HealMissingOrdersAsync(eligibleOrderIds, cancellationToken);
     }
 
     async Task<int> HealMissingAsync(bool fullScan, CancellationToken cancellationToken)
@@ -89,6 +132,11 @@ public sealed class ReceivedPurchaseStockHealer(
             .Take(take)
             .ToList();
 
+        return await HealMissingOrdersAsync(orderIds, cancellationToken);
+    }
+
+    async Task<int> HealMissingOrdersAsync(List<int> orderIds, CancellationToken cancellationToken)
+    {
         if (orderIds.Count == 0)
             return 0;
 
