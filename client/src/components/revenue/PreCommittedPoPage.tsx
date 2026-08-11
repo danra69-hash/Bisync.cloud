@@ -184,6 +184,22 @@ export function PreCommittedPoPage({
   }, [selectedCompanyId]);
 
   useEffect(() => {
+    if (!selectedCompanyId) return;
+    const companyId = selectedCompanyId;
+    function handleVisibilityRefresh() {
+      if (document.visibilityState === 'visible') {
+        void loadActiveCommitments(companyId);
+      }
+    }
+    window.addEventListener('focus', handleVisibilityRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    return () => {
+      window.removeEventListener('focus', handleVisibilityRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
     if (!selectedCompanyId) {
       setCompany(null);
       setVendors([]);

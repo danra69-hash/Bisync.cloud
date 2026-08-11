@@ -1950,6 +1950,14 @@ public class PurchaseOrdersController(
                 return BadRequest(new { message = postError });
             }
 
+            // Ensure drawdown progress can see receive qty even if a path skipped DeliveredQuantity bump.
+            foreach (var item in order.Items)
+            {
+                if (item.DeliveredQuantity > 0.0001m) continue;
+                if (item.ReceivedQuantity is decimal received && received > 0.0001m)
+                    item.DeliveredQuantity = DecimalRounding.ToDb(received);
+            }
+
             await db.SaveChangesAsync();
 
             var receiptPurchases = await db.InventoryPurchases
@@ -2633,8 +2641,9 @@ public class PurchaseOrdersController(
     }
 
     /// <summary>
-    /// Sums DeliveredQuantity on release PO lines that drew from each pre-committed master line
-    /// (stock on-hand posts at receive; DeliveredQuantity is bumped then).
+    /// Sums received / delivered qty on release PO lines that drew from each pre-committed master line.
+    /// Stock posts at receive (DeliveredQuantity + ReceivedQuantity); prefer cumulative delivered,
+    /// fall back to last received / reconciled qty for older rows that never bumped DeliveredQuantity.
     /// </summary>
     async Task<Dictionary<int, Dictionary<int, decimal>>> ResolveConsolidatedByMasterItemAsync(
         IReadOnlyList<int> masterIds)
@@ -2648,16 +2657,42 @@ public class PurchaseOrdersController(
             .Where(p => masterIds.Contains(p.Id) && p.IsPreCommitted)
             .ToListAsync();
 
+        if (masters.Count == 0)
+            return result;
+
+        var masterItemIds = masters.SelectMany(m => m.Items.Select(i => i.Id)).ToHashSet();
+
+        // Link by order-level source id and/or line-level source item id (covers legacy gaps).
         var releases = await db.PurchaseOrders.AsNoTracking()
             .Include(p => p.Items)
-            .Where(p => p.SourceCommittedPurchaseOrderId != null
-                && masterIds.Contains(p.SourceCommittedPurchaseOrderId.Value)
-                && !p.IsPreCommitted)
+            .Where(p => !p.IsPreCommitted && (
+                (p.SourceCommittedPurchaseOrderId != null
+                    && masterIds.Contains(p.SourceCommittedPurchaseOrderId.Value))
+                || p.Items.Any(i => i.SourceCommittedPurchaseOrderItemId != null
+                    && masterItemIds.Contains(i.SourceCommittedPurchaseOrderItemId.Value))))
             .ToListAsync();
 
-        var releasesByMaster = releases
-            .GroupBy(r => r.SourceCommittedPurchaseOrderId!.Value)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        var releasesByMaster = new Dictionary<int, List<PurchaseOrder>>();
+        foreach (var release in releases)
+        {
+            var masterId = release.SourceCommittedPurchaseOrderId;
+            if (masterId is null or <= 0)
+            {
+                masterId = release.Items
+                    .Where(i => i.SourceCommittedPurchaseOrderItemId is > 0)
+                    .Select(i => masters.FirstOrDefault(m =>
+                        m.Items.Any(mi => mi.Id == i.SourceCommittedPurchaseOrderItemId))?.Id)
+                    .FirstOrDefault(id => id is > 0);
+            }
+            if (masterId is null or <= 0 || !masterIds.Contains(masterId.Value))
+                continue;
+            if (!releasesByMaster.TryGetValue(masterId.Value, out var list))
+            {
+                list = [];
+                releasesByMaster[masterId.Value] = list;
+            }
+            list.Add(release);
+        }
 
         foreach (var master in masters)
         {
@@ -2672,25 +2707,19 @@ public class PurchaseOrdersController(
             {
                 foreach (var releaseItem in release.Items)
                 {
+                    if (releaseItem.IsReturnableDeposit) continue;
+
+                    var receivedQty = ResolveReleaseReceivedAgainstCommitment(releaseItem);
+                    if (receivedQty <= 0.0001m) continue;
+
                     PurchaseOrderItem? masterItem = null;
                     if (releaseItem.SourceCommittedPurchaseOrderItemId is int linkedMasterItemId)
-                    {
                         masterItem = master.Items.FirstOrDefault(mi => mi.Id == linkedMasterItemId);
-                    }
-                    masterItem ??= master.Items.FirstOrDefault(mi =>
-                        !string.IsNullOrWhiteSpace(mi.VendorProductId)
-                        && string.Equals(mi.VendorProductId, releaseItem.VendorProductId, StringComparison.OrdinalIgnoreCase))
-                        ?? master.Items.FirstOrDefault(mi =>
-                            !string.IsNullOrWhiteSpace(mi.ComponentId)
-                            && string.Equals(mi.ComponentId, releaseItem.ComponentId, StringComparison.OrdinalIgnoreCase))
-                        ?? master.Items.FirstOrDefault(mi =>
-                            string.Equals(mi.Name, releaseItem.Name, StringComparison.OrdinalIgnoreCase));
 
-                    if (masterItem is null)
-                        continue;
+                    masterItem ??= MatchCommitmentMasterItem(master, releaseItem);
+                    if (masterItem is null) continue;
 
-                    byItem[masterItem.Id] = DecimalRounding.ToDb(
-                        byItem[masterItem.Id] + releaseItem.DeliveredQuantity);
+                    byItem[masterItem.Id] = DecimalRounding.ToDb(byItem[masterItem.Id] + receivedQty);
                 }
             }
 
@@ -2698,6 +2727,45 @@ public class PurchaseOrdersController(
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Delivery-package qty received against a commitment from a release line.
+    /// Prefer cumulative DeliveredQuantity (bumped at receive); fall back to Received/Reconciled.
+    /// </summary>
+    static decimal ResolveReleaseReceivedAgainstCommitment(PurchaseOrderItem releaseItem)
+    {
+        if (releaseItem.DeliveredQuantity > 0.0001m)
+            return releaseItem.DeliveredQuantity;
+        if (releaseItem.ReceivedQuantity is decimal received && received > 0.0001m)
+            return received;
+        if (releaseItem.ReconciledQuantity is decimal reconciled && reconciled > 0.0001m)
+            return reconciled;
+        return 0m;
+    }
+
+    static PurchaseOrderItem? MatchCommitmentMasterItem(PurchaseOrder master, PurchaseOrderItem releaseItem)
+    {
+        var releaseVp = (releaseItem.VendorProductId ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(releaseVp))
+        {
+            var byVp = master.Items.FirstOrDefault(mi =>
+                string.Equals((mi.VendorProductId ?? string.Empty).Trim(), releaseVp, StringComparison.OrdinalIgnoreCase));
+            if (byVp is not null) return byVp;
+        }
+
+        var releaseComp = (releaseItem.ComponentId ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(releaseComp))
+        {
+            var byComp = master.Items.FirstOrDefault(mi =>
+                string.Equals((mi.ComponentId ?? string.Empty).Trim(), releaseComp, StringComparison.OrdinalIgnoreCase));
+            if (byComp is not null) return byComp;
+        }
+
+        var releaseName = (releaseItem.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(releaseName)) return null;
+        return master.Items.FirstOrDefault(mi =>
+            string.Equals((mi.Name ?? string.Empty).Trim(), releaseName, StringComparison.OrdinalIgnoreCase));
     }
 
     async Task<bool> ResolveAllowPartialAsync(PurchaseOrder order)
