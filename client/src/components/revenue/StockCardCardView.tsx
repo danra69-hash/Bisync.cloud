@@ -145,7 +145,7 @@ function StockCardItemCard({
             Full ledger
           </button>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-3 gap-2">
           <div className="rounded-md border border-emerald-200/80 bg-emerald-50/50 px-2 py-1.5">
             <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-800">Inbound</p>
             <p className="text-sm font-semibold tabular-nums text-emerald-900">
@@ -161,13 +161,19 @@ function StockCardItemCard({
               {fmtQty(outboundTotal, countryCode)}
             </p>
           </div>
+          <div className="rounded-md border border-sky-200/80 bg-sky-50/50 px-2 py-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-sky-900">On hand</p>
+            <p className="text-sm font-semibold tabular-nums text-sky-950">
+              {fmtQty(detail?.onHandQty ?? row.onHandQty, countryCode)}
+            </p>
+            <p className="text-[10px] text-sky-900/80 tabular-nums truncate">
+              Avg COGS{' '}
+              {(detail?.onHandAverageCogs ?? row.onHandAverageCogs) > 0
+                ? uomPrice(detail?.onHandAverageCogs ?? row.onHandAverageCogs)
+                : '—'}
+            </p>
+          </div>
         </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          On hand {fmtQty(detail?.onHandQty ?? row.onHandQty, countryCode)} · Avg COGS{' '}
-          {(detail?.onHandAverageCogs ?? row.onHandAverageCogs) > 0
-            ? uomPrice(detail?.onHandAverageCogs ?? row.onHandAverageCogs)
-            : '—'}
-        </p>
       </header>
 
       <div className="flex-1 px-3 py-2 space-y-3 overflow-auto max-h-[420px]">

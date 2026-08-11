@@ -522,14 +522,6 @@ export function StockCardDetailPanel({
 
               <SummaryCell label="Outbound" value={fmtQty(detail.outboundQty, countryCode)} uom={detail.uom} />
 
-              <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty, countryCode)} uom={detail.uom} />
-
-              <SummaryCell
-                label="Avg outbound price"
-                value={detail.averageCogs > 0 ? uomPrice(detail.averageCogs) : '—'}
-                uom={`per ${detail.uom}`}
-              />
-
               <OnHandSummaryCell
                 quantity={detail.onHandQty}
                 uom={detail.uom}
@@ -537,6 +529,14 @@ export function StockCardDetailPanel({
                 onHandAverageCogs={detail.onHandAverageCogs}
                 outboundAverageCogs={detail.averageCogs}
                 onAdjust={() => setAdjustmentOpen(true)}
+              />
+
+              <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty, countryCode)} uom={detail.uom} />
+
+              <SummaryCell
+                label="Avg outbound price"
+                value={detail.averageCogs > 0 ? uomPrice(detail.averageCogs) : '—'}
+                uom={`per ${detail.uom}`}
               />
 
             </div>
