@@ -22,7 +22,8 @@ public sealed class ReceivedPurchaseStockHealer(
     /// When false (stock-card list), only heal the newest page for low latency.
     /// </param>
     /// <param name="componentId">
-    /// When set (stock-card detail), also rewrite every under-converted purchase for that component.
+    /// When set (stock-card detail), create any missing purchases for that component
+    /// and rewrite every under-converted purchase for that component.
     /// </param>
     public async Task<int> HealMissingReceivedStockAsync(
         CancellationToken cancellationToken = default,
