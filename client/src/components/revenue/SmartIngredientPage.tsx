@@ -548,6 +548,7 @@ export function SmartIngredientPage({
             onClick={handleDownloadTemplate}
             disabled={!templateLocationReady}
             className="inline-flex items-center gap-1.5 text-xs font-sans border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] rounded-md px-3 py-2 hover:bg-[#2563eb]/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Downloads editable catalog fields only (no Last UOM Price, Daily Usage, Order Freq, Qty on Hand, Location, Products, or Vendors)"
           >
             <FilePlus2 size={12} />
             Download Template CSV

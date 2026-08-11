@@ -152,6 +152,17 @@ export const SMART_COMPONENT_TEMPLATE_HEADERS = [
   'Last Updated',
 ] as const;
 
+/** Operational / derived columns — never included in Template CSV download. */
+export const OMITTED_SMART_COMPONENT_TEMPLATE_HEADERS = [
+  'Last UOM Price',
+  'Daily Usage',
+  'Order Freq (days)',
+  'Qty on Hand',
+  'Location',
+  'Products',
+  'Vendors',
+] as const;
+
 const PREVIOUS_TEMPLATE_HEADERS = [
   'Component ID',
   'Category',
@@ -853,11 +864,19 @@ export function downloadSmartComponentTemplateCsv(
   existingRows: ComponentRow[],
   scope?: SmartComponentLocationScope,
 ): void {
-  const blob = new Blob([buildSmartComponentTemplateCsv(existingRows, scope)], { type: 'text/csv;charset=utf-8;' });
+  const csv = buildSmartComponentTemplateCsv(existingRows, scope);
+  const headerLine = csv.split(/\r?\n/, 1)[0] ?? '';
+  for (const omitted of OMITTED_SMART_COMPONENT_TEMPLATE_HEADERS) {
+    if (headerLine.includes(`"${omitted}"`)) {
+      throw new Error(`Template CSV unexpectedly includes omitted column: ${omitted}`);
+    }
+  }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'smart-component-template.csv';
+  const stamp = new Date().toISOString().slice(0, 10);
+  link.download = `my-component-template-${stamp}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
