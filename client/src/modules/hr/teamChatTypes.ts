@@ -1,6 +1,6 @@
 /** Team internal chat types + API helpers. */
 
-export type TeamChatConversationType = 'direct' | 'announcement';
+export type TeamChatConversationType = 'direct' | 'announcement' | 'group' | 'project';
 
 export type TeamChatDirectoryPerson = {
   id: number;
@@ -12,6 +12,29 @@ export type TeamChatDirectoryPerson = {
   employeeCode: string;
 };
 
+export type TeamChatProjectProgress = {
+  total: number;
+  completed: number;
+  percent: number;
+};
+
+export type TeamChatProjectTask = {
+  id: number;
+  title: string;
+  sortOrder: number;
+  completed: boolean;
+  assigneeEmployeeIds: number[];
+  assigneeNames: string[];
+};
+
+export type TeamChatProjectDetails = {
+  name: string;
+  startDate: string | null;
+  targetCompletionDate: string | null;
+  progress: TeamChatProjectProgress;
+  tasks: TeamChatProjectTask[];
+};
+
 export type TeamChatConversationSummary = {
   id: number;
   companyId: number;
@@ -20,6 +43,9 @@ export type TeamChatConversationSummary = {
   updatedAt: string;
   unreadCount: number;
   peerEmployeeIds: number[];
+  projectStartDate?: string | null;
+  projectTargetDate?: string | null;
+  projectProgress?: TeamChatProjectProgress | null;
   lastMessage: {
     id: number;
     body: string;
@@ -52,6 +78,14 @@ export type TeamChatMessagesResponse = {
     type: string;
     title: string;
     canSend: boolean;
+    projectStartDate?: string | null;
+    projectTargetDate?: string | null;
   };
+  project?: TeamChatProjectDetails | null;
   messages: TeamChatMessage[];
+};
+
+export type TeamChatProjectTaskInput = {
+  title: string;
+  assigneeEmployeeIds: number[];
 };

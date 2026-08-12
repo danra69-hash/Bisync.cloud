@@ -26,4 +26,13 @@ assert.match(bell, /setChatOpen\(true\)/, 'bell click opens chat');
 assert.match(popup, /Team chat/, 'popup titles Team chat');
 assert.match(panel, /TeamChatsLanding/, 'panel reuses Team chat functions only');
 
+const chats = fs.readFileSync(path.join(root, 'client/src/modules/hr/TeamChatsLanding.tsx'), 'utf8');
+const compose = fs.readFileSync(path.join(root, 'client/src/modules/hr/TeamChatComposeModals.tsx'), 'utf8');
+assert.match(chats, /openCompose\('menu'\)/, 'Chat + opens compose menu');
+assert.match(compose, /Group chat/, 'compose menu includes Group chat');
+assert.match(compose, /Project/, 'compose menu includes Project');
+assert.match(compose, /Name of the Project/, 'project form asks for project name');
+assert.match(compose, /Target Completion Date/, 'project form asks for target date');
+assert.match(compose, /Progress Task Bar/, 'project form shows progress task bar');
+
 console.log('platform-team-chat-home-rms.test.mjs: ok');

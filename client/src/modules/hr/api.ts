@@ -9,6 +9,7 @@ import type {
   TeamChatConversationsResponse,
   TeamChatDirectoryPerson,
   TeamChatMessagesResponse,
+  TeamChatProjectDetails,
 } from './teamChatTypes';
 
 function formatHttpError(status: number, statusText: string, body: string): string {
@@ -295,6 +296,33 @@ export const hrApi = {
       http<{ id: number; type: string; title: string; created: boolean }>('/team-chat/conversations/direct', {
         method: 'POST',
         body: JSON.stringify({ employeeId, peerEmployeeId }),
+      }),
+    startGroup: (employeeId: number, title: string, memberEmployeeIds: number[]) =>
+      http<{ id: number; type: string; title: string; created: boolean }>('/team-chat/conversations/group', {
+        method: 'POST',
+        body: JSON.stringify({ employeeId, title, memberEmployeeIds }),
+      }),
+    startProject: (
+      employeeId: number,
+      body: {
+        name: string;
+        startDate: string;
+        targetCompletionDate: string;
+        memberEmployeeIds?: number[];
+        tasks: { title: string; assigneeEmployeeIds: number[] }[];
+      },
+    ) =>
+      http<{ id: number; type: string; title: string; created: boolean; project?: TeamChatProjectDetails }>(
+        '/team-chat/conversations/project',
+        {
+          method: 'POST',
+          body: JSON.stringify({ employeeId, ...body }),
+        },
+      ),
+    setProjectTaskCompleted: (conversationId: number, taskId: number, employeeId: number, completed: boolean) =>
+      http<TeamChatProjectDetails>(`/team-chat/conversations/${conversationId}/project/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ employeeId, completed }),
       }),
     postMessage: (
       conversationId: number,

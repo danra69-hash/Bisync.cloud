@@ -128,6 +128,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<TeamConversation> TeamConversations => Set<TeamConversation>();
     public DbSet<TeamConversationMember> TeamConversationMembers => Set<TeamConversationMember>();
     public DbSet<TeamChatMessage> TeamChatMessages => Set<TeamChatMessage>();
+    public DbSet<TeamProjectTask> TeamProjectTasks => Set<TeamProjectTask>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -890,6 +891,16 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
                 .HasForeignKey(x => x.SenderEmployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.AttachmentContentType).HasMaxLength(128);
+        });
+        modelBuilder.Entity<TeamProjectTask>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.SortOrder });
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.AssigneeEmployeeIdsJson).HasMaxLength(2000);
+            e.HasOne(x => x.Conversation)
+                .WithMany(c => c.ProjectTasks)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

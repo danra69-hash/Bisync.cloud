@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
@@ -90,6 +91,21 @@ public class TeamChatController(BisyncDbContext db) : ControllerBase
             .GroupBy(m => m.ConversationId)
             .ToDictionary(g => g.Key, g => g.First());
 
+        var projectTasks = await db.TeamProjectTasks.AsNoTracking()
+            .Where(t => allIds.Contains(t.ConversationId))
+            .ToListAsync();
+        var projectProgressByConv = projectTasks
+            .GroupBy(t => t.ConversationId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var total = g.Count();
+                    var completed = g.Count(t => t.Completed);
+                    var percent = total == 0 ? 0 : (int)Math.Round(100.0 * completed / total);
+                    return new { total, completed, percent };
+                });
+
         var myMemberships = await db.TeamConversationMembers.AsNoTracking()
             .Where(m => m.EmployeeId == employeeId && allIds.Contains(m.ConversationId))
             .ToDictionaryAsync(m => m.ConversationId);
@@ -115,11 +131,8 @@ public class TeamChatController(BisyncDbContext db) : ControllerBase
             var peerNames = peerIds
                 .Select(id => employees.TryGetValue(id, out var emp) ? emp.Name : $"#{id}")
                 .ToList();
-            var title = c.Type == "announcement"
-                ? (string.IsNullOrWhiteSpace(c.Title) ? "Company Announcement" : c.Title)
-                : peerNames.Count > 0
-                    ? string.Join(", ", peerNames)
-                    : (string.IsNullOrWhiteSpace(c.Title) ? "Conversation" : c.Title);
+            var title = ResolveConversationTitle(c, peerNames);
+            projectProgressByConv.TryGetValue(c.Id, out var progress);
 
             return new
             {
@@ -130,6 +143,9 @@ public class TeamChatController(BisyncDbContext db) : ControllerBase
                 c.UpdatedAt,
                 unreadCount = unread,
                 peerEmployeeIds = peerIds,
+                projectStartDate = c.ProjectStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                projectTargetDate = c.ProjectTargetDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                projectProgress = c.Type == "project" ? progress : null,
                 lastMessage = last is null
                     ? null
                     : new
@@ -193,17 +209,31 @@ public class TeamChatController(BisyncDbContext db) : ControllerBase
             await db.SaveChangesAsync();
         }
 
+        object? project = null;
+        if (conversation.Type == "project")
+            project = await BuildProjectPayloadAsync(conversation);
+
+        var memberIds = await db.TeamConversationMembers.AsNoTracking()
+            .Where(m => m.ConversationId == id)
+            .Select(m => m.EmployeeId)
+            .ToListAsync();
+        var peerNames = await db.Employees.AsNoTracking()
+            .Where(e => memberIds.Contains(e.Id) && e.Id != employeeId)
+            .Select(e => e.Name)
+            .ToListAsync();
+
         return Ok(new
         {
             conversation = new
             {
                 conversation.Id,
                 conversation.Type,
-                title = conversation.Type == "announcement"
-                    ? (string.IsNullOrWhiteSpace(conversation.Title) ? "Company Announcement" : conversation.Title)
-                    : conversation.Title,
+                title = ResolveConversationTitle(conversation, peerNames),
                 canSend = conversation.Type != "announcement" || await CanSendAnnouncementAsync(employeeId),
+                projectStartDate = conversation.ProjectStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                projectTargetDate = conversation.ProjectTargetDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             },
+            project,
             messages = messages.Select(m => new
             {
                 m.Id,
@@ -257,6 +287,221 @@ public class TeamChatController(BisyncDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { id = conversation.Id, type = conversation.Type, title = peer.Name, created = true });
+    }
+
+    [HttpPost("conversations/group")]
+    public async Task<ActionResult<object>> StartGroup([FromBody] TeamChatStartGroupRequest request)
+    {
+        if (request.EmployeeId <= 0)
+            return BadRequest(new { message = "employeeId is required." });
+        var title = (request.Title ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            return BadRequest(new { message = "Group name is required." });
+        if (title.Length > 200)
+            return BadRequest(new { message = "Group name is too long." });
+
+        var memberIds = (request.MemberEmployeeIds ?? [])
+            .Where(id => id > 0 && id != request.EmployeeId)
+            .Distinct()
+            .ToList();
+        if (memberIds.Count == 0)
+            return BadRequest(new { message = "Select at least one other person for the group chat." });
+
+        var ctx = await ResolveEmployeeContextAsync(request.EmployeeId);
+        if (ctx is null) return NotFound(new { message = "Employee not found." });
+
+        var companyEmployeeIds = await CompanyEmployeeIdsAsync(ctx.CompanyId);
+        var validMembers = await db.Employees.AsNoTracking()
+            .Where(e => e.Active && memberIds.Contains(e.Id))
+            .Select(e => e.Id)
+            .ToListAsync();
+        if (companyEmployeeIds.Count > 0)
+            validMembers = validMembers.Where(companyEmployeeIds.Contains).ToList();
+        if (validMembers.Count == 0)
+            return BadRequest(new { message = "No valid members found in your company directory." });
+
+        var now = DateTime.UtcNow;
+        var conversation = new TeamConversation
+        {
+            CompanyId = ctx.CompanyId,
+            Type = "group",
+            Title = title,
+            CreatedByEmployeeId = request.EmployeeId,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.TeamConversations.Add(conversation);
+        await db.SaveChangesAsync();
+
+        var allMemberIds = validMembers.Append(request.EmployeeId).Distinct().ToList();
+        foreach (var empId in allMemberIds)
+        {
+            db.TeamConversationMembers.Add(new TeamConversationMember
+            {
+                ConversationId = conversation.Id,
+                EmployeeId = empId,
+                JoinedAt = now,
+                LastReadAt = empId == request.EmployeeId ? now : null,
+            });
+        }
+
+        db.TeamChatMessages.Add(new TeamChatMessage
+        {
+            ConversationId = conversation.Id,
+            SenderEmployeeId = request.EmployeeId,
+            Body = $"Created group “{title}”.",
+            CreatedAt = now,
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { id = conversation.Id, type = conversation.Type, title = conversation.Title, created = true });
+    }
+
+    [HttpPost("conversations/project")]
+    public async Task<ActionResult<object>> StartProject([FromBody] TeamChatStartProjectRequest request)
+    {
+        if (request.EmployeeId <= 0)
+            return BadRequest(new { message = "employeeId is required." });
+
+        var name = (request.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { message = "Project name is required." });
+        if (name.Length > 200)
+            return BadRequest(new { message = "Project name is too long." });
+
+        if (!TryParseDateOnly(request.StartDate, out var startDate))
+            return BadRequest(new { message = "Start date is required (YYYY-MM-DD)." });
+        if (!TryParseDateOnly(request.TargetCompletionDate, out var targetDate))
+            return BadRequest(new { message = "Target completion date is required (YYYY-MM-DD)." });
+        if (targetDate < startDate)
+            return BadRequest(new { message = "Target completion date must be on or after the start date." });
+
+        var tasks = (request.Tasks ?? [])
+            .Select(t => new
+            {
+                Title = (t.Title ?? string.Empty).Trim(),
+                Assignees = (t.AssigneeEmployeeIds ?? []).Where(id => id > 0).Distinct().ToList(),
+            })
+            .Where(t => !string.IsNullOrWhiteSpace(t.Title))
+            .ToList();
+        if (tasks.Count == 0)
+            return BadRequest(new { message = "Add at least one task with a title." });
+
+        var ctx = await ResolveEmployeeContextAsync(request.EmployeeId);
+        if (ctx is null) return NotFound(new { message = "Employee not found." });
+
+        var companyEmployeeIds = await CompanyEmployeeIdsAsync(ctx.CompanyId);
+        var taggedIds = tasks.SelectMany(t => t.Assignees)
+            .Concat(request.MemberEmployeeIds ?? [])
+            .Where(id => id > 0 && id != request.EmployeeId)
+            .Distinct()
+            .ToList();
+
+        var validMembers = await db.Employees.AsNoTracking()
+            .Where(e => e.Active && taggedIds.Contains(e.Id))
+            .Select(e => e.Id)
+            .ToListAsync();
+        if (companyEmployeeIds.Count > 0)
+            validMembers = validMembers.Where(companyEmployeeIds.Contains).ToList();
+
+        var validSet = validMembers.ToHashSet();
+        validSet.Add(request.EmployeeId);
+
+        var now = DateTime.UtcNow;
+        var conversation = new TeamConversation
+        {
+            CompanyId = ctx.CompanyId,
+            Type = "project",
+            Title = name,
+            CreatedByEmployeeId = request.EmployeeId,
+            ProjectStartDate = startDate,
+            ProjectTargetDate = targetDate,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.TeamConversations.Add(conversation);
+        await db.SaveChangesAsync();
+
+        foreach (var empId in validSet)
+        {
+            db.TeamConversationMembers.Add(new TeamConversationMember
+            {
+                ConversationId = conversation.Id,
+                EmployeeId = empId,
+                JoinedAt = now,
+                LastReadAt = empId == request.EmployeeId ? now : null,
+            });
+        }
+
+        var sort = 0;
+        foreach (var task in tasks)
+        {
+            var assignees = task.Assignees.Where(validSet.Contains).Distinct().ToList();
+            db.TeamProjectTasks.Add(new TeamProjectTask
+            {
+                ConversationId = conversation.Id,
+                Title = task.Title,
+                SortOrder = sort++,
+                Completed = false,
+                AssigneeEmployeeIdsJson = JsonSerializer.Serialize(assignees),
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+
+        db.TeamChatMessages.Add(new TeamChatMessage
+        {
+            ConversationId = conversation.Id,
+            SenderEmployeeId = request.EmployeeId,
+            Body = $"Created project “{name}” ({startDate:yyyy-MM-dd} → {targetDate:yyyy-MM-dd}) with {tasks.Count} task(s).",
+            CreatedAt = now,
+        });
+        await db.SaveChangesAsync();
+
+        var project = await BuildProjectPayloadAsync(conversation);
+        return Ok(new
+        {
+            id = conversation.Id,
+            type = conversation.Type,
+            title = conversation.Title,
+            created = true,
+            project,
+        });
+    }
+
+    [HttpPatch("conversations/{id:int}/project/tasks/{taskId:int}")]
+    public async Task<ActionResult<object>> SetProjectTaskCompleted(
+        int id,
+        int taskId,
+        [FromBody] TeamChatSetTaskCompletedRequest request)
+    {
+        if (request.EmployeeId <= 0)
+            return BadRequest(new { message = "employeeId is required." });
+
+        var ctx = await ResolveEmployeeContextAsync(request.EmployeeId);
+        if (ctx is null) return NotFound(new { message = "Employee not found." });
+
+        var conversation = await db.TeamConversations.FirstOrDefaultAsync(c => c.Id == id);
+        if (conversation is null) return NotFound(new { message = "Conversation not found." });
+        if (conversation.Type != "project")
+            return BadRequest(new { message = "Conversation is not a project." });
+        if (conversation.CompanyId != ctx.CompanyId)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Conversation is outside your company." });
+
+        var isMember = await db.TeamConversationMembers
+            .AnyAsync(m => m.ConversationId == id && m.EmployeeId == request.EmployeeId);
+        if (!isMember)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not a member of this project." });
+
+        var task = await db.TeamProjectTasks.FirstOrDefaultAsync(t => t.Id == taskId && t.ConversationId == id);
+        if (task is null) return NotFound(new { message = "Task not found." });
+
+        task.Completed = request.Completed;
+        task.UpdatedAt = DateTime.UtcNow;
+        conversation.UpdatedAt = task.UpdatedAt;
+        await db.SaveChangesAsync();
+
+        return Ok(await BuildProjectPayloadAsync(conversation));
     }
 
     [HttpPost("conversations/{id:int}/messages")]
@@ -485,6 +730,77 @@ public class TeamChatController(BisyncDbContext db) : ControllerBase
         }
     }
 
+    static string ResolveConversationTitle(TeamConversation conversation, IReadOnlyList<string> peerNames)
+    {
+        if (conversation.Type == "announcement")
+            return string.IsNullOrWhiteSpace(conversation.Title) ? "Company Announcement" : conversation.Title;
+        if (conversation.Type is "group" or "project")
+            return string.IsNullOrWhiteSpace(conversation.Title) ? (conversation.Type == "project" ? "Project" : "Group chat") : conversation.Title;
+        if (peerNames.Count > 0)
+            return string.Join(", ", peerNames);
+        return string.IsNullOrWhiteSpace(conversation.Title) ? "Conversation" : conversation.Title;
+    }
+
+    static bool TryParseDateOnly(string? value, out DateOnly date)
+    {
+        date = default;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        return DateOnly.TryParseExact(value.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
+            || DateOnly.TryParse(value.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    }
+
+    static List<int> ParseAssigneeIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            var ids = JsonSerializer.Deserialize<List<int>>(json, JsonOptions);
+            return ids?.Where(id => id > 0).Distinct().ToList() ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    async Task<object> BuildProjectPayloadAsync(TeamConversation conversation)
+    {
+        var tasks = await db.TeamProjectTasks.AsNoTracking()
+            .Where(t => t.ConversationId == conversation.Id)
+            .OrderBy(t => t.SortOrder)
+            .ThenBy(t => t.Id)
+            .ToListAsync();
+        var assigneeIds = tasks.SelectMany(t => ParseAssigneeIds(t.AssigneeEmployeeIdsJson)).Distinct().ToList();
+        var names = await db.Employees.AsNoTracking()
+            .Where(e => assigneeIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.Name);
+
+        var total = tasks.Count;
+        var completed = tasks.Count(t => t.Completed);
+        var percent = total == 0 ? 0 : (int)Math.Round(100.0 * completed / total);
+
+        return new
+        {
+            name = conversation.Title,
+            startDate = conversation.ProjectStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            targetCompletionDate = conversation.ProjectTargetDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            progress = new { total, completed, percent },
+            tasks = tasks.Select(t =>
+            {
+                var ids = ParseAssigneeIds(t.AssigneeEmployeeIdsJson);
+                return new
+                {
+                    t.Id,
+                    t.Title,
+                    t.SortOrder,
+                    t.Completed,
+                    assigneeEmployeeIds = ids,
+                    assigneeNames = ids.Select(id => names.TryGetValue(id, out var n) ? n : $"#{id}").ToList(),
+                };
+            }),
+        };
+    }
+
     sealed record EmployeeContext(int EmployeeId, int CompanyId, AppUser? AppUser);
 }
 
@@ -492,6 +808,35 @@ public class TeamChatStartDirectRequest
 {
     public int EmployeeId { get; set; }
     public int PeerEmployeeId { get; set; }
+}
+
+public class TeamChatStartGroupRequest
+{
+    public int EmployeeId { get; set; }
+    public string? Title { get; set; }
+    public List<int>? MemberEmployeeIds { get; set; }
+}
+
+public class TeamChatStartProjectRequest
+{
+    public int EmployeeId { get; set; }
+    public string? Name { get; set; }
+    public string? StartDate { get; set; }
+    public string? TargetCompletionDate { get; set; }
+    public List<int>? MemberEmployeeIds { get; set; }
+    public List<TeamChatProjectTaskInput>? Tasks { get; set; }
+}
+
+public class TeamChatProjectTaskInput
+{
+    public string? Title { get; set; }
+    public List<int>? AssigneeEmployeeIds { get; set; }
+}
+
+public class TeamChatSetTaskCompletedRequest
+{
+    public int EmployeeId { get; set; }
+    public bool Completed { get; set; }
 }
 
 public class TeamChatPostMessageRequest
