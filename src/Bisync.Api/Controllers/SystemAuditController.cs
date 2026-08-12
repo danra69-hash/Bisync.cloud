@@ -125,11 +125,16 @@ public class SystemAuditController(
             .Where(e => e.LocationId == locationId || e.LocationId == null);
 
         var total = await q.CountAsync(ct);
-        var rows = await q
+        var rawRows = await q
             .OrderByDescending(e => e.OccurredAtUtc)
             .Skip(skip)
             .Take(take)
-            .Select(e => new
+            .ToListAsync(ct);
+
+        var rows = rawRows.Select(e =>
+        {
+            var activityType = SystemAuditActivityTypes.NormalizeDisplay(e.Category);
+            return new
             {
                 e.Id,
                 e.OccurredAtUtc,
@@ -137,7 +142,7 @@ public class SystemAuditController(
                 e.TimeZoneId,
                 e.Year,
                 e.Month,
-                e.Category,
+                Category = activityType,
                 e.Action,
                 e.CompanyId,
                 e.CompanyName,
@@ -153,11 +158,12 @@ public class SystemAuditController(
                 e.EntityKey,
                 e.Summary,
                 e.DetailsJson,
-                activityType = e.Category,
+                activityType,
                 activityDetail = e.Summary,
                 effectedDbBucket = e.DatabaseBucket,
-            })
-            .ToListAsync(ct);
+                loginName = string.IsNullOrWhiteSpace(e.UserEmail) ? e.UserName : e.UserEmail,
+            };
+        }).ToList();
 
         return Ok(new
         {
@@ -168,7 +174,7 @@ public class SystemAuditController(
             total,
             take,
             skip,
-            retentionNote = "Audit Trail records continuously 24/7. Live rows keep the last 1 year; older rows are archived.",
+            retentionNote = "Audit Trail records continuously 24/7. Live rows keep the last 1 year; older rows are archived. Activity types cover PR/PO workflow, receive & consolidation, stock, wastage/transfer, credit notes, cash purchases, and other database changes.",
             rows,
         });
     }

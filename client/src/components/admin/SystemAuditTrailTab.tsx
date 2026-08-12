@@ -13,6 +13,7 @@ import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { ColGroup } from '../shared/SortableTableHead';
 
+/** Display titles for Audit Trail activity types. */
 function activityTypeLabel(category: string): string {
   switch (category) {
     case 'Login':
@@ -20,22 +21,48 @@ function activityTypeLabel(category: string): string {
     case 'Logout':
       return 'Logout';
     case 'DbUpdate':
-      return 'DB update';
+    case 'DB update':
+      return 'Database change';
     case 'Computation':
       return 'Computation';
+    case 'PR issue / approval':
+    case 'PO adjustment / issue':
+    case 'Received / Consolidation / adjustment':
+    case 'Stock issue / receive':
+    case 'Wastage / Transfer':
+    case 'Credit note':
+    case 'Cash purchase':
+    case 'Inventory count / adjustment':
+    case 'Database change':
+      return category;
     default:
-      return category || '—';
+      return category || 'Database change';
   }
 }
 
 function activityTypeClass(category: string): string {
-  switch (category) {
+  const type = activityTypeLabel(category);
+  switch (type) {
     case 'Login':
       return 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200';
     case 'Logout':
       return 'bg-slate-500/15 text-slate-700 dark:text-slate-200';
-    case 'DbUpdate':
+    case 'PR issue / approval':
+      return 'bg-violet-500/15 text-violet-800 dark:text-violet-200';
+    case 'PO adjustment / issue':
+      return 'bg-orange-500/15 text-orange-900 dark:text-orange-200';
+    case 'Received / Consolidation / adjustment':
+      return 'bg-teal-500/15 text-teal-800 dark:text-teal-200';
+    case 'Stock issue / receive':
       return 'bg-sky-500/15 text-sky-800 dark:text-sky-200';
+    case 'Wastage / Transfer':
+      return 'bg-rose-500/15 text-rose-800 dark:text-rose-200';
+    case 'Credit note':
+      return 'bg-fuchsia-500/15 text-fuchsia-800 dark:text-fuchsia-200';
+    case 'Cash purchase':
+      return 'bg-lime-500/15 text-lime-900 dark:text-lime-200';
+    case 'Inventory count / adjustment':
+      return 'bg-cyan-500/15 text-cyan-900 dark:text-cyan-200';
     case 'Computation':
       return 'bg-amber-500/15 text-amber-900 dark:text-amber-200';
     default:
@@ -47,6 +74,13 @@ function formatLocal(value: string): string {
   const match = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
   if (match) return `${match[1]} ${match[2]}`;
   return value;
+}
+
+function loginName(row: SystemAuditEventRow): string {
+  const email = (row.userEmail ?? '').trim();
+  if (email) return email;
+  const name = (row.userName ?? '').trim();
+  return name || '—';
 }
 
 function monthLabel(year: number, month: number): string {
@@ -98,7 +132,6 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
     for (const m of months) map.set(`${m.year}-${m.month}`, m);
     const key = `${year}-${month}`;
     if (!map.has(key)) map.set(key, { year, month, count: 0 });
-    // Provide last 12 calendar months as backup so filter works before any trails exist.
     for (let i = 0; i < 12; i += 1) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const y = d.getFullYear();
@@ -204,9 +237,9 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
             Audit Trail
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            Continuous 24/7 platform usage log: login, logout, database updates, and computations
-            (viewing is not recorded). Times follow the company&apos;s registered country local time.
-            Choose company, location, and month/year to load the trail.
+            Continuous 24/7 log of platform changes: login/logout, PR/PO workflow, receive &amp; consolidation,
+            stock issue/receive, wastage/transfer, credit notes, cash purchases, and other database updates.
+            Viewing is not recorded. Times follow the company&apos;s registered country local time.
           </p>
         </div>
         <button
@@ -290,20 +323,21 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <table className="w-full text-xs">
-            <ColGroup widths={['22%', '16%', '42%', '20%']} />
+        <div className="rounded-lg border border-border bg-card overflow-hidden overflow-x-auto">
+          <table className="w-full text-xs min-w-[56rem]">
+            <ColGroup widths={['16%', '18%', '16%', '32%', '18%']} />
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <TableHeaderCell>Date / Time</TableHeaderCell>
-                <TableHeaderCell>Activity Type</TableHeaderCell>
+                <TableHeaderCell>Login name (email)</TableHeaderCell>
+                <TableHeaderCell>Activity type</TableHeaderCell>
                 <TableHeaderCell>Activity Detail</TableHeaderCell>
                 <TableHeaderCell>Effected DB bucket</TableHeaderCell>
               </tr>
             </thead>
             <tbody>
               {rows.map(row => {
-                const type = row.activityType || row.category;
+                const type = activityTypeLabel(row.activityType || row.category);
                 const detail = row.activityDetail || row.summary;
                 const bucket = row.effectedDbBucket || row.databaseBucket || '—';
                 return (
@@ -314,13 +348,17 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
                   >
                     <td className="px-3 py-2 font-sans whitespace-nowrap">
                       <p>{formatLocal(row.occurredAtLocal)}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {row.timeZoneId} · {row.userName || row.userEmail || '—'}
-                      </p>
+                      <p className="text-[10px] text-muted-foreground">{row.timeZoneId}</p>
                     </td>
                     <td className="px-3 py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${activityTypeClass(type)}`}>
-                        {activityTypeLabel(type)}
+                      <p className="font-medium break-all">{loginName(row)}</p>
+                      {row.userName && row.userEmail ? (
+                        <p className="text-[10px] text-muted-foreground truncate">{row.userName}</p>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium leading-snug ${activityTypeClass(type)}`}>
+                        {type}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
@@ -332,13 +370,13 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
               })}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
                     No audit events for this company, location, and month.
                   </td>
                 </tr>
               )}
               {loading && rows.length === 0 && (
-                <TableLoadingRow colSpan={4} />
+                <TableLoadingRow colSpan={5} />
               )}
             </tbody>
           </table>
@@ -351,7 +389,8 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Event detail</p>
               <p className="font-medium mt-0.5">
-                {activityTypeLabel(selected.activityType || selected.category)} · {selected.action}
+                {activityTypeLabel(selected.activityType || selected.category)}
+                {selected.action ? ` · ${selected.action}` : ''}
               </p>
             </div>
             <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => setSelected(null)}>
@@ -359,16 +398,18 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
             </button>
           </div>
           <p>{selected.activityDetail || selected.summary}</p>
-          <dl className="grid grid-cols-[8rem_1fr] gap-x-2 gap-y-1">
+          <dl className="grid grid-cols-[9rem_1fr] gap-x-2 gap-y-1">
             <dt className="text-muted-foreground">Date / Time</dt>
             <dd>{formatLocal(selected.occurredAtLocal)} ({selected.timeZoneId})</dd>
-            <dt className="text-muted-foreground">User</dt>
-            <dd>{selected.userName || '—'} {selected.userEmail ? `(${selected.userEmail})` : ''}</dd>
+            <dt className="text-muted-foreground">Login name (email)</dt>
+            <dd>{loginName(selected)}</dd>
+            <dt className="text-muted-foreground">Activity type</dt>
+            <dd>{activityTypeLabel(selected.activityType || selected.category)}</dd>
             <dt className="text-muted-foreground">Company</dt>
             <dd>{selected.companyName || '—'}</dd>
             <dt className="text-muted-foreground">Location</dt>
             <dd>{selected.locationName || 'Company-wide / not tagged'}</dd>
-            <dt className="text-muted-foreground">Effected DB</dt>
+            <dt className="text-muted-foreground">Effected DB bucket</dt>
             <dd className="font-sans">{selected.effectedDbBucket || selected.databaseBucket || '—'}</dd>
           </dl>
         </div>

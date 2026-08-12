@@ -26,6 +26,7 @@ const focused = [
   'scripts/active-purchase-buckets.mjs',
   'scripts/precommitted-po-pdf-label.mjs',
   'scripts/platform-team-chat-home-rms.test.mjs',
+  'scripts/audit-trail-activity-types.test.mjs',
 ]
 
 for (const rel of focused) {

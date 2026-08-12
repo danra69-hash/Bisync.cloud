@@ -21,7 +21,10 @@ public sealed class FifoIssueResult
 /// FOR UPDATE locking, zero-tolerance shortfall). Also maintains <c>inventory_batches</c>
 /// rows on receipt so each inbound shipment stays cost-segregated.
 /// </summary>
-public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingService fifoCosting)
+public class FifoBatchIssueService(
+    BisyncDbContext db,
+    ComponentFifoCostingService fifoCosting,
+    IServiceScopeFactory scopeFactory)
 {
     public async Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
     {
@@ -217,6 +220,47 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
             StockCardFifoEngine.RoundUnitPrice(unitCost),
             sourcePurchaseId,
             companyId);
+
+        RecordStockAuditFireAndForget(
+            SystemAuditActivityTypes.StockIssueReceive,
+            "FifoReceipt",
+            $"Stock receive — {component} qty {DecimalRounding.ToDb(quantity)} {normalizedUom} @ {location}",
+            companyId,
+            location,
+            "inventory_batches",
+            sourcePurchaseId?.ToString());
+    }
+
+    void RecordStockAuditFireAndForget(
+        string activityType,
+        string action,
+        string summary,
+        int? companyId,
+        string? locationExternalId,
+        string? entityType,
+        string? entityKey)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var audit = scope.ServiceProvider.GetRequiredService<ISystemAuditService>();
+                await audit.RecordAsync(new SystemAuditWriteRequest(
+                    activityType,
+                    action,
+                    summary,
+                    companyId,
+                    EntityType: entityType,
+                    EntityKey: entityKey,
+                    LocationExternalId: locationExternalId,
+                    Details: new { activityType, action, locationExternalId, entityKey }));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[SystemAudit] FIFO stock audit failed: {ex.Message}");
+            }
+        });
     }
 
     public async Task EnsureBatchesSyncedAsync(
@@ -368,6 +412,15 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
         var unitPrice = issuedQty > StockCardFifoEngine.QtyEpsilon
             ? StockCardFifoEngine.RoundUnitPrice(totalCost / issuedQty)
             : 0m;
+
+        RecordStockAuditFireAndForget(
+            SystemAuditActivityTypes.StockIssueReceive,
+            "FifoIssue",
+            $"Stock issue — {(componentId ?? string.Empty).Trim()} qty {issuedQty} {NormalizeUom(uom)} @ {(locationExternalId ?? string.Empty).Trim()} ({(string.IsNullOrWhiteSpace(transactionType) ? "issue" : transactionType.Trim())}; ref {referenceId})",
+            companyId,
+            (locationExternalId ?? string.Empty).Trim(),
+            "issue_fifo_stock",
+            transactionId.ToString());
 
         return new FifoIssueResult
         {

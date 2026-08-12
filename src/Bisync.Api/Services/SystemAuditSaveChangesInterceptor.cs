@@ -7,7 +7,10 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Bisync.Api.Services;
 
-/// <summary>Records entity inserts/updates/deletes. Viewing (reads) are never logged.</summary>
+/// <summary>
+/// Records entity inserts/updates/deletes into Audit Trail with domain activity types.
+/// Viewing (reads) are never logged. Every persisted change is listed.
+/// </summary>
 public sealed class SystemAuditSaveChangesInterceptor(
     IServiceScopeFactory scopeFactory,
     IHttpContextAccessor http) : SaveChangesInterceptor
@@ -41,16 +44,16 @@ public sealed class SystemAuditSaveChangesInterceptor(
         if (context is null || context is SystemAuditDbContext)
             return;
 
-        // Avoid recursive noise from archive host / background without user.
         var entries = context.ChangeTracker.Entries()
             .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
             .Where(e => !SkipEntityTypes.Contains(e.Metadata.ClrType.Name))
             .ToList();
         if (entries.Count == 0) return;
 
-        // Fire-and-forget via scope so we don't block SaveChanges if audit DB is slow.
         var snapshot = entries.Select(Summarize).ToList();
+        var databaseBucket = SystemAuditService.DatabaseNameFromConnection(context.Database.GetConnectionString());
         var httpContext = http.HttpContext;
+
         _ = Task.Run(async () =>
         {
             try
@@ -90,35 +93,51 @@ public sealed class SystemAuditSaveChangesInterceptor(
                     }
                 }
 
-                // Collapse many entity rows into one audit event per SaveChanges batch.
-                var byType = snapshot
-                    .GroupBy(s => s.EntityType)
-                    .Select(g => new
-                    {
-                        entityType = g.Key,
-                        added = g.Count(x => x.State == "Added"),
-                        modified = g.Count(x => x.State == "Modified"),
-                        deleted = g.Count(x => x.State == "Deleted"),
-                        keys = g.Select(x => x.EntityKey).Where(k => !string.IsNullOrEmpty(k)).Take(20).ToArray(),
-                    })
+                // One audit row per activity type so the trail is filterable by business title.
+                var byActivity = snapshot
+                    .GroupBy(s => s.ActivityType)
+                    .OrderBy(g => g.Key)
                     .ToList();
 
-                var summary = string.Join("; ", byType.Select(b =>
-                    $"{b.entityType}: +{b.added} ~{b.modified} -{b.deleted}"));
+                foreach (var group in byActivity)
+                {
+                    var byType = group
+                        .GroupBy(s => s.EntityType)
+                        .Select(g => new
+                        {
+                            entityType = g.Key,
+                            added = g.Count(x => x.State == "Added"),
+                            modified = g.Count(x => x.State == "Modified"),
+                            deleted = g.Count(x => x.State == "Deleted"),
+                            keys = g.Select(x => x.EntityKey).Where(k => !string.IsNullOrEmpty(k)).Take(20).ToArray(),
+                            statuses = g.Select(x => x.StatusHint).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().Take(8).ToArray(),
+                        })
+                        .ToList();
 
-                await audit.RecordAsync(new SystemAuditWriteRequest(
-                    SystemAuditCategories.DbUpdate,
-                    "SaveChanges",
-                    Truncate($"DB update — {summary}", 1000),
-                    companyId,
-                    companyName,
-                    country,
-                    userId,
-                    email,
-                    name,
-                    byType.Count == 1 ? byType[0].entityType : "Batch",
-                    byType.Count == 1 && byType[0].keys.Length == 1 ? byType[0].keys[0] : null,
-                    new { entities = byType }));
+                    var summaryParts = byType.Select(b =>
+                    {
+                        var core = $"{b.entityType}: +{b.added} ~{b.modified} -{b.deleted}";
+                        if (b.statuses.Length > 0)
+                            core += $" [{string.Join(", ", b.statuses)}]";
+                        return core;
+                    });
+                    var summary = Truncate($"{group.Key} — {string.Join("; ", summaryParts)}", 1000);
+
+                    await audit.RecordAsync(new SystemAuditWriteRequest(
+                        group.Key,
+                        "SaveChanges",
+                        summary,
+                        companyId,
+                        companyName,
+                        country,
+                        userId,
+                        email,
+                        name,
+                        byType.Count == 1 ? byType[0].entityType : "Batch",
+                        byType.Count == 1 && byType[0].keys.Length == 1 ? byType[0].keys[0] : null,
+                        new { activityType = group.Key, entities = byType },
+                        DatabaseBucket: databaseBucket));
+                }
             }
             catch (Exception ex)
             {
@@ -127,7 +146,7 @@ public sealed class SystemAuditSaveChangesInterceptor(
         });
     }
 
-    static (string EntityType, string State, string? EntityKey) Summarize(EntityEntry entry)
+    static (string EntityType, string State, string? EntityKey, string StatusHint, string ActivityType) Summarize(EntityEntry entry)
     {
         var type = entry.Metadata.ClrType.Name;
         var state = entry.State.ToString();
@@ -142,7 +161,10 @@ public sealed class SystemAuditSaveChangesInterceptor(
         {
             // ignore
         }
-        return (type, state, key);
+
+        var statusHint = SystemAuditActivityTypes.ReadStatusHint(entry);
+        var activityType = SystemAuditActivityTypes.ClassifyEntity(type, statusHint);
+        return (type, state, key, statusHint, activityType);
     }
 
     static string Truncate(string value, int max) =>
