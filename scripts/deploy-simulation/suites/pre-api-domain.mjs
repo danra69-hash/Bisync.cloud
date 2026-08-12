@@ -29,6 +29,7 @@ const focused = [
   'scripts/audit-trail-activity-types.test.mjs',
   'scripts/access-control-super-user-defaults.test.mjs',
   'scripts/bisync101-slower-cursor.test.mjs',
+  'scripts/employee-directory-shift-checkbox.test.mjs',
 ]
 
 for (const rel of focused) {

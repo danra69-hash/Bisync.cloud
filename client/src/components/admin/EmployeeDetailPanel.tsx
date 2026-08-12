@@ -167,6 +167,26 @@ export function EmployeeDetailPanel({
                   ))}
                 </select>
               </div>
+              <div className="flex items-end">
+                <label
+                  className="flex items-center gap-2 text-xs cursor-default"
+                  title="Set via HR Config → Level & Entitlement"
+                >
+                  <input
+                    type="checkbox"
+                    checked={employeeIsShift(employee)}
+                    disabled
+                    className="rounded border-border opacity-70"
+                    aria-label="Shift"
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Shift</span>
+                    <span className="block text-[10px] text-muted-foreground mt-0.5">
+                      From Employee Level · edit in Level &amp; Entitlement
+                    </span>
+                  </span>
+                </label>
+              </div>
               <div>
                 <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Reports To</label>
                 <select
@@ -270,9 +290,19 @@ export function EmployeeDetailPanel({
                 </select>
               </div>
               <div className="flex items-end">
-                <p className="text-xs text-muted-foreground">
-                  Shift status: {employeeIsShift(employee) ? 'Shift employee' : 'Non-shift'} (via Employee Level)
-                </p>
+                <label
+                  className="flex items-center gap-2 text-xs cursor-default"
+                  title="Set via HR Config → Level & Entitlement"
+                >
+                  <input
+                    type="checkbox"
+                    checked={employeeIsShift(employee)}
+                    disabled
+                    className="rounded border-border opacity-70"
+                    aria-label="Shift"
+                  />
+                  <span className="font-medium text-foreground">Shift</span>
+                </label>
               </div>
             </div>
 
