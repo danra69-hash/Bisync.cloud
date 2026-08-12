@@ -7,8 +7,10 @@ type Props = {
   task: Bisync101Task;
 };
 
-const STEP_MS = 2800;
-const INTRO_MS = 700;
+const STEP_MS = 5600;
+const INTRO_MS = 1400;
+/** Recorded WebM clips play slower so the on-screen cursor is easier to follow. */
+const VIDEO_PLAYBACK_RATE = 0.65;
 
 const SADDLE = '#2A2118';
 const ORANGE = '#F37021';
@@ -89,8 +91,22 @@ export function Bisync101ScreenLesson({ task }: Props) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    drawLessonFrame(ctx, canvas.width, canvas.height, task, stepIndex, elapsed / totalMs);
+    const afterIntro = Math.max(0, elapsed - INTRO_MS);
+    const stepProgress = ((afterIntro % STEP_MS) + STEP_MS) % STEP_MS / STEP_MS;
+    drawLessonFrame(
+      ctx,
+      canvas.width,
+      canvas.height,
+      task,
+      stepIndex,
+      stepProgress,
+    );
   }, [elapsed, stepIndex, task, totalMs, useVideo]);
+
+  useEffect(() => {
+    if (!useVideo || !videoRef.current) return;
+    videoRef.current.playbackRate = VIDEO_PLAYBACK_RATE;
+  }, [useVideo, clipSrc, playing]);
 
   function togglePlay() {
     if (useVideo && videoRef.current) {
@@ -152,6 +168,12 @@ export function Bisync101ScreenLesson({ task }: Props) {
               const el = e.currentTarget;
               if (el.duration > 0) setVideoProgress(el.currentTime / el.duration);
             }}
+            onLoadedMetadata={e => {
+              e.currentTarget.playbackRate = VIDEO_PLAYBACK_RATE;
+            }}
+            onPlay={e => {
+              e.currentTarget.playbackRate = VIDEO_PLAYBACK_RATE;
+            }}
             onError={() => {
               setUseVideo(false);
               setPlaying(true);
@@ -169,7 +191,9 @@ export function Bisync101ScreenLesson({ task }: Props) {
           />
         )}
         <div className="absolute left-2 top-2 rounded bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/90">
-          Platform screen · {task.durationLabel}
+          {useVideo
+            ? `Platform screen · ${task.durationLabel} · slowed`
+            : `Platform screen · ~${Math.max(1, Math.round(totalMs / 1000))} sec`}
         </div>
       </div>
 
@@ -501,7 +525,7 @@ function drawLessonFrame(
   h: number,
   task: Bisync101Task,
   stepIndex: number,
-  progress: number,
+  stepProgress: number,
 ) {
   ctx.clearRect(0, 0, w, h);
   const kind = screenKindForTask(task.id);
@@ -698,7 +722,7 @@ function drawLessonFrame(
 
   const step = task.steps[stepIndex] ?? task.steps[0];
   if (step?.hotspot) {
-    drawHotspot(ctx, w, h, step.hotspot, progress);
+    drawHotspot(ctx, w, h, step.hotspot, stepProgress);
   }
 
   ctx.fillStyle = 'rgba(0,0,0,0.78)';
@@ -719,7 +743,7 @@ function drawHotspot(
   w: number,
   h: number,
   hotspot: Bisync101Hotspot,
-  progress: number,
+  stepProgress: number,
 ) {
   const hx = w * (hotspot.x / 100);
   const hy = h * (hotspot.y / 100);
@@ -733,8 +757,10 @@ function drawHotspot(
   ctx.fillStyle = 'rgba(243,112,33,0.14)';
   ctx.fillRect(hx, hy, hw, hh);
 
-  const cx = hx + hw * (0.35 + 0.3 * Math.sin(progress * Math.PI * 4));
-  const cy = hy + hh * 0.55;
+  // One slow pass across the hotspot per step (easier to follow).
+  const t = Math.min(1, Math.max(0, stepProgress));
+  const cx = hx + hw * (0.18 + 0.64 * t);
+  const cy = hy + hh * (0.42 + 0.16 * Math.sin(t * Math.PI));
   drawCursor(ctx, cx, cy);
 
   if (hotspot.label) {
@@ -750,9 +776,23 @@ function drawHotspot(
 function drawCursor(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.save();
   ctx.translate(x, y);
-  ctx.fillStyle = '#fff';
-  ctx.strokeStyle = '#111';
-  ctx.lineWidth = 1.2;
+  ctx.scale(1.45, 1.45);
+  // Soft drop shadow for contrast on light and dark UI.
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.moveTo(2, 2);
+  ctx.lineTo(2, 20);
+  ctx.lineTo(7, 16);
+  ctx.lineTo(12, 24);
+  ctx.lineTo(15, 22);
+  ctx.lineTo(10, 14);
+  ctx.lineTo(16, 14);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = ORANGE;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(0, 18);

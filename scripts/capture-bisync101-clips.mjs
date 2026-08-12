@@ -77,17 +77,17 @@ async function injectDemoChrome(page) {
       cursor.style.cssText = [
         'position:fixed',
         'z-index:2147483647',
-        'width:16px',
-        'height:16px',
+        'width:26px',
+        'height:26px',
         'left:0',
         'top:0',
         'border-radius:50% 0 50% 50%',
         'background:#F37021',
-        'border:2px solid #fff',
-        'box-shadow:0 2px 8px rgba(0,0,0,.35)',
+        'border:2.5px solid #fff',
+        'box-shadow:0 3px 10px rgba(0,0,0,.4)',
         'pointer-events:none',
-        'transform:translate(-2px,-2px) rotate(-20deg)',
-        'transition:left 50ms linear, top 50ms linear',
+        'transform:translate(-3px,-3px) rotate(-20deg)',
+        'transition:left 80ms linear, top 80ms linear',
       ].join(';');
       document.documentElement.appendChild(cursor);
 
