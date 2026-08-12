@@ -243,6 +243,8 @@ export const ms = {
     revenueTrendSubtitle: 'Minggu ini vs minggu lepas',
     menuPerformance: 'Prestasi Produk',
     productPerformance: 'Prestasi Produk',
+    taskToday: 'Tugas Hari Ini',
+    myOrderSummary: 'Ringkasan Pesanan Saya',
     inventoryAlerts: 'Amaran Inventori',
     orderNow: 'Pesan sekarang',
     scrollUp: 'Tatal ke atas',

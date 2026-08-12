@@ -243,6 +243,8 @@ export const th = {
     revenueTrendSubtitle: 'สัปดาห์นี้เทียบสัปดาห์ที่แล้ว',
     menuPerformance: 'ประสิทธิภาพสินค้า',
     productPerformance: 'ประสิทธิภาพสินค้า',
+    taskToday: 'งานวันนี้',
+    myOrderSummary: 'สรุปคำสั่งซื้อของฉัน',
     inventoryAlerts: 'การแจ้งเตือนสินค้าคงคลัง',
     orderNow: 'สั่งซื้อเลย',
     scrollUp: 'เลื่อนขึ้น',

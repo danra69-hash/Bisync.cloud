@@ -8,7 +8,6 @@ import {
   type PurchaseOrder,
   type InventoryAlert,
   type RevenuePoint,
-  type ProgressData,
 } from './api';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -113,7 +112,6 @@ export default function App() {
   const [clientOrders, setClientOrders] = useState<B2bSalesOrder[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
-  const [progress, setProgress] = useState<ProgressData | null>(null);
   const [modulesGoLive, setModulesGoLive] = useState<ModulesGoLiveMap | null>(null);
   const [revenueIntent, setRevenueIntent] = useState<{
     revItem: string;
@@ -163,15 +161,13 @@ export default function App() {
       const results = await Promise.allSettled([
         api.menu(),
         api.revenue(),
-        api.progress(),
         api.registrationPolicy(),
       ]);
 
       if (results[0].status === 'fulfilled') setMenuItems(results[0].value);
       if (results[1].status === 'fulfilled') setRevenue(results[1].value);
-      if (results[2].status === 'fulfilled') setProgress(results[2].value);
-      if (results[3].status === 'fulfilled') {
-        setModulesGoLive(results[3].value.modulesGoLive ?? null);
+      if (results[2].status === 'fulfilled') {
+        setModulesGoLive(results[2].value.modulesGoLive ?? null);
       } else {
         setModulesGoLive(null);
       }
@@ -343,7 +339,6 @@ export default function App() {
   const overviewMenuItems = selectedCompanyId ? menuItems : [];
   const overviewAlerts = selectedCompanyId ? alerts : [];
   const overviewRevenue = selectedCompanyId ? revenue : [];
-  const overviewProgress = selectedCompanyId ? progress : null;
 
   const handleOrderNowFromAlerts = useCallback(async () => {
     if (!selectedCompanyId || overviewAlerts.length === 0) return;
@@ -505,7 +500,6 @@ export default function App() {
                 orders: overviewOrders,
                 clientOrders: overviewClientOrders,
                 revenue: overviewRevenue,
-                progress: overviewProgress,
                 sales: dashboardMetrics.sales,
                 activity: dashboardMetrics.activity,
                 aov: dashboardMetrics.aov,
@@ -513,9 +507,6 @@ export default function App() {
                 onOrderNowFromAlerts: handleOrderNowFromAlerts,
                 onPurchaseOrderUpdated: updated => {
                   setOrders(prev => {
-                    if (String(updated.status).toLowerCase() === 'reconciled') {
-                      return prev.filter(order => order.id !== updated.id);
-                    }
                     const exists = prev.some(order => order.id === updated.id);
                     return exists
                       ? prev.map(order => (order.id === updated.id ? updated : order))

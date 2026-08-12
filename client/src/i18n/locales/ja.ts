@@ -243,6 +243,8 @@ export const ja = {
     revenueTrendSubtitle: '今週 vs 先週',
     menuPerformance: '製品実績',
     productPerformance: '製品実績',
+    taskToday: '本日のタスク',
+    myOrderSummary: 'マイ注文サマリー',
     inventoryAlerts: '在庫アラート',
     orderNow: '今すぐ発注',
     scrollUp: '上へスクロール',

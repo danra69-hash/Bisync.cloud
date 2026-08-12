@@ -243,6 +243,8 @@ export const fr = {
     revenueTrendSubtitle: 'Cette semaine vs semaine dernière',
     menuPerformance: 'Performance produit',
     productPerformance: 'Performance produit',
+    taskToday: "Tâches du jour",
+    myOrderSummary: 'Résumé de mes commandes',
     inventoryAlerts: 'Alertes de stock',
     orderNow: 'Commander',
     scrollUp: 'Défiler vers le haut',

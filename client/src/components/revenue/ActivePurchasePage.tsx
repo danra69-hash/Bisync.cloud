@@ -30,12 +30,14 @@ type Props = {
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
-type SummaryBucket =
+export type ActivePurchaseSummaryBucket =
   | 'purchase_request'
   | 'po_accepted'
   | 'received'
   | 'reconciled'
   | 'pre_committed';
+
+type SummaryBucket = ActivePurchaseSummaryBucket;
 
 /** Purchase Request summary — group detail lines by one of these dimensions. */
 type PrViewBy = 'location' | 'vendor' | 'vendor_product' | 'po_number';
@@ -147,7 +149,7 @@ function prViewByGroupLabel(viewBy: PrViewBy, key: string): string {
   return `PO Number: ${key}`;
 }
 
-const SUMMARY_BOXES: {
+export const ACTIVE_PURCHASE_SUMMARY_BOXES: {
   id: SummaryBucket;
   label: string;
   empty: string;
@@ -184,6 +186,8 @@ const SUMMARY_BOXES: {
     hint: 'Issued, received vs committed, and expiry show under each line — click to open details.',
   },
 ];
+
+const SUMMARY_BOXES = ACTIVE_PURCHASE_SUMMARY_BOXES;
 
 function orderTotal(order: PurchaseOrder): number {
   return order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);

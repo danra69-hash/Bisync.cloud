@@ -243,6 +243,8 @@ export const zh = {
     revenueTrendSubtitle: '本周 vs 上周',
     menuPerformance: '产品表现',
     productPerformance: '产品表现',
+    taskToday: '今日任务',
+    myOrderSummary: '我的订单摘要',
     inventoryAlerts: '库存预警',
     orderNow: '立即下单',
     scrollUp: '向上滚动',

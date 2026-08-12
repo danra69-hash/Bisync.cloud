@@ -243,6 +243,8 @@ export const ko = {
     revenueTrendSubtitle: '이번 주 vs 지난주',
     menuPerformance: '제품 성과',
     productPerformance: '제품 성과',
+    taskToday: '오늘의 할 일',
+    myOrderSummary: '내 주문 요약',
     inventoryAlerts: '재고 알림',
     orderNow: '지금 주문',
     scrollUp: '위로 스크롤',

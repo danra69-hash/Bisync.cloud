@@ -243,6 +243,8 @@ export const id = {
     revenueTrendSubtitle: 'Minggu ini vs minggu lalu',
     menuPerformance: 'Kinerja Produk',
     productPerformance: 'Kinerja Produk',
+    taskToday: 'Tugas Hari Ini',
+    myOrderSummary: 'Ringkasan Pesanan Saya',
     inventoryAlerts: 'Peringatan Inventaris',
     orderNow: 'Pesan sekarang',
     scrollUp: 'Gulir ke atas',

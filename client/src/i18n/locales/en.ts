@@ -241,6 +241,8 @@ export const en = {
     menuPerformance: 'Product Performance',
     productPerformance: 'Product Performance',
     inventoryAlerts: 'Inventory Alerts',
+    taskToday: 'Task Today',
+    myOrderSummary: 'My Order Summary',
     orderNow: 'Order now',
     noInventoryAlerts: 'No inventory alerts.',
     scrollUp: 'Scroll up',
