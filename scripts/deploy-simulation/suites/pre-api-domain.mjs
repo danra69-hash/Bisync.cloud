@@ -25,6 +25,7 @@ const focused = [
   'scripts/credit-note-outbound-residual.mjs',
   'scripts/active-purchase-buckets.mjs',
   'scripts/precommitted-po-pdf-label.mjs',
+  'scripts/platform-team-chat-home-rms.test.mjs',
 ]
 
 for (const rel of focused) {
