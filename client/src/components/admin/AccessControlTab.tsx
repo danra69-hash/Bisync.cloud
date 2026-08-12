@@ -4,7 +4,9 @@ import {
   ACCESS_CONTROL_MODULE_ORDER,
   ACCESS_CONTROL_ROWS,
   defaultAccessControlTypes,
+  ensureSuperUserMatrixGrants,
   isAccessControlRestrictionRow,
+  isSuperUserAccessType,
   parseAccessControlMatrix,
   parseAccessControlTypes,
   serializeAccessControlMatrix,
@@ -64,13 +66,30 @@ export function AccessControlTab() {
   useEffect(() => {
     setLoading(true);
     api.accessControl()
-      .then(data => {
-        setTypes(parseAccessControlTypes(data.typesJson));
-        setMatrix(parseAccessControlMatrix(data.matrixJson));
+      .then(async data => {
+        const nextTypes = parseAccessControlTypes(data.typesJson);
+        const loadedMatrix = parseAccessControlMatrix(data.matrixJson);
+        const nextMatrix = ensureSuperUserMatrixGrants(loadedMatrix, nextTypes);
+        setTypes(nextTypes);
+        setMatrix(nextMatrix);
+
+        // Persist Super User grants when the catalog gains new line items.
+        const typesJson = serializeAccessControlTypes(nextTypes);
+        const matrixJson = serializeAccessControlMatrix(nextMatrix);
+        const typesChanged = typesJson !== (data.typesJson?.trim() || '[]');
+        const matrixChanged = matrixJson !== (data.matrixJson?.trim() || '{}');
+        if (typesChanged || matrixChanged) {
+          try {
+            await api.updateAccessControl({ typesJson, matrixJson });
+          } catch {
+            // Keep UI grants even if background persist fails; Save still works.
+          }
+        }
       })
       .catch(() => {
-        setTypes(defaultAccessControlTypes());
-        setMatrix({});
+        const fallbackTypes = defaultAccessControlTypes();
+        setTypes(fallbackTypes);
+        setMatrix(ensureSuperUserMatrixGrants({}, fallbackTypes));
         setError('Could not load access control settings.');
       })
       .finally(() => setLoading(false));
@@ -85,31 +104,51 @@ export function AccessControlTab() {
 
   const typeColumnStates = useMemo(
     () => types.map(type => {
-      const allowedCount = grantRows.filter(row => matrix[row.key]?.[type.id]).length;
+      const superUser = isSuperUserAccessType(type);
+      const allowedCount = grantRows.filter(row =>
+        superUser || matrix[row.key]?.[type.id],
+      ).length;
       return {
         type,
+        superUser,
         allSelected: grantRows.length > 0 && allowedCount === grantRows.length,
-        someSelected: allowedCount > 0 && allowedCount < grantRows.length,
+        someSelected: !superUser && allowedCount > 0 && allowedCount < grantRows.length,
       };
     }),
     [types, matrix, grantRows],
   );
 
   function updateTypeLabel(index: number, label: string) {
-    setTypes(prev => prev.map((type, i) => (i === index ? { ...type, label } : type)));
+    setTypes(prev => {
+      const next = prev.map((type, i) => (i === index ? { ...type, label } : type));
+      setMatrix(current => ensureSuperUserMatrixGrants(current, next));
+      return next;
+    });
     setMessage(null);
     setError(null);
   }
 
   function toggleCell(rowKey: string, typeId: string) {
+    const type = types.find(t => t.id === typeId);
+    const row = ACCESS_CONTROL_ROWS.find(r => r.key === rowKey);
+    if (
+      type
+      && isSuperUserAccessType(type)
+      && row
+      && !isAccessControlRestrictionRow(row)
+    ) {
+      return;
+    }
     const current = !!matrix[rowKey]?.[typeId];
-    setMatrix(prev => setTaskAllowedForType(prev, rowKey, typeId, !current));
+    setMatrix(prev => setTaskAllowedForType(prev, rowKey, typeId, !current, types));
     setMessage(null);
     setError(null);
   }
 
   function toggleColumn(typeId: string, allowed: boolean) {
-    setMatrix(prev => setAllTasksForType(prev, typeId, allowed, filteredRows));
+    const type = types.find(t => t.id === typeId);
+    if (type && isSuperUserAccessType(type) && !allowed) return;
+    setMatrix(prev => setAllTasksForType(prev, typeId, allowed, filteredRows, types));
     setMessage(null);
     setError(null);
   }
@@ -119,9 +158,11 @@ export function AccessControlTab() {
     setError(null);
     setMessage(null);
     try {
+      const nextMatrix = ensureSuperUserMatrixGrants(matrix, types);
+      setMatrix(nextMatrix);
       await api.updateAccessControl({
         typesJson: serializeAccessControlTypes(types),
-        matrixJson: serializeAccessControlMatrix(matrix),
+        matrixJson: serializeAccessControlMatrix(nextMatrix),
       });
       setMessage('Access control settings saved.');
     } catch (err) {
@@ -136,10 +177,12 @@ export function AccessControlTab() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs text-muted-foreground max-w-3xl">
-            Define eight access control types (AC 1–AC 8) and tick which module functions and tasks each type may perform —
+            Define eight access control types and tick which module functions and tasks each type may perform —
             covering Home &amp; Reports, Platform Config, Revenue Management, Point of Sales, Human Resource Management,
             Accounting, and <span className="font-medium text-foreground">Web App Access</span> (Bisync RMS Web / mobile).
-            Column headers can be renamed to match your organisation roles.
+            The first column defaults to <span className="font-medium text-foreground">Super User</span> and stays
+            fully granted for every task (including newly added line items). Other column headers can be renamed to
+            match your organisation roles.
             Under Revenue Management → Policies, <span className="font-medium text-foreground">Price Hide Policy</span> means
             users on that level see quantities only (no unit prices or amounts). Column “tick all” does not enable Policies.
           </p>
@@ -201,7 +244,7 @@ export function AccessControlTab() {
               <TableHeaderCell>Module</TableHeaderCell>
               <TableHeaderCell className="min-w-[12rem]">Function</TableHeaderCell>
               <TableHeaderCell>Task</TableHeaderCell>
-              {typeColumnStates.map(({ type, allSelected, someSelected }, index) => (
+              {typeColumnStates.map(({ type, allSelected, someSelected, superUser }, index) => (
                 <th key={type.id} className={`${acColumnCls} align-top`}>
                   <div className="flex flex-col items-center gap-1.5">
                     <input
@@ -212,13 +255,14 @@ export function AccessControlTab() {
                       title={type.label}
                     />
                     <label
-                      className="inline-flex flex-col items-center gap-0.5 cursor-pointer"
-                      title={`Select all for ${type.label}`}
+                      className={`inline-flex flex-col items-center gap-0.5 ${superUser ? 'cursor-default' : 'cursor-pointer'}`}
+                      title={superUser ? `${type.label} always has all tasks` : `Select all for ${type.label}`}
                     >
                       <input
                         type="checkbox"
                         className="h-3.5 w-3.5 accent-primary"
                         checked={allSelected}
+                        disabled={superUser}
                         ref={el => {
                           if (el) el.indeterminate = someSelected;
                         }}
@@ -226,7 +270,7 @@ export function AccessControlTab() {
                         aria-label={`Select all tasks for ${type.label}`}
                       />
                       <span className="text-[9px] font-sans uppercase tracking-wide text-muted-foreground leading-none">
-                        All
+                        {superUser ? 'All*' : 'All'}
                       </span>
                     </label>
                   </div>
@@ -261,17 +305,23 @@ export function AccessControlTab() {
                       </span>
                     ) : null}
                   </td>
-                  {types.map(type => (
-                    <td key={`${row.key}-${type.id}`} className={acColumnCls}>
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5 accent-primary"
-                        checked={!!matrix[row.key]?.[type.id]}
-                        onChange={() => toggleCell(row.key, type.id)}
-                        aria-label={`${type.label} — ${row.task}`}
-                      />
-                    </td>
-                  ))}
+                  {types.map(type => {
+                    const superUserGrant =
+                      isSuperUserAccessType(type) && !restriction;
+                    return (
+                      <td key={`${row.key}-${type.id}`} className={acColumnCls}>
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 accent-primary"
+                          checked={superUserGrant || !!matrix[row.key]?.[type.id]}
+                          disabled={superUserGrant}
+                          onChange={() => toggleCell(row.key, type.id)}
+                          aria-label={`${type.label} — ${row.task}`}
+                          title={superUserGrant ? 'Super User always has this task' : undefined}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
                 );
               })

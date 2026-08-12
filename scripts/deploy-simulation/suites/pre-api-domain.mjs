@@ -27,6 +27,7 @@ const focused = [
   'scripts/precommitted-po-pdf-label.mjs',
   'scripts/platform-team-chat-home-rms.test.mjs',
   'scripts/audit-trail-activity-types.test.mjs',
+  'scripts/access-control-super-user-defaults.test.mjs',
 ]
 
 for (const rel of focused) {

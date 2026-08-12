@@ -3,6 +3,10 @@ import { posItems } from './revenueManagement';
 
 export const ACCESS_CONTROL_TYPE_COUNT = 8;
 
+/** Default first column — always fully granted for every catalog task (except restriction rows). */
+export const SUPER_USER_ACCESS_TYPE_ID = 'ac1';
+export const SUPER_USER_ACCESS_TYPE_LABEL = 'Super User';
+
 export type AccessControlType = {
   id: string;
   label: string;
@@ -20,8 +24,15 @@ export type AccessControlMatrix = Record<string, Record<string, boolean>>;
 export function defaultAccessControlTypes(): AccessControlType[] {
   return Array.from({ length: ACCESS_CONTROL_TYPE_COUNT }, (_, index) => ({
     id: `ac${index + 1}`,
-    label: `AC ${index + 1}`,
+    label: index === 0 ? SUPER_USER_ACCESS_TYPE_LABEL : `AC ${index + 1}`,
   }));
+}
+
+/** True when this AC column is the Super User role (by reserved id or label). */
+export function isSuperUserAccessType(type: AccessControlType | null | undefined): boolean {
+  if (!type) return false;
+  if (type.id === SUPER_USER_ACCESS_TYPE_ID) return true;
+  return /^super\s*user$/i.test((type.label ?? '').trim());
 }
 
 function taskIdFromLabel(task: string): string {
@@ -331,10 +342,15 @@ export function parseAccessControlTypes(json: string | null | undefined): Access
     if (!Array.isArray(parsed) || parsed.length === 0) return defaultAccessControlTypes();
     return defaultAccessControlTypes().map((fallback, index) => {
       const item = parsed[index];
-      return {
-        id: item?.id?.trim() || fallback.id,
-        label: item?.label?.trim() || fallback.label,
-      };
+      const id = item?.id?.trim() || fallback.id;
+      let label = item?.label?.trim() || fallback.label;
+      // Keep reserved Super User slot labeled unless the org already renamed it away
+      // from both the default id and an empty/AC-1 style placeholder.
+      if (id === SUPER_USER_ACCESS_TYPE_ID
+        && (/^ac\s*1$/i.test(label) || label.length === 0)) {
+        label = SUPER_USER_ACCESS_TYPE_LABEL;
+      }
+      return { id, label };
     });
   } catch {
     return defaultAccessControlTypes();
@@ -352,6 +368,36 @@ export function parseAccessControlMatrix(json: string | null | undefined): Acces
   }
 }
 
+/**
+ * Ensure every Super User column is ticked for all grant tasks.
+ * Runs whenever the catalog grows so new line items stay granted by default.
+ */
+export function ensureSuperUserMatrixGrants(
+  matrix: AccessControlMatrix,
+  types: AccessControlType[] = defaultAccessControlTypes(),
+  rows: AccessControlRow[] = ACCESS_CONTROL_ROWS,
+): AccessControlMatrix {
+  const superTypeIds = types.filter(isSuperUserAccessType).map(t => t.id);
+  if (superTypeIds.length === 0) return matrix;
+
+  let next = matrix;
+  let changed = false;
+  for (const typeId of superTypeIds) {
+    for (const accessRow of rows) {
+      if (isAccessControlRestrictionRow(accessRow)) continue;
+      if (next[accessRow.key]?.[typeId]) continue;
+      if (!changed) {
+        next = { ...matrix };
+        changed = true;
+      }
+      const rowPerms = { ...(next[accessRow.key] ?? {}) };
+      rowPerms[typeId] = true;
+      next[accessRow.key] = rowPerms;
+    }
+  }
+  return next;
+}
+
 export function serializeAccessControlTypes(types: AccessControlType[]): string {
   return JSON.stringify(types);
 }
@@ -364,7 +410,17 @@ export function isTaskAllowedForType(
   matrix: AccessControlMatrix,
   rowKey: string,
   typeId: string,
+  types?: AccessControlType[],
 ): boolean {
+  const row = ACCESS_CONTROL_ROWS.find(r => r.key === rowKey);
+  const isRestriction = row ? isAccessControlRestrictionRow(row) : rowKey.endsWith(':hidePrices');
+
+  // Super User always has every grant task, including newly added catalog rows.
+  if (!isRestriction) {
+    if (typeId === SUPER_USER_ACCESS_TYPE_ID) return true;
+    if (types?.some(t => t.id === typeId && isSuperUserAccessType(t))) return true;
+  }
+
   return !!matrix[rowKey]?.[typeId];
 }
 
@@ -373,7 +429,21 @@ export function setTaskAllowedForType(
   rowKey: string,
   typeId: string,
   allowed: boolean,
+  types: AccessControlType[] = defaultAccessControlTypes(),
 ): AccessControlMatrix {
+  const type = types.find(t => t.id === typeId);
+  const row = ACCESS_CONTROL_ROWS.find(r => r.key === rowKey);
+  // Super User grant ticks cannot be cleared (restrictions still editable).
+  if (
+    type
+    && isSuperUserAccessType(type)
+    && !allowed
+    && row
+    && !isAccessControlRestrictionRow(row)
+  ) {
+    return matrix;
+  }
+
   const rowState = { ...(matrix[rowKey] ?? {}) };
   if (allowed) rowState[typeId] = true;
   else delete rowState[typeId];
@@ -385,7 +455,14 @@ export function setAllTasksForType(
   typeId: string,
   allowed: boolean,
   rows: AccessControlRow[] = ACCESS_CONTROL_ROWS,
+  types: AccessControlType[] = defaultAccessControlTypes(),
 ): AccessControlMatrix {
+  const type = types.find(t => t.id === typeId);
+  // Super User column always stays fully granted for non-restriction rows.
+  if (type && isSuperUserAccessType(type) && !allowed) {
+    return ensureSuperUserMatrixGrants(matrix, types, ACCESS_CONTROL_ROWS);
+  }
+
   const next = { ...matrix };
   for (const accessRow of rows) {
     // Never bulk-enable restriction policies (e.g. Price Hide).
@@ -395,5 +472,7 @@ export function setAllTasksForType(
     else delete rowPerms[typeId];
     next[accessRow.key] = rowPerms;
   }
-  return next;
+  return type && isSuperUserAccessType(type)
+    ? ensureSuperUserMatrixGrants(next, types, ACCESS_CONTROL_ROWS)
+    : next;
 }
