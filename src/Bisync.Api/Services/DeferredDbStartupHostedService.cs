@@ -89,7 +89,16 @@ public sealed class DeferredDbStartupHostedService(
                 logger.LogError(purgeEx, "Demo residue purge failed; continuing startup");
             }
 
-            await sp.GetRequiredService<LocationSubscriptionService>().EnsureSchemaAsync();
+            var locationSubscriptions = sp.GetRequiredService<LocationSubscriptionService>();
+            await locationSubscriptions.EnsureSchemaAsync();
+            try
+            {
+                await locationSubscriptions.HealBillingLockSideEffectsAsync(cancellationToken);
+            }
+            catch (Exception billEx)
+            {
+                logger.LogError(billEx, "Billing-lock side-effect heal failed; continuing startup");
+            }
             await HrStartup.InitializeAsync(db);
             await StockCardArchiveStartup.InitializeAsync(sp);
             await SystemAuditStartup.InitializeAsync(sp);

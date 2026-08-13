@@ -123,17 +123,21 @@ public class AuthController(
                 && !string.Equals(user.Email, SuperAdminAccess.SuperAdminEmail, StringComparison.OrdinalIgnoreCase))
             {
                 var billingLocked = await locationSubscriptions.IsCompanyBillingLockedAsync(company.Id);
-                if (billingLocked || !company.Active)
+                if (billingLocked)
                 {
-                    // Re-check: inactive solely from admin vs billing lock
-                    if (billingLocked || !company.Active)
+                    return StatusCode(403, new
                     {
-                        return StatusCode(403, new
-                        {
-                            message = "This account is locked because the free trial or subscription has expired. Contact Bisync support to reactivate.",
-                            code = "subscription_locked",
-                        });
-                    }
+                        message = "This account is locked because the free trial or subscription has expired. Contact Bisync support to reactivate.",
+                        code = "subscription_locked",
+                    });
+                }
+                if (!company.Active)
+                {
+                    return StatusCode(403, new
+                    {
+                        message = "This company is deactivated in Platform Config. Contact your administrator.",
+                        code = "company_inactive",
+                    });
                 }
             }
         }

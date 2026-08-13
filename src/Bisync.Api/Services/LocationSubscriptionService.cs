@@ -298,7 +298,7 @@ public class LocationSubscriptionService(
             CompanyId = company.Id,
             CompanyName = company.Name,
             RegisteredAt = company.RegisteredAt,
-            CompanyLocked = !company.Active || details.Count > 0 && details.All(d => d.Locked),
+            CompanyLocked = details.Count > 0 && details.All(d => d.Locked),
             Locations = details,
         };
     }
@@ -551,10 +551,9 @@ public class LocationSubscriptionService(
 
     async Task SyncCompanyLockAsync(BisyncDbContext db, int companyId, CancellationToken ct)
     {
-        var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
-        if (company is null) return;
-
-        // Billing lock only considers Platform Config–active locations.
+        // Billing lock lives on LocationSubscriptions (Status=locked), not Company.Active.
+        // Company.Active is Platform Config only — flipping it here hid /api/companies and
+        // /api/locations/config after trial expiry and broke company↔location linkage in the shell.
         var locIds = await db.Locations.AsNoTracking()
             .Where(l => l.CompanyId == companyId && l.Active)
             .Select(l => l.ExternalId)
@@ -570,28 +569,14 @@ public class LocationSubscriptionService(
             byLoc.TryGetValue(id, out var sub)
             && string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase));
 
-        // Lock company when every location is locked; unlock when any location is active again.
-        if (allLocked && company.Active)
+        if (allLocked)
         {
-            company.Active = false;
-            await db.SaveChangesAsync(ct);
-            logger.LogInformation("Company {CompanyId} locked — all location subscriptions expired.", companyId);
+            logger.LogInformation(
+                "Company {CompanyId} billing-locked — all active location subscriptions expired (Company.Active unchanged).",
+                companyId);
         }
-        else if (!allLocked && !company.Active)
-        {
-            // Only auto-unlock when we previously locked for billing; admin may have deactivated for other reasons.
-            // If any location is unlocked/active status, restore company Active.
-            var anyActive = locIds.Any(id =>
-                byLoc.TryGetValue(id, out var sub)
-                && !string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase)
-                && sub.Active);
-            if (anyActive)
-            {
-                company.Active = true;
-                await db.SaveChangesAsync(ct);
-                logger.LogInformation("Company {CompanyId} unlocked after subscription reactivation.", companyId);
-            }
-        }
+
+        await Task.CompletedTask;
     }
 
     public async Task<bool> IsCompanyBillingLockedAsync(int companyId, CancellationToken ct = default)
@@ -599,15 +584,72 @@ public class LocationSubscriptionService(
         await using var db = CreateControlDb();
         await EnsureSchemaAsync(db, ct);
         await ApplyExpiryLocksAsync(db, companyId, ct);
-        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
-        if (company is null) return false;
-        if (!company.Active)
+
+        var locIds = await db.Locations.AsNoTracking()
+            .Where(l => l.CompanyId == companyId && l.Active)
+            .Select(l => l.ExternalId)
+            .ToListAsync(ct);
+        if (locIds.Count == 0) return false;
+
+        var subs = await db.LocationSubscriptions.AsNoTracking()
+            .Where(s => s.CompanyId == companyId)
+            .ToListAsync(ct);
+        var byLoc = subs.ToDictionary(s => s.LocationExternalId, StringComparer.OrdinalIgnoreCase);
+
+        return locIds.All(id =>
+            byLoc.TryGetValue(id, out var sub)
+            && string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Undo older billing-lock behavior that set Company.Active=false (which hid companies/locations
+    /// from the shell). Restores Active when the company still has Platform-active locations, and
+    /// reopens those locations' locked subscription rows once so login is not stuck.
+    /// </summary>
+    public async Task HealBillingLockSideEffectsAsync(CancellationToken ct = default)
+    {
+        await using var db = CreateControlDb();
+        await EnsureSchemaAsync(db, ct);
+
+        var companies = await db.Companies
+            .Where(c => !c.Active)
+            .ToListAsync(ct);
+        foreach (var company in companies)
         {
-            // Distinguish billing lock: all locations locked
-            var panel = await GetCompanyPanelAsync(companyId, ct);
-            return panel?.CompanyLocked == true;
+            var activeLocs = await db.Locations.AsNoTracking()
+                .Where(l => l.CompanyId == company.Id && l.Active)
+                .Select(l => l.ExternalId)
+                .ToListAsync(ct);
+            if (activeLocs.Count == 0) continue;
+
+            company.Active = true;
+
+            var subs = await db.LocationSubscriptions
+                .Where(s => s.CompanyId == company.Id)
+                .ToListAsync(ct);
+
+            foreach (var locId in activeLocs)
+            {
+                var sub = subs.FirstOrDefault(s =>
+                    string.Equals(s.LocationExternalId, locId, StringComparison.OrdinalIgnoreCase));
+                if (sub is null) continue;
+                if (!string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var trialStart = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+                sub.Status = LocationSubscription.StatusFreeTrial;
+                sub.StatusDate = DateTime.UtcNow;
+                sub.ExpiryDate = trialStart.AddMonths(DefaultTrialMonths);
+                sub.RenewalDate = sub.ExpiryDate;
+                sub.Active = true;
+                sub.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation(
+                "Healed Company {CompanyId} Active=true and reopened locked location trials after billing-lock side effect.",
+                company.Id);
         }
-        return false;
     }
 
     static DateTime? AsUtc(DateTime? value)
