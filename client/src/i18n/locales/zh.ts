@@ -133,6 +133,12 @@ export const zh = {
       updateDownload: 'Download update',
       updateDismiss: 'Not now',
     },
+    deviceUnlock: {
+      setup: 'Set up',
+      manage: 'Manage',
+      setupHint: 'Face ID, fingerprint, or a Bisync PIN for faster unlock next time.',
+      enabledHint: 'Faster unlock is on for this browser. Tap to manage.',
+    },
   },
   revMgmt: {
     sections: {

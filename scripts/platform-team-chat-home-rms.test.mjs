@@ -24,7 +24,13 @@ const popup = fs.readFileSync(path.join(root, 'client/src/components/chat/Platfo
 assert.match(home, /PlatformTeamChatPanel/, 'Home must host Team chat panel');
 assert.match(home, /lg:w-\[min\(20rem/, 'Home chat must sit in a left rail');
 assert.match(home, /HomeDesktopDownloadCard/, 'Download Desktop App sits with chat rail');
+assert.match(home, /HomeDeviceUnlockCard/, 'Device unlock sits under Chat above desktop download');
 assert.match(home, /DesktopUpdateNotice/, 'Home shows desktop update notice after login');
+assert.match(
+  home,
+  /HomeDeviceUnlockCard[\s\S]*desktop-download/,
+  'Device unlock appears above Download Desktop App in left rail',
+);
 assert.match(home, /p-2\.5 sm:p-3/, 'module cards must be reduced in size');
 assert.doesNotMatch(home, /home\.messages\.title/, 'placeholder Messages block removed in favor of Team chat');
 assert.match(desktopCard, /DESKTOP_DOWNLOADS/, 'download card uses shared desktop download list');

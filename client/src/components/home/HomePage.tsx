@@ -15,6 +15,7 @@ import { useAppTranslation } from '../../i18n/useAppTranslation';
 import { PlatformTeamChatPanel } from '../chat/PlatformTeamChatPanel';
 import { DesktopUpdateNotice } from './DesktopUpdateNotice';
 import { HomeDesktopDownloadCard } from './HomeDesktopDownloadCard';
+import { HomeDeviceUnlockCard } from './HomeDeviceUnlockCard';
 
 type Props = {
   enabledModules: AccessModule[];
@@ -129,6 +130,7 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
       <div className="w-full lg:w-[min(20rem,32%)] shrink-0 flex flex-col gap-3">
         <PlatformTeamChatPanel compact />
         <DesktopUpdateNotice downloadAnchorId="desktop-download" />
+        <HomeDeviceUnlockCard />
         <div id="desktop-download">
           <HomeDesktopDownloadCard compact />
         </div>

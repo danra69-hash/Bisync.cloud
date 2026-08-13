@@ -133,6 +133,12 @@ export const es = {
       updateDownload: 'Download update',
       updateDismiss: 'Not now',
     },
+    deviceUnlock: {
+      setup: 'Set up',
+      manage: 'Manage',
+      setupHint: 'Face ID, fingerprint, or a Bisync PIN for faster unlock next time.',
+      enabledHint: 'Faster unlock is on for this browser. Tap to manage.',
+    },
   },
   revMgmt: {
     sections: {
@@ -345,7 +351,7 @@ export const es = {
     deviceUnlockHint: 'Enable Face ID / fingerprint or a Bisync PIN so you do not type your password next time on this browser.',
     httpsRequired: 'Needs HTTPS and a supported device authenticator (Face ID, fingerprint, or Windows Hello).',
     setupTitle: 'Faster sign-in on this device',
-    setupHint: 'Optional: enable Face ID / fingerprint, or set a Bisync device PIN for faster unlock next time. You can also do this later from the sidebar → Device unlock.',
+    setupHint: 'Optional: enable Face ID / fingerprint, or set a Bisync device PIN for faster unlock next time. You can also do this later from Home (under Chat) or sidebar → Device unlock.',
     skipSetup: 'Not now',
     setupDone: 'Continue',
     unlocking: 'Unlocking…',
