@@ -124,9 +124,9 @@ export const it = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Portable .exe — esegui dopo il download',
+      windowsHint: 'Zip — esegui Bisync.cloud.bat',
       macHint: 'Launcher — tasto destro → Apri la prima volta',
-      linuxHint: 'AppImage — chmod +x poi esegui',
+      linuxHint: 'Zip — esegui Bisync.cloud.sh',
     },
   },
   revMgmt: {

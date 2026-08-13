@@ -124,9 +124,9 @@ export const fr = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Portable .exe — lancez après téléchargement',
+      windowsHint: 'Zip — lancez Bisync.cloud.bat',
       macHint: 'Lanceur — clic droit → Ouvrir la première fois',
-      linuxHint: 'AppImage — chmod +x puis lancer',
+      linuxHint: 'Zip — lancez Bisync.cloud.sh',
     },
   },
   revMgmt: {

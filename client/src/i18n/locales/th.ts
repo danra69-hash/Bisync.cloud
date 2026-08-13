@@ -124,9 +124,9 @@ export const th = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'ไฟล์ .exe พกพา — รันหลังดาวน์โหลด',
+      windowsHint: 'Zip — รัน Bisync.cloud.bat',
       macHint: 'ตัวเปิด — คลิกขวา → Open ครั้งแรก',
-      linuxHint: 'AppImage — chmod +x แล้วรัน',
+      linuxHint: 'Zip — รัน Bisync.cloud.sh',
     },
   },
   revMgmt: {

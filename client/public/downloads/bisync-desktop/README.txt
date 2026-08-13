@@ -1,24 +1,18 @@
 Bisync.cloud — Desktop app downloads
 ====================================
 
-Public downloads (also linked from the Home page):
+Public downloads (linked from the Home page):
 
-  Bisync.cloud-Desktop-Windows.exe   — Windows portable Electron app
-  Bisync.cloud-Desktop-Linux.AppImage — Linux Electron AppImage
-  mac/Bisync.cloud.command           — macOS desktop window launcher
-                                      (native macOS .dmg: build with
-                                       `cd desktop && npm run dist:mac`)
+  Bisync.cloud-Desktop-Windows.zip  — double-click Bisync.cloud.bat
+  Bisync.cloud-Desktop-macOS.zip    — open Bisync.cloud.command (right-click → Open first time)
+  Bisync.cloud-Desktop-Linux.zip    — run Bisync.cloud.sh (or install .desktop)
 
-URLs on the live site:
+Each launcher opens Bisync.cloud in a dedicated desktop app window (Chrome/Edge).
 
-  /downloads/bisync-desktop/Bisync.cloud-Desktop-Windows.exe
-  /downloads/bisync-desktop/Bisync.cloud-Desktop-Linux.AppImage
-  /downloads/bisync-desktop/mac/Bisync.cloud.command
-
-Rebuild & publish into this folder:
+Optional full Electron installers (build locally — large binaries are not hosted on Cloud Run):
 
   cd desktop
   npm install
   npm run dist:win
   npm run dist:linux
-  # then copy release artifacts here (see scripts/publish-desktop-downloads.mjs)
+  npm run dist:mac

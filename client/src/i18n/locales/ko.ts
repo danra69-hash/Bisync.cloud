@@ -124,9 +124,9 @@ export const ko = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: '포터블 .exe — 다운로드 후 실행',
+      windowsHint: 'Zip — Bisync.cloud.bat 실행',
       macHint: '런처 — 처음에는 우클릭 → 열기',
-      linuxHint: 'AppImage — chmod +x 후 실행',
+      linuxHint: 'Zip — Bisync.cloud.sh 실행',
     },
   },
   revMgmt: {

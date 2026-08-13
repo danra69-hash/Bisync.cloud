@@ -19,10 +19,10 @@ import { PlatformTeamChatPanel } from '../chat/PlatformTeamChatPanel';
 const DESKTOP_DOWNLOADS = [
   {
     id: 'windows',
-    href: '/downloads/bisync-desktop/Bisync.cloud-Desktop-Windows.exe',
+    href: '/downloads/bisync-desktop/Bisync.cloud-Desktop-Windows.zip',
     labelKey: 'home.desktopApp.windows',
     hintKey: 'home.desktopApp.windowsHint',
-    fileName: 'Bisync.cloud-Desktop-Windows.exe',
+    fileName: 'Bisync.cloud-Desktop-Windows.zip',
   },
   {
     id: 'mac',
@@ -33,10 +33,10 @@ const DESKTOP_DOWNLOADS = [
   },
   {
     id: 'linux',
-    href: '/downloads/bisync-desktop/Bisync.cloud-Desktop-Linux.AppImage',
+    href: '/downloads/bisync-desktop/Bisync.cloud-Desktop-Linux.zip',
     labelKey: 'home.desktopApp.linux',
     hintKey: 'home.desktopApp.linuxHint',
-    fileName: 'Bisync.cloud-Desktop-Linux.AppImage',
+    fileName: 'Bisync.cloud-Desktop-Linux.zip',
   },
 ] as const;
 

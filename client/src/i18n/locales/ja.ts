@@ -124,9 +124,9 @@ export const ja = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'ポータブル .exe — ダウンロード後に実行',
+      windowsHint: 'Zip — Bisync.cloud.bat を実行',
       macHint: 'ランチャー — 初回は右クリック → 開く',
-      linuxHint: 'AppImage — chmod +x して実行',
+      linuxHint: 'Zip — Bisync.cloud.sh を実行',
     },
   },
   revMgmt: {

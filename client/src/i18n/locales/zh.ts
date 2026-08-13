@@ -124,9 +124,9 @@ export const zh = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: '便携 .exe — 下载后运行',
+      windowsHint: 'Zip — 运行 Bisync.cloud.bat',
       macHint: '启动器 — 首次请右键 → 打开',
-      linuxHint: 'AppImage — chmod +x 后运行',
+      linuxHint: 'Zip — 运行 Bisync.cloud.sh',
     },
   },
   revMgmt: {
