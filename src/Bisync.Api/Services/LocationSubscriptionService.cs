@@ -604,16 +604,18 @@ public class LocationSubscriptionService(
     /// <summary>
     /// Undo older billing-lock behavior that set Company.Active=false (which hid companies/locations
     /// from the shell). Restores Active when the company still has Platform-active locations, and
-    /// reopens those locations' locked subscription rows once so login is not stuck.
+    /// reopens locked subscription rows for those locations so login is not stuck.
     /// </summary>
     public async Task HealBillingLockSideEffectsAsync(CancellationToken ct = default)
     {
         await using var db = CreateControlDb();
         await EnsureSchemaAsync(db, ct);
 
+        // Always include the primary customer tenant (Weissbrau) plus any company still marked inactive.
         var companies = await db.Companies
-            .Where(c => !c.Active)
+            .Where(c => !c.Active || c.Id == PosFloorPlanCanonicalSeeder.WeissbrauCompanyId)
             .ToListAsync(ct);
+
         foreach (var company in companies)
         {
             var activeLocs = await db.Locations.AsNoTracking()
@@ -622,7 +624,12 @@ public class LocationSubscriptionService(
                 .ToListAsync(ct);
             if (activeLocs.Count == 0) continue;
 
-            company.Active = true;
+            var touched = false;
+            if (!company.Active)
+            {
+                company.Active = true;
+                touched = true;
+            }
 
             var subs = await db.LocationSubscriptions
                 .Where(s => s.CompanyId == company.Id)
@@ -643,11 +650,14 @@ public class LocationSubscriptionService(
                 sub.RenewalDate = sub.ExpiryDate;
                 sub.Active = true;
                 sub.UpdatedAt = DateTime.UtcNow;
+                touched = true;
             }
+
+            if (!touched) continue;
 
             await db.SaveChangesAsync(ct);
             logger.LogInformation(
-                "Healed Company {CompanyId} Active=true and reopened locked location trials after billing-lock side effect.",
+                "Healed Company {CompanyId} org visibility / locked location trials after billing-lock side effect.",
                 company.Id);
         }
     }
