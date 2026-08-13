@@ -124,7 +124,7 @@ export const ms = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — jalankan Bisync.cloud.bat (pintasan Desktop, log masuk bersih)',
+      windowsHint: 'Zip — run Install-Desktop-Shortcut.vbs or Bisync.cloud.bat (Desktop shortcut with Bisync logo)',
       macHint: 'Pelancar — klik kanan → Open kali pertama',
       linuxHint: 'Zip — jalankan Bisync.cloud.sh',
     },

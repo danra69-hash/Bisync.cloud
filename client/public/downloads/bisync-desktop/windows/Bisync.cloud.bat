@@ -1,49 +1,67 @@
 @echo off
 setlocal EnableExtensions
-REM Bisync.cloud Desktop — installs a Desktop shortcut (with Bisync logo) and opens a dedicated app window.
-REM Uses a private browser profile so sign-in is clean (not shared with Chrome/Edge).
+REM Bisync.cloud Desktop — installs Desktop + Start Menu shortcuts with the Bisync logo,
+REM then opens a dedicated Chrome/Edge app window (private profile → clean login).
 
 set "APP_URL=https://bisync-cloud-389272498937.asia-southeast1.run.app/"
 set "INSTALL_DIR=%LOCALAPPDATA%\Bisync.cloud-Desktop"
 set "PROFILE_DIR=%INSTALL_DIR%\profile"
-set "LAUNCHER=%INSTALL_DIR%\Bisync.cloud.bat"
-set "ICON=%INSTALL_DIR%\Bisync.cloud.ico"
+set "HERE=%~dp0"
+set "ICON_SRC=%HERE%Bisync.cloud.ico"
+set "VBS_SRC=%HERE%Install-Desktop-Shortcut.vbs"
+set "SHORTCUT_NAME=Bisync.cloud.lnk"
+
+if not exist "%ICON_SRC%" (
+  echo ERROR: Bisync.cloud.ico is missing next to this launcher.
+  echo Keep Bisync.cloud.ico in the same folder as Bisync.cloud.bat.
+  pause
+  exit /b 1
+)
+
+if not exist "%VBS_SRC%" (
+  echo ERROR: Install-Desktop-Shortcut.vbs is missing next to this launcher.
+  echo Double-click Install-Desktop-Shortcut.vbs if present, or re-download the Windows zip.
+  pause
+  exit /b 1
+)
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1
-copy /Y "%~f0" "%LAUNCHER%" >nul 2>&1
-if exist "%~dp0Bisync.cloud.ico" copy /Y "%~dp0Bisync.cloud.ico" "%ICON%" >nul 2>&1
 
-REM Pin / place a Desktop shortcut with the Bisync logo.
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$desktop = [Environment]::GetFolderPath('Desktop');" ^
-  "$lnkPath = Join-Path $desktop 'Bisync.cloud.lnk';" ^
-  "$target = '%LAUNCHER%';" ^
-  "$icon = '%ICON%';" ^
-  "$w = New-Object -ComObject WScript.Shell;" ^
-  "$s = $w.CreateShortcut($lnkPath);" ^
-  "$s.TargetPath = $target;" ^
-  "$s.WorkingDirectory = (Split-Path -Parent $target);" ^
-  "if (Test-Path $icon) { $s.IconLocation = $icon + ',0' }" ^
-  "$s.WindowStyle = 7;" ^
-  "$s.Description = 'Bisync.cloud Desktop';" ^
-  "$s.Save()"
-
-set "CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
-if not exist "%CHROME%" set "CHROME=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
-if not exist "%CHROME%" set "CHROME=%LocalAPPDATA%\Google\Chrome\Application\chrome.exe"
-set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
-if not exist "%EDGE%" set "EDGE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
-
-REM Fresh private profile → platform login required (no inherited browser session).
-if exist "%CHROME%" (
-  start "" "%CHROME%" --app="%APP_URL%" --user-data-dir="%PROFILE_DIR%" --no-first-run --new-window --disable-session-crashed-bubble --no-default-browser-check
-  exit /b 0
+REM Create / refresh Desktop + Start Menu shortcuts with the Bisync logo.
+cscript //nologo "%VBS_SRC%" /silent
+if errorlevel 1 (
+  echo WARNING: Silent shortcut install failed — retrying with a confirmation dialog...
+  cscript //nologo "%VBS_SRC%"
 )
-if exist "%EDGE%" (
-  start "" "%EDGE%" --app="%APP_URL%" --user-data-dir="%PROFILE_DIR%" --no-first-run --new-window --disable-session-crashed-bubble --no-default-browser-check
+
+set "DESKTOP_LNK="
+for %%D in (
+  "%USERPROFILE%\Desktop\%SHORTCUT_NAME%"
+  "%OneDrive%\Desktop\%SHORTCUT_NAME%"
+  "%PUBLIC%\Desktop\%SHORTCUT_NAME%"
+) do if exist "%%~D" set "DESKTOP_LNK=%%~D"
+
+if defined DESKTOP_LNK (
+  echo Desktop shortcut ready: %DESKTOP_LNK%
+) else (
+  echo WARNING: Desktop\Bisync.cloud.lnk was not found.
+  echo Double-click Install-Desktop-Shortcut.vbs in this folder to create it.
+)
+
+REM Locate Chrome or Edge for the app window.
+set "BROWSER="
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "BROWSER=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "%LocalAPPDATA%\Google\Chrome\Application\chrome.exe" set "BROWSER=%LocalAPPDATA%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+if not defined BROWSER if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" set "BROWSER=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+
+if defined BROWSER (
+  start "" "%BROWSER%" --app="%APP_URL%" --user-data-dir="%PROFILE_DIR%" --no-first-run --new-window --disable-session-crashed-bubble --no-default-browser-check
   exit /b 0
 )
 
 start "" "%APP_URL%"
 echo Opened in the default browser. Install Google Chrome or Microsoft Edge for the desktop app window.
 pause
+exit /b 0

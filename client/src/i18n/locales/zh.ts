@@ -124,7 +124,7 @@ export const zh = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — 运行 Bisync.cloud.bat（固定桌面快捷方式，干净登录）',
+      windowsHint: 'Zip — run Install-Desktop-Shortcut.vbs or Bisync.cloud.bat (Desktop shortcut with Bisync logo)',
       macHint: '启动器 — 首次请右键 → 打开',
       linuxHint: 'Zip — 运行 Bisync.cloud.sh',
     },

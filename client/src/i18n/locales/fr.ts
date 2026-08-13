@@ -124,7 +124,7 @@ export const fr = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — lancez Bisync.cloud.bat (raccourci Bureau, connexion propre)',
+      windowsHint: 'Zip — run Install-Desktop-Shortcut.vbs or Bisync.cloud.bat (Desktop shortcut with Bisync logo)',
       macHint: 'Lanceur — clic droit → Ouvrir la première fois',
       linuxHint: 'Zip — lancez Bisync.cloud.sh',
     },
