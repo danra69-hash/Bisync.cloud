@@ -11,7 +11,20 @@ Hospitality operations platform — restaurant dashboard, revenue management, in
 | Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 |
 | Backend | ASP.NET Core 10 Web API |
 | Database | PostgreSQL 16 (Entity Framework Core + Npgsql) |
+| Desktop | Electron shell in `desktop/` (Windows / macOS / Linux) |
 | Dev | localhost API `:5299` + client `:5173` |
+
+### Desktop app
+
+```bash
+cd desktop
+npm install
+npm start          # cloud URL
+npm run dev        # local Vite at :5173
+npm run dist:win   # Windows installer (on Windows)
+```
+
+See `desktop/README.md` for packaging and `BISYNC_DESKTOP_URL` overrides.
 
 ## Quick start (localhost)
 
