@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, setApiTenantCompanyId, type AppUser } from '../api';
+import {
+  assertPlatformCredential,
+  createPlatformCredential,
+  loadBiometricEnrollment,
+  saveBiometricEnrollment,
+} from '../auth/platformBiometric';
+import { savePinEnrollment, unlockPinPayload } from '../auth/platformPin';
 import { REQUIRE_PLATFORM_LOGIN } from '../config/platformAuth';
 import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
 import { clearAllOnboardingFlags } from '../data/onboardingFlags';
@@ -118,6 +125,64 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const resolveActiveUser = useCallback(async (userId: number, email: string) => {
+    const fromState = users.find(
+      u => u.id === userId || u.email.toLowerCase() === email.trim().toLowerCase(),
+    );
+    if (fromState?.active) return fromState;
+
+    const list = await api.users();
+    const active = list.filter(user => user.active);
+    setUsers(active);
+    const match = active.find(
+      u => u.id === userId || u.email.toLowerCase() === email.trim().toLowerCase(),
+    );
+    if (!match) {
+      throw new Error('The account linked on this device is no longer available.');
+    }
+    return match;
+  }, [users]);
+
+  const loginWithBiometric = useCallback(async () => {
+    setApiTenantCompanyId(null);
+    const enrollment = loadBiometricEnrollment();
+    if (!enrollment) {
+      throw new Error('Biometric login is not set up on this device.');
+    }
+    await assertPlatformCredential(enrollment.credentialId);
+    const user = await resolveActiveUser(enrollment.userId, enrollment.email);
+    applyAuthenticatedUser(user);
+  }, [applyAuthenticatedUser, resolveActiveUser]);
+
+  const loginWithPin = useCallback(async (pin: string) => {
+    setApiTenantCompanyId(null);
+    const payload = await unlockPinPayload(pin);
+    const user = await resolveActiveUser(payload.userId, payload.email);
+    applyAuthenticatedUser(user);
+  }, [applyAuthenticatedUser, resolveActiveUser]);
+
+  const enrollBiometric = useCallback(async () => {
+    const user = users.find(u => u.id === currentUserId);
+    if (!user) throw new Error('Sign in with your password before enabling biometrics.');
+    const credentialId = await createPlatformCredential(user.email);
+    saveBiometricEnrollment({
+      email: user.email.trim().toLowerCase(),
+      userId: user.id,
+      credentialId,
+    });
+  }, [users, currentUserId]);
+
+  const enrollPin = useCallback(async (pin: string) => {
+    const user = users.find(u => u.id === currentUserId);
+    if (!user) throw new Error('Sign in with your password before setting a device PIN.');
+    await savePinEnrollment(pin, {
+      kind: 'platform-session',
+      email: user.email.trim().toLowerCase(),
+      userId: user.id,
+      fullName: user.fullName,
+    });
+  }, [users, currentUserId]);
+
   const logout = useCallback(() => {
     const userId = currentUserId;
     const companyIdRaw = localStorage.getItem('bisync.selectedCompanyId');
@@ -164,6 +229,10 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         setCurrentUserId,
         login,
+        loginWithBiometric,
+        loginWithPin,
+        enrollBiometric,
+        enrollPin,
         logout,
         applyAuthenticatedUser,
       }}
