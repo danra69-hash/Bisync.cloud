@@ -118,6 +118,16 @@ export const fr = {
       subtitle: 'Actions du jour',
       empty: 'Rien de prévu pour aujourd\'hui.',
     },
+    desktopApp: {
+      title: 'Télécharger l’app bureau',
+      subtitle: 'Lancez Bisync.cloud dans une fenêtre dédiée.',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: 'Portable .exe — lancez après téléchargement',
+      macHint: 'Lanceur — clic droit → Ouvrir la première fois',
+      linuxHint: 'AppImage — chmod +x puis lancer',
+    },
   },
   revMgmt: {
     sections: {

@@ -118,6 +118,16 @@ export const es = {
       subtitle: 'Acciones para hoy',
       empty: 'Nada programado para hoy.',
     },
+    desktopApp: {
+      title: 'Descargar app de escritorio',
+      subtitle: 'Ejecuta Bisync.cloud en una ventana de escritorio.',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: 'Portable .exe — ejecuta tras descargar',
+      macHint: 'Lanzador — clic derecho → Abrir la primera vez',
+      linuxHint: 'AppImage — chmod +x y ejecutar',
+    },
   },
   revMgmt: {
     sections: {

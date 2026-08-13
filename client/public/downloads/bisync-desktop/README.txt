@@ -1,33 +1,24 @@
-Bisync.cloud — Desktop app
-==========================
+Bisync.cloud — Desktop app downloads
+====================================
 
-Native desktop window for Bisync.cloud (Windows / macOS / Linux).
+Public downloads (also linked from the Home page):
 
-Source & build
---------------
-Repository folder: desktop/
+  Bisync.cloud-Desktop-Windows.exe   — Windows portable Electron app
+  Bisync.cloud-Desktop-Linux.AppImage — Linux Electron AppImage
+  mac/Bisync.cloud.command           — macOS desktop window launcher
+                                      (native macOS .dmg: build with
+                                       `cd desktop && npm run dist:mac`)
+
+URLs on the live site:
+
+  /downloads/bisync-desktop/Bisync.cloud-Desktop-Windows.exe
+  /downloads/bisync-desktop/Bisync.cloud-Desktop-Linux.AppImage
+  /downloads/bisync-desktop/mac/Bisync.cloud.command
+
+Rebuild & publish into this folder:
 
   cd desktop
   npm install
-  npm start              # open cloud app
-  npm run dev            # open local Vite (http://localhost:5173)
-  npm run dist:win       # Windows installer + portable
-  npm run dist:mac       # macOS DMG
-  npm run dist:linux     # AppImage + deb
-
-Default URL
------------
-https://bisync-cloud-389272498937.asia-southeast1.run.app
-
-Override with environment variable BISYNC_DESKTOP_URL when launching.
-
-Installers (after build)
-------------------------
-Built files appear in desktop/release/:
-
-  Windows: Bisync.cloud-Setup-*.exe  (and portable)
-  macOS:   Bisync.cloud-*-*.dmg
-  Linux:   Bisync.cloud-*.AppImage / *.deb
-
-Copy release artifacts into this downloads folder when publishing a new build
-for operators.
+  npm run dist:win
+  npm run dist:linux
+  # then copy release artifacts here (see scripts/publish-desktop-downloads.mjs)

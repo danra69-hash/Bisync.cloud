@@ -17,11 +17,12 @@
     "dev": "cross-env BISYNC_DESKTOP_URL=http://localhost:5173 electron .",
     "dev:cloud": "electron .",
     "smoke": "node scripts/smoke-main.mjs",
+    "publish:downloads": "node ../scripts/publish-desktop-downloads.mjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
+    "dist:win": "electron-builder --win portable",
     "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux AppImage"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
@@ -50,11 +51,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "Bisync.cloud-Setup-${version}.${ext}"
@@ -70,7 +75,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "category": "public.app-category.business",
@@ -78,8 +86,7 @@
     },
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        "AppImage"
       ],
       "category": "Office",
       "syncDesktopName": true,
@@ -90,6 +97,7 @@
     "deb": {
       "packageName": "bisync-cloud"
     },
-    "publish": null
+    "publish": null,
+    "compression": "maximum"
   }
 }

@@ -46,8 +46,20 @@ npm run dist:linux   # AppImage + .deb
 
 Artifacts land in `desktop/release/`.
 
+Publish installers to the public Home-page download links:
+
+```bash
+npm run dist:win
+npm run dist:linux
+npm run publish:downloads
+```
+
 ## Download folder
 
-Operator notes for installers are mirrored under:
+Public files served by the live site (linked from Home):
 
 `client/public/downloads/bisync-desktop/`
+
+- `Bisync.cloud-Desktop-Windows.exe`
+- `Bisync.cloud-Desktop-Linux.AppImage`
+- `Bisync.cloud-Desktop-macOS.zip`

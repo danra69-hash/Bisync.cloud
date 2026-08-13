@@ -118,6 +118,16 @@ export const it = {
       subtitle: 'Azioni di oggi',
       empty: 'Niente in programma per oggi.',
     },
+    desktopApp: {
+      title: 'Scarica app desktop',
+      subtitle: 'Esegui Bisync.cloud in una finestra dedicata.',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: 'Portable .exe — esegui dopo il download',
+      macHint: 'Launcher — tasto destro → Apri la prima volta',
+      linuxHint: 'AppImage — chmod +x poi esegui',
+    },
   },
   revMgmt: {
     sections: {

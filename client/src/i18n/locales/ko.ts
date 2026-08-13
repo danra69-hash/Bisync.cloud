@@ -118,6 +118,16 @@ export const ko = {
       subtitle: '오늘 처리할 작업',
       empty: '오늘 예정된 항목이 없습니다.',
     },
+    desktopApp: {
+      title: '데스크톱 앱 다운로드',
+      subtitle: '전용 데스크톱 창에서 Bisync.cloud 실행.',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: '포터블 .exe — 다운로드 후 실행',
+      macHint: '런처 — 처음에는 우클릭 → 열기',
+      linuxHint: 'AppImage — chmod +x 후 실행',
+    },
   },
   revMgmt: {
     sections: {

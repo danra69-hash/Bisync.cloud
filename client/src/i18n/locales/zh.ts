@@ -118,6 +118,16 @@ export const zh = {
       subtitle: '今天需要处理的事项',
       empty: '今天没有安排。',
     },
+    desktopApp: {
+      title: '下载桌面应用',
+      subtitle: '在专用桌面窗口中运行 Bisync.cloud。',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: '便携 .exe — 下载后运行',
+      macHint: '启动器 — 首次请右键 → 打开',
+      linuxHint: 'AppImage — chmod +x 后运行',
+    },
   },
   revMgmt: {
     sections: {

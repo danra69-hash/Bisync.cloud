@@ -118,6 +118,16 @@ export const ja = {
       subtitle: '本日のアクション',
       empty: '本日の予定はありません。',
     },
+    desktopApp: {
+      title: 'デスクトップアプリをダウンロード',
+      subtitle: 'Bisync.cloud を専用デスクトップウィンドウで実行。',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: 'ポータブル .exe — ダウンロード後に実行',
+      macHint: 'ランチャー — 初回は右クリック → 開く',
+      linuxHint: 'AppImage — chmod +x して実行',
+    },
   },
   revMgmt: {
     sections: {

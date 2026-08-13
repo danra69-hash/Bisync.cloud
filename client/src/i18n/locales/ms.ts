@@ -118,6 +118,16 @@ export const ms = {
       subtitle: 'Tindakan untuk hari ini',
       empty: 'Tiada jadual untuk hari ini.',
     },
+    desktopApp: {
+      title: 'Muat turun Aplikasi Desktop',
+      subtitle: 'Jalankan Bisync.cloud dalam tetingkap desktop khusus.',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: 'Portable .exe — jalankan selepas muat turun',
+      macHint: 'Pelancar — klik kanan → Open kali pertama',
+      linuxHint: 'AppImage — chmod +x kemudian jalankan',
+    },
   },
   revMgmt: {
     sections: {

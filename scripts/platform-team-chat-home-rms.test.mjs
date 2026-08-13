@@ -17,6 +17,9 @@ assert.match(home, /PlatformTeamChatPanel/, 'Home must host Team chat panel');
 assert.match(home, /lg:w-\[min\(20rem/, 'Home chat must sit in a left rail');
 assert.match(home, /p-2\.5 sm:p-3/, 'module cards must be reduced in size');
 assert.doesNotMatch(home, /home\.messages\.title/, 'placeholder Messages block removed in favor of Team chat');
+assert.match(home, /downloads\/bisync-desktop\/Bisync\.cloud-Desktop-Windows\.exe/, 'Home links Windows desktop download');
+assert.match(home, /downloads\/bisync-desktop\/Bisync\.cloud-Desktop-Linux\.AppImage/, 'Home links Linux desktop download');
+assert.match(home, /downloads\/bisync-desktop\/Bisync\.cloud-Desktop-macOS\.zip/, 'Home links macOS desktop download');
 
 assert.match(rms, /PlatformTeamChatPanel/, 'RMS landing must host Team chat panel');
 assert.match(rms, /lg:flex-row/, 'RMS landing chat on far left');

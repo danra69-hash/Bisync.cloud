@@ -118,6 +118,16 @@ export const th = {
       subtitle: 'สิ่งที่ต้องทำวันนี้',
       empty: 'ไม่มีรายการสำหรับวันนี้',
     },
+    desktopApp: {
+      title: 'ดาวน์โหลดแอปเดสก์ท็อป',
+      subtitle: 'เปิด Bisync.cloud ในหน้าต่างเดสก์ท็อปโดยเฉพาะ',
+      windows: 'Windows',
+      mac: 'macOS',
+      linux: 'Linux',
+      windowsHint: 'ไฟล์ .exe พกพา — รันหลังดาวน์โหลด',
+      macHint: 'ตัวเปิด — คลิกขวา → Open ครั้งแรก',
+      linuxHint: 'AppImage — chmod +x แล้วรัน',
+    },
   },
   revMgmt: {
     sections: {
