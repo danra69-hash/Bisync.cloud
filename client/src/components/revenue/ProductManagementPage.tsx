@@ -30,7 +30,11 @@ import {
 import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProduceBatchModal, type ProduceConfirmPayload } from './ProduceBatchModal';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
-import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
+import {
+  coerceGroupFilterForCategory,
+  listCategoryFilterOptions,
+  listGroupFilterOptions,
+} from '../../data/categoryGroupFilters';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
@@ -496,18 +500,23 @@ export function ProductManagementPage({
   }
 
   const categoryOptions = useMemo(
-    () => getSiCategoryFilterOptions([...PRODUCT_MANAGEMENT_CATEGORIES]).filter(c => c !== 'All'),
+    () => listCategoryFilterOptions([...PRODUCT_MANAGEMENT_CATEGORIES]).filter(c => c !== 'All'),
     [],
   );
 
-  const groupOptions = useMemo(() => {
+  const managementScopedProducts = useMemo(() => {
     const allowed = new Set(categoryOptions.map(c => c.toLowerCase()));
-    const fromProducts = products
-      .filter(p => p.active && allowed.has((p.category ?? '').toLowerCase()))
-      .map(p => p.group)
-      .filter(Boolean);
-    return [...new Set(fromProducts)].sort((a, b) => a.localeCompare(b));
+    return products.filter(p => p.active && allowed.has((p.category ?? '').toLowerCase()));
   }, [products, categoryOptions]);
+
+  const groupOptions = useMemo(
+    () => listGroupFilterOptions(managementScopedProducts, categoryFilter).filter(g => g !== 'All'),
+    [managementScopedProducts, categoryFilter],
+  );
+
+  useEffect(() => {
+    setGroupFilter(prev => coerceGroupFilterForCategory(prev, categoryFilter, managementScopedProducts));
+  }, [categoryFilter, managementScopedProducts, groupOptions]);
 
   const { productSummaries, fifoBatchRowsByProductId } = useMemo(() => {
     const productById = new Map(products.map(product => [product.id, product]));
@@ -656,7 +665,11 @@ export function ProductManagementPage({
               <select
                 id={viewMode === 'sub-product' ? 'sub-product-category-filter' : 'b2b-product-category-filter'}
                 value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
+                onChange={e => {
+                  const next = e.target.value;
+                  setCategoryFilter(next);
+                  setGroupFilter(prev => coerceGroupFilterForCategory(prev, next, managementScopedProducts));
+                }}
                 className={filterCls}
                 aria-label="Category"
               >

@@ -201,7 +201,8 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
 
   const groupOptions = useMemo(() => {
     const source = categoryFilter !== 'All'
-      ? components.filter(c => c.category === categoryFilter)
+      ? components.filter(c =>
+        (c.category ?? '').trim().toLowerCase() === categoryFilter.trim().toLowerCase())
       : components;
     const set = new Set(source.map(c => c.group).filter(Boolean));
     return ['All', ...[...set].sort((a, b) => a.localeCompare(b))];

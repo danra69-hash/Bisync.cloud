@@ -78,7 +78,11 @@ export function reconcileHierarchyWithComponents(
   ingredients: { category?: string | null; group?: string | null }[],
 ): { state: ComponentHierarchyState; changed: boolean } {
   const counts = buildHierarchyAttachmentCounts(ingredients);
-  let next = isLegacySeedHierarchy(state) ? emptyComponentHierarchy() : { ...state };
+  const deduped = mergeDuplicateHierarchyLabels(
+    isLegacySeedHierarchy(state) ? emptyComponentHierarchy() : state,
+  );
+  let next = deduped.state;
+  let changed = deduped.changed;
 
   // Strip seed residue that has no attached components.
   const keptGroups = next.groups.filter(group => {
@@ -170,7 +174,7 @@ export function reconcileHierarchyWithComponents(
     nextSubGroupId: Math.max(1, next.nextSubGroupId, ...next.subGroups.map(s => s.id + 1)),
   };
 
-  const changed = JSON.stringify(withCounts) !== JSON.stringify(state);
+  changed = changed || JSON.stringify(withCounts) !== JSON.stringify(state);
   return { state: withCounts, changed };
 }
 
@@ -231,15 +235,24 @@ export function getHierarchyGroupOptions(
   currentValue = '',
   fallback: string[] = [],
 ): string[] {
+  const categoryKey = categoryName.trim().toLowerCase();
+  // No category selected → caller may list all groups; empty category keeps options empty.
+  if (!categoryKey) {
+    const base = uniqueSorted(fallback);
+    const current = currentValue.trim();
+    if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
+      return uniqueSorted([...base, current]);
+    }
+    return base;
+  }
+
   const category = state.categories.find(
-    item => item.name.toLowerCase() === categoryName.trim().toLowerCase(),
+    item => item.name.toLowerCase() === categoryKey,
   );
-  const hasHierarchy = state.categories.length > 0;
+  // Strict hierarchy: only groups that belong to this category (never all groups).
   const fromHierarchy = category
     ? state.groups.filter(group => group.categoryId === category.id).map(group => group.name)
-    : hasHierarchy
-      ? uniqueSorted(state.groups.map(group => group.name))
-      : [];
+    : [];
   // Merge fallback groups from existing components even when hierarchy already has entries.
   const base = uniqueSorted([...fromHierarchy, ...fallback]);
   const current = currentValue.trim();
@@ -247,6 +260,98 @@ export function getHierarchyGroupOptions(
     return uniqueSorted([...base, current]);
   }
   return base;
+}
+
+/**
+ * Merge case-insensitive duplicate categories and duplicate groups within a category.
+ * Remaps group.categoryId / subGroup.groupId onto the kept rows.
+ */
+export function mergeDuplicateHierarchyLabels(
+  state: ComponentHierarchyState,
+): { state: ComponentHierarchyState; changed: boolean } {
+  let changed = false;
+
+  const categoryKeepByKey = new Map<string, ComponentCategory>();
+  const categoryIdRemap = new Map<number, number>();
+  const categories: ComponentCategory[] = [];
+  for (const category of [...state.categories].sort((a, b) => a.id - b.id)) {
+    const key = category.name.trim().toLowerCase();
+    if (!key) continue;
+    const keep = categoryKeepByKey.get(key);
+    if (!keep) {
+      const normalized = { ...category, name: category.name.trim() };
+      categoryKeepByKey.set(key, normalized);
+      categories.push(normalized);
+      categoryIdRemap.set(category.id, normalized.id);
+      if (normalized.name !== category.name) changed = true;
+      continue;
+    }
+    categoryIdRemap.set(category.id, keep.id);
+    if (keep.id !== category.id) changed = true;
+  }
+
+  const groupKeepByKey = new Map<string, ComponentGroup>();
+  const groupIdRemap = new Map<number, number>();
+  const groups: ComponentGroup[] = [];
+  for (const group of [...state.groups].sort((a, b) => a.id - b.id)) {
+    const categoryId = categoryIdRemap.get(group.categoryId) ?? group.categoryId;
+    const name = group.name.trim();
+    if (!name) continue;
+    const key = `${categoryId}::${name.toLowerCase()}`;
+    const keep = groupKeepByKey.get(key);
+    if (!keep) {
+      const normalized = {
+        ...group,
+        categoryId,
+        name,
+        items: group.items,
+      };
+      groupKeepByKey.set(key, normalized);
+      groups.push(normalized);
+      groupIdRemap.set(group.id, normalized.id);
+      if (normalized.categoryId !== group.categoryId || normalized.name !== group.name) changed = true;
+      continue;
+    }
+    keep.items = Math.max(keep.items, group.items);
+    groupIdRemap.set(group.id, keep.id);
+    if (keep.id !== group.id || keep.categoryId !== group.categoryId) changed = true;
+  }
+
+  const subKeepByKey = new Map<string, ComponentSubGroup>();
+  const subGroups: ComponentSubGroup[] = [];
+  for (const sub of [...state.subGroups].sort((a, b) => a.id - b.id)) {
+    const groupId = groupIdRemap.get(sub.groupId) ?? sub.groupId;
+    const name = sub.name.trim();
+    if (!name) continue;
+    const key = `${groupId}::${name.toLowerCase()}`;
+    const keep = subKeepByKey.get(key);
+    if (!keep) {
+      const normalized = { ...sub, groupId, name };
+      subKeepByKey.set(key, normalized);
+      subGroups.push(normalized);
+      if (normalized.groupId !== sub.groupId || normalized.name !== sub.name) changed = true;
+      continue;
+    }
+    keep.items = Math.max(keep.items, sub.items);
+    if (keep.id !== sub.id) changed = true;
+  }
+
+  if (!changed
+    && categories.length === state.categories.length
+    && groups.length === state.groups.length
+    && subGroups.length === state.subGroups.length) {
+    return { state, changed: false };
+  }
+
+  return {
+    changed: true,
+    state: {
+      ...state,
+      categories,
+      groups,
+      subGroups,
+    },
+  };
 }
 
 export function flattenHierarchyForAssignment(state: ComponentHierarchyState): HierarchyAssignmentRow[] {

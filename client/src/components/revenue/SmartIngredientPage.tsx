@@ -11,7 +11,11 @@ import { filterSelectCls } from '../layout/formControls';
 import { FilePlus2, Search, Tag, Upload, X } from 'lucide-react';
 import { api } from '../../api';
 import { ComponentTagSuggestionModal } from './ComponentTagSuggestionModal';
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import {
+  coerceGroupFilterForCategory,
+  listCategoryFilterOptions,
+  listGroupFilterOptions,
+} from '../../data/categoryGroupFilters';
 import { labelsEqual } from '../../utils/labelMatch';
 import {
   blankComponentRow,
@@ -317,26 +321,17 @@ export function SmartIngredientPage({
   // Filter dropdowns use hierarchy + every component row (active and inactive) so
   // Category/Group always reflect the full updated catalog, not just the current bucket.
   const categoryFilterOptions = useMemo(
-    () => getSiCategoryFilterOptions(rows.map(row => row.category)),
+    () => listCategoryFilterOptions(rows.map(row => row.category)),
     [rows, hierarchyRevision],
   );
-  const groupFilterOptions = useMemo(() => {
-    const scopedRows = catFilter === 'All'
-      ? rows
-      : rows.filter(row => labelsEqual(row.category, catFilter));
-    return getSiGroupFilterOptions(
-      scopedRows.map(row => row.group),
-      catFilter,
-    );
-  }, [rows, catFilter, hierarchyRevision]);
+  const groupFilterOptions = useMemo(
+    () => listGroupFilterOptions(rows, catFilter),
+    [rows, catFilter, hierarchyRevision],
+  );
 
   useEffect(() => {
-    if (grpFilter === 'All') return;
-    const stillValid = groupFilterOptions.some(
-      option => option === 'All' || labelsEqual(option, grpFilter),
-    );
-    if (!stillValid) setGrpFilter('All');
-  }, [catFilter, groupFilterOptions, grpFilter]);
+    setGrpFilter(prev => coerceGroupFilterForCategory(prev, catFilter, rows));
+  }, [catFilter, rows, groupFilterOptions]);
 
   const vendorCatalog = useMemo(
     () => applyVendorProductOverrides(),

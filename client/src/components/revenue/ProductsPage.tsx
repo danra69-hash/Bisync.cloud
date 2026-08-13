@@ -96,7 +96,9 @@ import {
   serializeVariableOptionsJson,
   type VariableProductConfig,
 } from '../../data/productVariable';
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { listGroupFormOptions } from '../../data/categoryGroupFilters';
+import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
+import { labelsEqual } from '../../utils/labelMatch';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import { ComponentEditPanel } from './ComponentEditPanel';
 import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
@@ -569,17 +571,20 @@ export function ProductsPage({
   }
 
   const groupOptions = useMemo(() => {
-    const fromComponents = components.map(c => c.group).filter(Boolean);
-    const fromProducts = savedProducts.map(product => product.group).filter(Boolean);
-    const merged = new Set([
-      ...getSiGroupFilterOptions().filter(g => g !== 'All'),
-      ...extraGroups,
-      ...fromComponents,
-      ...fromProducts,
-      ...(group ? [group] : []),
-    ]);
-    return [...merged].sort((a, b) => a.localeCompare(b));
-  }, [components, extraGroups, group, savedProducts]);
+    const rows = [
+      ...components.map(c => ({ category: c.category, group: c.group })),
+      ...savedProducts.map(product => ({ category: product.category, group: product.group })),
+    ];
+    return listGroupFormOptions(category, rows, group, extraGroups);
+  }, [category, components, extraGroups, group, savedProducts]);
+
+  useEffect(() => {
+    if (!group.trim()) return;
+    if (!category.trim()) return;
+    if (!groupOptions.some(option => labelsEqual(option, group))) {
+      setGroup('');
+    }
+  }, [category, group, groupOptions]);
 
   const similarProductNameMatches = useMemo(() => {
     if (!name.trim() || name.trim().length < 3) return [];
@@ -1945,7 +1950,10 @@ export function ProductsPage({
                 <select
                   id="product-category"
                   value={category}
-                  onChange={e => setCategory(e.target.value)}
+                  onChange={e => {
+                    setCategory(e.target.value);
+                    setGroup('');
+                  }}
                   className={fieldCls}
                 >
                   <option value="">Select category…</option>

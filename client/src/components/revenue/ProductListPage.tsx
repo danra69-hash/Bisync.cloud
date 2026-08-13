@@ -23,7 +23,11 @@ import {
 } from '../../data/productListDisplay';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import {
+  coerceGroupFilterForCategory,
+  listCategoryFilterOptions,
+  listGroupFilterOptions,
+} from '../../data/categoryGroupFilters';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProductPosUnitsModal } from './ProductPosUnitsModal';
@@ -252,21 +256,19 @@ export function ProductListPage({
     resetSort,
   ]);
 
-  const categoryOptions = useMemo(() => {
-    const fromProducts = products.map(p => p.category).filter(Boolean);
-    return [...new Set([
-      ...getSiCategoryFilterOptions().filter(c => c !== 'All'),
-      ...fromProducts,
-    ])].sort((a, b) => a.localeCompare(b));
-  }, [products]);
+  const categoryOptions = useMemo(
+    () => listCategoryFilterOptions(products.map(p => p.category ?? '')).filter(c => c !== 'All'),
+    [products],
+  );
 
-  const groupOptions = useMemo(() => {
-    const fromProducts = products.map(p => p.group).filter(Boolean);
-    return [...new Set([
-      ...getSiGroupFilterOptions().filter(g => g !== 'All'),
-      ...fromProducts,
-    ])].sort((a, b) => a.localeCompare(b));
-  }, [products]);
+  const groupOptions = useMemo(
+    () => listGroupFilterOptions(products, categoryFilter).filter(g => g !== 'All'),
+    [products, categoryFilter],
+  );
+
+  useEffect(() => {
+    setGroupFilter(prev => coerceGroupFilterForCategory(prev, categoryFilter, products));
+  }, [categoryFilter, products, groupOptions]);
 
   const visibleProducts = useMemo(() => {
     let scoped = products.filter(p => productMatchesLocations(p, selectedLocationIds));
@@ -530,7 +532,11 @@ export function ProductListPage({
               <select
                 id="product-category-filter"
                 value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
+                onChange={e => {
+                  const next = e.target.value;
+                  setCategoryFilter(next);
+                  setGroupFilter(prev => coerceGroupFilterForCategory(prev, next, products));
+                }}
                 className={`${filterCls} `}
               >
                 <option value="All">All categories</option>

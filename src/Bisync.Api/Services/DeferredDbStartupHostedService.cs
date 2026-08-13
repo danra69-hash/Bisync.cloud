@@ -137,6 +137,19 @@ public sealed class DeferredDbStartupHostedService(
 
             try
             {
+                var catalogHealed = await CatalogLabelHealer.ApplyAsync(db, logger, cancellationToken);
+                if (catalogHealed > 0)
+                    logger.LogInformation(
+                        "Catalog label/hierarchy heal touched {Count} row(s).",
+                        catalogHealed);
+            }
+            catch (Exception catalogEx)
+            {
+                logger.LogError(catalogEx, "Catalog label heal failed; continuing startup");
+            }
+
+            try
+            {
                 // Shared DB already combined in SchemaPatcher; fan-out to provisioned tenant DBs.
                 var depositLinesRemoved = await PurchaseOrderDepositCombinerMigrator
                     .ApplyAcrossProvisionedTenantsAsync(db, logger, cancellationToken);

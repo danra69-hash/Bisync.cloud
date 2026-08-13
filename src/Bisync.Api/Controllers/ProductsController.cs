@@ -137,6 +137,13 @@ public class ProductsController(
         if (await db.Products.AnyAsync(p => p.ProductId == productId))
             return BadRequest(new { message = "Product ID already exists." });
 
+        var category = IngredientCatalogNormalizer.NormalizeCategory(request.Category);
+        var group = IngredientCatalogNormalizer.NormalizeGroup(request.Group);
+        var name = request.Name.Trim();
+        var duplicateName = await FindDuplicateProductNameAsync(db, request.CompanyId, category, group, name, excludeId: null);
+        if (duplicateName is not null)
+            return BadRequest(new { message = duplicateName });
+
         var items = MapItems(request.Items);
         var packagingItems = MapPackagingItems(request.PackagingItems);
         var requestedYieldUom = request.YieldUom?.Trim() ?? string.Empty;
@@ -149,9 +156,9 @@ public class ProductsController(
         var product = new Product
         {
             ProductId = productId,
-            Name = request.Name.Trim(),
-            Category = request.Category?.Trim() ?? string.Empty,
-            Group = request.Group?.Trim() ?? string.Empty,
+            Name = name,
+            Category = category,
+            Group = group,
             IsSubProduct = request.IsSubProduct,
             IsVariableProduct = !request.IsSubProduct && request.IsVariableProduct,
             B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled,
@@ -266,6 +273,14 @@ public class ProductsController(
         if (product is null)
             return NotFound();
 
+        var category = IngredientCatalogNormalizer.NormalizeCategory(request.Category);
+        var group = IngredientCatalogNormalizer.NormalizeGroup(request.Group);
+        var name = request.Name.Trim();
+        var duplicateName = await FindDuplicateProductNameAsync(
+            db, request.CompanyId ?? product.CompanyId, category, group, name, excludeId: id);
+        if (duplicateName is not null)
+            return BadRequest(new { message = duplicateName });
+
         var previousProductId = product.ProductId;
         var previousBatchLabel = product.IsSubProduct
             ? ProductCostRecalculator.FormatSubProductBatchLabel(product)
@@ -290,9 +305,9 @@ public class ProductsController(
             return BadRequest(new { message = "Product ID already exists." });
 
         product.ProductId = productId;
-        product.Name = request.Name.Trim();
-        product.Category = request.Category?.Trim() ?? string.Empty;
-        product.Group = request.Group?.Trim() ?? string.Empty;
+        product.Name = name;
+        product.Category = category;
+        product.Group = group;
         product.IsSubProduct = request.IsSubProduct;
         product.B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled;
         product.B2bEnabled = request.IsSubProduct ? false : request.B2bEnabled;
@@ -571,6 +586,33 @@ public class ProductsController(
         db.Products.Remove(product);
         await db.SaveChangesAsync();
         return NoContent();
+    }
+
+    static async Task<string?> FindDuplicateProductNameAsync(
+        BisyncDbContext db,
+        int? companyId,
+        string category,
+        string group,
+        string name,
+        int? excludeId)
+    {
+        var nameKey = name.Trim().ToLowerInvariant();
+        var categoryKey = category.Trim().ToLowerInvariant();
+        var groupKey = group.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(nameKey)) return null;
+
+        var query = db.Products.AsNoTracking().Where(p => p.Active);
+        if (companyId is int cid && cid > 0)
+            query = query.Where(p => p.CompanyId == cid);
+        if (excludeId is int eid)
+            query = query.Where(p => p.Id != eid);
+
+        var exists = await query.AnyAsync(p =>
+            (p.Name ?? string.Empty).Trim().ToLower() == nameKey
+            && (p.Category ?? string.Empty).Trim().ToLower() == categoryKey
+            && (p.Group ?? string.Empty).Trim().ToLower() == groupKey);
+        if (!exists) return null;
+        return $"A product named '{name.Trim()}' already exists in {category.Trim()} / {group.Trim()}.";
     }
 
     static string? ValidateRequest(UpsertProductRequest request)

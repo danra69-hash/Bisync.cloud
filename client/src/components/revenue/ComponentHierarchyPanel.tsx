@@ -111,7 +111,9 @@ export function ComponentHierarchyPanel({
   function addCategory() {
     const name = categoryNameInput.trim();
     if (!name) return;
-    if (state.categories.some(item => item.name.toLowerCase() === name.toLowerCase())) return;
+    if (state.categories.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+      return; // Duplicate category names are not allowed (case-insensitive).
+    }
     const id = state.nextCategoryId;
     onChange({
       ...state,
