@@ -39,6 +39,19 @@ const src = fs.readFileSync(path.join(root, 'client/src/data/desktopLauncher.ts'
 assert.match(src, /export function compareDesktopVersions/);
 assert.match(src, /export function shouldOfferDesktopUpdate/);
 assert.match(src, /version\.json/);
+assert.match(src, /sessionStorage\.setItem\(DESKTOP_MODE_KEY/, 'desktop mode is window-scoped');
+assert.match(src, /localStorage\.removeItem\(DESKTOP_MODE_KEY/, 'legacy sticky desktop flag cleared');
+
+const auth = fs.readFileSync(path.join(root, 'client/src/context/CurrentUserContext.tsx'), 'utf8');
+assert.match(auth, /isDesktopAppSession/, 'auth knows desktop sessions');
+assert.match(
+  auth,
+  /useIdleLogout\(\s*REQUIRE_PLATFORM_LOGIN && isAuthenticated && !isDesktopAppSession\(\)/,
+  'desktop app skips idle auto-logout',
+);
+
+const main = fs.readFileSync(path.join(root, 'client/src/main.tsx'), 'utf8');
+assert.match(main, /syncDesktopLauncherFromUrl\(\)/, 'desktop mode marked before React auth mounts');
 
 const version = JSON.parse(
   fs.readFileSync(path.join(root, 'client/public/downloads/bisync-desktop/version.json'), 'utf8'),

@@ -6,6 +6,10 @@ import './i18n'
 import { AppRoot } from './AppRoot.tsx'
 import { CurrentUserProvider } from './context/CurrentUserContext.tsx'
 import { PriceDisplaySettingsProvider } from './context/PriceDisplaySettingsContext.tsx'
+import { syncDesktopLauncherFromUrl } from './data/desktopLauncher.ts'
+
+/** Mark this window as a desktop app session before auth/idle hooks run. */
+syncDesktopLauncherFromUrl()
 
 /** Only install/update the POS service worker on station routes — avoid trapping the portal. */
 function shouldRegisterPosServiceWorker() {

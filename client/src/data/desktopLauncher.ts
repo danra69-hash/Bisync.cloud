@@ -75,13 +75,17 @@ export function dismissDesktopVersion(version: string) {
   }
 }
 
+/**
+ * True for this desktop app window only (sessionStorage).
+ * Closing the app clears the flag; a normal browser tab keeps idle logout.
+ */
 export function isDesktopAppSession(): boolean {
+  if (typeof window === 'undefined') return false;
   try {
-    if (localStorage.getItem(DESKTOP_MODE_KEY) === '1') return true;
+    if (sessionStorage.getItem(DESKTOP_MODE_KEY) === '1') return true;
   } catch {
     /* ignore */
   }
-  if (typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   if (params.get('desktop') === '1') return true;
   return window.matchMedia('(display-mode: standalone)').matches
@@ -90,7 +94,13 @@ export function isDesktopAppSession(): boolean {
 
 export function markDesktopAppSession() {
   try {
-    localStorage.setItem(DESKTOP_MODE_KEY, '1');
+    sessionStorage.setItem(DESKTOP_MODE_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+  // Legacy sticky localStorage flag made every tab look like desktop forever.
+  try {
+    localStorage.removeItem(DESKTOP_MODE_KEY);
   } catch {
     /* ignore */
   }

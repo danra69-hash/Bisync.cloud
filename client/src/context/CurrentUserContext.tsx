@@ -9,6 +9,7 @@ import {
 } from '../auth/platformBiometric';
 import { clearPinEnrollment, savePinEnrollment, unlockPinPayload } from '../auth/platformPin';
 import { REQUIRE_PLATFORM_LOGIN } from '../config/platformAuth';
+import { isDesktopAppSession } from '../data/desktopLauncher';
 import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
 import { clearAllOnboardingFlags } from '../data/onboardingFlags';
 import {
@@ -228,7 +229,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setCurrentUserIdState(null);
   }, [users, currentUserId]);
 
-  useIdleLogout(REQUIRE_PLATFORM_LOGIN && isAuthenticated, logout);
+  // Desktop app windows stay signed in until closed (or manual Log out).
+  useIdleLogout(
+    REQUIRE_PLATFORM_LOGIN && isAuthenticated && !isDesktopAppSession(),
+    logout,
+  );
 
   const currentUser = users.find(user => user.id === currentUserId) ?? null;
 
