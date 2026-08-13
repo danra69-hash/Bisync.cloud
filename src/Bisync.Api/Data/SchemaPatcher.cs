@@ -103,6 +103,28 @@ public static class SchemaPatcher
             "TEXT NOT NULL DEFAULT '{}'");
 
         await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PlatformPriceDisplaySettings" (
+                "Id" integer NOT NULL CONSTRAINT "PK_PlatformPriceDisplaySettings" PRIMARY KEY,
+                "PrincipalUomPriceDecimals" integer NOT NULL DEFAULT 4,
+                "AlternateUomPriceDecimals" integer NOT NULL DEFAULT 2,
+                "VendorDeliveryPriceDecimals" integer NOT NULL DEFAULT 2,
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedByEmail" TEXT NOT NULL DEFAULT ''
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "PlatformPriceDisplaySettings" (
+                "Id", "PrincipalUomPriceDecimals", "AlternateUomPriceDecimals",
+                "VendorDeliveryPriceDecimals", "UpdatedAt", "UpdatedByEmail"
+            )
+            SELECT 1, 4, 2, 2, NOW(), ''
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "PlatformPriceDisplaySettings" WHERE "Id" = 1
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
             UPDATE "Vendors"
             SET "ProductPolicyTag" = 'non-halal'
             WHERE LOWER("Name" || ' ' || "Products") LIKE '%wine%'

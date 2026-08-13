@@ -78,7 +78,7 @@ export function CreateOrderPage({
   onOpenPreCommitted,
   onOpenActiveRequisition,
 }: Props) {
-  const { number, rm } = useCountryFormatters();
+  const { number, rm, deliveryPrice } = useCountryFormatters();
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorFilter, setVendorFilter] = useState('');
@@ -561,7 +561,7 @@ export function CreateOrderPage({
                         ) : null}
                       </td>
                       <td className={`${tdCls} font-sans text-foreground`}>
-                        <p>{rm(line.deliveryPrice)}</p>
+                        <p>{deliveryPrice(line.deliveryPrice)}</p>
                         {line.commitment ? (
                           <p className="text-[10px] text-teal-700 dark:text-teal-400 mt-0.5">
                             {line.commitment.poNumber} · {line.commitment.remaining} left

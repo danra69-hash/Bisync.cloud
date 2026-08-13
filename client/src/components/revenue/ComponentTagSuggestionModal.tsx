@@ -41,7 +41,7 @@ export function ComponentTagSuggestionModal({
   onClose,
   onTagged,
 }: Props) {
-  const { rm } = useCountryFormatters();
+  const { deliveryPrice } = useCountryFormatters();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<ComponentTagSuggestion[]>([]);
@@ -171,7 +171,7 @@ export function ComponentTagSuggestionModal({
                 </p>
                 <p className="text-[11px] font-sans tabular-nums text-muted-foreground mt-0.5">
                   {Math.round(s.probability)}% match
-                  {s.deliveryPrice != null && s.deliveryPrice > 0 ? ` · ${rm(s.deliveryPrice)}` : ''}
+                  {s.deliveryPrice != null && s.deliveryPrice > 0 ? ` · ${deliveryPrice(s.deliveryPrice)}` : ''}
                 </p>
               </div>
               {s.alreadyTagged ? (

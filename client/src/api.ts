@@ -373,6 +373,20 @@ export type SystemAuditListResponse = {
   rows: SystemAuditEventRow[];
 };
 
+export type PlatformPriceDisplaySettings = {
+  principalUomPriceDecimals: number;
+  alternateUomPriceDecimals: number;
+  vendorDeliveryPriceDecimals: number;
+  updatedAt: string | null;
+  updatedByEmail: string;
+  canEdit?: boolean;
+  defaults: {
+    principalUomPriceDecimals: number;
+    alternateUomPriceDecimals: number;
+    vendorDeliveryPriceDecimals: number;
+  };
+};
+
 export interface AppUser {
   id: number;
   employeeId?: number | null;
@@ -5408,6 +5422,14 @@ export const api = {
   },
   recordLogoutAudit: (payload: { userId?: number; companyId?: number | null; reason?: string } = {}) =>
     fetchJsonWithMethod<{ recorded: boolean }>('/api/system-audit/logout', 'POST', payload),
+  platformPriceDisplay: () =>
+    fetchJson<PlatformPriceDisplaySettings>('/api/platform-price-display'),
+  updatePlatformPriceDisplay: (data: {
+    principalUomPriceDecimals: number;
+    alternateUomPriceDecimals: number;
+    vendorDeliveryPriceDecimals: number;
+  }) =>
+    fetchJsonWithMethod<PlatformPriceDisplaySettings>('/api/platform-price-display', 'PUT', data),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),
 };

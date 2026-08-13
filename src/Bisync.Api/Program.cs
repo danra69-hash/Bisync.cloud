@@ -31,6 +31,7 @@ static string ResolveOperationalConnection(IServiceProvider sp)
         || path.StartsWith("/api/locations", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/users", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/access-control", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/platform-price-display", StringComparison.OrdinalIgnoreCase)
         // Floor plan layout is control-plane (shared), like locations registry.
         || path.StartsWith("/api/pos/floor-plan", StringComparison.OrdinalIgnoreCase)
         // Customer waitlist / QR order must hit the shared control-plane DB.

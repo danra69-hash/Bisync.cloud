@@ -59,7 +59,7 @@ export function ReceiveAddProductModal({
   onClose,
   onSelect,
 }: Props) {
-  const { rm } = useCountryFormatters();
+  const { deliveryPrice } = useCountryFormatters();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -252,7 +252,7 @@ export function ReceiveAddProductModal({
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="font-sans font-medium">{rm(opt.product.deliveryPrice)}</p>
+                      <p className="font-sans font-medium">{deliveryPrice(opt.product.deliveryPrice)}</p>
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">
                         {alreadyExtra ? 'Add again · freebie 0' : 'Add · freebie 0'}
                       </p>

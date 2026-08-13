@@ -5,6 +5,7 @@ import './index.css'
 import './i18n'
 import { AppRoot } from './AppRoot.tsx'
 import { CurrentUserProvider } from './context/CurrentUserContext.tsx'
+import { PriceDisplaySettingsProvider } from './context/PriceDisplaySettingsContext.tsx'
 
 /** Only install/update the POS service worker on station routes — avoid trapping the portal. */
 function shouldRegisterPosServiceWorker() {
@@ -71,7 +72,9 @@ if (shouldRegisterPosServiceWorker()) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <CurrentUserProvider>
-      <AppRoot />
+      <PriceDisplaySettingsProvider>
+        <AppRoot />
+      </PriceDisplaySettingsProvider>
     </CurrentUserProvider>
   </StrictMode>,
 )

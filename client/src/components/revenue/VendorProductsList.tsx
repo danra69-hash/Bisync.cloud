@@ -134,7 +134,7 @@ export function VendorProductsList({
   engageVendorRequest,
   onEngageVendorRequestHandled,
 }: Props) {
-  const { rm } = useCountryFormatters();
+  const { deliveryPrice } = useCountryFormatters();
   const [vendorMap, setVendorMap] = useState(() => new Map(vendors.map(v => [v.externalId, v])));
   const [engageVendor, setEngageVendor] = useState<Vendor | null>(null);
   const [engaging, setEngaging] = useState(false);
@@ -481,7 +481,7 @@ export function VendorProductsList({
                       {deliveryUnit}
                     </td>
                     <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border align-top text-right whitespace-nowrap">
-                      {rm(product.deliveryPrice)}
+                      {deliveryPrice(product.deliveryPrice)}
                     </td>
                     {showVendorColumn && (
                       <td className="px-3 py-2.5 border-r border-border align-top min-w-0">

@@ -21,7 +21,11 @@ import {
   VENDOR_PRODUCT_CATALOG,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
-import { formatCountryCurrency, formatCountryNumber, formatPrincipalUomPrice } from '../../utils/numberFormat';
+import {
+  formatCountryNumber,
+  formatPrincipalUomPrice,
+  formatVendorDeliveryPrice,
+} from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { tableHeaderCompactCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderStyles';
 
@@ -166,7 +170,7 @@ function formatQty(n: number, countryCode: string): string {
 
 function formatPrice(n: number, countryCode: string): string {
   if (n <= 0) return '—';
-  return formatCountryCurrency(n, countryCode);
+  return formatVendorDeliveryPrice(n, countryCode);
 }
 
 function formatPrincipalPrice(n: number, countryCode: string): string {

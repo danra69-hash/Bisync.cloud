@@ -8,7 +8,7 @@ import {
   resolveComponentUomQty,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
-import { formatCountryCurrency, formatPrincipalUomPrice } from '../utils/numberFormat';
+import { formatPrincipalUomPrice, formatVendorDeliveryPrice } from '../utils/numberFormat';
 import { componentRowTagsVendorProduct, resolveVendorProductPrincipalQty } from './vendorProductTagging';
 
 export type ComparePriceCell = {
@@ -278,7 +278,7 @@ export function sortComparePriceVendorColumns(
 }
 
 export function formatDeliveryPriceLine(product: VendorProductCatalogItem, countryCode = 'MY'): string {
-  return `${formatDeliveryUnitPath(product.delivery)} · ${formatCountryCurrency(product.deliveryPrice, countryCode)}`;
+  return `${formatDeliveryUnitPath(product.delivery)} · ${formatVendorDeliveryPrice(product.deliveryPrice, countryCode)}`;
 }
 
 export function formatUomCost(uomCost: number | null, componentUom: string, countryCode = 'MY'): string {
