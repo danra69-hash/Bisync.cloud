@@ -35,6 +35,7 @@ export type ActivePurchaseSummaryBucket =
   | 'po_accepted'
   | 'received'
   | 'reconciled'
+  | 'expired'
   | 'pre_committed';
 
 type SummaryBucket = ActivePurchaseSummaryBucket;
@@ -180,6 +181,12 @@ export const ACTIVE_PURCHASE_SUMMARY_BOXES: {
     hint: 'Accounting consolidated — click a line to view.',
   },
   {
+    id: 'expired',
+    label: 'Expired',
+    empty: 'No expired purchase orders.',
+    hint: 'Vendor did not accept within 7 working days — deactivated.',
+  },
+  {
     id: 'pre_committed',
     label: 'Pre-committed Purchase Order',
     empty: 'No active pre-committed purchase orders.',
@@ -225,6 +232,7 @@ function isPurchaseRequestOrder(order: PurchaseOrder): boolean {
 
 /** Workflow bucket for Active Purchase KPI boxes. */
 export function resolveActivePurchaseBucket(order: PurchaseOrder): SummaryBucket | null {
+  if (order.status === 'Expired') return 'expired';
   if (order.isPreCommitted) return 'pre_committed';
   if (isPurchaseRequestOrder(order)) return 'purchase_request';
   if (order.status === 'Reconciled') return 'reconciled';
@@ -362,6 +370,7 @@ export function ActivePurchasePage({
       po_accepted: [],
       received: [],
       reconciled: [],
+      expired: [],
       pre_committed: [],
     };
     for (const order of filteredOrders) {

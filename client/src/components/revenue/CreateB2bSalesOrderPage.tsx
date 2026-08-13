@@ -268,7 +268,7 @@ export function CreateB2bSalesOrderPage({
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-              Lock period (days)
+              Lock period (working days)
             </label>
             <input
               type="number"

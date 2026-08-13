@@ -6,6 +6,9 @@ namespace Bisync.Api.Services;
 
 public class B2bSalesOrderService(BisyncDbContext db)
 {
+    /// <summary>Default client-acceptance / holdout window in working days (weekends excluded).</summary>
+    public const int DefaultClientAcceptWorkingDays = 7;
+
     public static readonly HashSet<string> ValidSources = new(StringComparer.OrdinalIgnoreCase)
     {
         "sales_order", "online_order",
@@ -29,7 +32,10 @@ public class B2bSalesOrderService(BisyncDbContext db)
             .FirstOrDefaultAsync(cancellationToken) ?? "MY";
         var issuedDate = OrgClock.TodayLocal(companyCountry);
         order.IssuedDate = issuedDate.ToString("yyyy-MM-dd");
-        order.LockExpiryDate = issuedDate.AddDays(order.LockPeriodDays).ToString("yyyy-MM-dd");
+        // Client acceptance / stock holdout: LockPeriodDays are working days (default 7).
+        order.LockExpiryDate = WorkingDayCalendar
+            .AddWorkingDays(issuedDate, order.LockPeriodDays)
+            .ToString("yyyy-MM-dd");
         order.Status = "issued";
         order.UpdatedAt = DateTime.UtcNow;
 

@@ -38,6 +38,7 @@ export function TaskTodayPanel({
       po_accepted: [],
       received: [],
       reconciled: [],
+      expired: [],
       pre_committed: [],
     };
     for (const order of orders) {

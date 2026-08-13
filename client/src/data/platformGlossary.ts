@@ -388,7 +388,7 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
       },
       {
         term: 'Order Lock / Holdout Period',
-        meaning: 'Days B2B stock stays reserved after sales-order issue.',
+        meaning: 'Working days (weekends excluded) B2B stock stays reserved after sales-order issue for client acceptance. Default 7.',
         dbName: 'Products.OrderLockPeriodDays',
       },
       {

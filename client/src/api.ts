@@ -1887,6 +1887,9 @@ export interface PurchaseOrder {
   vendorShareToken?: string | null;
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;
+  /** Inclusive yyyy-MM-dd — vendor must accept by this date (7 working days after issue). */
+  vendorAcceptExpiryDate?: string | null;
+  canVendorAccept?: boolean;
   vendorDoNumber?: string | null;
   vendorInvoiceNumber?: string | null;
   productQualityRating?: string | null;

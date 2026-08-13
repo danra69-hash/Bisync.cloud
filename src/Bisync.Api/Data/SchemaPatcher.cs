@@ -280,6 +280,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorShareToken", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedAt", "TEXT");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptExpiryDate", "TEXT");
 
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "PurchaseOrders"

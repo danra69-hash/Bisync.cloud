@@ -8,6 +8,7 @@ export function resolvePurchaseOrderStatusLabel(
   order: Pick<PurchaseOrder, 'status' | 'documentType' | 'vendorAcceptedAt' | 'isPreCommitted'>,
 ): string {
   const status = order.status?.trim() ?? '';
+  if (status === 'Expired') return 'Expired';
   if (
     status === 'Partially Delivered'
     || status === 'Received'
@@ -32,7 +33,7 @@ export function purchaseOrderStatusBadgeClass(statusLabel: string): string {
   if (normalized === 'committed') {
     return 'bg-teal-500/15 text-teal-700 dark:text-teal-400';
   }
-  if (normalized === 'commitment closed') {
+  if (normalized === 'commitment closed' || normalized === 'expired') {
     return 'bg-muted text-muted-foreground';
   }
   if (normalized === 'open' || normalized === 'confirmed' || normalized === 'in transit') {

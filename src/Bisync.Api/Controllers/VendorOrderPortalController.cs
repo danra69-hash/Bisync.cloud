@@ -32,8 +32,30 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         if (order.VendorAcceptedAt is not null)
             return Ok(await BuildPortalViewAsync(order));
 
-        if (!PurchaseOrderWorkflow.CanVendorAccept(order))
-            return Conflict(new { message = "This purchase order can no longer be accepted." });
+        var acceptCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync() ?? "MY";
+        var acceptToday = OrgClock.TodayLocal(acceptCountry);
+        if (order.VendorAcceptExpiryDate is null && PurchaseOrderWorkflow.NeedsVendorAcceptWindow(order))
+        {
+            var from = order.OrderDate;
+            if (order.ApprovedAt is DateTime approvedAt)
+                from = DateOnly.FromDateTime(CountryTimeZones.ToLocal(approvedAt, acceptCountry));
+            PurchaseOrderWorkflow.AssignVendorAcceptExpiry(order, from);
+            await db.SaveChangesAsync();
+        }
+
+        if (!PurchaseOrderWorkflow.CanVendorAccept(order, acceptToday))
+        {
+            if (PurchaseOrderWorkflow.IsVendorAcceptPastDeadline(order, acceptToday)
+                && !PurchaseOrderWorkflow.IsExpiredStatus(order.Status))
+            {
+                order.Status = PurchaseOrderWorkflow.StatusExpired;
+                await db.SaveChangesAsync();
+            }
+            return Conflict(new { message = "This purchase order can no longer be accepted (vendor accept window expired)." });
+        }
 
         var acceptedBy = request?.AcceptedBy?.Trim();
         if (string.IsNullOrWhiteSpace(acceptedBy))
@@ -211,7 +233,10 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
             approvedBy = order.ApprovedBy,
             vendorAcceptedAt = order.VendorAcceptedAt,
             vendorAcceptedBy = order.VendorAcceptedBy,
-            canAccept = PurchaseOrderWorkflow.CanVendorAccept(order),
+            vendorAcceptExpiryDate = order.VendorAcceptExpiryDate,
+            canAccept = PurchaseOrderWorkflow.CanVendorAccept(
+                order,
+                company is null ? null : OrgClock.TodayLocal(company.CountryCode)),
             allowLineAdjustments = true,
             company = company is null ? null : new
             {

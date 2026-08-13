@@ -16,6 +16,9 @@ public class B2bSalesOrdersController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List([FromQuery] int? companyId, CancellationToken cancellationToken)
     {
+        // Refresh expired holdouts so Active Sales summary shows Expired promptly.
+        await salesOrderService.ReleaseExpiredLocksAsync(cancellationToken);
+
         IQueryable<B2bSalesOrder> query = db.B2bSalesOrders.AsNoTracking().Include(o => o.Lines);
         if (companyId is int id)
             query = query.Where(o => o.CompanyId == id);
@@ -89,8 +92,11 @@ public class B2bSalesOrdersController(
             return Ok(MapSharedOrder(order, companyDone, customerDone));
         }
 
-        if (!CanCustomerAccept(order))
-            return Conflict(new { message = "This sales order can no longer be accepted." });
+        var acceptCompany = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+        var acceptToday = OrgClock.TodayLocal(acceptCompany?.CountryCode ?? "MY");
+        if (!CanCustomerAccept(order, acceptToday))
+            return Conflict(new { message = "This sales order can no longer be accepted (client accept window expired)." });
 
         var acceptedBy = request?.AcceptedBy?.Trim();
         if (string.IsNullOrWhiteSpace(acceptedBy))
@@ -102,8 +108,7 @@ public class B2bSalesOrdersController(
         order.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
-        var company = await db.Companies.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+        var company = acceptCompany;
         var customer = await db.B2bCustomers.AsNoTracking()
             .FirstOrDefaultAsync(
                 c => c.CompanyId == order.CompanyId && c.ExternalId == order.CustomerExternalId,
@@ -510,21 +515,37 @@ public class B2bSalesOrdersController(
         }),
     };
 
-    static bool CanCustomerAccept(B2bSalesOrder order)
+    static bool CanCustomerAccept(B2bSalesOrder order, DateOnly? todayLocal = null)
     {
         if (order.CustomerAcceptedAt is not null) return false;
         if (string.IsNullOrWhiteSpace(order.ShareToken)) return false;
-        return string.Equals(order.Status, "issued", StringComparison.OrdinalIgnoreCase)
+        if (string.Equals(order.Status, "expired", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(order.Status, "cancelled", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(order.Status, "fulfilled", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var isAcceptableStatus = string.Equals(order.Status, "issued", StringComparison.OrdinalIgnoreCase)
             || string.Equals(order.Status, "draft", StringComparison.OrdinalIgnoreCase);
+        if (!isAcceptableStatus) return false;
+
+        if (!string.IsNullOrWhiteSpace(order.LockExpiryDate)
+            && DateOnly.TryParse(order.LockExpiryDate, out var expiry))
+        {
+            var today = todayLocal ?? DateOnly.FromDateTime(DateTime.UtcNow);
+            if (WorkingDayCalendar.IsPastAcceptDeadline(expiry, today))
+                return false;
+        }
+
+        return true;
     }
 
     static object MapSharedOrder(B2bSalesOrder order, Company? company, B2bCustomer? customer)
     {
         var mapped = MapOrder(order);
+        var today = OrgClock.TodayLocal(company?.CountryCode ?? "MY");
         return new
         {
             order = mapped,
-            canAccept = CanCustomerAccept(order),
+            canAccept = CanCustomerAccept(order, today),
             customerAcceptedAt = order.CustomerAcceptedAt,
             customerAcceptedBy = order.CustomerAcceptedBy,
             company = company is null ? null : new

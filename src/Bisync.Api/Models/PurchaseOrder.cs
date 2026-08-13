@@ -32,6 +32,11 @@ public class PurchaseOrder
     public string VendorShareToken { get; set; } = string.Empty;
     public DateTime? VendorAcceptedAt { get; set; }
     public string VendorAcceptedBy { get; set; } = string.Empty;
+    /// <summary>
+    /// Inclusive local calendar date by which the vendor must accept (7 working days after issue/approve).
+    /// Null for pending PRs or terminal orders.
+    /// </summary>
+    public DateOnly? VendorAcceptExpiryDate { get; set; }
     /// <summary>Vendor delivery order (DO) number captured at receive. Optional if invoice number is provided.</summary>
     public string VendorDoNumber { get; set; } = string.Empty;
     /// <summary>Vendor invoice number captured at receive. Optional if DO number is provided.</summary>

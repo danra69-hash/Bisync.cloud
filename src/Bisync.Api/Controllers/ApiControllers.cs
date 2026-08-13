@@ -1407,7 +1407,8 @@ public class PurchaseOrdersController(
     SplitUseService splitUse,
     FifoBatchIssueService fifoBatches,
     PreCommittedPoDrawdownService preCommittedDrawdown,
-    CreditNoteService creditNotes) : ControllerBase
+    CreditNoteService creditNotes,
+    PurchaseOrderAcceptExpiryService purchaseOrderAcceptExpiry) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
@@ -1419,8 +1420,10 @@ public class PurchaseOrdersController(
     [HttpGet("active")]
     public async Task<ActionResult<IEnumerable<object>>> GetActive([FromQuery] int? companyId)
     {
-        // Include Reconciled so Active Purchase KPIs can bucket PR / accepted / received / reconciled.
+        // Include Reconciled / Expired so Active Purchase KPIs can bucket PR / accepted / received / reconciled / expired.
         // Commitment Closed masters stay out of this queue.
+        await purchaseOrderAcceptExpiry.ExpireOverdueAsync();
+
         var query = BaseQuery()
             .Where(p => p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed);
 
@@ -1511,8 +1514,13 @@ public class PurchaseOrdersController(
         if (order.VendorAcceptedAt is not null)
             return Ok(await MapPurchaseOrderAsync(order));
 
-        if (!PurchaseOrderWorkflow.CanVendorAccept(order))
-            return Conflict(new { message = "This purchase order can no longer be accepted." });
+        var vendorApproveCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync() ?? "MY";
+        var vendorApproveToday = OrgClock.TodayLocal(vendorApproveCountry);
+        if (!PurchaseOrderWorkflow.CanVendorAccept(order, vendorApproveToday))
+            return Conflict(new { message = "This purchase order can no longer be accepted (vendor accept window expired)." });
 
         var acceptedBy = request?.AcceptedBy?.Trim();
         if (string.IsNullOrWhiteSpace(acceptedBy))
@@ -1754,6 +1762,9 @@ public class PurchaseOrdersController(
                 SourceCommittedPurchaseOrderId = isPreCommitted ? null : orderRequest.SourceCommittedPurchaseOrderId,
             };
 
+            if (PurchaseOrderWorkflow.NeedsVendorAcceptWindow(order))
+                PurchaseOrderWorkflow.AssignVendorAcceptExpiry(order, orderDate);
+
             foreach (var item in items)
                 order.Items.Add(item);
 
@@ -1797,6 +1808,12 @@ public class PurchaseOrdersController(
         order.Status = PurchaseOrderWorkflow.StatusOpen;
         order.ApprovedBy = string.IsNullOrWhiteSpace(request?.ApprovedBy) ? "Approved" : request.ApprovedBy.Trim();
         order.ApprovedAt = DateTime.UtcNow;
+
+        var approveCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync() ?? "MY";
+        PurchaseOrderWorkflow.AssignVendorAcceptExpiry(order, OrgClock.TodayLocal(approveCountry));
 
         await db.SaveChangesAsync();
         await UserNotificationService.NotifyPurchaseRequestApprovedAsync(db, order, order.ApprovedBy);
@@ -2622,6 +2639,17 @@ public class PurchaseOrdersController(
                 .Where(d => deliveryIds.Contains(d.ExternalId))
                 .ToDictionaryAsync(d => d.ExternalId, StringComparer.OrdinalIgnoreCase);
 
+        var companyIds = orders
+            .Where(o => o.CompanyId is > 0)
+            .Select(o => o.CompanyId!.Value)
+            .Distinct()
+            .ToList();
+        var countryByCompany = companyIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await db.Companies.AsNoTracking()
+                .Where(c => companyIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.CountryCode ?? "MY");
+
         return orders
             .Select(o =>
             {
@@ -2632,12 +2660,16 @@ public class PurchaseOrdersController(
                 string? sourcePoNumber = null;
                 if (o.SourceCommittedPurchaseOrderId is int sourceId)
                     sourcePoNumberById.TryGetValue(sourceId, out sourcePoNumber);
+                var country = "MY";
+                if (o.CompanyId is int cid && countryByCompany.TryGetValue(cid, out var code) && !string.IsNullOrWhiteSpace(code))
+                    country = code;
                 return PurchaseOrderWorkflow.MapOrder(
                     o,
                     flags.GetValueOrDefault(o.Id),
                     consolidatedByMaster.GetValueOrDefault(o.Id),
                     delivery,
-                    sourcePoNumber);
+                    sourcePoNumber,
+                    OrgClock.TodayLocal(country));
             })
             .Cast<object>()
             .ToList();

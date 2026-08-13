@@ -17,6 +17,10 @@ public static class PurchaseOrderWorkflow
     public const string StatusReconciled = "Reconciled";
     public const string StatusCommitted = "Committed";
     public const string StatusCommitmentClosed = "Commitment Closed";
+    public const string StatusExpired = "Expired";
+
+    /// <summary>Vendor must accept within this many working days (weekends excluded).</summary>
+    public const int VendorAcceptWorkingDays = 7;
 
     /// <summary>
     /// Stock-card remark applied when ops confirms receive. Cleared on consolidate (accounting affirmation).
@@ -25,7 +29,34 @@ public static class PurchaseOrderWorkflow
 
     public static bool IsActive(PurchaseOrder order) =>
         !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(order.Status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(order.Status, StatusExpired, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsExpiredStatus(string? status) =>
+        string.Equals(status?.Trim(), StatusExpired, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Last calendar day (inclusive) the vendor may accept, 7 working days after <paramref name="fromDate"/>.</summary>
+    public static DateOnly ComputeVendorAcceptExpiry(DateOnly fromDate) =>
+        WorkingDayCalendar.AddWorkingDays(fromDate, VendorAcceptWorkingDays);
+
+    public static void AssignVendorAcceptExpiry(PurchaseOrder order, DateOnly fromDate)
+    {
+        order.VendorAcceptExpiryDate = ComputeVendorAcceptExpiry(fromDate);
+    }
+
+    /// <summary>Issued POs (including pre-committed) awaiting vendor acceptance need an accept-by date.</summary>
+    public static bool NeedsVendorAcceptWindow(PurchaseOrder order) =>
+        order.VendorAcceptedAt is null
+        && !IsPendingApprovalStatus(order.Status)
+        && !IsExpiredStatus(order.Status)
+        && !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(order.Status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase)
         && !string.Equals(order.Status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsVendorAcceptPastDeadline(PurchaseOrder order, DateOnly todayLocal) =>
+        order.VendorAcceptedAt is null
+        && WorkingDayCalendar.IsPastAcceptDeadline(order.VendorAcceptExpiryDate, todayLocal);
 
     /// <summary>
     /// Open company commitment available for drawdown. Vendor acceptance must not close this —
@@ -84,16 +115,28 @@ public static class PurchaseOrderWorkflow
     public static bool CanApprove(PurchaseOrder order) =>
         IsPendingApprovalStatus(order.Status);
 
-    public static bool CanVendorAccept(PurchaseOrder order) =>
-        order.VendorAcceptedAt is null
-        && !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(order.Status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase);
+    public static bool CanVendorAccept(PurchaseOrder order, DateOnly? todayLocal = null)
+    {
+        if (order.VendorAcceptedAt is not null) return false;
+        if (IsExpiredStatus(order.Status)) return false;
+        if (IsPendingApprovalStatus(order.Status)) return false;
+        if (string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(order.Status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(order.Status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase)) return false;
+
+        var today = todayLocal ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (IsVendorAcceptPastDeadline(order, today)) return false;
+        return true;
+    }
 
     public static bool CanReceive(PurchaseOrder order, bool allowPartialDelivery = false)
     {
         if (order.IsPreCommitted)
             return false; // Master commitments are drawn down by release orders, not warehouse-received.
+
+        if (IsExpiredStatus(order.Status))
+            return false;
 
         if (!string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -240,17 +283,27 @@ public static class PurchaseOrderWorkflow
         bool allowPartialDelivery = false,
         IReadOnlyDictionary<int, decimal>? consolidatedByItemId = null,
         DeliveryLocation? deliveryLocation = null,
-        string? sourceCommittedPoNumber = null)
+        string? sourceCommittedPoNumber = null,
+        DateOnly? todayLocal = null)
     {
         var documentType = IsPendingApprovalStatus(order.Status)
             ? DocumentTypePr
             : order.DocumentType;
 
+        var today = todayLocal ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var status = order.Status?.Trim() ?? string.Empty;
-        // Pre-committed masters stay Committed / Commitment Closed even after vendor accept.
-        if (order.IsPreCommitted)
+        var acceptExpired = IsVendorAcceptPastDeadline(order, today) || IsExpiredStatus(status);
+
+        // Pre-committed masters stay Committed / Commitment Closed even after vendor accept,
+        // unless the vendor accept window lapsed without acceptance.
+        if (acceptExpired && order.VendorAcceptedAt is null)
         {
-            if (!string.Equals(status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase))
+            status = StatusExpired;
+        }
+        else if (order.IsPreCommitted)
+        {
+            if (!string.Equals(status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase)
+                && !IsExpiredStatus(status))
                 status = StatusCommitted;
         }
         else
@@ -260,7 +313,7 @@ public static class PurchaseOrderWorkflow
                 || string.Equals(status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
 
-            if (order.VendorAcceptedAt is not null && !isTerminalReceipt)
+            if (order.VendorAcceptedAt is not null && !isTerminalReceipt && !IsExpiredStatus(status))
                 status = StatusAccepted;
         }
 
@@ -327,6 +380,7 @@ public static class PurchaseOrderWorkflow
             vendorShareToken = order.VendorShareToken,
             vendorAcceptedAt = order.VendorAcceptedAt,
             vendorAcceptedBy = order.VendorAcceptedBy,
+            vendorAcceptExpiryDate = order.VendorAcceptExpiryDate,
             vendorDoNumber = order.VendorDoNumber,
             vendorInvoiceNumber = order.VendorInvoiceNumber,
             productQualityRating = string.IsNullOrWhiteSpace(order.ProductQualityRating) ? null : order.ProductQualityRating,
@@ -335,7 +389,8 @@ public static class PurchaseOrderWorkflow
             hygieneComment = string.IsNullOrWhiteSpace(order.HygieneComment) ? null : order.HygieneComment,
             allowPartialDelivery,
             canApprove = CanApprove(order),
-            canReceive = CanReceive(order, allowPartialDelivery),
+            canVendorAccept = CanVendorAccept(order, today),
+            canReceive = !acceptExpired && CanReceive(order, allowPartialDelivery),
             canReconcile = CanReconcile(order),
             canAmendReceived = CanAmendReceived(order),
             canAmendReconciled = CanAmendReconciled(order),

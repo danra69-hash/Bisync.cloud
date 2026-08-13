@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict';
 
 function resolveActivePurchaseBucket(order) {
-  if (order.isPreCommitted) return null;
+  if (order.status === 'Expired') return 'expired';
+  if (order.isPreCommitted) return 'pre_committed';
   if (
     order.documentType === 'PR'
     || order.status === 'Pending Approval'
@@ -44,8 +45,16 @@ assert.equal(
   'reconciled',
 );
 assert.equal(
+  resolveActivePurchaseBucket({ documentType: 'PO', status: 'Expired' }),
+  'expired',
+);
+assert.equal(
   resolveActivePurchaseBucket({ documentType: 'PO', status: 'Committed', isPreCommitted: true }),
-  null,
+  'pre_committed',
+);
+assert.equal(
+  resolveActivePurchaseBucket({ documentType: 'PO', status: 'Expired', isPreCommitted: true }),
+  'expired',
 );
 
 console.log('active-purchase-buckets: ok');

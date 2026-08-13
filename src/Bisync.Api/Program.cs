@@ -115,6 +115,7 @@ builder.Services.AddScoped<SystemCogsAuditSnapshotService>();
 builder.Services.AddScoped<SalesDataService>();
 builder.Services.AddScoped<ReportsService>();
 builder.Services.AddScoped<B2bSalesOrderService>();
+builder.Services.AddScoped<PurchaseOrderAcceptExpiryService>();
 builder.Services.AddScoped<InventoryCountService>();
 builder.Services.AddScoped<WastageService>();
 builder.Services.AddScoped<TransferService>();
@@ -161,6 +162,7 @@ builder.Services.AddScoped<ComponentVendorTagSuggestionService>();
 builder.Services.AddHostedService<ComponentVendorTagSuggestionHostedService>();
 builder.Services.AddHostedService<InventoryCountAutoConfirmHostedService>();
 builder.Services.AddHostedService<SalesOrderLockExpiryHostedService>();
+builder.Services.AddHostedService<PurchaseOrderAcceptExpiryHostedService>();
 
 builder.Services.AddCors(options =>
 {
