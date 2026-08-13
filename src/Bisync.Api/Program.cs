@@ -266,7 +266,11 @@ else
                 || path.EndsWith(".deb", StringComparison.OrdinalIgnoreCase))
             {
                 ctx.Context.Response.Headers.CacheControl = "public, max-age=3600";
-                ctx.Context.Response.Headers.ContentDisposition = $"attachment; filename=\"{path}\"";
+                // Use Append (not ContentDisposition typed setter) — filenames like
+                // Bisync.cloud-*.exe can fail header parsing and 500 the whole response.
+                ctx.Context.Response.Headers.Append(
+                    "Content-Disposition",
+                    $"attachment; filename=\"{path}\"; filename*=UTF-8''{Uri.EscapeDataString(path)}");
             }
         },
     });
