@@ -6,6 +6,8 @@ import assert from 'node:assert/strict'
 import { isPosDutyCheckInExempt } from '../src/bisync-pos/core/session/posDutyCheckInExempt'
 import { mapApiProductsToPosCatalog } from '../src/bisync-pos/core/session/mapPosCatalog'
 import {
+  productCanComponentSwap,
+  resolveComponentSwapSlots,
   resolveRequiredModifierGroups,
   resolveToolbarModifierGroups,
   toPickerGroups,
@@ -219,7 +221,55 @@ const summary = summarizeSaleDetail({
 assert.match(summary, /Garlic Mashed Potato/)
 assert.match(summary, /FRENCH FRIES/)
 
-// 6) Platform account exemption from Team QR Home lock
+// 6) Menu product with attached Component SWAP group can SWAP (not only Variable Component shells)
+const swapGroup = {
+  id: 90,
+  companyId: 5,
+  kind: 'component-swap' as const,
+  name: 'Component SWAP',
+  sequence: 0,
+  required: false,
+  minSelect: 0,
+  maxSelect: 1,
+  affectsStock: true,
+  active: true,
+  options: [{
+    id: 901,
+    label: 'Base Garlic Mashed Potato → FRENCH FRIES',
+    sequence: 0,
+    extraChargeCents: 600,
+    baseComponentId: 'SUB-BASEGA-001',
+    baseComponentName: 'Base Garlic Mashed Potato',
+    linkedComponentId: 'WEIS-A352',
+    linkedComponentName: 'FRENCH FRIES',
+    active: true,
+  }],
+  attachments: [{
+    id: 91,
+    targetType: 'product' as const,
+    targetProductCategory: '',
+    targetProductGroup: '',
+    targetProductId: 100,
+    targetProductName: 'Test Steak',
+  }],
+}
+const steakPos = catalog.find(p => p.name === 'Test Steak')!
+assert.ok(steakPos)
+assert.equal(productCanComponentSwap(steakPos, []), false)
+assert.equal(productCanComponentSwap(steakPos, [swapGroup]), true)
+const steakSlots = resolveComponentSwapSlots(steakPos, [swapGroup])
+assert.equal(steakSlots.length, 1)
+assert.equal(steakSlots[0]?.baseComponentId, 'SUB-BASEGA-001')
+assert.equal(steakSlots[0]?.alternatives[0]?.componentId, 'WEIS-A352')
+assert.equal(steakSlots[0]?.alternatives[0]?.extraCharge, 6)
+// Own Variable Component slots still win over modifier groups
+assert.ok(productCanComponentSwap(vc!, [swapGroup]))
+assert.equal(
+  resolveComponentSwapSlots(vc!, [swapGroup])[0]?.baseComponentId,
+  'SUB-BASEGA-001',
+)
+
+// 7) Platform account exemption from Team QR Home lock
 assert.equal(isPosDutyCheckInExempt('dra@cubevalue.com'), true)
 assert.equal(isPosDutyCheckInExempt('DRA@CubeValue.com'), true)
 assert.equal(isPosDutyCheckInExempt('ms@cubevalue.com'), false)

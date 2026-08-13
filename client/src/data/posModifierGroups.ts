@@ -5,6 +5,10 @@ import {
   FOOD_MODIFIER_GROUPS,
 } from '../bisync-pos/features/order/domain/ordering'
 import { normalizePosGroupLabel, productMatchesPosGroupFilter } from './posCatalog'
+import {
+  newVariableComponentKey,
+  type VariableComponentSlot,
+} from './productVariableComponent'
 
 export const POS_MODIFIER_KINDS: Array<{
   id: PosModifierKind
@@ -275,4 +279,119 @@ export function formatCompulsorySummary(
   const groups = resolveAttachedModifierGroups(all, product, 'compulsory')
   if (groups.length === 0) return '—'
   return groups.map(g => g.name).join(' → ')
+}
+
+/**
+ * Component SWAP groups for a register line: prefer product attachments,
+ * then unscoped (no attachments) component-swap groups — same rule as Food/Beverage.
+ */
+export function resolveComponentSwapGroups(
+  all: PosModifierGroup[],
+  product: ModifierAttachProduct,
+): PosModifierGroup[] {
+  const attached = resolveAttachedModifierGroups(all, product, 'component-swap')
+  if (attached.length > 0) return attached
+  return all
+    .filter(g => g.active && g.kind === 'component-swap')
+    .filter(g => (g.attachments ?? []).length === 0)
+    .sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name))
+}
+
+/** Build Variable Component slots from Component SWAP modifier options (base → alternates). */
+export function buildSlotsFromComponentSwapGroups(
+  groups: PosModifierGroup[],
+): VariableComponentSlot[] {
+  type Acc = {
+    slotLabel: string
+    baseComponentId: string
+    baseComponentName: string
+    alternatives: Map<string, {
+      componentId: string
+      componentName: string
+      extraCharge: number
+    }>
+  }
+  const byBase = new Map<string, Acc>()
+
+  for (const group of groups) {
+    const options = [...(group.options ?? [])]
+      .filter(o => o && o.active !== false)
+      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+    for (const opt of options) {
+      const baseId = (opt.baseComponentId || '').trim()
+      const chosenId = (opt.linkedComponentId || '').trim()
+      if (!baseId || !chosenId) continue
+      if (baseId.toLowerCase() === chosenId.toLowerCase()) continue
+      const baseName = (opt.baseComponentName || '').trim() || baseId
+      const chosenName = (opt.linkedComponentName || '').trim() || chosenId
+      const extraCharge = Math.max(0, (Number(opt.extraChargeCents) || 0) / 100)
+      let slot = byBase.get(baseId.toLowerCase())
+      if (!slot) {
+        slot = {
+          slotLabel: baseName,
+          baseComponentId: baseId,
+          baseComponentName: baseName,
+          alternatives: new Map(),
+        }
+        byBase.set(baseId.toLowerCase(), slot)
+      }
+      if (!slot.alternatives.has(chosenId.toLowerCase())) {
+        slot.alternatives.set(chosenId.toLowerCase(), {
+          componentId: chosenId,
+          componentName: chosenName,
+          extraCharge,
+        })
+      }
+    }
+  }
+
+  return [...byBase.values()]
+    .map((slot): VariableComponentSlot => ({
+      key: newVariableComponentKey('swap-slot'),
+      slotLabel: slot.slotLabel,
+      baseComponentId: slot.baseComponentId,
+      baseComponentName: slot.baseComponentName,
+      baseComponentUom: '',
+      baseUnitPrice: 0,
+      quantity: 1,
+      alternatives: [...slot.alternatives.values()].map(alt => ({
+        key: newVariableComponentKey('swap-alt'),
+        componentId: alt.componentId,
+        componentName: alt.componentName,
+        componentUom: '',
+        unitPrice: 0,
+        quantity: 1,
+        extraCharge: alt.extraCharge,
+      })),
+    }))
+    .filter(s => s.alternatives.length > 0)
+}
+
+export type ComponentSwapProduct = ModifierAttachProduct & {
+  isVariableComponent?: boolean
+  variableComponentSlots?: VariableComponentSlot[] | null
+}
+
+/**
+ * Slots shown in the POS Component SWAP modal for a check line.
+ * Prefer the product's own Variable Component config; otherwise use attached
+ * (or unscoped) component-swap modifier groups from Inherit / POS Config.
+ */
+export function resolveComponentSwapSlots(
+  product: ComponentSwapProduct | null | undefined,
+  all: PosModifierGroup[],
+): VariableComponentSlot[] {
+  if (!product) return []
+  const own = (product.variableComponentSlots ?? []).filter(
+    s => s?.baseComponentId && (s.alternatives?.length ?? 0) > 0,
+  )
+  if (own.length > 0) return own
+  return buildSlotsFromComponentSwapGroups(resolveComponentSwapGroups(all, product))
+}
+
+export function productCanComponentSwap(
+  product: ComponentSwapProduct | null | undefined,
+  all: PosModifierGroup[],
+): boolean {
+  return resolveComponentSwapSlots(product, all).length > 0
 }

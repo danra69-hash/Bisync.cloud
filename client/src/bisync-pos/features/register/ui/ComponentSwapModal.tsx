@@ -86,7 +86,7 @@ export function ComponentSwapModal({
       <div className="combo-picker-modal__card">
         <div className="combo-picker-modal__header">
           <div>
-            <p className="combo-picker-modal__eyebrow">Variable Component · SWAP</p>
+            <p className="combo-picker-modal__eyebrow">Component SWAP</p>
             <h2>{productName}</h2>
             <p className="combo-picker-modal__hint">
               Choose the alternate component for this SWAP. Addon RRP is added when charged.

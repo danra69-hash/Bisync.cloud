@@ -25,6 +25,8 @@ type Props = {
   /** When true, Service / Tax rows are driven by POS Setup (not manual $ prompts). */
   chargesFromConfig?: boolean
   onSwapLine?: (line: CartLine) => void
+  /** When set, controls per-line SWAP visibility (Variable Component or attached swap groups). */
+  lineCanSwap?: (product: Product) => boolean
   /** When set, intercepts trash instead of silently removing the line. */
   onRemoveLine?: (line: CartLine) => void
   selectedLineKey?: string | null
@@ -61,6 +63,7 @@ export function OrderPanel({
   onEditDiscount,
   chargesFromConfig = false,
   onSwapLine,
+  lineCanSwap,
   onRemoveLine,
   selectedLineKey = null,
   selectedLineKeys,
@@ -191,8 +194,14 @@ export function OrderPanel({
                   : formatMoney(product.priceCents)
                 const canSwap = Boolean(
                   onSwapLine
-                  && product.isVariableComponent
-                  && (product.variableComponentSlots?.length ?? 0) > 0,
+                  && (
+                    lineCanSwap
+                      ? lineCanSwap(product)
+                      : (
+                        product.isVariableComponent
+                        && (product.variableComponentSlots?.length ?? 0) > 0
+                      )
+                  ),
                 )
                 const rowKey = line.lineKey ?? `${line.productId}-${index}`
                 const selectionKey = line.lineKey ?? `pid:${line.productId}`

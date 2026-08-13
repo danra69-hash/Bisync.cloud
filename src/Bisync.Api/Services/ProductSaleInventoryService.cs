@@ -270,7 +270,11 @@ public class ProductSaleInventoryService(
                         var chosenUom = string.IsNullOrWhiteSpace(swap.ComponentUom)
                             ? line.ComponentUom
                             : swap.ComponentUom!;
-                        var qty = swap.Quantity > 0 ? swap.Quantity : line.Quantity;
+                        // Variable Component shell products carry alternate recipe qty on the selection.
+                        // Menu products with attached Component SWAP inherit pairs without qty — keep BOM qty.
+                        var qty = product.IsVariableComponent && swap.Quantity > 0
+                            ? swap.Quantity
+                            : line.Quantity;
                         await DepleteBomLineAsync(chosenId, chosenName, chosenUom, qty);
                         continue;
                     }

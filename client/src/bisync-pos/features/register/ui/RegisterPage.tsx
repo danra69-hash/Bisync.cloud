@@ -74,7 +74,10 @@ import { CompulsoryModifierModal } from './CompulsoryModifierModal'
 import { TENDER_LABEL, paymentMethodForApi, paymentTypeLabel } from '../../cashier/domain/payments'
 import { formatMoney } from '../../../core/types/money'
 import type { PosModifierGroup } from '../../../../api'
+import type { VariableComponentSlot } from '../../../../data/productVariableComponent'
 import {
+  productCanComponentSwap,
+  resolveComponentSwapSlots,
   resolveRequiredModifierGroups,
   resolveToolbarModifierGroups,
 } from '../../../../data/posModifierGroups'
@@ -150,6 +153,7 @@ export function RegisterPage() {
   const [comboProduct, setComboProduct] = useState<Product | null>(null)
   const [swapTarget, setSwapTarget] = useState<{
     product: Product
+    slots: VariableComponentSlot[]
     lineKey?: string
     quantity?: number
     pendingWeight?: {
@@ -569,6 +573,7 @@ export function RegisterPage() {
     if (product.isVariableComponent && slots.length > 0) {
       setSwapTarget({
         product,
+        slots,
         pendingWeight: { weight, weightUom: uom, referenceWeightQty },
       })
       return
@@ -619,12 +624,12 @@ export function RegisterPage() {
   }
 
   function promptVariableComponentAndAdd(product: Product) {
-    const slots = product.variableComponentSlots ?? []
+    const slots = resolveComponentSwapSlots(product, modifierGroups)
     if (slots.length === 0) {
       flash(`${product.name}: no Variable Component substitutes configured.`)
       return
     }
-    setSwapTarget({ product })
+    setSwapTarget({ product, slots })
   }
 
   function confirmComponentSwap(selections: PosSaleReplacementSelection[]) {
@@ -897,10 +902,7 @@ export function RegisterPage() {
   )
 
   function lineCanSwap(product: Product | undefined): boolean {
-    return Boolean(
-      product?.isVariableComponent
-      && (product.variableComponentSlots?.length ?? 0) > 0,
-    )
+    return productCanComponentSwap(product, modifierGroups)
   }
 
   const selectedLineInfo = findSelectedLine()
@@ -908,17 +910,37 @@ export function RegisterPage() {
   const modifierSwapFocus = selectedLineKey ? selectedLineInfo : lastOrderedLine
   const canUseFoodModifier = modifierSwapFocus?.product.department === 'Food'
   const canUseBeverageModifier = modifierSwapFocus?.product.department === 'Beverage'
-  const canUseComponentSwap = lineCanSwap(modifierSwapFocus?.product)
+  const canUseComponentSwap = (() => {
+    if (lineCanSwap(modifierSwapFocus?.product)) return true
+    const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+    return lines.some(line => {
+      const product = products.find(p => p.id === line.productId)
+      return lineCanSwap(product)
+    })
+  })()
 
   function openComponentSwap() {
     if (!requireDuty()) return
-    const target = resolveModifierOrSwapTarget()
+    const focus = resolveModifierOrSwapTarget()
+    let target = focus && lineCanSwap(focus.product) ? focus : null
+    // If the focused/last line cannot swap, fall back to the newest swappable line on the check.
     if (!target) {
-      flash('Add an item first, then tap Component SWAP.')
-      return
+      const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const line = lines[i]!
+        const product = products.find(p => p.id === line.productId)
+        if (product && lineCanSwap(product)) {
+          target = { line, product }
+          break
+        }
+      }
     }
-    if (!lineCanSwap(target.product)) {
-      flash(`“${target.product.name}” has no Component SWAP options. Select a swappable line, or order one last.`)
+    if (!target) {
+      flash(
+        focus
+          ? `“${focus.product.name}” has no Component SWAP options. Attach Component SWAP in POS Config, or select a swappable line.`
+          : 'Add an item first, then tap Component SWAP.',
+      )
       return
     }
     focusLineKey(lineSelectionKey(target.line))
@@ -970,8 +992,9 @@ export function RegisterPage() {
   function handleSwapLine(line: CartLine) {
     const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
     const product = products.find(p => p.id === line.productId)
-    if (!product?.isVariableComponent || !(product.variableComponentSlots?.length)) {
-      flash('This line has no Variable Component swaps.')
+    const slots = product ? resolveComponentSwapSlots(product, modifierGroups) : []
+    if (!product || slots.length === 0) {
+      flash('This line has no Component SWAP options. Inherit/attach Component SWAP in POS Config.')
       return
     }
     // Guarantee a stable line key so SWAP updates this row instead of appending.
@@ -1002,6 +1025,7 @@ export function RegisterPage() {
       : undefined
     setSwapTarget({
       product,
+      slots,
       lineKey,
       quantity: line.quantity,
       pendingWeight,
@@ -1954,7 +1978,7 @@ export function RegisterPage() {
               !onDuty
                 ? 'Unlock POS to SWAP components'
                 : !canUseComponentSwap
-                  ? 'Select a Variable Component line, or order one last'
+                  ? 'Select a line with Component SWAP (Variable Component or attached swap group)'
                   : selectedLineKey
                     ? 'SWAP components on the selected line'
                     : 'SWAP components on the last ordered line'
@@ -1992,6 +2016,7 @@ export function RegisterPage() {
           setDiscountOpen(true)
         }}
         onSwapLine={handleSwapLine}
+        lineCanSwap={lineCanSwap}
         onRemoveLine={handleRemoveLine}
         selectedLineKey={selectedLineKey}
         selectedLineKeys={selectedLineKeys}
@@ -2064,7 +2089,7 @@ export function RegisterPage() {
       {swapTarget && (
         <ComponentSwapModal
           productName={swapTarget.product.name}
-          slots={swapTarget.product.variableComponentSlots ?? []}
+          slots={swapTarget.slots}
           initialSelections={swapTarget.initialSelections}
           onCancel={() => setSwapTarget(null)}
           onConfirm={confirmComponentSwap}
