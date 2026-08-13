@@ -2,6 +2,7 @@ using Bisync.Api.Data;
 using Bisync.Api.Serialization;
 using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using System.Text.Json;
@@ -227,8 +228,13 @@ else
 
     // Never cache the SPA shell — stale index.html keeps old JS without Dev Console routing.
     app.UseDefaultFiles();
+    var staticContentTypes = new FileExtensionContentTypeProvider();
+    // Desktop installer downloads (Home page public links).
+    staticContentTypes.Mappings[".appimage"] = "application/octet-stream";
+    staticContentTypes.Mappings[".exe"] = "application/vnd.microsoft.portable-executable";
     app.UseStaticFiles(new StaticFileOptions
     {
+        ContentTypeProvider = staticContentTypes,
         OnPrepareResponse = ctx =>
         {
             var path = ctx.File.Name;
@@ -252,6 +258,15 @@ else
             {
                 // Hashed Vite assets are immutable.
                 ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            }
+            else if (path.EndsWith(".appimage", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".dmg", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".deb", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Context.Response.Headers.CacheControl = "public, max-age=3600";
+                ctx.Context.Response.Headers.ContentDisposition = $"attachment; filename=\"{path}\"";
             }
         },
     });
