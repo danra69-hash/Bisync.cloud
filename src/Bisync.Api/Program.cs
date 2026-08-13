@@ -229,9 +229,8 @@ else
     // Never cache the SPA shell — stale index.html keeps old JS without Dev Console routing.
     app.UseDefaultFiles();
     var staticContentTypes = new FileExtensionContentTypeProvider();
-    // Desktop installer downloads (Home page public links).
-    staticContentTypes.Mappings[".appimage"] = "application/octet-stream";
-    staticContentTypes.Mappings[".exe"] = "application/vnd.microsoft.portable-executable";
+    // Keep .exe / .AppImage unmapped so StaticFiles skips them; the dedicated
+    // MapGet below streams those large installers reliably on Cloud Run.
     app.UseStaticFiles(new StaticFileOptions
     {
         ContentTypeProvider = staticContentTypes,
@@ -259,20 +258,55 @@ else
                 // Hashed Vite assets are immutable.
                 ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
             }
-            else if (path.EndsWith(".appimage", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+            else if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
                 || path.EndsWith(".dmg", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".deb", StringComparison.OrdinalIgnoreCase))
+                || path.EndsWith(".deb", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".command", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
             {
                 ctx.Context.Response.Headers.CacheControl = "public, max-age=3600";
-                // Use Append (not ContentDisposition typed setter) — filenames like
-                // Bisync.cloud-*.exe can fail header parsing and 500 the whole response.
-                ctx.Context.Response.Headers.Append(
-                    "Content-Disposition",
-                    $"attachment; filename=\"{path}\"; filename*=UTF-8''{Uri.EscapeDataString(path)}");
             }
         },
+    });
+
+    // Stream large desktop installers explicitly — Cloud Run static middleware can 500
+    // on full-file GET for ~80MB .exe / .AppImage while Range requests still succeed.
+    app.MapGet("/downloads/bisync-desktop/{*filePath}", (string filePath, IWebHostEnvironment env) =>
+    {
+        var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
+        var root = Path.GetFullPath(Path.Combine(webRoot, "downloads", "bisync-desktop"));
+        var safeRelative = (filePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        if (string.IsNullOrWhiteSpace(safeRelative)
+            || safeRelative.Contains("..", StringComparison.Ordinal)
+            || Path.IsPathRooted(safeRelative))
+        {
+            return Results.NotFound();
+        }
+
+        var fullPath = Path.GetFullPath(Path.Combine(root, safeRelative));
+        if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            && !string.Equals(fullPath, root, StringComparison.Ordinal))
+        {
+            return Results.NotFound();
+        }
+
+        if (!System.IO.File.Exists(fullPath))
+            return Results.NotFound();
+
+        var downloadName = Path.GetFileName(fullPath);
+        var contentType = downloadName.EndsWith(".appimage", StringComparison.OrdinalIgnoreCase)
+            ? "application/octet-stream"
+            : downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? "application/vnd.microsoft.portable-executable"
+                : downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                    ? "application/zip"
+                    : "application/octet-stream";
+
+        return Results.File(
+            fullPath,
+            contentType: contentType,
+            fileDownloadName: downloadName,
+            enableRangeProcessing: true);
     });
 
     var attendanceAppRoot = Path.Combine(
