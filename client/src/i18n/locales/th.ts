@@ -124,7 +124,7 @@ export const th = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — รัน Bisync.cloud.bat',
+      windowsHint: 'Zip — รัน Bisync.cloud.bat (สร้างทางลัดเดสก์ท็อป, ล็อกอินใหม่)',
       macHint: 'ตัวเปิด — คลิกขวา → Open ครั้งแรก',
       linuxHint: 'Zip — รัน Bisync.cloud.sh',
     },

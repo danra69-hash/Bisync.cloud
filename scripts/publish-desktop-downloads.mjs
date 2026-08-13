@@ -15,10 +15,6 @@ const copies = [
     from: 'Bisync.cloud-Setup-1.0.0.exe',
     to: 'Bisync.cloud-Desktop-Windows.exe',
   },
-  {
-    from: 'Bisync.cloud-1.0.0.AppImage',
-    to: 'Bisync.cloud-Desktop-Linux.AppImage',
-  },
 ];
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -32,13 +28,12 @@ for (const item of copies) {
     continue;
   }
   fs.copyFileSync(src, dest);
-  if (item.to.endsWith('.AppImage')) fs.chmodSync(dest, 0o755);
   console.log(`copied ${item.from} -> downloads/bisync-desktop/${item.to}`);
   copied += 1;
 }
 
 if (copied === 0) {
-  console.error('No installers found. Build first: cd desktop && npm run dist:win && npm run dist:linux');
+  console.error('No installers found. Build first: cd desktop && npm run dist:win');
   process.exit(1);
 }
 

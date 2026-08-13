@@ -88,8 +88,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   };
 
   const login = useCallback(async (email: string, password: string) => {
-    // Drop any prior tenant selection (e.g. leftover QA company) so org APIs
-    // hit the control plane until the user explicitly picks a company.
+    // Clear stale tenant (e.g. leftover QA) before login; restore home company after.
     setApiTenantCompanyId(null);
     const user = await api.login(email, password);
     if (!user.active) throw new Error('Invalid email or password.');
@@ -97,6 +96,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setUsers(prev => upsertUser(prev, user));
     localStorage.setItem(AUTH_KEY, 'true');
     localStorage.setItem(STORAGE_KEY, String(user.id));
+    setApiTenantCompanyId(user.companyId ?? null);
     markUserActivity();
     setCurrentUserIdState(user.id);
     setIsAuthenticated(true);
@@ -117,6 +117,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setUsers(prev => upsertUser(prev, normalized));
     localStorage.setItem(AUTH_KEY, 'true');
     localStorage.setItem(STORAGE_KEY, String(normalized.id));
+    setApiTenantCompanyId(normalized.companyId ?? null);
     markUserActivity();
     setCurrentUserIdState(normalized.id);
     setIsAuthenticated(true);
@@ -151,6 +152,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     }
     await assertPlatformCredential(enrollment.credentialId);
     const user = await resolveActiveUser(enrollment.userId, enrollment.email);
+    setApiTenantCompanyId(user.companyId ?? null);
     applyAuthenticatedUser(user);
   }, [applyAuthenticatedUser, resolveActiveUser]);
 
@@ -158,6 +160,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setApiTenantCompanyId(null);
     const payload = await unlockPinPayload(pin);
     const user = await resolveActiveUser(payload.userId, payload.email);
+    setApiTenantCompanyId(user.companyId ?? null);
     applyAuthenticatedUser(user);
   }, [applyAuthenticatedUser, resolveActiveUser]);
 

@@ -54,6 +54,55 @@ function readStoredCompanyId(): number | null {
   }
 }
 
+function locationStorageKey(companyId: number) {
+  return `bisync.selectedLocationIds.${companyId}`;
+}
+
+function readStoredLocationIds(companyId: number | null): string[] {
+  if (!companyId) return [];
+  try {
+    const raw = localStorage.getItem(locationStorageKey(companyId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredLocationIds(companyId: number | null, ids: string[]) {
+  if (!companyId) return;
+  try {
+    localStorage.setItem(locationStorageKey(companyId), JSON.stringify(ids));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function resolveLocationSelection(opts: {
+  companyId: number;
+  forCompany: { id: number; externalId: string }[];
+  previous: string[];
+  userLocationIds: number[];
+}): string[] {
+  const allowed = new Set(opts.forCompany.map(l => l.externalId));
+  const kept = opts.previous.filter(id => allowed.has(id));
+  if (kept.length > 0) return kept;
+
+  const stored = readStoredLocationIds(opts.companyId).filter(id => allowed.has(id));
+  if (stored.length > 0) return stored;
+
+  const assigned = new Set(opts.userLocationIds);
+  const fromUser = opts.forCompany
+    .filter(l => assigned.has(l.id))
+    .map(l => l.externalId);
+  if (fromUser.length > 0) return fromUser;
+
+  if (opts.forCompany.length === 1) return [opts.forCompany[0]!.externalId];
+  return [];
+}
+
 function PlaceholderModule({ title }: { title: NavItem | string }) {
   const { t, navLabel } = useAppTranslation();
   const displayTitle = typeof title === 'string' && title in NAV_ITEM_I18N
@@ -96,7 +145,8 @@ export default function App() {
   );
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>(() => {
     const ghost = getGhostSupportSession();
-    return ghost?.locationExternalId ? [ghost.locationExternalId] : [];
+    if (ghost?.locationExternalId) return [ghost.locationExternalId];
+    return readStoredLocationIds(ghost?.companyId ?? readStoredCompanyId());
   });
   const {
     companies,
@@ -238,12 +288,14 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedCompanyId || companies.length === 0) return;
-    if (!companies.some(c => c.id === selectedCompanyId)) {
-      setSelectedCompanyId(null);
-      setSelectedLocationIds([]);
-      setApiTenantCompanyId(null);
-    }
-  }, [companies, selectedCompanyId]);
+    if (companies.some(c => c.id === selectedCompanyId)) return;
+    // Keep the user's home company selected while org lists catch up, or if it was
+    // temporarily inactive — do not blank the shell linkage.
+    if (currentUser?.companyId === selectedCompanyId) return;
+    setSelectedCompanyId(null);
+    setSelectedLocationIds([]);
+    setApiTenantCompanyId(null);
+  }, [companies, selectedCompanyId, currentUser?.companyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
@@ -254,16 +306,17 @@ export default function App() {
       setSelectedLocationIds(prev => (prev.length === 0 ? prev : []));
       return;
     }
-    const allowed = new Set(forCompany.map(l => l.externalId));
     setSelectedLocationIds(prev => {
-      const next = prev.filter(id => allowed.has(id));
-      // Sole location for this company → select it automatically.
-      if (next.length === 0 && forCompany.length === 1) {
-        return [forCompany[0].externalId];
-      }
+      const next = resolveLocationSelection({
+        companyId: selectedCompanyId,
+        forCompany,
+        previous: prev,
+        userLocationIds: currentUser?.locationIds ?? [],
+      });
+      if (next.length > 0) writeStoredLocationIds(selectedCompanyId, next);
       return next;
     });
-  }, [configLocations, selectedCompanyId]);
+  }, [configLocations, selectedCompanyId, currentUser?.locationIds]);
 
   function exitGhostSupport() {
     const returnPath = ghostSession?.returnPath || '/dev/console';
@@ -443,11 +496,19 @@ export default function App() {
             const forCompany = configLocations.filter(
               l => l.companyId === companyId && l.active !== false,
             );
-            setSelectedLocationIds(
-              forCompany.length === 1 ? [forCompany[0].externalId] : [],
-            );
+            const next = resolveLocationSelection({
+              companyId,
+              forCompany,
+              previous: [],
+              userLocationIds: currentUser?.locationIds ?? [],
+            });
+            setSelectedLocationIds(next);
+            writeStoredLocationIds(companyId, next);
           }}
-          onLocationChange={setSelectedLocationIds}
+          onLocationChange={(ids) => {
+            setSelectedLocationIds(ids);
+            writeStoredLocationIds(selectedCompanyId, ids);
+          }}
           onToggleSidebar={() => setSidebarOpen(v => !v)}
           onGoHome={() => {
             setEditLayout(false);

@@ -124,7 +124,7 @@ export const es = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — ejecuta Bisync.cloud.bat',
+      windowsHint: 'Zip — ejecuta Bisync.cloud.bat (acceso directo en Escritorio, inicio limpio)',
       macHint: 'Lanzador — clic derecho → Abrir la primera vez',
       linuxHint: 'Zip — ejecuta Bisync.cloud.sh',
     },

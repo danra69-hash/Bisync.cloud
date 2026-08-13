@@ -124,7 +124,7 @@ export const ms = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — jalankan Bisync.cloud.bat',
+      windowsHint: 'Zip — jalankan Bisync.cloud.bat (pintasan Desktop, log masuk bersih)',
       macHint: 'Pelancar — klik kanan → Open kali pertama',
       linuxHint: 'Zip — jalankan Bisync.cloud.sh',
     },

@@ -60,6 +60,6 @@ Public files served by the live site (linked from Home):
 
 `client/public/downloads/bisync-desktop/`
 
-- `Bisync.cloud-Desktop-Windows.exe`
-- `Bisync.cloud-Desktop-Linux.AppImage`
+- `Bisync.cloud-Desktop-Windows.zip` (launcher — Desktop shortcut + clean login profile)
 - `Bisync.cloud-Desktop-macOS.zip`
+- Linux desktop packages are not offered

@@ -31,13 +31,6 @@ const DESKTOP_DOWNLOADS = [
     hintKey: 'home.desktopApp.macHint',
     fileName: 'Bisync.cloud-Desktop-macOS.zip',
   },
-  {
-    id: 'linux',
-    href: '/downloads/bisync-desktop/Bisync.cloud-Desktop-Linux.zip',
-    labelKey: 'home.desktopApp.linux',
-    hintKey: 'home.desktopApp.linuxHint',
-    fileName: 'Bisync.cloud-Desktop-Linux.zip',
-  },
 ] as const;
 
 type Props = {
@@ -227,7 +220,7 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
               <p className="text-[11px] text-muted-foreground leading-snug">{t('home.desktopApp.subtitle')}</p>
             </div>
           </div>
-          <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
             {DESKTOP_DOWNLOADS.map(item => (
               <a
                 key={item.id}

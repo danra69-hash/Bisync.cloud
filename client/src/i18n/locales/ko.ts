@@ -124,7 +124,7 @@ export const ko = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — Bisync.cloud.bat 실행',
+      windowsHint: 'Zip — Bisync.cloud.bat 실행(바탕화면 바로가기, 클린 로그인)',
       macHint: '런처 — 처음에는 우클릭 → 열기',
       linuxHint: 'Zip — Bisync.cloud.sh 실행',
     },

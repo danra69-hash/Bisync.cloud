@@ -122,9 +122,9 @@ export const en = {
       windows: 'Windows',
       mac: 'macOS',
       linux: 'Linux',
-      windowsHint: 'Zip — run Bisync.cloud.bat',
+      windowsHint: 'Zip — run Bisync.cloud.bat (pins Desktop shortcut, clean login)',
       macHint: 'Zip — right-click Bisync.cloud.command → Open',
-      linuxHint: 'Zip — run Bisync.cloud.sh',
+      linuxHint: 'Linux desktop build is not offered.',
     },
   },
   revMgmt: {
