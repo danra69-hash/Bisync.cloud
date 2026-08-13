@@ -3,13 +3,16 @@ setlocal EnableExtensions
 REM Bisync.cloud Desktop — installs Desktop + Start Menu shortcuts with the Bisync logo,
 REM then opens a dedicated Chrome/Edge app window (private profile → clean login).
 
-set "APP_URL=https://bisync-cloud-389272498937.asia-southeast1.run.app/"
+REM Desktop launcher version — bump via scripts/pack-desktop-launcher-zips.mjs + version.json
+set "DESKTOP_VERSION=1.1.0"
+set "APP_URL=https://bisync-cloud-389272498937.asia-southeast1.run.app/?desktop=1&desktopVersion=%DESKTOP_VERSION%"
 set "INSTALL_DIR=%LOCALAPPDATA%\Bisync.cloud-Desktop"
 set "PROFILE_DIR=%INSTALL_DIR%\profile"
 set "HERE=%~dp0"
 set "ICON_SRC=%HERE%Bisync.cloud.ico"
 set "VBS_SRC=%HERE%Install-Desktop-Shortcut.vbs"
 set "SHORTCUT_NAME=Bisync.cloud.lnk"
+set "VERSION_FILE=%INSTALL_DIR%\version.txt"
 
 if not exist "%ICON_SRC%" (
   echo ERROR: Bisync.cloud.ico is missing next to this launcher.
@@ -26,6 +29,7 @@ if not exist "%VBS_SRC%" (
 )
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%" >nul 2>&1
+> "%VERSION_FILE%" echo %DESKTOP_VERSION%
 
 REM Create / refresh Desktop + Start Menu shortcuts with the Bisync logo.
 cscript //nologo "%VBS_SRC%" /silent

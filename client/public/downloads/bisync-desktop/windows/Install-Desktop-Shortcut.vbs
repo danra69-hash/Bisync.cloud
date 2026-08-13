@@ -15,7 +15,8 @@ installDir = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%\Bisync.cloud-Desktop")
 profileDir = fso.BuildPath(installDir, "profile")
 launcherPath = fso.BuildPath(installDir, "Bisync.cloud.bat")
 iconPath = fso.BuildPath(installDir, "Bisync.cloud.ico")
-appUrl = "https://bisync-cloud-389272498937.asia-southeast1.run.app/"
+desktopVersion = "1.1.0"
+appUrl = "https://bisync-cloud-389272498937.asia-southeast1.run.app/?desktop=1&desktopVersion=" & desktopVersion
 
 If Not fso.FileExists(iconSrc) Then
   MsgBox "Bisync.cloud.ico is missing. Keep it in the same folder as this script.", vbCritical, "Bisync.cloud"
@@ -33,6 +34,10 @@ fso.CopyFile iconSrc, iconPath, True
 ' Also keep a copy of this installer next to the installed files.
 On Error Resume Next
 fso.CopyFile WScript.ScriptFullName, fso.BuildPath(installDir, "Install-Desktop-Shortcut.vbs"), True
+Dim versionFile
+Set versionFile = fso.CreateTextFile(fso.BuildPath(installDir, "version.txt"), True)
+versionFile.WriteLine desktopVersion
+versionFile.Close
 On Error GoTo 0
 
 browserPath = FirstExistingBrowser()

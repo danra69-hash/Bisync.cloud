@@ -2,8 +2,6 @@ import {
   Calculator,
   CheckSquare,
   ChevronRight,
-  Download,
-  Monitor,
   ShoppingBag,
   TrendingUp,
   Users,
@@ -15,23 +13,8 @@ import type { NavItem } from '../../data/revenueManagement';
 import { isNavItemPlatformLive, type ModulesGoLiveMap } from '../../data/platformGoLiveModules';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 import { PlatformTeamChatPanel } from '../chat/PlatformTeamChatPanel';
-
-const DESKTOP_DOWNLOADS = [
-  {
-    id: 'windows',
-    href: '/downloads/bisync-desktop/Bisync.cloud-Desktop-Windows.zip',
-    labelKey: 'home.desktopApp.windows',
-    hintKey: 'home.desktopApp.windowsHint',
-    fileName: 'Bisync.cloud-Desktop-Windows.zip',
-  },
-  {
-    id: 'mac',
-    href: '/downloads/bisync-desktop/Bisync.cloud-Desktop-macOS.zip',
-    labelKey: 'home.desktopApp.mac',
-    hintKey: 'home.desktopApp.macHint',
-    fileName: 'Bisync.cloud-Desktop-macOS.zip',
-  },
-] as const;
+import { DesktopUpdateNotice } from './DesktopUpdateNotice';
+import { HomeDesktopDownloadCard } from './HomeDesktopDownloadCard';
 
 type Props = {
   enabledModules: AccessModule[];
@@ -143,8 +126,12 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
 
   return (
     <div className="w-full min-w-0 flex flex-col lg:flex-row gap-3 items-stretch">
-      <div className="w-full lg:w-[min(20rem,32%)] shrink-0">
+      <div className="w-full lg:w-[min(20rem,32%)] shrink-0 flex flex-col gap-3">
         <PlatformTeamChatPanel compact />
+        <DesktopUpdateNotice downloadAnchorId="desktop-download" />
+        <div id="desktop-download">
+          <HomeDesktopDownloadCard compact />
+        </div>
       </div>
 
       <div className="flex-1 min-w-0 space-y-3">
@@ -209,40 +196,6 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
             );
           })}
         </div>
-
-        <section className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-            <div className="p-1.5 rounded-md bg-primary/10">
-              <Monitor size={13} className="text-primary" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold leading-tight">{t('home.desktopApp.title')}</h2>
-              <p className="text-[11px] text-muted-foreground leading-snug">{t('home.desktopApp.subtitle')}</p>
-            </div>
-          </div>
-          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {DESKTOP_DOWNLOADS.map(item => (
-              <a
-                key={item.id}
-                href={item.href}
-                download={item.fileName}
-                className="group flex items-start gap-2 rounded-lg border border-border bg-background/60 px-2.5 py-2 hover:border-primary/50 hover:bg-primary/5 transition-colors"
-              >
-                <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <Download size={14} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-xs font-semibold text-foreground group-hover:text-primary">
-                    {t(item.labelKey)}
-                  </span>
-                  <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">
-                    {t(item.hintKey)}
-                  </span>
-                </span>
-              </a>
-            ))}
-          </div>
-        </section>
 
         <section className="bg-card border border-border rounded-xl overflow-hidden flex flex-col min-h-[8rem]">
           <div className="px-3 py-2 border-b border-border flex items-center gap-2">

@@ -127,6 +127,11 @@ export const ja = {
       windowsHint: 'Zip — run Install-Desktop-Shortcut.vbs or Bisync.cloud.bat (Desktop shortcut with Bisync logo)',
       macHint: 'ランチャー — 初回は右クリック → 開く',
       linuxHint: 'Zip — Bisync.cloud.sh を実行',
+      updateAvailable: 'Desktop app update {{version}}',
+      updateBody: 'A newer desktop launcher is available. Download and reinstall the shortcut to stay current.',
+      updateBodyDesktop: 'A newer desktop launcher is available. Download it below, then run the installer again to update this app.',
+      updateDownload: 'Download update',
+      updateDismiss: 'Not now',
     },
   },
   revMgmt: {
