@@ -4,7 +4,7 @@ Bisync.cloud — Desktop app downloads
 Public downloads (linked from the Home page):
 
   Bisync.cloud-Desktop-Windows.zip  — run Bisync.cloud.bat
-    • Creates a Desktop shortcut (Bisync.cloud.lnk)
+    • Creates a Desktop shortcut (Bisync.cloud.lnk) with the Bisync logo
     • Opens a dedicated Chrome/Edge app window
     • Uses a private profile so a clean platform login is required
 
