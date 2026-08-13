@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, setApiTenantCompanyId, type AppUser } from '../api';
 import {
   assertPlatformCredential,
+  clearBiometricEnrollment,
   createPlatformCredential,
   loadBiometricEnrollment,
   saveBiometricEnrollment,
 } from '../auth/platformBiometric';
-import { savePinEnrollment, unlockPinPayload } from '../auth/platformPin';
+import { clearPinEnrollment, savePinEnrollment, unlockPinPayload } from '../auth/platformPin';
 import { REQUIRE_PLATFORM_LOGIN } from '../config/platformAuth';
 import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
 import { clearAllOnboardingFlags } from '../data/onboardingFlags';
@@ -186,6 +187,14 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     });
   }, [users, currentUserId]);
 
+  const clearBiometric = useCallback(() => {
+    clearBiometricEnrollment();
+  }, []);
+
+  const clearPin = useCallback(() => {
+    clearPinEnrollment();
+  }, []);
+
   const logout = useCallback(() => {
     const userId = currentUserId;
     const companyIdRaw = localStorage.getItem('bisync.selectedCompanyId');
@@ -236,6 +245,8 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         loginWithPin,
         enrollBiometric,
         enrollPin,
+        clearBiometric,
+        clearPin,
         logout,
         applyAuthenticatedUser,
       }}

@@ -1,4 +1,5 @@
-import { X } from 'lucide-react';
+import { useState } from 'react';
+import { Fingerprint, X } from 'lucide-react';
 import { NAV_ITEMS, COMING_SOON_NAV_ITEMS, type NavItem } from '../../data/revenueManagement';
 import { isNavItemEnabled } from '../../data/companyModules';
 import { isNavItemPlatformLive, type ModulesGoLiveMap } from '../../data/platformGoLiveModules';
@@ -6,6 +7,7 @@ import type { AccessModule } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { userInitials } from '../../context/currentUserContext';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import { DeviceUnlockSettingsModal } from '../auth/DeviceUnlockSettingsModal';
 import { BrandEngineLockup } from './BrandEngineLockup';
 import { BisyncMarkTile } from './BisyncMark';
 
@@ -21,6 +23,7 @@ type Props = {
 export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClose, onNavigate }: Props) {
   const { t, navLabel } = useAppTranslation();
   const { currentUser, users, setCurrentUserId, logout } = useCurrentUser();
+  const [deviceUnlockOpen, setDeviceUnlockOpen] = useState(false);
   const displayName = currentUser?.fullName ?? t('common.unknownUser');
   const displayRole = currentUser?.role ?? '—';
 
@@ -99,6 +102,18 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
           )}
           <button
             type="button"
+            onClick={() => {
+              setDeviceUnlockOpen(true);
+              onClose();
+            }}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            title={t('auth.deviceUnlockHint')}
+          >
+            <Fingerprint size={12} aria-hidden />
+            {t('auth.deviceUnlock')}
+          </button>
+          <button
+            type="button"
             onClick={logout}
             className="w-full rounded-md px-2 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           >
@@ -106,6 +121,9 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
           </button>
         </div>
       </aside>
+      {deviceUnlockOpen ? (
+        <DeviceUnlockSettingsModal onClose={() => setDeviceUnlockOpen(false)} />
+      ) : null}
     </>
   );
 }

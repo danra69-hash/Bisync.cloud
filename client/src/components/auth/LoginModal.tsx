@@ -293,11 +293,15 @@ export function LoginModal({ onClose }: Props) {
                 ) : null}
               </div>
             )}
-            {(biometricReady || webAuthnReady) && (
+            {biometricReady ? (
               <p className="mt-3 text-center text-xs text-herme-ink/45">
                 {t('auth.biometricHint')}
               </p>
-            )}
+            ) : webAuthnReady ? (
+              <p className="mt-3 text-center text-xs text-herme-ink/45">
+                {t('auth.setupAfterLoginHint')}
+              </p>
+            ) : null}
           </form>
         ) : null}
 
@@ -408,7 +412,7 @@ export function LoginModal({ onClose }: Props) {
 
               <div className="rounded-xl border border-herme-muted/60 bg-herme-cream/60 px-4 py-4">
                 <p className="text-sm font-semibold text-herme-ink">{t('auth.devicePin')}</p>
-                <p className="mt-1 text-xs text-herme-ink/55">{t('auth.pinHint')}</p>
+                <p className="mt-1 text-xs text-herme-ink/55">{t('auth.devicePinExplain')}</p>
                 {setupPinDone ? (
                   <p className="mt-3 text-sm font-medium text-emerald-700">{t('auth.pinSaved')}</p>
                 ) : (

@@ -19,6 +19,10 @@ export type CurrentUserContextValue = {
   enrollBiometric: () => Promise<void>;
   /** Save a 4–8 digit device PIN for faster unlock on this browser. */
   enrollPin: (pin: string) => Promise<void>;
+  /** Remove Face ID / fingerprint enrollment from this browser. */
+  clearBiometric: () => void;
+  /** Remove the Bisync device PIN from this browser. */
+  clearPin: () => void;
   logout: () => void;
   applyAuthenticatedUser: (user: AppUser) => void;
 };
