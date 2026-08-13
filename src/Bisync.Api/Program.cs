@@ -229,8 +229,9 @@ else
     // Never cache the SPA shell — stale index.html keeps old JS without Dev Console routing.
     app.UseDefaultFiles();
     var staticContentTypes = new FileExtensionContentTypeProvider();
-    // Keep .exe / .AppImage unmapped so StaticFiles skips them; the dedicated
-    // MapGet below streams those large installers reliably on Cloud Run.
+    // Keep large installers unmapped so StaticFiles skips them; MapGet streams them.
+    staticContentTypes.Mappings.Remove(".exe");
+    staticContentTypes.Mappings.Remove(".appimage");
     app.UseStaticFiles(new StaticFileOptions
     {
         ContentTypeProvider = staticContentTypes,
@@ -267,46 +268,6 @@ else
                 ctx.Context.Response.Headers.CacheControl = "public, max-age=3600";
             }
         },
-    });
-
-    // Stream large desktop installers explicitly — Cloud Run static middleware can 500
-    // on full-file GET for ~80MB .exe / .AppImage while Range requests still succeed.
-    app.MapGet("/downloads/bisync-desktop/{*filePath}", (string filePath, IWebHostEnvironment env) =>
-    {
-        var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
-        var root = Path.GetFullPath(Path.Combine(webRoot, "downloads", "bisync-desktop"));
-        var safeRelative = (filePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
-        if (string.IsNullOrWhiteSpace(safeRelative)
-            || safeRelative.Contains("..", StringComparison.Ordinal)
-            || Path.IsPathRooted(safeRelative))
-        {
-            return Results.NotFound();
-        }
-
-        var fullPath = Path.GetFullPath(Path.Combine(root, safeRelative));
-        if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-            && !string.Equals(fullPath, root, StringComparison.Ordinal))
-        {
-            return Results.NotFound();
-        }
-
-        if (!System.IO.File.Exists(fullPath))
-            return Results.NotFound();
-
-        var downloadName = Path.GetFileName(fullPath);
-        var contentType = downloadName.EndsWith(".appimage", StringComparison.OrdinalIgnoreCase)
-            ? "application/octet-stream"
-            : downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                ? "application/vnd.microsoft.portable-executable"
-                : downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
-                    ? "application/zip"
-                    : "application/octet-stream";
-
-        return Results.File(
-            fullPath,
-            contentType: contentType,
-            fileDownloadName: downloadName,
-            enableRangeProcessing: true);
     });
 
     var attendanceAppRoot = Path.Combine(
@@ -387,6 +348,55 @@ app.Use(async (context, next) =>
 });
 
 app.MapControllers();
+
+// Stream large desktop installers (Home page public downloads). Registered as an
+// endpoint so StaticFiles does not short-circuit ~80MB .exe / .AppImage responses.
+app.MapGet("/downloads/bisync-desktop/{*filePath}", async (string filePath, IWebHostEnvironment env, HttpContext http) =>
+{
+    var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
+    var root = Path.GetFullPath(Path.Combine(webRoot, "downloads", "bisync-desktop"));
+    var safeRelative = (filePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+    if (string.IsNullOrWhiteSpace(safeRelative)
+        || safeRelative.Contains("..", StringComparison.Ordinal)
+        || Path.IsPathRooted(safeRelative))
+    {
+        return Results.NotFound();
+    }
+
+    var fullPath = Path.GetFullPath(Path.Combine(root, safeRelative));
+    if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        && !string.Equals(fullPath, root, StringComparison.Ordinal))
+    {
+        return Results.NotFound();
+    }
+
+    if (!System.IO.File.Exists(fullPath))
+        return Results.NotFound();
+
+    var downloadName = Path.GetFileName(fullPath);
+    var contentType = downloadName.EndsWith(".appimage", StringComparison.OrdinalIgnoreCase)
+        ? "application/octet-stream"
+        : downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? "application/vnd.microsoft.portable-executable"
+            : downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                ? "application/zip"
+                : "application/octet-stream";
+
+    var stream = new FileStream(
+        fullPath,
+        FileMode.Open,
+        FileAccess.Read,
+        FileShare.Read,
+        bufferSize: 64 * 1024,
+        options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    http.Response.Headers.CacheControl = "public, max-age=3600";
+    return Results.File(
+        stream,
+        contentType: contentType,
+        fileDownloadName: downloadName,
+        enableRangeProcessing: true);
+});
 
 if (app.Environment.IsDevelopment())
 {
