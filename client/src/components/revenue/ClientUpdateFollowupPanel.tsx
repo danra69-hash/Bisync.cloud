@@ -174,7 +174,7 @@ export function ClientUpdateFollowupPanel({
         {sendAppointment ? (
           <div className="rounded-md border border-border p-3 space-y-2">
             <p className="text-[10px] text-muted-foreground">
-              Uses Appointment Calendar rules. When Microsoft Graph credentials are set on Sales Team, Outlook receives the appointment automatically.
+              Uses Sales Diary appointment rules. When Microsoft Graph credentials are set on Sales Team, Outlook receives the appointment automatically.
             </p>
             <label className="block space-y-1 text-xs">
               <span className="text-muted-foreground uppercase tracking-wide">Title</span>

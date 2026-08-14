@@ -297,7 +297,7 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged, embedded = fals
                   checked={calendarSyncEnabled}
                   onChange={e => setCalendarSyncEnabled(e.target.checked)}
                 />
-                Sync this person’s Outlook calendar into Appointment Calendar
+                Sync this person’s Outlook calendar into Sales Diary
               </label>
             </div>
 
