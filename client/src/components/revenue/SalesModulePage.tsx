@@ -260,10 +260,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       ? await api.salesModuleCompanies({ salesTeamMemberId: memberId })
       : await api.salesModuleCompanies({});
     setCompanies(rows);
-    // Keep "All companies" unless the current selection is still valid for this hunter.
+    // Prefer an existing valid selection; otherwise default to the first tagged company
+    // (used by Appointment Calendar on Sales Diary — no separate top Company filter).
     setSelectedCompanyId(prev => {
       if (prev && rows.some(c => c.id === prev)) return prev;
-      return null;
+      return rows[0]?.id ?? null;
     });
   }, []);
 
@@ -311,18 +312,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   }, []);
 
   const loadClientUpdates = useCallback(async () => {
-    const companyName = selectedCompanyId
-      ? companies.find(c => c.id === selectedCompanyId)?.name.trim().toLowerCase() ?? ''
-      : '';
-
-    function applyCompanyFilter(rows: SalesModuleClientUpdate[]) {
-      if (!companyName) return rows;
-      return rows.filter(r =>
-        r.company.trim().toLowerCase() === companyName
-        || r.brand.trim().toLowerCase() === companyName);
-    }
-
-    // Member selected → all attached clients (no week/month filter).
+    // Member selected → all attached clients (no week/month / company filter).
+    // Top Company sticky filter was removed; company is chosen per diary/appointment action.
     if (selectedTeamMemberId) {
       setClientUpdatesLoading(true);
       try {
@@ -332,7 +323,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         const rows = await api.salesModuleClientUpdates({
           salesTeamMemberId: selectedTeamMemberId,
         });
-        setClientUpdates(applyCompanyFilter(rows));
+        setClientUpdates(rows);
       } finally {
         setClientUpdatesLoading(false);
       }
@@ -351,7 +342,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           view: 'week',
           weekStart: clientUpdateWeekStart,
         });
-        setClientUpdates(applyCompanyFilter(rows));
+        setClientUpdates(rows);
         return;
       }
       const month = clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue);
@@ -364,14 +355,12 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         year: month.year,
         month: month.month,
       });
-      setClientUpdates(applyCompanyFilter(rows));
+      setClientUpdates(rows);
     } finally {
       setClientUpdatesLoading(false);
     }
   }, [
     selectedTeamMemberId,
-    selectedCompanyId,
-    companies,
     clientUpdateView,
     clientUpdateWeekStart,
     clientUpdateMonthValue,
@@ -891,7 +880,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         {tab === 'overview' ? (
           <div className="flex flex-wrap items-end gap-2">
             <label className="inline-flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+              <span className="text-muted-foreground uppercase tracking-wide">Team</span>
               <select
                 value={overviewSalesTeamId}
                 onChange={e => {
@@ -992,6 +981,21 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         ) : (
           <>
             <div className="flex flex-wrap items-end gap-2">
+              <label className="inline-flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground uppercase tracking-wide">Team</span>
+                <select
+                  value={selectedTeamMemberId ?? ''}
+                  onChange={e => setSelectedTeamMemberId(e.target.value ? Number(e.target.value) : null)}
+                  className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+                >
+                  {tab === 'client-update' ? (
+                    <option value="">All</option>
+                  ) : null}
+                  {activeHunters.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </label>
               {tab === 'client-update' ? (
                 <>
                   {!selectedTeamMemberId ? (
@@ -1077,34 +1081,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   </button>
                 </>
               ) : null}
-              <label className="inline-flex flex-col gap-1 text-xs">
-                <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
-                <select
-                  value={selectedTeamMemberId ?? ''}
-                  onChange={e => setSelectedTeamMemberId(e.target.value ? Number(e.target.value) : null)}
-                  className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-                >
-                  {tab === 'client-update' ? (
-                    <option value="">All</option>
-                  ) : null}
-                  {activeHunters.map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="inline-flex flex-col gap-1 text-xs">
-                <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-                <select
-                  value={selectedCompanyId ?? ''}
-                  onChange={e => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
-                  className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-                >
-                  <option value="">All companies</option>
-                  {companies.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </label>
             </div>
             {tab === 'client-update' && !selectedTeamMemberId ? null : (
               <div className="flex flex-wrap items-end gap-2">
