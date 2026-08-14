@@ -20,6 +20,7 @@ import {
   type DevConsoleTabId,
   devConsoleAuthApi,
 } from '../data/devConsoleAuthApi';
+import { canManageDevConsoleTeam } from '../data/devConsoleControlPanel';
 import {
   DevConsoleForbidden,
   DevConsoleLoginGate,
@@ -48,6 +49,7 @@ type DevSessionUser = {
   position: string;
   teamType: string;
   isRoot: boolean;
+  canManageTeam: boolean;
   accessTabs: string[];
   expiresAt: string;
   mustChangePassword: boolean;
@@ -78,6 +80,7 @@ export function DevConsolePage() {
         position: me.position ?? '',
         teamType: me.teamType ?? '',
         isRoot: me.isRoot,
+        canManageTeam: me.canManageTeam === true || canManageDevConsoleTeam(me.email),
         accessTabs: me.isRoot
           ? [...DEV_CONSOLE_TAB_IDS]
           : (() => {
@@ -266,7 +269,7 @@ export function DevConsolePage() {
         <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
           <>
-            {sessionUser.isRoot && (
+            {sessionUser.canManageTeam && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold">Team</p>
@@ -315,7 +318,10 @@ export function DevConsolePage() {
         )}
       </main>
 
-      <DevTeamPanel open={teamOpen} onClose={() => setTeamOpen(false)} />
+      <DevTeamPanel
+        open={teamOpen && sessionUser.canManageTeam}
+        onClose={() => setTeamOpen(false)}
+      />
       <DevConsoleChangePasswordModal
         open={changePasswordOpen}
         required={sessionUser.mustChangePassword}

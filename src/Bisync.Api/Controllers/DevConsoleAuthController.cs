@@ -125,6 +125,7 @@ public class DevConsoleAuthController(
             position = user.Position,
             teamType = user.TeamType,
             isRoot = user.IsRoot,
+            canManageTeam = DevConsoleControlPanelAccess.CanManageTeam(user.Email),
             mustChangePassword = user.MustChangePassword,
             accessTabs = user.IsRoot
                 ? DevConsoleTabAccess.AllTabs.ToList()
@@ -273,7 +274,7 @@ public class DevConsoleAuthController(
     [HttpGet("team")]
     public async Task<ActionResult<object>> ListTeam(CancellationToken ct)
     {
-        var (err, actor) = await RequireRootAsync(ct);
+        var (err, actor) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var rows = await db.DevTeamUsers.AsNoTracking()
@@ -321,7 +322,7 @@ public class DevConsoleAuthController(
     [HttpPost("team")]
     public async Task<ActionResult<object>> CreateTeamUser([FromBody] UpsertTeamUserRequest request, CancellationToken ct)
     {
-        var (err, actor) = await RequireRootAsync(ct);
+        var (err, actor) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var email = (request.Email ?? "").Trim().ToLowerInvariant();
@@ -391,7 +392,7 @@ public class DevConsoleAuthController(
     [HttpPut("team/{id:int}")]
     public async Task<ActionResult<object>> UpdateTeamUser(int id, [FromBody] UpsertTeamUserRequest request, CancellationToken ct)
     {
-        var (err, actor) = await RequireRootAsync(ct);
+        var (err, actor) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -454,7 +455,7 @@ public class DevConsoleAuthController(
     [HttpPost("team/{id:int}/resend-invite")]
     public async Task<ActionResult<object>> ResendInvite(int id, CancellationToken ct)
     {
-        var (err, _) = await RequireRootAsync(ct);
+        var (err, _) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -488,7 +489,7 @@ public class DevConsoleAuthController(
     [HttpDelete("team/{id:int}")]
     public async Task<ActionResult> DeleteTeamUser(int id, CancellationToken ct)
     {
-        var (err, _) = await RequireRootAsync(ct);
+        var (err, _) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -629,6 +630,24 @@ public class DevConsoleAuthController(
         return (null, user);
     }
 
+    /// <summary>
+    /// Team create/edit is limited to the control-panel allowlist — not every root/session user.
+    /// </summary>
+    async Task<(ActionResult? Error, DevTeamUser? Actor)> RequireControlPanelAsync(CancellationToken ct)
+    {
+        var (err, user) = await RequireDevSessionAsync(ct);
+        if (err is not null) return (err, null);
+        if (!DevConsoleControlPanelAccess.CanManageTeam(user!.Email))
+        {
+            return (StatusCode(403, new
+            {
+                message = "Control panel access is limited to authorized operators only.",
+                code = "control_panel_forbidden",
+            }), null);
+        }
+        return (null, user);
+    }
+
     static List<int> ParseLocationIds(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return [];
@@ -651,6 +670,7 @@ public class DevConsoleAuthController(
         position = user.Position,
         teamType = user.TeamType,
         isRoot = user.IsRoot,
+        canManageTeam = DevConsoleControlPanelAccess.CanManageTeam(user.Email),
         mustChangePassword = user.MustChangePassword,
         accessTabs = user.IsRoot
             ? DevConsoleTabAccess.AllTabs.ToList()

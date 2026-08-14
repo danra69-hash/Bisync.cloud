@@ -103,6 +103,7 @@ export type DevSessionResult = {
   position?: string;
   teamType?: string;
   isRoot: boolean;
+  canManageTeam?: boolean;
   accessTabs?: string[];
   mustChangePassword?: boolean;
 };
@@ -184,6 +185,7 @@ export const devConsoleAuthApi = {
     position: string;
     teamType: string;
     isRoot: boolean;
+    canManageTeam?: boolean;
     accessTabs: string[];
     expiresAt: string;
     googleVerified: boolean;
