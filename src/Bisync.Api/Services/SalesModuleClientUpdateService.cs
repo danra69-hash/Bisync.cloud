@@ -554,6 +554,143 @@ public class SalesModuleClientUpdateService(
         return Map(row);
     }
 
+    /// <summary>Delete a Client Update row (e.g. duplicate / repeating entry).</summary>
+    public async Task<object> DeleteAsync(int id, CancellationToken ct = default)
+    {
+        await EnsureSchemaAsync(ct);
+        var row = await db.SalesModuleClientUpdates.FirstOrDefaultAsync(r => r.Id == id, ct)
+            ?? throw new InvalidOperationException("Client Update row not found.");
+        db.SalesModuleClientUpdates.Remove(row);
+        await db.SaveChangesAsync(ct);
+        InvalidateListCache();
+        return new { deleted = id };
+    }
+
+    /// <summary>
+    /// Merge other Client Update rows that share the same Sales Team member (or hunter name)
+    /// and same client key (company, else brand) into the keeper row, then delete the duplicates.
+    /// </summary>
+    public async Task<object> MergeDuplicatesAsync(int keeperId, CancellationToken ct = default)
+    {
+        await EnsureSchemaAsync(ct);
+        var keeper = await db.SalesModuleClientUpdates.FirstOrDefaultAsync(r => r.Id == keeperId, ct)
+            ?? throw new InvalidOperationException("Client Update row not found.");
+
+        var clientKey = ClientKey(keeper);
+        if (clientKey is null)
+            throw new InvalidOperationException("Cannot merge: keeper row has no Company or Brand.");
+
+        var all = await db.SalesModuleClientUpdates.ToListAsync(ct);
+        var duplicates = all
+            .Where(r => r.Id != keeper.Id && SameDuplicateGroup(keeper, r))
+            .OrderBy(r => r.Id)
+            .ToList();
+
+        if (duplicates.Count == 0)
+            throw new InvalidOperationException("No duplicate rows found for this client.");
+
+        foreach (var dup in duplicates)
+            MergeFieldsIntoKeeper(keeper, dup);
+
+        db.SalesModuleClientUpdates.RemoveRange(duplicates);
+        await db.SaveChangesAsync(ct);
+        InvalidateListCache();
+
+        return new
+        {
+            keeper = Map(keeper),
+            mergedCount = duplicates.Count,
+            deletedIds = duplicates.Select(d => d.Id).ToList(),
+        };
+    }
+
+    static bool SameDuplicateGroup(SalesModuleClientUpdate a, SalesModuleClientUpdate b)
+    {
+        var keyA = ClientKey(a);
+        var keyB = ClientKey(b);
+        if (keyA is null || keyB is null) return false;
+        if (!keyA.Equals(keyB, StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (a.SalesTeamMemberId is > 0 && b.SalesTeamMemberId is > 0)
+            return a.SalesTeamMemberId == b.SalesTeamMemberId;
+
+        if (a.SalesTeamMemberId is > 0 || b.SalesTeamMemberId is > 0)
+            return false;
+
+        var hunterA = (a.Hunter ?? string.Empty).Trim();
+        var hunterB = (b.Hunter ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(hunterA) && string.IsNullOrWhiteSpace(hunterB))
+            return true;
+        return hunterA.Equals(hunterB, StringComparison.OrdinalIgnoreCase);
+    }
+
+    static void MergeFieldsIntoKeeper(SalesModuleClientUpdate keeper, SalesModuleClientUpdate source)
+    {
+        if (!keeper.DateCreated.HasValue && source.DateCreated.HasValue)
+            keeper.DateCreated = source.DateCreated;
+        else if (keeper.DateCreated.HasValue && source.DateCreated.HasValue
+                 && source.DateCreated.Value < keeper.DateCreated.Value)
+            keeper.DateCreated = source.DateCreated;
+
+        if (string.IsNullOrWhiteSpace(keeper.Hunter) && !string.IsNullOrWhiteSpace(source.Hunter))
+            keeper.Hunter = source.Hunter.Trim();
+        if (keeper.SalesTeamMemberId is null or <= 0 && source.SalesTeamMemberId is > 0)
+            keeper.SalesTeamMemberId = source.SalesTeamMemberId;
+
+        if (string.IsNullOrWhiteSpace(keeper.Company) && !string.IsNullOrWhiteSpace(source.Company))
+            keeper.Company = source.Company.Trim();
+        if (string.IsNullOrWhiteSpace(keeper.Brand) && !string.IsNullOrWhiteSpace(source.Brand))
+            keeper.Brand = source.Brand.Trim();
+        if (!keeper.LocationCount.HasValue && source.LocationCount.HasValue)
+            keeper.LocationCount = source.LocationCount;
+        else if (keeper.LocationCount.HasValue && source.LocationCount.HasValue
+                 && source.LocationCount.Value > keeper.LocationCount.Value)
+            keeper.LocationCount = source.LocationCount;
+
+        var sourceNewer = (source.LastContactDate ?? DateTime.MinValue)
+            >= (keeper.LastContactDate ?? DateTime.MinValue);
+
+        if (sourceNewer && source.LastContactDate.HasValue)
+        {
+            keeper.LastContactDate = source.LastContactDate;
+            if (!string.IsNullOrWhiteSpace(source.ContactPerson))
+                keeper.ContactPerson = source.ContactPerson.Trim();
+            if (!string.IsNullOrWhiteSpace(source.ContactType))
+                keeper.ContactType = source.ContactType.Trim();
+            if (!string.IsNullOrWhiteSpace(source.Status))
+                keeper.Status = source.Status.Trim();
+            if (!string.IsNullOrWhiteSpace(source.Appointment))
+                keeper.Appointment = source.Appointment.Trim();
+            if (source.FollowUpReminder.HasValue)
+                keeper.FollowUpReminder = source.FollowUpReminder;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(keeper.Status) && !string.IsNullOrWhiteSpace(source.Status))
+                keeper.Status = source.Status.Trim();
+            if (string.IsNullOrWhiteSpace(keeper.ContactPerson) && !string.IsNullOrWhiteSpace(source.ContactPerson))
+                keeper.ContactPerson = source.ContactPerson.Trim();
+            if (string.IsNullOrWhiteSpace(keeper.ContactType) && !string.IsNullOrWhiteSpace(source.ContactType))
+                keeper.ContactType = source.ContactType.Trim();
+            if (string.IsNullOrWhiteSpace(keeper.Appointment) && !string.IsNullOrWhiteSpace(source.Appointment))
+                keeper.Appointment = source.Appointment.Trim();
+            if (!keeper.FollowUpReminder.HasValue && source.FollowUpReminder.HasValue)
+                keeper.FollowUpReminder = source.FollowUpReminder;
+            if (!keeper.LastContactDate.HasValue && source.LastContactDate.HasValue)
+                keeper.LastContactDate = source.LastContactDate;
+        }
+
+        var srcNote = (source.Note ?? string.Empty).Trim();
+        var keepNote = (keeper.Note ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(srcNote))
+        {
+            if (string.IsNullOrWhiteSpace(keepNote))
+                keeper.Note = srcNote;
+            else if (!keepNote.Contains(srcNote, StringComparison.OrdinalIgnoreCase))
+                keeper.Note = $"{keepNote}\n---\n{srcNote}";
+        }
+    }
+
     /// <summary>
     /// Apply a Sales Diary log to Client Update: update matching Hunter+Company row when found,
     /// otherwise insert a new Client Update row so Overview / Client Update stay in sync.

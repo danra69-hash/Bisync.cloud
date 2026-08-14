@@ -636,6 +636,39 @@ public class SalesModuleController(
         }
     }
 
+    /// <summary>Delete a Client Update row (duplicate / repeating entries).</summary>
+    [HttpDelete("client-updates/{id:int}")]
+    public async Task<ActionResult<object>> DeleteClientUpdate(int id, CancellationToken ct = default)
+    {
+        if (id <= 0) return BadRequest(new { message = "id is required." });
+        try
+        {
+            return Ok(await clientUpdateService.DeleteAsync(id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Merge duplicate Client Update rows (same team member / hunter + same company/brand)
+    /// into the keeper row, then delete the duplicates.
+    /// </summary>
+    [HttpPost("client-updates/{id:int}/merge-duplicates")]
+    public async Task<ActionResult<object>> MergeClientUpdateDuplicates(int id, CancellationToken ct = default)
+    {
+        if (id <= 0) return BadRequest(new { message = "id is required." });
+        try
+        {
+            return Ok(await clientUpdateService.MergeDuplicatesAsync(id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     /// <summary>
     /// Client Update Followup: send an appointment (Outlook sync when Graph credentials exist)
     /// and/or change status (comment required). WhatsApp message text is returned for the client.

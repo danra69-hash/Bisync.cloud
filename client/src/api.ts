@@ -4044,6 +4044,14 @@ export const api = {
       locationCount?: number | null;
     },
   ) => fetchJsonWithMethod<SalesModuleClientUpdate>(`/api/sales-module/client-updates/${id}`, 'PATCH', data),
+  deleteSalesModuleClientUpdate: (id: number) =>
+    fetchJsonWithMethod<{ deleted: number }>(`/api/sales-module/client-updates/${id}`, 'DELETE'),
+  mergeSalesModuleClientUpdateDuplicates: (id: number) =>
+    fetchJsonWithMethod<{
+      keeper: SalesModuleClientUpdate;
+      mergedCount: number;
+      deletedIds: number[];
+    }>(`/api/sales-module/client-updates/${id}/merge-duplicates`, 'POST'),
   followupSalesModuleClientUpdate: (id: number, data: ClientUpdateFollowupPayload) =>
     fetchJsonWithMethod<SalesModuleClientUpdateFollowupResult>(
       `/api/sales-module/client-updates/${id}/followup`,

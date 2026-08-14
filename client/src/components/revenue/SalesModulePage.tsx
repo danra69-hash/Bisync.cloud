@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Upload, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GitMerge, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -85,6 +85,16 @@ function overviewClientKey(row: SalesModuleClientUpdate): string | null {
   if (company) return company;
   const brand = row.brand?.trim().toLowerCase();
   return brand || null;
+}
+
+/** Same Sales Team member (or hunter) + same company/brand → duplicate group. */
+function clientUpdateDuplicateGroupKey(row: SalesModuleClientUpdate): string | null {
+  const client = overviewClientKey(row);
+  if (!client) return null;
+  const member = row.salesTeamMemberId && row.salesTeamMemberId > 0
+    ? `m:${row.salesTeamMemberId}`
+    : `h:${(row.hunter ?? '').trim().toLowerCase()}`;
+  return `${member}|${client}`;
 }
 
 function normalizeOverviewToken(value: string | null | undefined): string {
@@ -669,6 +679,68 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save Client Update field');
       throw err;
+    }
+  }
+
+  const clientUpdateDuplicateCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of clientUpdates) {
+      const key = clientUpdateDuplicateGroupKey(row);
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [clientUpdates]);
+
+  async function removeClientUpdateRow(row: SalesModuleClientUpdate) {
+    const label = row.company?.trim() || row.brand?.trim() || `#${row.id}`;
+    if (!window.confirm(`Remove Client Update row for “${label}”? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await api.deleteSalesModuleClientUpdate(row.id);
+      setClientUpdates(prev => prev.filter(r => r.id !== row.id));
+      setOverviewDetailRows(prev => prev.filter(r => r.id !== row.id));
+      if (followupRow?.id === row.id) setFollowupRow(null);
+      setClientUpdateMessage(`Removed “${label}”.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove Client Update row');
+    }
+  }
+
+  async function mergeClientUpdateDuplicates(row: SalesModuleClientUpdate) {
+    const key = clientUpdateDuplicateGroupKey(row);
+    const dupCount = key ? (clientUpdateDuplicateCounts.get(key) ?? 1) : 1;
+    if (dupCount < 2) {
+      setError('No duplicate rows found for this client in the current list.');
+      return;
+    }
+    const label = row.company?.trim() || row.brand?.trim() || `#${row.id}`;
+    if (!window.confirm(
+      `Merge ${dupCount - 1} duplicate row${dupCount - 1 === 1 ? '' : 's'} into “${label}”? Other matching rows will be removed.`,
+    )) return;
+    setError(null);
+    try {
+      const result = await api.mergeSalesModuleClientUpdateDuplicates(row.id);
+      const deleted = new Set(result.deletedIds ?? []);
+      setClientUpdates(prev => {
+        const next = prev
+          .filter(r => !deleted.has(r.id))
+          .map(r => (r.id === result.keeper.id ? result.keeper : r));
+        return next;
+      });
+      setOverviewDetailRows(prev => {
+        const next = prev
+          .filter(r => !deleted.has(r.id))
+          .map(r => (r.id === result.keeper.id ? result.keeper : r));
+        return sortOverviewClientDetails(next);
+      });
+      if (followupRow && deleted.has(followupRow.id)) setFollowupRow(null);
+      setClientUpdateMessage(
+        `Merged ${result.mergedCount} duplicate${result.mergedCount === 1 ? '' : 's'} into “${label}”.`,
+      );
+      await loadClientUpdates().catch(() => undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to merge duplicates');
     }
   }
 
@@ -1316,7 +1388,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       ) : tab === 'client-update' ? (
         <TableScrollContainer ref={scrollRootRef}>
           <table className="w-full text-xs">
-            <ColGroup widths={['8%', '8%', '10%', '8%', '7%', '7%', '8%', '8%', '7%', '10%', '8%', '8%', TABLE_COL_ACTION.style.width]} />
+            <ColGroup widths={['7%', '7%', '9%', '7%', '6%', '6%', '7%', '7%', '6%', '9%', '7%', '7%', '15%']} />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="px-2 py-1.5 text-left">Date Created</th>
@@ -1406,13 +1478,37 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.followUpReminder)}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{row.appointment || '—'}</td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => setFollowupRow(row)}
-                        className="px-2 py-1 rounded-md text-[11px] font-semibold border border-border hover:bg-muted"
-                      >
-                        Followup
-                      </button>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setFollowupRow(row)}
+                          className="px-2 py-1 rounded-md text-[11px] font-semibold border border-border hover:bg-muted"
+                        >
+                          Followup
+                        </button>
+                        {((clientUpdateDuplicateGroupKey(row)
+                          && (clientUpdateDuplicateCounts.get(clientUpdateDuplicateGroupKey(row)!) ?? 0) > 1)
+                        ) ? (
+                          <button
+                            type="button"
+                            onClick={() => void mergeClientUpdateDuplicates(row)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-border hover:bg-muted"
+                            title="Merge duplicate rows for this client"
+                          >
+                            <GitMerge size={11} />
+                            Merge
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void removeClientUpdateRow(row)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-destructive/40 text-destructive hover:bg-destructive/10"
+                          title="Remove this Client Update row"
+                        >
+                          <Trash2 size={11} />
+                          Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
