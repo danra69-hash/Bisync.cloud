@@ -219,11 +219,22 @@ public class SalesModuleClientUpdateService(
                 r.SalesTeamMemberId == memberId
                 || (!string.IsNullOrWhiteSpace(memberName)
                     && r.Hunter.Equals(memberName, StringComparison.OrdinalIgnoreCase)))
-            .OrderByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
+            // Status changes → interactions → new leads → other; latest activity within each group.
+            .OrderBy(OverviewClientSortPriority)
+            .ThenByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
             .ThenByDescending(r => r.Id)
             .ThenBy(r => r.Company, StringComparer.OrdinalIgnoreCase)
             .Select(Map)
             .ToList();
+    }
+
+    /// <summary>0 = status change, 1 = interaction, 2 = new lead, 3 = other.</summary>
+    static int OverviewClientSortPriority(SalesModuleClientUpdate r)
+    {
+        if (IsStatusChange(r)) return 0;
+        if (IsInteraction(r)) return 1;
+        if (IsNewLead(r)) return 2;
+        return 3;
     }
 
     /// <summary>All Client Update rows for a free-text hunter name, latest interaction first.</summary>
@@ -801,6 +812,8 @@ public class SalesModuleClientUpdateService(
         {
             var name = string.IsNullOrWhiteSpace(member.Name) ? member.Email : member.Name.Trim();
             if (string.IsNullOrWhiteSpace(name)) continue;
+            // Ensure company-tagged clients exist as Client Update rows so Total Client matches the detail book.
+            await EnsureAttachedCompanyClientUpdateRowsAsync(member.Id, name, ct);
             if (!byHunter.ContainsKey(name))
             {
                 byHunter[name] = new HunterTotals
@@ -812,6 +825,50 @@ public class SalesModuleClientUpdateService(
         }
 
         var rows = await GetCachedRowsAsync(ct);
+
+        // Total Client = distinct clients attached to each team member (full book), not period-only.
+        foreach (var row in rows)
+        {
+            HunterTotals? totals = null;
+            if (row.SalesTeamMemberId is > 0)
+            {
+                totals = byHunter.Values.FirstOrDefault(h => h.SalesTeamMemberId == row.SalesTeamMemberId);
+            }
+            if (totals is null)
+            {
+                var hunter = string.IsNullOrWhiteSpace(row.Hunter) ? "(Unassigned)" : row.Hunter.Trim();
+                if (!byHunter.TryGetValue(hunter, out totals))
+                {
+                    if (salesTeamMemberId is > 0) continue;
+                    totals = new HunterTotals
+                    {
+                        Hunter = hunter,
+                        SalesTeamMemberId = row.SalesTeamMemberId,
+                    };
+                    byHunter[hunter] = totals;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(companyNameFilter))
+            {
+                var companyOk = row.Company.Equals(companyNameFilter, StringComparison.OrdinalIgnoreCase)
+                    || row.Brand.Equals(companyNameFilter, StringComparison.OrdinalIgnoreCase);
+                if (!companyOk) continue;
+            }
+
+            if (salesTeamMemberId is > 0)
+            {
+                var hunterOk = row.SalesTeamMemberId == salesTeamMemberId.Value
+                    || (!string.IsNullOrWhiteSpace(hunterNameFilter)
+                        && row.Hunter.Equals(hunterNameFilter, StringComparison.OrdinalIgnoreCase));
+                if (!hunterOk) continue;
+            }
+
+            var clientKey = ClientKey(row);
+            if (clientKey is not null)
+                totals.ClientKeys.Add(clientKey);
+        }
+
         var inPeriod = rows.Where(r =>
         {
             var activity = ActivityDate(r);
@@ -852,10 +909,6 @@ public class SalesModuleClientUpdateService(
                 };
                 byHunter[hunter] = totals;
             }
-
-            var clientKey = ClientKey(row);
-            if (clientKey is not null)
-                totals.ClientKeys.Add(clientKey);
 
             if (IsStatusChange(row)) totals.StatusChanges++;
             if (IsInteraction(row)) totals.Interactions++;

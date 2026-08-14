@@ -15,9 +15,11 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onChanged: (members: SalesModuleTeamMember[]) => void;
+  /** When true, render inline (Control Panel) without drawer chrome. */
+  embedded?: boolean;
 };
 
-export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
+export function SalesModuleTeamPanel({ open, onClose, onChanged, embedded = false }: Props) {
   const [members, setMembers] = useState<SalesModuleTeamMember[]>([]);
   const [graphSettings, setGraphSettings] = useState<GraphSettings | null>(null);
   const [loading, setLoading] = useState(false);
@@ -208,20 +210,8 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40">
-      <div className="w-full max-w-lg h-full bg-card border-l border-border shadow-xl flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div>
-            <h3 className="text-sm font-semibold">Sales Team</h3>
-            <p className="text-[11px] text-muted-foreground">
-              Create each sales person with their Microsoft 365 email (UPN) and Graph app credentials so their Outlook calendar syncs here.
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted"><X size={14} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+  const body = (
+        <div className={embedded ? 'space-y-4' : 'flex-1 overflow-y-auto p-4 space-y-4'}>
           <div className="rounded-md border border-border p-3 space-y-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
               {editing ? `Edit · ${editing.name}` : 'Create sales person'}
@@ -395,6 +385,35 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
             )}
           </div>
         </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">Sales Module team</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Sales people for Client Update tagging and Outlook calendar sync (Microsoft 365 email / Graph credentials).
+          </p>
+        </div>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40">
+      <div className="w-full max-w-lg h-full bg-card border-l border-border shadow-xl flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div>
+            <h3 className="text-sm font-semibold">Sales Team</h3>
+            <p className="text-[11px] text-muted-foreground">
+              Create each sales person with their Microsoft 365 email (UPN) and Graph app credentials so their Outlook calendar syncs here.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted"><X size={14} /></button>
+        </div>
+        {body}
       </div>
     </div>
   );

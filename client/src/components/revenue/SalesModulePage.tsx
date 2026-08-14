@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Upload, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -18,7 +18,6 @@ import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
-import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 import { SalesDiaryPanel } from './SalesDiaryPanel';
 import { ClientUpdateFollowupPanel } from './ClientUpdateFollowupPanel';
 
@@ -88,7 +87,36 @@ function overviewClientKey(row: SalesModuleClientUpdate): string | null {
   return brand || null;
 }
 
-/** Full Overview client list: one row per client, most recent interaction first. */
+function normalizeOverviewToken(value: string | null | undefined): string {
+  return (value ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function isOverviewStatusChange(row: SalesModuleClientUpdate): boolean {
+  const status = normalizeOverviewToken(row.status);
+  const contact = normalizeOverviewToken(row.contactType);
+  return status === 'UPDATED' || contact === 'STATUS UPDATE' || contact.includes('STATUS UPDATE');
+}
+
+function isOverviewInteraction(row: SalesModuleClientUpdate): boolean {
+  return Boolean(row.contactType?.trim());
+}
+
+function isOverviewNewLead(row: SalesModuleClientUpdate): boolean {
+  return normalizeOverviewToken(row.status) === 'LEAD';
+}
+
+/** 0 = status change, 1 = interaction, 2 = new lead, 3 = other. */
+function overviewDetailSortPriority(row: SalesModuleClientUpdate): number {
+  if (isOverviewStatusChange(row)) return 0;
+  if (isOverviewInteraction(row)) return 1;
+  if (isOverviewNewLead(row)) return 2;
+  return 3;
+}
+
+/**
+ * Full Overview client list: one row per client.
+ * Sorted by latest status change → latest interaction → new leads → other (then date desc).
+ */
 function sortOverviewClientDetails(rows: SalesModuleClientUpdate[]): SalesModuleClientUpdate[] {
   const best = new Map<string, SalesModuleClientUpdate>();
   const orphans: SalesModuleClientUpdate[] = [];
@@ -99,16 +127,22 @@ function sortOverviewClientDetails(rows: SalesModuleClientUpdate[]): SalesModule
       continue;
     }
     const prev = best.get(key);
-    if (
-      !prev
-      || overviewDetailSortMs(row) > overviewDetailSortMs(prev)
-      || (overviewDetailSortMs(row) === overviewDetailSortMs(prev) && row.id > prev.id)
-    ) {
+    if (!prev) {
+      best.set(key, row);
+      continue;
+    }
+    const pri = overviewDetailSortPriority(row) - overviewDetailSortPriority(prev);
+    if (pri < 0
+      || (pri === 0 && overviewDetailSortMs(row) > overviewDetailSortMs(prev))
+      || (pri === 0 && overviewDetailSortMs(row) === overviewDetailSortMs(prev) && row.id > prev.id)) {
       best.set(key, row);
     }
   }
   return [...best.values(), ...orphans].sort(
-    (a, b) => overviewDetailSortMs(b) - overviewDetailSortMs(a) || b.id - a.id,
+    (a, b) =>
+      overviewDetailSortPriority(a) - overviewDetailSortPriority(b)
+      || overviewDetailSortMs(b) - overviewDetailSortMs(a)
+      || b.id - a.id,
   );
 }
 
@@ -158,8 +192,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [overview, setOverview] = useState<SalesModuleOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewSalesTeamId, setOverviewSalesTeamId] = useState<number | ''>('');
-  const [overviewCompanyId, setOverviewCompanyId] = useState<number | ''>('');
-  const [overviewCompanies, setOverviewCompanies] = useState<SalesModuleCompany[]>([]);
   const [overviewHasSearched, setOverviewHasSearched] = useState(false);
   const [overviewDetailHunter, setOverviewDetailHunter] = useState<OverviewHunterDetail | null>(null);
   const [overviewDetailRows, setOverviewDetailRows] = useState<SalesModuleClientUpdate[]>([]);
@@ -186,7 +218,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [apptStart, setApptStart] = useState('');
   const [apptEnd, setApptEnd] = useState('');
   const [saving, setSaving] = useState(false);
-  const [teamOpen, setTeamOpen] = useState(false);
   const [teamMembers, setTeamMembers] = useState<SalesModuleTeamMember[]>([]);
   const [teamEvents, setTeamEvents] = useState<SalesModuleTeamCalendarEvent[]>([]);
   const [teamSyncMessage, setTeamSyncMessage] = useState<string | null>(null);
@@ -351,27 +382,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     });
   }, []);
 
-  const loadOverviewCompanies = useCallback(async (memberId: number | '') => {
-    const rows = memberId
-      ? await api.salesModuleCompanies({ salesTeamMemberId: memberId })
-      : await api.salesModuleCompanies({});
-    setOverviewCompanies(rows);
-    setOverviewCompanyId(prev => {
-      if (prev && rows.some(c => c.id === prev)) return prev;
-      return '';
-    });
-  }, []);
-
-  useEffect(() => {
-    if (tab !== 'overview') return;
-    let cancelled = false;
-    loadOverviewCompanies(overviewSalesTeamId)
-      .catch(err => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load companies');
-      });
-    return () => { cancelled = true; };
-  }, [tab, overviewSalesTeamId, loadOverviewCompanies]);
-
   const runOverviewSearch = useCallback(async () => {
     if (overviewView === 'week' && !overviewWeekStart) {
       setError('Select a week to search.');
@@ -390,7 +400,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     try {
       const scope = {
         salesTeamMemberId: overviewSalesTeamId || undefined,
-        companyId: overviewCompanyId || undefined,
       };
       if (overviewView === 'week') {
         const data = await api.salesModuleOverview({
@@ -399,20 +408,18 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           ...scope,
         });
         setOverview(data);
-        return;
+      } else {
+        const [yearStr, monthStr] = overviewMonthValue.split('-');
+        const year = Number(yearStr);
+        const month = Number(monthStr);
+        const data = await api.salesModuleOverview({
+          view: 'month',
+          year,
+          month,
+          ...scope,
+        });
+        setOverview(data);
       }
-      const month = overviewPeriods?.months.find(m => m.value === overviewMonthValue);
-      if (!month) {
-        setOverview(null);
-        return;
-      }
-      const data = await api.salesModuleOverview({
-        view: 'month',
-        year: month.year,
-        month: month.month,
-        ...scope,
-      });
-      setOverview(data);
     } catch (err) {
       setOverview(null);
       setError(err instanceof Error ? err.message : 'Failed to load Overview');
@@ -425,7 +432,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     overviewMonthValue,
     overviewPeriods,
     overviewSalesTeamId,
-    overviewCompanyId,
   ]);
 
   const openOverviewHunterDetail = useCallback(async (row: SalesModuleOverviewHunterRow) => {
@@ -436,7 +442,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     setOverviewDetailLoading(true);
     setError(null);
     try {
-      // Full attached client book for this hunter (not week/month period filter).
+      // Full attached client book for this team member (not week/month period filter).
       await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
       if (memberId) {
         await api.salesModuleCompanies({ salesTeamMemberId: memberId }).catch(() => undefined);
@@ -444,20 +450,14 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       const rows = await api.salesModuleClientUpdates(
         memberId ? { salesTeamMemberId: memberId } : { hunter: row.hunter },
       );
-      const companyName = overview?.companyName?.trim().toLowerCase() ?? '';
-      const scoped = companyName
-        ? rows.filter(r =>
-            r.company.trim().toLowerCase() === companyName
-            || r.brand.trim().toLowerCase() === companyName)
-        : rows;
-      setOverviewDetailRows(sortOverviewClientDetails(scoped));
+      setOverviewDetailRows(sortOverviewClientDetails(rows));
     } catch (err) {
       setOverviewDetailRows([]);
-      setError(err instanceof Error ? err.message : 'Failed to load hunter clients');
+      setError(err instanceof Error ? err.message : 'Failed to load team member clients');
     } finally {
       setOverviewDetailLoading(false);
     }
-  }, [activeHunters, overview?.companyName]);
+  }, [activeHunters]);
 
   const loadAppointments = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -774,27 +774,16 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   if (activeTeamMembers.length === 0) {
     return (
       <div className={pageShellClass({ spacing: 'loose' })}>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTeamOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-          >
-            <Users size={12} />
-            Sales Team
-          </button>
-        </div>
         <p className="text-sm text-muted-foreground">
-          Create a Sales Team member first (include Office 365 Graph credentials), then add companies.
+          Add Sales Module team members under Control Panel → Team (include Office 365 Graph credentials), then return here.
         </p>
-        <SalesModuleTeamPanel
-          open={teamOpen}
-          onClose={() => {
-            setTeamOpen(false);
-            void loadTeamMembers().then(() => loadTeamCalendars());
-          }}
-          onChanged={setTeamMembers}
-        />
+        <button
+          type="button"
+          onClick={() => void loadTeamMembers().then(() => loadTeamCalendars())}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted w-fit"
+        >
+          Refresh team list
+        </button>
       </div>
     );
   }
@@ -802,27 +791,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   if (!selectedTeamMemberId && tab !== 'client-update' && tab !== 'overview') {
     return (
       <div className={pageShellClass({ spacing: 'loose' })}>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTeamOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-          >
-            <Users size={12} />
-            Sales Team
-          </button>
-        </div>
         <p className="text-sm text-muted-foreground">
-          Select a Sales Team member to continue.
+          Select a team member from the filters above to continue. Manage team members under Control Panel → Team.
         </p>
-        <SalesModuleTeamPanel
-          open={teamOpen}
-          onClose={() => {
-            setTeamOpen(false);
-            void loadTeamMembers().then(() => loadTeamCalendars());
-          }}
-          onChanged={setTeamMembers}
-        />
       </div>
     );
   }
@@ -852,26 +823,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 }}
                 className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
               >
-                <option value="">All hunters</option>
+                <option value="">All team</option>
                 {activeHunters.map(m => (
                   <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="inline-flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-              <select
-                value={overviewCompanyId}
-                onChange={e => {
-                  setOverviewCompanyId(e.target.value ? Number(e.target.value) : '');
-                  setOverviewHasSearched(false);
-                  setOverview(null);
-                }}
-                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-              >
-                <option value="">All companies</option>
-                {overviewCompanies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </label>
@@ -951,21 +905,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               <Search size={12} />
               {overviewLoading ? 'Searching…' : 'Search'}
             </button>
-            <button
-              type="button"
-              onClick={() => setTeamOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-            >
-              <Users size={12} />
-              Sales Team
-              {teamMembers.length > 0 ? (
-                <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
-              ) : null}
-            </button>
             {overviewHasSearched && overview?.periodLabel ? (
               <p className="text-xs text-muted-foreground self-center">
-                Summary by Hunter · {overview.periodLabel}
-                {overview.companyName ? ` · ${overview.companyName}` : ''}
+                Summary by Team · {overview.periodLabel}
               </p>
             ) : null}
           </div>
@@ -1085,17 +1027,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   ))}
                 </select>
               </label>
-              <button
-                type="button"
-                onClick={() => setTeamOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-              >
-                <Users size={12} />
-                Sales Team
-                {teamMembers.length > 0 ? (
-                  <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
-                ) : null}
-              </button>
             </div>
             {tab === 'client-update' && !selectedTeamMemberId ? null : (
               <div className="flex flex-wrap items-end gap-2">
@@ -1220,7 +1151,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               <ColGroup widths={['18%', '12%', '22%', '28%', '20%']} />
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-1.5 text-left">Hunter</th>
+                  <th className="px-2 py-1.5 text-left">Team</th>
                   <th className="px-2 py-1.5 text-right">Total Client</th>
                   <th className="px-2 py-1.5 text-right">Client status change</th>
                   <th className="px-2 py-1.5 text-right">Client interaction (contact)</th>
@@ -1247,7 +1178,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 ) : !overview || overview.hunters.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
-                      No Sales Team hunters yet. Add hunters in Sales Team first.
+                      No team members yet. Add them under Control Panel → Team.
                     </td>
                   </tr>
                 ) : (
@@ -1295,12 +1226,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   <p className="text-sm font-semibold">{overviewDetailHunter.hunter}</p>
                   <p className="text-[11px] text-muted-foreground">
                     Full client list
-                    {overview?.companyName ? ` · ${overview.companyName}` : ''}
                     {' · '}
                     {overviewDetailLoading
                       ? '…'
                       : `${overviewDetailRows.length} client${overviewDetailRows.length === 1 ? '' : 's'}`}
-                    {' · '}most recent interaction first
+                    {' · '}status change → interaction → new leads
                   </p>
                 </div>
                 <button
@@ -1336,7 +1266,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                     ) : overviewDetailRows.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                          No clients attached to this hunter yet. Import Excel on Client Update or add a company.
+                          No clients attached to this team member yet. Import Excel on Client Update or tag a company.
                         </td>
                       </tr>
                     ) : (
@@ -1635,17 +1565,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           </div>
         </div>
       )}
-
-      <SalesModuleTeamPanel
-        open={teamOpen}
-        onClose={() => {
-          setTeamOpen(false);
-          void loadTeamMembers()
-            .then(() => loadSalesCompanies(selectedTeamMemberId))
-            .then(() => loadTeamCalendars());
-        }}
-        onChanged={setTeamMembers}
-      />
 
       {followupRow ? (
         <ClientUpdateFollowupPanel

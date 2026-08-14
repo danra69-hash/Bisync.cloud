@@ -306,7 +306,7 @@ export function DevConsolePage() {
               <div>
                 <p className="text-sm font-semibold">Team</p>
                 <p className="text-xs text-muted-foreground">
-                  Create Dev Console operators with tab access. Default password is Pass@123; members must change it after first login.
+                  Create Dev Console operators and Sales Module team members (hunters, Graph calendar sync). Default password is Pass@123; console members must change it after first login.
                 </p>
               </div>
               <button

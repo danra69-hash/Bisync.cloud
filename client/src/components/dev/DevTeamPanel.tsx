@@ -11,13 +11,17 @@ import {
   type DevConsoleTeamType,
   type DevTeamUserRow,
 } from '../../data/devConsoleAuthApi';
+import type { SalesModuleTeamMember } from '../../api';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { ColGroup } from '../shared/SortableTableHead';
+import { SalesModuleTeamPanel } from './SalesModuleTeamPanel';
 
 type Props = {
   open: boolean;
   onClose: () => void;
 };
+
+type TeamSection = 'console' | 'sales';
 
 type FormState = {
   id: number | null;
@@ -52,6 +56,7 @@ function toForm(row: DevTeamUserRow): FormState {
 }
 
 export function DevTeamPanel({ open, onClose }: Props) {
+  const [section, setSection] = useState<TeamSection>('console');
   const [users, setUsers] = useState<DevTeamUserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -74,7 +79,11 @@ export function DevTeamPanel({ open, onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSection('console');
+      setFormOpen(false);
+      return;
+    }
     void load();
   }, [open, load]);
 
@@ -205,10 +214,10 @@ export function DevTeamPanel({ open, onClose }: Props) {
           <div>
             <h2 id="dev-team-title" className="text-sm font-semibold inline-flex items-center gap-2">
               <UserPlus size={14} className="text-muted-foreground" />
-              Dev Console Team
+              Team
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Platform operators for Dev Console only — default access password is Pass@123; members change it after first login.
+              Dev Console operators and Sales Module team (hunters / calendar sync).
             </p>
           </div>
           <button
@@ -223,6 +232,32 @@ export function DevTeamPanel({ open, onClose }: Props) {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
+          <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+            <button
+              type="button"
+              onClick={() => { setSection('console'); setFormOpen(false); }}
+              className={`px-3 py-1.5 font-semibold ${section === 'console' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            >
+              Console access
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSection('sales'); setFormOpen(false); setError(null); setInfo(null); }}
+              className={`px-3 py-1.5 font-semibold border-l border-border ${section === 'sales' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            >
+              Sales Module
+            </button>
+          </div>
+
+          {section === 'sales' ? (
+            <SalesModuleTeamPanel
+              open
+              embedded
+              onClose={onClose}
+              onChanged={(_members: SalesModuleTeamMember[]) => { /* Sales Module page reloads on visit */ }}
+            />
+          ) : (
+            <>
           {error && (
             <div className="px-3 py-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs">
               {error}
@@ -338,9 +373,11 @@ export function DevTeamPanel({ open, onClose }: Props) {
               </tbody>
             </table>
           </div>
+            </>
+          )}
         </div>
 
-        {formOpen && (
+        {formOpen && section === 'console' && (
           <div className="absolute inset-0 z-10 flex items-stretch justify-center bg-black/30 p-0 sm:p-4">
             <form
               onSubmit={e => void handleSave(e)}
