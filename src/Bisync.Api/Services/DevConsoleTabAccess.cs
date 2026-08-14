@@ -17,6 +17,7 @@ public static class DevConsoleTabAccess
         "audit-trail",
         "ghost-support",
         "ref-library",
+        "control-panel",
     ];
 
     /// <summary>Legacy top-level tab folded into Automated QA.</summary>

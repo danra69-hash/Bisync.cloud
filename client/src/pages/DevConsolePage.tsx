@@ -41,6 +41,7 @@ const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'audit-trail', label: 'Audit Trail' },
   { id: 'ghost-support', label: 'Ghost Support' },
   { id: 'ref-library', label: 'Ref & Library' },
+  { id: 'control-panel', label: 'Control Panel' },
 ];
 
 type DevSessionUser = {
@@ -108,9 +109,13 @@ export function DevConsolePage() {
 
   const visibleTabs = useMemo(() => {
     if (!sessionUser) return [];
-    if (sessionUser.isRoot) return DEV_CONSOLE_TABS;
     const allowed = new Set(sessionUser.accessTabs.map(t => t.toLowerCase()));
-    return DEV_CONSOLE_TABS.filter(t => allowed.has(t.id));
+    return DEV_CONSOLE_TABS.filter(t => {
+      // Control Panel is hard-gated by email allowlist (not AccessJson tabs).
+      if (t.id === 'control-panel') return sessionUser.canManageTeam;
+      if (sessionUser.isRoot) return true;
+      return allowed.has(t.id);
+    });
   }, [sessionUser]);
 
   useEffect(() => {
@@ -268,28 +273,7 @@ export function DevConsolePage() {
       <main className={contentFrameClass('py-6 space-y-10')}>
         <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
-          <>
-            {sessionUser.canManageTeam && (
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold">Team</p>
-                  <p className="text-xs text-muted-foreground">
-                    Create Dev Console operators with tab access. Default password is Pass@123; members must change it after first login.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTeamOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium px-3 py-2 shrink-0"
-                >
-                  <Users size={13} />
-                  Team
-                </button>
-              </div>
-            )}
-            <DemoLaunchPanel isRoot={sessionUser.isRoot} />
-            <UsageDashboard />
-          </>
+          <UsageDashboard />
         )}
         {tab === 'tenant-rollups' && (
           <TenantRollupsPanel />
@@ -315,6 +299,27 @@ export function DevConsolePage() {
         )}
         {tab === 'ref-library' && (
           <RefLibraryTab />
+        )}
+        {tab === 'control-panel' && sessionUser.canManageTeam && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold">Team</p>
+                <p className="text-xs text-muted-foreground">
+                  Create Dev Console operators with tab access. Default password is Pass@123; members must change it after first login.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTeamOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium px-3 py-2 shrink-0"
+              >
+                <Users size={13} />
+                Team
+              </button>
+            </div>
+            <DemoLaunchPanel canEdit={sessionUser.canManageTeam} />
+          </div>
         )}
       </main>
 

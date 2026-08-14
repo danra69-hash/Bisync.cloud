@@ -62,6 +62,21 @@ public class DevConsoleController(
         return (null, user);
     }
 
+    async Task<(ActionResult? Error, DevTeamUser? User)> RequireControlPanelAsync(CancellationToken ct)
+    {
+        var (err, user) = await RequireSessionAsync(ct);
+        if (err is not null) return (err, null);
+        if (!DevConsoleControlPanelAccess.CanManageTeam(user!.Email))
+        {
+            return (StatusCode(403, new
+            {
+                message = "Control panel access is limited to authorized operators only.",
+                code = "control_panel_forbidden",
+            }), null);
+        }
+        return (null, user);
+    }
+
     public class LaunchSettingsUpdateRequest
     {
         public bool DemoMode { get; set; }
@@ -85,7 +100,7 @@ public class DevConsoleController(
         [FromBody] LaunchSettingsUpdateRequest body,
         CancellationToken ct)
     {
-        var (err, user) = await RequireRootAsync(ct);
+        var (err, user) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         // Prefer explicit DemoMode from new clients; legacy clients may send goLive instead.

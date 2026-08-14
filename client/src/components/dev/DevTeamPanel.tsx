@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pencil, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import {
-  DEV_CONSOLE_TAB_IDS,
   DEV_CONSOLE_TAB_LABELS,
+  DEV_CONSOLE_ASSIGNABLE_TAB_IDS,
   DEV_CONSOLE_TEAM_TYPES,
   normalizeDevConsoleAccessTabs,
   devConsoleAuthApi,
@@ -410,7 +410,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
                     Choose which Dev Console tabs this member can open. Automated QA includes the QA History table.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border border-border bg-muted/20 p-3">
-                    {DEV_CONSOLE_TAB_IDS.map(tab => (
+                    {DEV_CONSOLE_ASSIGNABLE_TAB_IDS.map(tab => (
                       <label key={tab} className="inline-flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"

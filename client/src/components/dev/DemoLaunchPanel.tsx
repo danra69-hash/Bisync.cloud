@@ -5,7 +5,8 @@ import { PLATFORM_GO_LIVE_MODULES, type PlatformGoLiveModuleId } from '../../dat
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
-  isRoot: boolean;
+  /** When true, operator may change Demo / Go live (Control Panel allowlist). */
+  canEdit: boolean;
 };
 
 function emptyModules(value = false): ModulesGoLiveMap {
@@ -24,7 +25,7 @@ function normalizeModules(row?: ModulesGoLiveMap | null, fallback = false): Modu
   return base;
 }
 
-export function DemoLaunchPanel({ isRoot }: Props) {
+export function DemoLaunchPanel({ canEdit }: Props) {
   const [data, setData] = useState<DevLaunchSettings | null>(null);
   const [demoMode, setDemoMode] = useState(true);
   const [modulesGoLive, setModulesGoLive] = useState<ModulesGoLiveMap>(() => emptyModules(false));
@@ -64,8 +65,8 @@ export function DemoLaunchPanel({ isRoot }: Props) {
   const liveCount = PLATFORM_GO_LIVE_MODULES.filter(mod => modulesGoLive[mod.id]).length;
 
   async function handleSave() {
-    if (!isRoot) {
-      setError('Only the root Dev Console account can change Demo / Go live.');
+    if (!canEdit) {
+      setError('Only authorized Control Panel operators can change Demo / Go live.');
       return;
     }
     setSaving(true);
@@ -106,7 +107,7 @@ export function DemoLaunchPanel({ isRoot }: Props) {
             Demo keeps public registration limited to {domains}. Take modules Go live below to enable them for customers.
           </p>
         </div>
-        {isRoot && (
+        {canEdit && (
           <button
             type="button"
             disabled={!dirty || saving}
@@ -126,7 +127,7 @@ export function DemoLaunchPanel({ isRoot }: Props) {
             <input
               type="checkbox"
               checked={demoMode}
-              disabled={!isRoot || saving}
+              disabled={!canEdit || saving}
               onChange={e => {
                 setDemoMode(e.target.checked);
                 setSuccess(null);
@@ -162,7 +163,7 @@ export function DemoLaunchPanel({ isRoot }: Props) {
                     <input
                       type="checkbox"
                       checked={Boolean(modulesGoLive[mod.id])}
-                      disabled={!isRoot || saving}
+                      disabled={!canEdit || saving}
                       onChange={e => toggleModule(mod.id, e.target.checked)}
                       className="rounded border-border"
                     />
@@ -174,7 +175,7 @@ export function DemoLaunchPanel({ isRoot }: Props) {
           </div>
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {!isRoot ? 'Root account required to change.' : null}
+            {!canEdit ? 'Control Panel access required to change.' : null}
           </p>
 
           {data?.updatedAt && (

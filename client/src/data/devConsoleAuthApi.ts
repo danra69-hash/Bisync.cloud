@@ -15,6 +15,7 @@ export const DEV_CONSOLE_TAB_IDS = [
   'audit-trail',
   'ghost-support',
   'ref-library',
+  'control-panel',
 ] as const;
 
 export type DevConsoleTabId = (typeof DEV_CONSOLE_TAB_IDS)[number];
@@ -27,7 +28,13 @@ export const DEV_CONSOLE_TAB_LABELS: Record<DevConsoleTabId, string> = {
   'audit-trail': 'Audit Trail',
   'ghost-support': 'Ghost Support',
   'ref-library': 'Ref & Library',
+  'control-panel': 'Control Panel',
 };
+
+/** Tabs that can be granted to Dev Team members (Control Panel is email-allowlist only). */
+export const DEV_CONSOLE_ASSIGNABLE_TAB_IDS = DEV_CONSOLE_TAB_IDS.filter(
+  id => id !== 'control-panel',
+);
 
 /** Map legacy `qa-history` access into Automated QA (history lives under that tab). */
 export function normalizeDevConsoleAccessTabs(tabs: string[] | undefined | null): DevConsoleTabId[] {
