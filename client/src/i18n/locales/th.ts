@@ -75,6 +75,7 @@ export const th = {
   header: {
     home: 'หน้าแรก',
     operationsOverview: 'หน้าแรก',
+    hardReload: 'โหลดหน้าใหม่ (Ctrl+Shift+R)',
     selectCompany: 'เลือกบริษัท',
     loadingCompanies: 'กำลังโหลดบริษัท…',
     companiesFromHr: 'บริษัทจากการตั้งค่า HR',

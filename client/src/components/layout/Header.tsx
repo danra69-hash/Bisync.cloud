@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Building2, GripHorizontal, Home, Menu, Moon, RefreshCw, Search, Sun } from 'lucide-react';
 
 import type { NavItem } from '../../data/revenueManagement';
@@ -5,6 +6,7 @@ import type { NavItem } from '../../data/revenueManagement';
 import type { Company } from '../../api';
 
 import type { DropdownLocation } from '../../utils/orgFilters';
+import { hardReloadPage } from '../../utils/hardReload';
 
 import { LocationDropdown } from '../overview/LocationDropdown';
 import { LanguageSelector } from './LanguageSelector';
@@ -44,6 +46,13 @@ export function Header({
 }: Props) {
   const { t, navLabel } = useAppTranslation();
   const selectableCompanies = companies.filter(c => c.active !== false);
+  const [hardReloading, setHardReloading] = useState(false);
+
+  const onHardReload = () => {
+    if (hardReloading) return;
+    setHardReloading(true);
+    void hardReloadPage().finally(() => setHardReloading(false));
+  };
 
   return (
     <header className="shrink-0 z-30 px-2 sm:px-3 py-2 flex items-center gap-2" style={{ background: '#2A2118', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -126,6 +135,17 @@ export function Header({
           aria-label={t('header.home')}
         >
           <Home size={15} className={activeNav === 'Home' ? 'text-primary' : 'text-white/70'} />
+        </button>
+
+        <button
+          type="button"
+          onClick={onHardReload}
+          disabled={hardReloading}
+          className="p-2 rounded-md hover:bg-white/10 disabled:opacity-50"
+          title={t('header.hardReload')}
+          aria-label={t('header.hardReload')}
+        >
+          <RefreshCw size={15} className={`text-white/70 ${hardReloading ? 'animate-spin' : ''}`} />
         </button>
 
         <button onClick={onToggleDark} className="p-2 rounded-md hover:bg-white/10" title={darkMode ? t('header.lightMode') : t('header.darkMode')}>

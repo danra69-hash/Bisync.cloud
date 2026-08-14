@@ -75,6 +75,7 @@ export const zh = {
   header: {
     home: '首页',
     operationsOverview: '首页',
+    hardReload: '重新加载页面 (Ctrl+Shift+R)',
     selectCompany: '选择公司',
     loadingCompanies: '正在加载公司…',
     companiesFromHr: '来自 HR 配置的公司',

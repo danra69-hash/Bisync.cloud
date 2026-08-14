@@ -75,6 +75,7 @@ export const ko = {
   header: {
     home: '홈',
     operationsOverview: '홈',
+    hardReload: '페이지 새로고침 (Ctrl+Shift+R)',
     selectCompany: '회사 선택',
     loadingCompanies: '회사 불러오는 중…',
     companiesFromHr: 'HR 설정의 회사',

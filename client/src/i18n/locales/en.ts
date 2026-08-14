@@ -73,6 +73,7 @@ export const en = {
   header: {
     home: 'Home',
     operationsOverview: 'Home',
+    hardReload: 'Reload page (Ctrl+Shift+R)',
     selectCompany: 'Select Company',
     loadingCompanies: 'Loading companies…',
     companiesFromHr: 'Companies from HR Config',

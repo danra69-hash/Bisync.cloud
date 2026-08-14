@@ -75,6 +75,7 @@ export const id = {
   header: {
     home: 'Beranda',
     operationsOverview: 'Beranda',
+    hardReload: 'Muat ulang halaman (Ctrl+Shift+R)',
     selectCompany: 'Pilih Perusahaan',
     loadingCompanies: 'Memuat perusahaan…',
     companiesFromHr: 'Perusahaan dari Konfigurasi HR',

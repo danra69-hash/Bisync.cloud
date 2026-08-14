@@ -75,6 +75,7 @@ export const ja = {
   header: {
     home: 'ホーム',
     operationsOverview: 'ホーム',
+    hardReload: 'ページを再読み込み (Ctrl+Shift+R)',
     selectCompany: '会社を選択',
     loadingCompanies: '会社を読み込み中…',
     companiesFromHr: 'HR設定の会社',

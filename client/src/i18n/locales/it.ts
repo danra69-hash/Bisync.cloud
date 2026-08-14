@@ -75,6 +75,7 @@ export const it = {
   header: {
     home: 'Home',
     operationsOverview: 'Home',
+    hardReload: 'Ricarica pagina (Ctrl+Shift+R)',
     selectCompany: 'Seleziona azienda',
     loadingCompanies: 'Caricamento aziende…',
     companiesFromHr: 'Aziende da configurazione HR',

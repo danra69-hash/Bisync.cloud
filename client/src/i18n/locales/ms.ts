@@ -75,6 +75,7 @@ export const ms = {
   header: {
     home: 'Laman Utama',
     operationsOverview: 'Laman Utama',
+    hardReload: 'Muat semula halaman (Ctrl+Shift+R)',
     selectCompany: 'Pilih Syarikat',
     loadingCompanies: 'Memuatkan syarikat…',
     companiesFromHr: 'Syarikat daripada Konfigurasi HR',
