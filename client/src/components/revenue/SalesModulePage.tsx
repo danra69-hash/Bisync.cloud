@@ -1238,6 +1238,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                       ? '…'
                       : `${overviewDetailRows.length} client${overviewDetailRows.length === 1 ? '' : 's'}`}
                     {' · '}status change → interaction → new leads
+                    {' · '}click client name to update
                   </p>
                 </div>
                 <button
@@ -1283,7 +1284,14 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                       overviewDetailRows.map(row => (
                         <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
                           <td className="px-2 py-1.5 font-medium whitespace-nowrap">
-                            {row.company?.trim() || row.brand?.trim() || '—'}
+                            <button
+                              type="button"
+                              className="text-left font-medium text-primary underline-offset-2 hover:underline"
+                              title="Open Client Update followup"
+                              onClick={() => setFollowupRow(row)}
+                            >
+                              {row.company?.trim() || row.brand?.trim() || '—'}
+                            </button>
                           </td>
                           <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.dateCreated)}</td>
                           <td className="px-2 py-1.5 whitespace-nowrap">{row.brand?.trim() || '—'}</td>
@@ -1582,8 +1590,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           createdByEmail={engagedUserEmail}
           onClose={() => setFollowupRow(null)}
           onSaved={result => {
+            const saved = result.clientUpdate;
             setClientUpdates(prev => {
-              const saved = result.clientUpdate;
               const activity = saved.lastContactDate || saved.dateCreated;
               if (
                 activity
@@ -1598,6 +1606,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               }
               return prev.map(r => (r.id === saved.id ? saved : r));
             });
+            setOverviewDetailRows(prev => {
+              const next = prev.map(r => (r.id === saved.id ? saved : r));
+              return sortOverviewClientDetails(next);
+            });
             setClientUpdateMessage(
               result.outlookSynced
                 ? 'Followup saved · Outlook appointment synced.'
@@ -1606,7 +1618,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   : 'Followup saved.',
             );
             setFollowupRow(null);
-            void loadClientUpdates();
+            if (tab === 'client-update') void loadClientUpdates();
           }}
         />
       ) : null}
