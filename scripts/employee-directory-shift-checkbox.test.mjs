@@ -28,11 +28,11 @@ assert.doesNotMatch(
   'text-only shift status replaced by checkbox',
 );
 
-assert.match(list, /Outstanding RDO/, 'Outstanding RDO column');
-assert.match(list, /Outstanding RPH/, 'Outstanding RPH column');
-assert.match(list, /Outstanding AL/, 'Outstanding AL column');
-assert.match(list, /Unpaid Leave taken/, 'Unpaid Leave taken column');
-assert.match(list, /Medical Leave taken/, 'Medical Leave taken column');
+assert.match(list, /label: 'RDO'/, 'RDO column');
+assert.match(list, /label: 'RPH'/, 'RPH column');
+assert.match(list, /label: 'Annual Leave'/, 'Annual Leave column');
+assert.match(list, /label: 'Unpaid Leave'/, 'Unpaid Leave column');
+assert.match(list, /label: 'Medical Leave'/, 'Medical Leave column');
 assert.match(list, /key: 'outstandingRdo'[\s\S]*key: 'active'/, 'leave columns appear before Active');
 
 assert.doesNotMatch(list, /key: 'company'/, 'Company removed as table column');

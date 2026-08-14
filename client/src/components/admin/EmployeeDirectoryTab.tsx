@@ -50,11 +50,11 @@ const EMPLOYEE_TABLE_COLUMNS: SortableColumnDef<EmployeeSortColumn>[] = [
   { key: 'shift', label: 'Shift', align: 'center', ...tableColWidth(56) },
   { key: 'platformAccess', label: 'Platform Access', ...tableColWidth('9%') },
   { key: 'checkinMethod', label: 'Check-in Method', ...tableColWidth('7%') },
-  { key: 'outstandingRdo', label: 'Outstanding RDO', align: 'center', ...tableColWidth(72) },
-  { key: 'outstandingRph', label: 'Outstanding RPH', align: 'center', ...tableColWidth(72) },
-  { key: 'outstandingAl', label: 'Outstanding AL', align: 'center', ...tableColWidth(72) },
-  { key: 'unpaidLeaveTaken', label: 'Unpaid Leave taken', align: 'center', ...tableColWidth(80) },
-  { key: 'medicalLeaveTaken', label: 'Medical Leave taken', align: 'center', ...tableColWidth(80) },
+  { key: 'outstandingRdo', label: 'RDO', align: 'center', ...tableColWidth(72) },
+  { key: 'outstandingRph', label: 'RPH', align: 'center', ...tableColWidth(72) },
+  { key: 'outstandingAl', label: 'Annual Leave', align: 'center', ...tableColWidth(72) },
+  { key: 'unpaidLeaveTaken', label: 'Unpaid Leave', align: 'center', ...tableColWidth(80) },
+  { key: 'medicalLeaveTaken', label: 'Medical Leave', align: 'center', ...tableColWidth(80) },
   { key: 'active', label: 'Active', align: 'center', ...tableColWidth(64) },
 ];
 
