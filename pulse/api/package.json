@@ -1,0 +1,17 @@
+{
+  "name": "pulse-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.mjs",
+    "start": "node src/server.mjs",
+    "seed": "node src/seed.mjs",
+    "test": "node --test ../scripts/pulse-domain.test.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "nanoid": "^5.1.5"
+  }
+}
