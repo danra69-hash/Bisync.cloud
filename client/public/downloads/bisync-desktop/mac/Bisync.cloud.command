@@ -1,8 +1,9 @@
 #!/bin/bash
 # Bisync.cloud Desktop — opens the cloud app in a dedicated Chrome/Edge window.
 # Desktop launcher version — bump via scripts/pack-desktop-launcher-zips.mjs + version.json
-DESKTOP_VERSION="1.1.0"
-APP_URL="${BISYNC_DESKTOP_URL:-https://bisync-cloud-389272498937.asia-southeast1.run.app/?desktop=1&desktopVersion=${DESKTOP_VERSION}}"
+DESKTOP_VERSION="1.1.1"
+BOOT_TS="$(date +%s)000"
+APP_URL="${BISYNC_DESKTOP_URL:-https://bisync-cloud-389272498937.asia-southeast1.run.app/?desktop=1&desktopVersion=${DESKTOP_VERSION}&_boot=${BOOT_TS}}"
 mkdir -p "$HOME/Library/Application Support/Bisync.cloud-Desktop" 2>/dev/null || true
 echo "$DESKTOP_VERSION" > "$HOME/Library/Application Support/Bisync.cloud-Desktop/version.txt" 2>/dev/null || true
 

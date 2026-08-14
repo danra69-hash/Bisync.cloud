@@ -4,8 +4,11 @@ REM Bisync.cloud Desktop — installs Desktop + Start Menu shortcuts with the Bi
 REM then opens a dedicated Chrome/Edge app window (private profile → clean login).
 
 REM Desktop launcher version — bump via scripts/pack-desktop-launcher-zips.mjs + version.json
-set "DESKTOP_VERSION=1.1.0"
-set "APP_URL=https://bisync-cloud-389272498937.asia-southeast1.run.app/?desktop=1&desktopVersion=%DESKTOP_VERSION%"
+set "DESKTOP_VERSION=1.1.1"
+REM Cache-bust query so each open fetches a fresh index (Cloud Run deploys) instead of a stale profile cache.
+for /f %%i in ('powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()"') do set "BOOT_TS=%%i"
+if not defined BOOT_TS set "BOOT_TS=%RANDOM%%RANDOM%"
+set "APP_URL=https://bisync-cloud-389272498937.asia-southeast1.run.app/?desktop=1&desktopVersion=%DESKTOP_VERSION%&_boot=%BOOT_TS%"
 set "INSTALL_DIR=%LOCALAPPDATA%\Bisync.cloud-Desktop"
 set "PROFILE_DIR=%INSTALL_DIR%\profile"
 set "HERE=%~dp0"

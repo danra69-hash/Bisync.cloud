@@ -1,7 +1,7 @@
 Bisync.cloud — Desktop app downloads
 ====================================
 
-Current launcher version: 1.1.0
+Current launcher version: 1.1.1
 Manifest: /downloads/bisync-desktop/version.json
 
 Public downloads (linked from the Home page, under Team chat):

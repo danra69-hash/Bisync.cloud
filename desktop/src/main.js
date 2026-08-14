@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, nativeTheme, session } = require('electron');
 const path = require('path');
 const { resolveAppUrl, DEFAULT_CLOUD_URL } = require('./config');
 
@@ -9,8 +9,19 @@ let mainWindow = null;
 
 const isMac = process.platform === 'darwin';
 
-function createWindow() {
-  const appUrl = resolveAppUrl();
+async function clearDesktopHttpCache() {
+  try {
+    await session.defaultSession.clearCache();
+  } catch {
+    /* ignore — still load */
+  }
+}
+
+async function createWindow() {
+  const appUrl = resolveAppUrl({ bustCache: true });
+
+  // Closed → reopened desktop windows must not reuse a stale HTTP cache of the SPA.
+  await clearDesktopHttpCache();
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -100,7 +111,10 @@ function buildMenu(appUrl) {
         {
           label: 'Force Reload',
           accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => mainWindow?.webContents.reloadIgnoringCache(),
+          click: async () => {
+            await clearDesktopHttpCache();
+            mainWindow?.webContents.reloadIgnoringCache();
+          },
         },
         { type: 'separator' },
         {
@@ -199,7 +213,7 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => {
     if (!mainWindow) {
-      createWindow();
+      void createWindow();
       return;
     }
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -207,9 +221,9 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    createWindow();
+    void createWindow();
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) void createWindow();
     });
   });
 

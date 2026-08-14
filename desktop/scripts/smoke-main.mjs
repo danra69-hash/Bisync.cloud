@@ -20,10 +20,11 @@ assert.equal(pkg.build?.appId, 'cloud.bisync.desktop');
 
 const { resolveAppUrl, DEFAULT_CLOUD_URL } = require(path.join(root, 'src/config.js'));
 assert.match(DEFAULT_CLOUD_URL, /^https:\/\/bisync-cloud-/);
-assert.equal(resolveAppUrl(), DEFAULT_CLOUD_URL);
+assert.equal(resolveAppUrl(), `${DEFAULT_CLOUD_URL}/?desktop=1`);
+assert.match(resolveAppUrl({ bustCache: true }), /[?&]_boot=\d+/);
 
 process.env.BISYNC_DESKTOP_URL = 'http://localhost:5173/';
-assert.equal(resolveAppUrl(), 'http://localhost:5173');
+assert.equal(resolveAppUrl(), 'http://localhost:5173/?desktop=1');
 delete process.env.BISYNC_DESKTOP_URL;
 
 const mainSrc = fs.readFileSync(path.join(root, 'src/main.js'), 'utf8');

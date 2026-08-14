@@ -15,7 +15,8 @@ installDir = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%\Bisync.cloud-Desktop")
 profileDir = fso.BuildPath(installDir, "profile")
 launcherPath = fso.BuildPath(installDir, "Bisync.cloud.bat")
 iconPath = fso.BuildPath(installDir, "Bisync.cloud.ico")
-desktopVersion = "1.1.0"
+desktopVersion = "1.1.1"
+' Shortcuts always launch the .bat so each open can cache-bust (_boot=…) and pick up Cloud Run deploys.
 appUrl = "https://bisync-cloud-389272498937.asia-southeast1.run.app/?desktop=1&desktopVersion=" & desktopVersion
 
 If Not fso.FileExists(iconSrc) Then
@@ -61,13 +62,9 @@ WScript.Quit 0
 
 Sub WriteShortcut(path)
   Set s = sh.CreateShortcut(path)
-  If browserPath <> "" Then
-    s.TargetPath = browserPath
-    s.Arguments = "--app=""" & appUrl & """ --user-data-dir=""" & profileDir & """ --no-first-run --new-window --disable-session-crashed-bubble --no-default-browser-check"
-  Else
-    s.TargetPath = launcherPath
-    s.Arguments = ""
-  End If
+  ' Always launch via Bisync.cloud.bat so each open appends a fresh _boot cache-buster.
+  s.TargetPath = launcherPath
+  s.Arguments = ""
   s.WorkingDirectory = installDir
   s.WindowStyle = 1
   s.Description = "Bisync.cloud Desktop"
