@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Pencil, X } from 'lucide-react';
+import { Copy, Pencil, Printer, X } from 'lucide-react';
 import { api, type PatchProductPayload, type Product } from '../../api';
 import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
 import {
@@ -19,9 +19,15 @@ import { createOverlayCloseHandlers } from './modalOverlayClose';
 import { clampSubProductAltUnits } from './SubProductBatchProduceFields';
 import { clampProductionAltUnits } from './B2bProductionUomFields';
 import { ProductReadOnlyView } from './ProductReadOnlyView';
-import { ProductionMethodModal } from './ProductionMethodModal';
 import { ProductsPage } from './ProductsPage';
-import { productKeyFromParts } from '../../data/productProductionMethod';
+import {
+  estimateNutritionalFactors,
+  loadProductionMethod,
+  productKeyFromParts,
+} from '../../data/productProductionMethod';
+import { downloadRecipeCardPdf } from '../../data/generateRecipeCardPdf';
+import { formatProductTypeLabel } from '../../data/productTypeLabel';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 
 type EditorRequest =
   | { mode: 'edit'; id: number }
@@ -42,9 +48,11 @@ export function ProductDetailPanel({
   onClose,
   onUpdated,
 }: Props) {
+  const { countryCode } = useCountryFormatters();
   const [isEditing, setIsEditing] = useState(false);
   const [editorRequest, setEditorRequest] = useState<EditorRequest | null>(null);
   const [saving, setSaving] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rrpDraft, setRrpDraft] = useState(product.rrp > 0 ? String(product.rrp) : '');
   const [parStockDraft, setParStockDraft] = useState(
@@ -54,9 +62,10 @@ export function ProductDetailPanel({
   const initializedProductIdRef = useRef<number | null>(null);
   const [locationIds, setLocationIds] = useState<string[]>(product.locationExternalIds ?? []);
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
-  const [productionMethodOpen, setProductionMethodOpen] = useState(false);
+  const [companyName, setCompanyName] = useState('');
 
   const isCopying = editorRequest?.mode === 'copy';
+  const methodProductKey = productKeyFromParts(product.id, product.productId);
 
   useEffect(() => {
     setIsEditing(false);
@@ -117,6 +126,7 @@ export function ProductDetailPanel({
   useEffect(() => {
     if (!companyId) {
       setLocations([]);
+      setCompanyName('');
       return;
     }
     api.locationsConfig()
@@ -126,6 +136,12 @@ export function ProductDetailPanel({
           .map(configLocationToDropdown),
       ))
       .catch(() => setLocations([]));
+    api.companies()
+      .then(rows => {
+        const match = rows.find(c => c.id === companyId);
+        setCompanyName(match?.name ?? '');
+      })
+      .catch(() => setCompanyName(''));
   }, [companyId]);
 
   const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
@@ -254,6 +270,51 @@ export function ProductDetailPanel({
     await patchProduct({ locationExternalIds: next });
   }
 
+  async function handlePrintRecipeCard() {
+    setPrinting(true);
+    setError(null);
+    try {
+      const method = loadProductionMethod(methodProductKey);
+      const components = product.items ?? [];
+      let nutritionRows = estimateNutritionalFactors(
+        components,
+        method.methodText,
+        product.yieldQuantity || 1,
+      );
+      if (product.id > 0) {
+        try {
+          const estimate = await api.productNutrients(product.id);
+          if (estimate.rows.length > 0) nutritionRows = estimate.rows;
+        } catch {
+          /* keep heuristic fallback */
+        }
+      }
+      const locationNames = locations
+        .filter(loc => locationIds.includes(loc.externalId))
+        .map(loc => loc.name);
+      await downloadRecipeCardPdf({
+        companyName,
+        locationNames,
+        productId: product.productId,
+        category: product.category,
+        group: product.group,
+        productName: product.name,
+        productType: formatProductTypeLabel(product),
+        methodText: method.methodText,
+        presentationDataUrl: method.presentationDataUrl,
+        images: method.images,
+        components,
+        nutritionRows,
+        yieldQuantity: product.yieldQuantity || 1,
+        countryCode,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to generate recipe card PDF.');
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   function handleDialogClose() {
     if (saving) return;
     if (isEditing) {
@@ -296,7 +357,7 @@ export function ProductDetailPanel({
             : `Product details: ${product.name}`
         }
         className={`${MODAL_SHELL_CLS} ${
-          isEditing ? 'w-[min(98vw,1100px)]' : 'w-[min(96vw,920px)]'
+          isEditing ? 'w-[min(98vw,1100px)]' : 'w-[min(98vw,1100px)]'
         } max-h-[var(--app-modal-max-h)] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden`}
         onClick={e => e.stopPropagation()}
       >
@@ -323,6 +384,17 @@ export function ProductDetailPanel({
                 >
                   {saving ? 'Saving…' : 'Save'}
                 </button>
+                {!product.isVariableComponent ? (
+                  <button
+                    type="button"
+                    onClick={() => void handlePrintRecipeCard()}
+                    disabled={saving || printing}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/50 disabled:opacity-50"
+                  >
+                    <Printer size={12} />
+                    {printing ? 'Generating…' : 'Print Recipe Card'}
+                  </button>
+                ) : null}
                 {companyId ? (
                   <>
                     <button
@@ -395,25 +467,12 @@ export function ProductDetailPanel({
                 yieldAltUnits={yieldAltUnits}
                 onYieldAltUnitsChange={handleYieldAltUnitsChange}
                 onToggleLocation={externalId => void toggleLocation(externalId)}
-                onOpenProductionMethod={() => setProductionMethodOpen(true)}
+                productKey={methodProductKey}
               />
             </>
           )}
         </div>
       </div>
-
-      {productionMethodOpen ? (
-        <ProductionMethodModal
-          category={product.category}
-          group={product.group}
-          productName={product.name}
-          productKey={productKeyFromParts(product.id, product.productId)}
-          productId={product.id}
-          components={product.items ?? []}
-          yieldQuantity={product.yieldQuantity || 1}
-          onClose={() => setProductionMethodOpen(false)}
-        />
-      ) : null}
     </>,
     document.body,
   );

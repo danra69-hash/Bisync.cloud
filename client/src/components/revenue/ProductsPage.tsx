@@ -109,8 +109,8 @@ import {
   groupsMatch,
   productToUpsertPayload,
 } from '../../data/productGroupCatalog';
-import { ProductionMethodModal } from './ProductionMethodModal';
 import { productKeyFromParts } from '../../data/productProductionMethod';
+import { ProductMethodBox } from './ProductMethodBox';
 import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
 import { SmartComponentPicker } from './SmartComponentPicker';
 import { ProductComponentPicker } from './ProductComponentPicker';
@@ -185,7 +185,6 @@ type ComponentLinesSectionProps = {
   onRemoveLine: (key: string) => void;
   onAddLine: () => void;
   onOpenAddComponent: (lineKey: string) => void;
-  onOpenProductionMethod?: () => void;
   estimateComponentPrice?: (component: ComponentRow, selectedUom: string) => string;
 };
 
@@ -206,7 +205,6 @@ function ComponentLinesSection({
   onRemoveLine,
   onAddLine,
   onOpenAddComponent,
-  onOpenProductionMethod,
   estimateComponentPrice,
 }: ComponentLinesSectionProps) {
   const componentsForUom = uomComponents ?? availableComponents;
@@ -290,20 +288,9 @@ function ComponentLinesSection({
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
-        </div>
-        {onOpenProductionMethod ? (
-          <button
-            type="button"
-            onClick={onOpenProductionMethod}
-            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
-          >
-            Production Method
-          </button>
-        ) : null}
+      <div className="px-4 py-3 border-b border-border bg-muted/20">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
@@ -477,24 +464,6 @@ function mapProductItemsToLines(
   return mapped.length > 0 ? mapped : [blankProductLine()];
 }
 
-function mapProductLinesToComponentItems(lines: ProductLine[]): Product['items'] {
-  return lines
-    .filter(isProductLineFilled)
-    .map((line, index) => {
-      const quantity = parseFloat(line.quantity) || 0;
-      const componentUomPrice = parseFloat(line.componentUomPrice) || 0;
-      return {
-        componentId: line.componentId,
-        componentName: line.componentName,
-        componentUom: line.componentUom,
-        componentUomPrice,
-        quantity,
-        subtotal: calcLineSubtotal(line.quantity, line.componentUomPrice),
-        sortOrder: index + 1,
-      };
-    });
-}
-
 export function ProductsPage({
   selectedCompanyId,
   selectedLocationIds,
@@ -557,7 +526,6 @@ export function ProductsPage({
   const [isNewGroup, setIsNewGroup] = useState(false);
   const [componentEditorLineKey, setComponentEditorLineKey] = useState<string | null>(null);
   const [componentEditorTarget, setComponentEditorTarget] = useState<'product' | 'packaging'>('product');
-  const [productionMethodOpen, setProductionMethodOpen] = useState(false);
   const [editComponentRow, setEditComponentRow] = useState<ReturnType<typeof ingredientToRow> | null>(null);
   const [isNewComponent, setIsNewComponent] = useState(false);
   const [componentSaveError, setComponentSaveError] = useState<string | null>(null);
@@ -2410,30 +2378,38 @@ export function ProductsPage({
           ) : null}
 
           {!isVariableComponent && !(isVariableProduct && variableConfig.mode === 'combination') ? (
-            <ComponentLinesSection
-              title="Product Component"
-              description={!isSubProduct && b2bEnabled
-                ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
-                : isVariableProduct
-                  ? 'Base recipe components for this variable product.'
-                  : 'Add smart components or sub-products from batch produce into this product recipe mix'}
-              lines={lines}
-              totalCost={totalCost}
-              totalLabel="Total cost"
-              availableComponents={availableComponents}
-              uomComponents={components}
-              includeSubProducts
-              availableSubProducts={productComponentSubProducts}
-              subProductCatalog={subProductCatalog}
-              onUpdateLine={updateLine}
-              onComponentSelect={handleComponentSelect}
-              onSubProductSelect={handleSubProductSelect}
-              onRemoveLine={removeLine}
-              onAddLine={addLine}
-              onOpenAddComponent={lineKey => openAddComponent(lineKey, 'product')}
-              onOpenProductionMethod={() => setProductionMethodOpen(true)}
-              estimateComponentPrice={estimateComponentPrice}
-            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              <ComponentLinesSection
+                title="Product Component"
+                description={!isSubProduct && b2bEnabled
+                  ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
+                  : isVariableProduct
+                    ? 'Base recipe components for this variable product.'
+                    : 'Add smart components or sub-products from batch produce into this product recipe mix'}
+                lines={lines}
+                totalCost={totalCost}
+                totalLabel="Total cost"
+                availableComponents={availableComponents}
+                uomComponents={components}
+                includeSubProducts
+                availableSubProducts={productComponentSubProducts}
+                subProductCatalog={subProductCatalog}
+                onUpdateLine={updateLine}
+                onComponentSelect={handleComponentSelect}
+                onSubProductSelect={handleSubProductSelect}
+                onRemoveLine={removeLine}
+                onAddLine={addLine}
+                onOpenAddComponent={lineKey => openAddComponent(lineKey, 'product')}
+                estimateComponentPrice={estimateComponentPrice}
+              />
+              <ProductMethodBox
+                productKey={productKeyFromParts(
+                  selectedProductId ? Number(selectedProductId) : null,
+                  productId,
+                )}
+                disabled={!isEditing || saving}
+              />
+            </div>
           ) : null}
 
           {!isVariableComponent ? (
@@ -2602,22 +2578,6 @@ export function ProductsPage({
               />
             );
           })() : null}
-
-          {productionMethodOpen ? (
-            <ProductionMethodModal
-              category={category}
-              group={group}
-              productName={name.trim() || 'Product'}
-              productKey={productKeyFromParts(
-                selectedProductId ? Number(selectedProductId) : null,
-                productId,
-              )}
-              productId={selectedProductId ? Number(selectedProductId) : null}
-              components={mapProductLinesToComponentItems(lines)}
-              yieldQuantity={parseFloat(yieldQuantity) || 1}
-              onClose={() => setProductionMethodOpen(false)}
-            />
-          ) : null}
         </>
       )}
     </div>

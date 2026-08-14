@@ -20,10 +20,12 @@ import {
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 import { ColGroup } from '../shared/SortableTableHead';
 import { ProductEstimatedNutrientBox } from './ProductEstimatedNutrientBox';
+import { ProductMethodBox } from './ProductMethodBox';
 import {
   getPrimaryVariableComponentSlot,
   parseVariableComponentOptionsJson,
 } from '../../data/productVariableComponent';
+import { productKeyFromParts } from '../../data/productProductionMethod';
 
 const fieldCls =
   'w-full rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground';
@@ -46,7 +48,7 @@ type Props = {
   yieldAltUnits?: AltUnitEntry[];
   onYieldAltUnitsChange?: (entries: AltUnitEntry[]) => void;
   onToggleLocation: (externalId: string) => void;
-  onOpenProductionMethod?: () => void;
+  productKey?: string;
 };
 
 function ComponentItemsTable({
@@ -55,14 +57,12 @@ function ComponentItemsTable({
   items,
   totalCost,
   totalLabel,
-  onOpenProductionMethod,
 }: {
   title: string;
   description: string;
   items: ProductComponentItem[];
   totalCost: number;
   totalLabel: string;
-  onOpenProductionMethod?: () => void;
 }) {
   const { rm, uomPrice } = useCountryFormatters();
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -75,20 +75,9 @@ function ComponentItemsTable({
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
-        </div>
-        {onOpenProductionMethod ? (
-          <button
-            type="button"
-            onClick={onOpenProductionMethod}
-            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
-          >
-            Production Method
-          </button>
-        ) : null}
+      <div className="px-4 py-3 border-b border-border bg-muted/20">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
       </div>
 
       {items.length === 0 ? (
@@ -149,12 +138,13 @@ export function ProductReadOnlyView({
   yieldAltUnits = [],
   onYieldAltUnitsChange,
   onToggleLocation,
-  onOpenProductionMethod,
+  productKey,
 }: Props) {
   const { rm, currency, symbol, cogsPercent } = useCountryFormatters();
   const items = product.items ?? [];
   const packagingItems = product.packagingItems ?? [];
   const packagingCost = product.packagingCost ?? 0;
+  const methodProductKey = productKey || productKeyFromParts(product.id, product.productId);
 
   const productCogs = useMemo(
     () => calcProductCogs(product.totalCost, packagingCost, product),
@@ -543,14 +533,18 @@ export function ProductReadOnlyView({
           currency={currency}
         />
       ) : (
-        <ComponentItemsTable
-          title="Product Component"
-          description="Add smart components and quantities to calculate product cost"
-          items={items}
-          totalCost={product.totalCost}
-          totalLabel="Total cost"
-          onOpenProductionMethod={onOpenProductionMethod}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <ComponentItemsTable
+            title="Product Component"
+            description="Add smart components and quantities to calculate product cost"
+            items={items}
+            totalCost={product.totalCost}
+            totalLabel="Total cost"
+          />
+          {methodProductKey ? (
+            <ProductMethodBox productKey={methodProductKey} disabled={saving} />
+          ) : null}
+        </div>
       )}
 
       {!product.isVariableComponent ? (
