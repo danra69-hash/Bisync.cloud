@@ -55,11 +55,12 @@ public sealed class SystemAuditService(
 
     public async Task RecordLoginAsync(AppUser user, Company? company, CancellationToken ct = default)
     {
+        var companyId = company?.Id ?? user.CompanyId;
         await RecordAsync(new SystemAuditWriteRequest(
             SystemAuditCategories.Login,
             "UserLogin",
             $"User logged in: {user.FullName} ({user.Email})",
-            company?.Id ?? user.CompanyId,
+            companyId,
             company?.Name,
             company?.CountryCode,
             user.Id,
@@ -67,17 +68,18 @@ public sealed class SystemAuditService(
             user.FullName,
             "AppUser",
             user.Id.ToString(),
-            DatabaseBucket: DatabaseNameFromConnection(connections.DefaultOperationalConnection)), ct);
+            DatabaseBucket: connections.ResolveDatabaseBucketName(companyId)), ct);
     }
 
     public async Task RecordLogoutAsync(AppUser user, Company? company, string? reason = null, CancellationToken ct = default)
     {
         var detail = string.IsNullOrWhiteSpace(reason) ? null : new { reason };
+        var companyId = company?.Id ?? user.CompanyId;
         await RecordAsync(new SystemAuditWriteRequest(
             SystemAuditCategories.Logout,
             "UserLogout",
             $"User logged out: {user.FullName} ({user.Email})",
-            company?.Id ?? user.CompanyId,
+            companyId,
             company?.Name,
             company?.CountryCode,
             user.Id,
@@ -86,7 +88,7 @@ public sealed class SystemAuditService(
             "AppUser",
             user.Id.ToString(),
             detail,
-            DatabaseBucket: DatabaseNameFromConnection(connections.DefaultOperationalConnection)), ct);
+            DatabaseBucket: connections.ResolveDatabaseBucketName(companyId)), ct);
     }
 
     public async Task RecordComputationAsync(
@@ -129,7 +131,7 @@ public sealed class SystemAuditService(
             var locationExternalId = request.LocationExternalId ?? actor.LocationExternalId;
             var locationName = request.LocationName ?? actor.LocationName;
             var databaseBucket = request.DatabaseBucket ?? actor.DatabaseBucket
-                ?? DatabaseNameFromConnection(connections.ResolveOperationalConnection(companyId));
+                ?? connections.ResolveDatabaseBucketName(companyId);
 
             if (string.IsNullOrWhiteSpace(country) && companyId is > 0)
             {
@@ -359,7 +361,7 @@ public sealed class SystemAuditService(
             }
         }
 
-        var databaseBucket = DatabaseNameFromConnection(connections.ResolveOperationalConnection(companyId));
+        var databaseBucket = connections.ResolveDatabaseBucketName(companyId);
         return (userId, email, name, companyId, companyName, country, locationId, locationExternalId, locationName, databaseBucket);
     }
 

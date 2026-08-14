@@ -83,6 +83,49 @@ function loginName(row: SystemAuditEventRow): string {
   return name || '—';
 }
 
+function formatDetailsJson(raw: string | null | undefined): string | null {
+  if (!raw || raw.trim() === '' || raw.trim() === '{}') return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return raw;
+  }
+}
+
+function summarizeEntitiesFromDetails(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      entities?: Array<{ details?: string[]; entityType?: string; added?: number; modified?: number; deleted?: number }>;
+    };
+    const entities = parsed.entities;
+    if (!Array.isArray(entities) || entities.length === 0) return null;
+    const parts: string[] = [];
+    for (const entity of entities) {
+      if (Array.isArray(entity.details) && entity.details.length > 0) {
+        parts.push(...entity.details.filter(Boolean));
+        continue;
+      }
+      if (entity.entityType) {
+        parts.push(
+          `${entity.entityType}: +${entity.added ?? 0} ~${entity.modified ?? 0} -${entity.deleted ?? 0}`,
+        );
+      }
+    }
+    return parts.length > 0 ? parts.join('; ') : null;
+  } catch {
+    return null;
+  }
+}
+
+function activityDetailText(row: SystemAuditEventRow): string {
+  const primary = (row.activityDetail || row.summary || '').trim();
+  if (primary && !/^Database change — Product: \+\d/i.test(primary)) return primary;
+  const fromJson = summarizeEntitiesFromDetails(row.detailsJson);
+  return fromJson || primary || '—';
+}
+
 function monthLabel(year: number, month: number): string {
   return new Date(year, month - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
 }
@@ -238,8 +281,9 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
             Continuous 24/7 log of platform changes: login/logout, PR/PO workflow, receive &amp; consolidation,
-            stock issue/receive, wastage/transfer, credit notes, cash purchases, and other database updates.
-            Viewing is not recorded. Times follow the company&apos;s registered country local time.
+            stock issue/receive, wastage/transfer, credit notes, cash purchases, product/recipe changes, and other
+            database updates. Login rows are session events only — create/update actions appear as separate rows
+            for the same login name. Viewing is not recorded. Times follow the company&apos;s registered country local time.
           </p>
         </div>
         <button
@@ -338,7 +382,7 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
             <tbody>
               {rows.map(row => {
                 const type = activityTypeLabel(row.activityType || row.category);
-                const detail = row.activityDetail || row.summary;
+                const detail = activityDetailText(row);
                 const bucket = row.effectedDbBucket || row.databaseBucket || '—';
                 return (
                   <tr
@@ -397,7 +441,13 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
               Close
             </button>
           </div>
-          <p>{selected.activityDetail || selected.summary}</p>
+          <p>{activityDetailText(selected)}</p>
+          {selected.action === 'UserLogin' || selected.activityType === 'Login' || selected.category === 'Login' ? (
+            <p className="text-[11px] text-muted-foreground">
+              This is a session sign-in event. Look for later Database change / workflow rows with the same login name
+              for creates and updates (for example a new sub-product).
+            </p>
+          ) : null}
           <dl className="grid grid-cols-[9rem_1fr] gap-x-2 gap-y-1">
             <dt className="text-muted-foreground">Date / Time</dt>
             <dd>{formatLocal(selected.occurredAtLocal)} ({selected.timeZoneId})</dd>
@@ -405,6 +455,11 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
             <dd>{loginName(selected)}</dd>
             <dt className="text-muted-foreground">Activity type</dt>
             <dd>{activityTypeLabel(selected.activityType || selected.category)}</dd>
+            <dt className="text-muted-foreground">Entity</dt>
+            <dd>
+              {selected.entityType || '—'}
+              {selected.entityKey ? ` · ${selected.entityKey}` : ''}
+            </dd>
             <dt className="text-muted-foreground">Company</dt>
             <dd>{selected.companyName || '—'}</dd>
             <dt className="text-muted-foreground">Location</dt>
@@ -412,6 +467,11 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
             <dt className="text-muted-foreground">Effected DB bucket</dt>
             <dd className="font-sans">{selected.effectedDbBucket || selected.databaseBucket || '—'}</dd>
           </dl>
+          {formatDetailsJson(selected.detailsJson) ? (
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[10px] font-sans whitespace-pre-wrap">
+              {formatDetailsJson(selected.detailsJson)}
+            </pre>
+          ) : null}
         </div>
       )}
     </section>

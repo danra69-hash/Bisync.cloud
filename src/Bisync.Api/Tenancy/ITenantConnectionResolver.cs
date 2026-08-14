@@ -12,6 +12,12 @@ public interface ITenantConnectionResolver
     string ResolveOperationalConnection(int? companyId);
     string ResolveArchiveConnection(int? companyId);
 
+    /// <summary>
+    /// Logical DB bucket name for Audit Trail / ops UI (e.g. <c>bisync_c_12</c>),
+    /// even when the physical connection still points at shared <c>bisync</c>.
+    /// </summary>
+    string ResolveDatabaseBucketName(int? companyId);
+
     /// <summary>Refresh cache after provision or registry change.</summary>
     void Refresh(int companyId, string? operationalConnection, string? archiveConnection, string? databaseName = null);
 

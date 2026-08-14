@@ -572,7 +572,8 @@ public class DevConsoleAuthController(
             },
             LocationId: location.Id,
             LocationExternalId: location.ExternalId,
-            LocationName: location.Name), ct);
+            LocationName: location.Name,
+            DatabaseBucket: null), ct);
 
         return Ok(new
         {
