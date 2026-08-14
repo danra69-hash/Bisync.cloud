@@ -1999,20 +1999,77 @@ export function ProductsPage({
                   <SimilarNameMatchesNotice matches={similarProductNameMatches} entityLabel="product" />
                 </div>
 
-                <SubProductBatchProduceFields
-                  batchQty={yieldQuantity}
-                  batchUom={yieldUom}
-                  altUnits={yieldAltUnits}
-                  onBatchQtyChange={setYieldQuantity}
-                  onBatchUomChange={setYieldUom}
-                  onAltUnitsChange={entries => setYieldAltUnits(clampSubProductAltUnits(entries))}
-                  cogsLabel={
-                    yieldUom && (parseFloat(yieldQuantity) || 0) > 0
-                      ? `${rm(subProductUnitCost)} / ${yieldUom}`
-                      : '—'
-                  }
-                  cogsHint={`Batch COGS ${rm(effectiveProductCogs)} ÷ ${yieldQuantity || '—'}`}
-                />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <SubProductBatchProduceFields
+                    batchQty={yieldQuantity}
+                    batchUom={yieldUom}
+                    altUnits={yieldAltUnits}
+                    onBatchQtyChange={setYieldQuantity}
+                    onBatchUomChange={setYieldUom}
+                    onAltUnitsChange={entries => setYieldAltUnits(clampSubProductAltUnits(entries))}
+                    cogsLabel={
+                      yieldUom && (parseFloat(yieldQuantity) || 0) > 0
+                        ? `${rm(subProductUnitCost)} / ${yieldUom}`
+                        : '—'
+                    }
+                    cogsHint={`Batch COGS ${rm(effectiveProductCogs)} ÷ ${yieldQuantity || '—'}`}
+                  />
+                  <div className="rounded-lg border border-border bg-muted/10 p-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
+                        <input
+                          id="expiry-period-days"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={expiryPeriodDays}
+                          onChange={e => setExpiryPeriodDays(e.target.value)}
+                          placeholder="e.g. 7"
+                          className={fieldCls}
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Each production batch expires this many days after its production date.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={labelCls} htmlFor="incubation-period-hours">Incubation (hours)</label>
+                        <input
+                          id="incubation-period-hours"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={activationPeriodHours}
+                          onChange={e => setActivationPeriodHours(e.target.value)}
+                          placeholder="Optional"
+                          className={fieldCls}
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Optional. Leave blank if the batch is sellable immediately after production.
+                          Enter hours to hold stock in incubation before it can be sold.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
+                        <input
+                          id="par-stock-qty"
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={parStock}
+                          onChange={e => setParStock(e.target.value)}
+                          placeholder="0"
+                          className={fieldCls}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={labelCls}>UOM</label>
+                        <p className={fieldCls}>{yieldUom || '—'}</p>
+                        <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </>
             ) : (
               <>
@@ -2183,7 +2240,7 @@ export function ProductsPage({
               </>
             )}
 
-            {(isSubProduct || b2bEnabled) ? (
+            {!isSubProduct && b2bEnabled ? (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 max-w-2xl">
                 <div className="space-y-1.5">
                   <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
@@ -2221,28 +2278,7 @@ export function ProductsPage({
               </div>
             ) : null}
 
-            {isVariableComponent ? null : isSubProduct ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-                <div className="space-y-1.5">
-                  <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
-                  <input
-                    id="par-stock-qty"
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={parStock}
-                    onChange={e => setParStock(e.target.value)}
-                    placeholder="0"
-                    className={fieldCls}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className={labelCls}>UOM</label>
-                  <p className={fieldCls}>{yieldUom || '—'}</p>
-                  <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
-                </div>
-              </div>
-            ) : (
+            {isVariableComponent || isSubProduct ? null : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
               <div className="space-y-1.5">
                 <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>

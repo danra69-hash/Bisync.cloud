@@ -309,19 +309,68 @@ export function ProductReadOnlyView({
               <p className={labelCls}>Sub-Product Name</p>
               <p className={fieldCls}>{product.name}</p>
             </div>
-            <SubProductBatchProduceFields
-              batchQty={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
-              batchUom={yieldUomLabel}
-              altUnits={yieldAltUnits}
-              batchReadOnly
-              onAltUnitsChange={saving ? undefined : onYieldAltUnitsChange}
-              cogsLabel={
-                yieldUomLabel && product.yieldQuantity > 0
-                  ? `${rm(subProductUnitCost)} / ${yieldUomLabel}`
-                  : '—'
-              }
-              cogsHint={`Batch COGS ${rm(productCogs)} ÷ ${product.yieldQuantity > 0 ? product.yieldQuantity : '—'}`}
-            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              <SubProductBatchProduceFields
+                batchQty={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
+                batchUom={yieldUomLabel}
+                altUnits={yieldAltUnits}
+                batchReadOnly
+                onAltUnitsChange={saving ? undefined : onYieldAltUnitsChange}
+                cogsLabel={
+                  yieldUomLabel && product.yieldQuantity > 0
+                    ? `${rm(subProductUnitCost)} / ${yieldUomLabel}`
+                    : '—'
+                }
+                cogsHint={`Batch COGS ${rm(productCogs)} ÷ ${product.yieldQuantity > 0 ? product.yieldQuantity : '—'}`}
+              />
+              <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>Expiry period (days)</p>
+                    <p className={fieldCls}>
+                      {product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '—'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Production batches expire this many days after their production date.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>Incubation (hours)</p>
+                    <p className={fieldCls}>
+                      {formatActivationPeriodHoursDisplay(product.activationPeriodHours)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {hasActivationPeriod(product.activationPeriodHours)
+                        ? 'Hours after production before the batch can be sold.'
+                        : 'No incubation — batch is sellable immediately after production.'}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>Par Stock</p>
+                    {onParStockChange ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={parStockDraft ?? ''}
+                        disabled={saving}
+                        onChange={e => onParStockChange(e.target.value)}
+                        onBlur={onParStockBlur}
+                        placeholder="0"
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                      />
+                    ) : (
+                      <p className={fieldCls}>{(product.parStock ?? 0) > 0 ? String(product.parStock) : '—'}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>UOM</p>
+                    <p className={fieldCls}>{yieldUomLabel || parStockUomLabel || '—'}</p>
+                    <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </>
         ) : (
           <>
@@ -412,7 +461,7 @@ export function ProductReadOnlyView({
           </>
         )}
 
-        {(product.isSubProduct || product.b2bEnabled) ? (
+        {!product.isSubProduct && product.b2bEnabled ? (
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 max-w-2xl">
             <div className="space-y-1.5">
               <p className={labelCls}>Expiry period (days)</p>
@@ -437,33 +486,7 @@ export function ProductReadOnlyView({
           </div>
         ) : null}
 
-        {product.isVariableComponent ? null : product.isSubProduct ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-            <div className="space-y-1.5">
-              <p className={labelCls}>Par Stock</p>
-              {onParStockChange ? (
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={parStockDraft ?? ''}
-                  disabled={saving}
-                  onChange={e => onParStockChange(e.target.value)}
-                  onBlur={onParStockBlur}
-                  placeholder="0"
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                />
-              ) : (
-                <p className={fieldCls}>{(product.parStock ?? 0) > 0 ? String(product.parStock) : '—'}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <p className={labelCls}>UOM</p>
-              <p className={fieldCls}>{yieldUomLabel || parStockUomLabel || '—'}</p>
-              <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
-            </div>
-          </div>
-        ) : (
+        {product.isVariableComponent || product.isSubProduct ? null : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
           <div className="space-y-1.5">
             <p className={labelCls}>Par Stock</p>
