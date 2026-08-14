@@ -237,19 +237,40 @@ public class SalesModuleClientUpdateService(
         return 3;
     }
 
-    /// <summary>All Client Update rows for a free-text hunter name, latest interaction first.</summary>
+    /// <summary>
+    /// All Client Update rows for a free-text hunter name.
+    /// "(Unassigned)" / blank maps to rows with no Sales Team member and empty Hunter text.
+    /// </summary>
     async Task<List<object>> ListAllRowsForHunterNameAsync(string hunterName, CancellationToken ct)
     {
         var key = hunterName.Trim();
         var rows = await GetCachedRowsAsync(ct);
-        return rows
-            .Where(r => r.Hunter.Equals(key, StringComparison.OrdinalIgnoreCase)
-                || NormalizePersonToken(r.Hunter) == NormalizePersonToken(key))
-            .OrderByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
+        var isUnassigned = IsUnassignedHunterLabel(key);
+
+        IEnumerable<SalesModuleClientUpdate> filtered = isUnassigned
+            ? rows.Where(IsUnassignedClientRow)
+            : rows.Where(r =>
+                r.Hunter.Equals(key, StringComparison.OrdinalIgnoreCase)
+                || NormalizePersonToken(r.Hunter) == NormalizePersonToken(key));
+
+        return filtered
+            .OrderBy(OverviewClientSortPriority)
+            .ThenByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
             .ThenByDescending(r => r.Id)
+            .ThenBy(r => r.Company, StringComparer.OrdinalIgnoreCase)
             .Select(Map)
             .ToList();
     }
+
+    internal static bool IsUnassignedHunterLabel(string? hunter) =>
+        string.IsNullOrWhiteSpace(hunter)
+        || hunter.Trim().Equals("(Unassigned)", StringComparison.OrdinalIgnoreCase)
+        || hunter.Trim().Equals("Unassigned", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Rows not tagged to a Sales Team member and with blank or Unassigned Hunter free-text.</summary>
+    internal static bool IsUnassignedClientRow(SalesModuleClientUpdate r) =>
+        r.SalesTeamMemberId is null or <= 0
+        && (string.IsNullOrWhiteSpace(r.Hunter) || IsUnassignedHunterLabel(r.Hunter));
 
     /// <summary>
     /// Create placeholder Client Update rows for Sales Module companies tagged to the member

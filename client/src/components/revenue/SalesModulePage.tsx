@@ -435,20 +435,27 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   ]);
 
   const openOverviewHunterDetail = useCallback(async (row: SalesModuleOverviewHunterRow) => {
-    const memberId = row.salesTeamMemberId
-      || activeHunters.find(m => m.name.trim().toLowerCase() === row.hunter.trim().toLowerCase())?.id
-      || undefined;
+    const isUnassigned = !row.hunter.trim()
+      || row.hunter.trim().toLowerCase() === '(unassigned)'
+      || row.hunter.trim().toLowerCase() === 'unassigned';
+    const memberId = isUnassigned
+      ? undefined
+      : (row.salesTeamMemberId
+        || activeHunters.find(m => m.name.trim().toLowerCase() === row.hunter.trim().toLowerCase())?.id
+        || undefined);
     setOverviewDetailHunter({ hunter: row.hunter, salesTeamMemberId: memberId ?? null });
     setOverviewDetailLoading(true);
     setError(null);
     try {
       // Full attached client book for this team member (not week/month period filter).
-      await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
-      if (memberId) {
-        await api.salesModuleCompanies({ salesTeamMemberId: memberId }).catch(() => undefined);
+      if (!isUnassigned) {
+        await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
+        if (memberId) {
+          await api.salesModuleCompanies({ salesTeamMemberId: memberId }).catch(() => undefined);
+        }
       }
       const rows = await api.salesModuleClientUpdates(
-        memberId ? { salesTeamMemberId: memberId } : { hunter: row.hunter },
+        memberId ? { salesTeamMemberId: memberId } : { hunter: isUnassigned ? '(Unassigned)' : row.hunter },
       );
       setOverviewDetailRows(sortOverviewClientDetails(rows));
     } catch (err) {
@@ -1266,7 +1273,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                     ) : overviewDetailRows.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                          No clients attached to this team member yet. Import Excel on Client Update or tag a company.
+                          {overviewDetailHunter.hunter.trim().toLowerCase() === '(unassigned)'
+                            || overviewDetailHunter.hunter.trim().toLowerCase() === 'unassigned'
+                            ? 'No unassigned clients found. They may have been tagged to a team member.'
+                            : 'No clients attached to this team member yet. Import Excel on Client Update or tag a company.'}
                         </td>
                       </tr>
                     ) : (
