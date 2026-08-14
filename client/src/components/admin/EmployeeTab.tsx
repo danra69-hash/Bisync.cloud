@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api as bisyncApi, type AppUser, type Company, type UserUpsert } from '../../api';
+import { api as bisyncApi, type AppUser, type Company, type LocationConfig, type UserUpsert } from '../../api';
 import { hrApi as api, toEmployeeRequest } from '../../modules/hr/api';
-import type { DivisionTreeNode, Employee, EmployeeLevel } from '../../modules/hr/types';
+import type { DivisionTreeNode, Employee, EmployeeLevel, LeaveBalanceRow, LeaveRequest } from '../../modules/hr/types';
 import { EmployeeDetailPanel } from './EmployeeDetailPanel';
-import { EmployeeDirectoryTab } from './EmployeeDirectoryTab';
+import { EmployeeDirectoryTab, type EmployeeLeaveStats } from './EmployeeDirectoryTab';
 import { emptyEmployeeForm, iso } from './employeeTabShared';
 import { orgSelectionPatch, resolveEmployeeOrg } from './orgSelectShared';
 import { PlatformAccessPanel, userUpsertForEmployee } from './UsersTab';
@@ -14,6 +14,21 @@ import { parseUserAccess, setAccessControlType } from '../../data/userAccess';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const EMPTY_LEAVE: EmployeeLeaveStats = {
+  outstandingRdo: 0,
+  outstandingRph: 0,
+  outstandingAl: 0,
+  unpaidLeaveTaken: 0,
+  medicalLeaveTaken: 0,
+};
+
+function inclusiveLeaveDays(startDate: string, endDate: string): number {
+  const start = Date.parse(`${startDate.slice(0, 10)}T00:00:00Z`);
+  const end = Date.parse(`${endDate.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
 
 type Props = {
   onDataChanged?: () => void;
@@ -26,11 +41,18 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   const [employeeLevels, setEmployeeLevels] = useState<EmployeeLevel[]>([]);
   const [orgTree, setOrgTree] = useState<DivisionTreeNode[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [locations, setLocations] = useState<LocationConfig[]>([]);
+  const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceRow[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [operatingCountryCode, setOperatingCountryCode] = useState('MY');
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailSaving, setDetailSaving] = useState(false);
+
+  const [companyFilter, setCompanyFilter] = useState<number | ''>(selectedCompanyId ?? '');
+  const [locationFilter, setLocationFilter] = useState<number | ''>('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
@@ -42,14 +64,22 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
 
   const today = new Date();
 
+  useEffect(() => {
+    setCompanyFilter(selectedCompanyId ?? '');
+    setLocationFilter('');
+  }, [selectedCompanyId]);
+
   const load = useCallback(async () => {
-    const [emps, users, levels, tree, settings, comps] = await Promise.all([
+    const [emps, users, levels, tree, settings, comps, locs, bals, reqs] = await Promise.all([
       api.employees.list(),
       bisyncApi.users().catch(() => [] as AppUser[]),
       api.levels.list(),
       api.org.tree(),
       api.settings.get().catch(() => ({ operatingCountryCode: 'MY' } as const)),
       bisyncApi.companies().catch(() => [] as Company[]),
+      bisyncApi.locationsConfig().catch(() => [] as LocationConfig[]),
+      api.leaveBalances.list().catch(() => [] as LeaveBalanceRow[]),
+      api.leaveRequests.list().catch(() => [] as LeaveRequest[]),
     ]);
     setEmployees(emps);
     setPlatformUsers(users);
@@ -57,6 +87,9 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
     setOrgTree(tree);
     setOperatingCountryCode(settings.operatingCountryCode || 'MY');
     setCompanies(comps);
+    setLocations(locs);
+    setLeaveBalances(bals);
+    setLeaveRequests(reqs);
   }, []);
 
   useEffect(() => {
@@ -109,22 +142,47 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
     return employee.isShiftEmployee;
   };
 
-  const platformUserFor = (employee: Employee) =>
-    platformUsers.find(u => u.employeeId === employee.id);
+  const platformUserFor = useCallback(
+    (employee: Employee) => platformUsers.find(u => u.employeeId === employee.id),
+    [platformUsers],
+  );
 
-  const filteredEmployees = useMemo(() => {
-    if (!selectedCompanyId) return [];
-    return employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
-  }, [employees, platformUsers, selectedCompanyId]);
+  const leaveStatsByEmployeeId = useMemo(() => {
+    const map = new Map<number, EmployeeLeaveStats>();
+    for (const balance of leaveBalances) {
+      map.set(balance.employeeId, {
+        outstandingRdo: Number(balance.rdoBalance) || 0,
+        outstandingRph: Number(balance.rphBalance) || 0,
+        outstandingAl: Number(balance.alBalance) || 0,
+        unpaidLeaveTaken: 0,
+        medicalLeaveTaken: 0,
+      });
+    }
+    for (const request of leaveRequests) {
+      if (request.status !== 'Approved') continue;
+      const days = inclusiveLeaveDays(request.startDate, request.endDate);
+      if (days <= 0) continue;
+      const current = map.get(request.employeeId) ?? { ...EMPTY_LEAVE };
+      if (request.type === 'UPL') {
+        current.unpaidLeaveTaken += days;
+      }
+      map.set(request.employeeId, current);
+    }
+    return map;
+  }, [leaveBalances, leaveRequests]);
 
-  const employeeCompanyName = (employee: Employee) => platformUserFor(employee)?.companyName ?? '—';
-  const employeeLocationLabel = (employee: Employee) => {
-    const names = platformUserFor(employee)?.locationNames;
-    if (!names?.length) return '—';
-    return names.join(', ');
-  };
+  const leaveStatsFor = useCallback(
+    (employeeId: number): EmployeeLeaveStats => leaveStatsByEmployeeId.get(employeeId) ?? EMPTY_LEAVE,
+    [leaveStatsByEmployeeId],
+  );
+
+  const effectiveCompanyId = typeof companyFilter === 'number' ? companyFilter : selectedCompanyId;
 
   const openAddEmployeeForm = () => {
+    if (typeof companyFilter !== 'number') {
+      setError('Select a company before adding an employee.');
+      return;
+    }
     setShowEmployeeForm(true);
     setFormData({ ...emptyEmployeeForm, joinDate: iso(today) });
   };
@@ -171,7 +229,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
       departmentId,
       position: position.trim(),
       joinDate,
-      companyId: selectedCompanyId ?? undefined,
+      companyId: effectiveCompanyId ?? undefined,
       fingerprintEnrolled: false,
       faceRecognitionEnrolled: false,
       isShiftEmployee: false,
@@ -279,7 +337,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
     try {
       await api.employees.update(normalized.id, {
         ...toEmployeeRequest(normalized),
-        companyId: platformUserFor(normalized)?.companyId ?? selectedCompanyId ?? undefined,
+        companyId: platformUserFor(normalized)?.companyId ?? effectiveCompanyId ?? undefined,
       });
       closeEmployeeDetail();
       setSuccessMessage('Detail saved');
@@ -378,17 +436,23 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   return (
     <>
       <EmployeeDirectoryTab
-        employees={filteredEmployees}
+        employees={employees}
+        companies={companies}
+        locations={locations}
+        companyFilter={companyFilter}
+        locationFilter={locationFilter}
+        searchQuery={searchQuery}
+        onCompanyFilterChange={setCompanyFilter}
+        onLocationFilterChange={setLocationFilter}
+        onSearchQueryChange={setSearchQuery}
         employeeLevels={employeeLevels}
         orgTree={orgTree}
         formData={formData}
         showEmployeeForm={showEmployeeForm}
         error={error}
         successMessage={successMessage}
-        noCompanySelected={!selectedCompanyId}
+        leaveStatsFor={leaveStatsFor}
         platformUserFor={platformUserFor}
-        employeeCompanyName={employeeCompanyName}
-        employeeLocationLabel={employeeLocationLabel}
         employeeDivisionName={employeeDivisionName}
         departmentName={departmentName}
         countryCode={operatingCountryCode}

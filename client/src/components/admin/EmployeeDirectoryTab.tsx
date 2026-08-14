@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
-import type { AppUser } from '../../api';
+import type { AppUser, Company, LocationConfig } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
 import { parseUserAccess } from '../../data/userAccess';
 import type { CheckinMethod, DivisionTreeNode, Employee, EmployeeLevel } from '../../modules/hr/types';
@@ -15,11 +15,17 @@ import { OrgSelectFields } from './OrgSelectFields';
 import { selectableEmployeeLevels } from './employeeTabShared';
 import { ToggleSwitch } from './ToggleSwitch';
 
+export type EmployeeLeaveStats = {
+  outstandingRdo: number;
+  outstandingRph: number;
+  outstandingAl: number;
+  unpaidLeaveTaken: number;
+  medicalLeaveTaken: number;
+};
+
 type EmployeeSortColumn =
   | 'employeeId'
   | 'employee'
-  | 'company'
-  | 'location'
   | 'division'
   | 'department'
   | 'position'
@@ -27,21 +33,29 @@ type EmployeeSortColumn =
   | 'shift'
   | 'platformAccess'
   | 'checkinMethod'
+  | 'outstandingRdo'
+  | 'outstandingRph'
+  | 'outstandingAl'
+  | 'unpaidLeaveTaken'
+  | 'medicalLeaveTaken'
   | 'active';
 
 const EMPLOYEE_TABLE_COLUMNS: SortableColumnDef<EmployeeSortColumn>[] = [
-  { key: 'employeeId', label: 'Employee ID', ...tableColWidth('8%') },
-  { key: 'employee', label: 'Employee', ...tableColWidth('14%') },
-  { key: 'company', label: 'Company', ...tableColWidth('10%') },
-  { key: 'location', label: 'Location', ...tableColWidth('10%') },
-  { key: 'division', label: 'Division', ...tableColWidth('8%') },
-  { key: 'department', label: 'Department', ...tableColWidth('8%') },
-  { key: 'position', label: 'Position', ...tableColWidth('9%') },
-  { key: 'level', label: 'Employee Level', ...tableColWidth('9%') },
-  { key: 'shift', label: 'Shift', align: 'center', ...tableColWidth(64) },
-  { key: 'platformAccess', label: 'Platform Access', ...tableColWidth('10%') },
-  { key: 'checkinMethod', label: 'Check-in Method', ...tableColWidth('8%') },
-  { key: 'active', label: 'Active', align: 'center', ...tableColWidth(72) },
+  { key: 'employeeId', label: 'Employee ID', ...tableColWidth('7%') },
+  { key: 'employee', label: 'Employee', ...tableColWidth('12%') },
+  { key: 'division', label: 'Division', ...tableColWidth('7%') },
+  { key: 'department', label: 'Department', ...tableColWidth('7%') },
+  { key: 'position', label: 'Position', ...tableColWidth('8%') },
+  { key: 'level', label: 'Employee Level', ...tableColWidth('8%') },
+  { key: 'shift', label: 'Shift', align: 'center', ...tableColWidth(56) },
+  { key: 'platformAccess', label: 'Platform Access', ...tableColWidth('9%') },
+  { key: 'checkinMethod', label: 'Check-in Method', ...tableColWidth('7%') },
+  { key: 'outstandingRdo', label: 'Outstanding RDO', align: 'center', ...tableColWidth(72) },
+  { key: 'outstandingRph', label: 'Outstanding RPH', align: 'center', ...tableColWidth(72) },
+  { key: 'outstandingAl', label: 'Outstanding AL', align: 'center', ...tableColWidth(72) },
+  { key: 'unpaidLeaveTaken', label: 'Unpaid Leave taken', align: 'center', ...tableColWidth(80) },
+  { key: 'medicalLeaveTaken', label: 'Medical Leave taken', align: 'center', ...tableColWidth(80) },
+  { key: 'active', label: 'Active', align: 'center', ...tableColWidth(64) },
 ];
 
 type EmployeeFormData = {
@@ -58,16 +72,22 @@ type EmployeeFormData = {
 
 type Props = {
   employees: Employee[];
+  companies: Company[];
+  locations: LocationConfig[];
+  companyFilter: number | '';
+  locationFilter: number | '';
+  searchQuery: string;
+  onCompanyFilterChange: (value: number | '') => void;
+  onLocationFilterChange: (value: number | '') => void;
+  onSearchQueryChange: (value: string) => void;
   employeeLevels: EmployeeLevel[];
   orgTree: DivisionTreeNode[];
   formData: EmployeeFormData;
   showEmployeeForm: boolean;
   error: string | null;
   successMessage?: string | null;
-  noCompanySelected?: boolean;
+  leaveStatsFor: (employeeId: number) => EmployeeLeaveStats;
   platformUserFor: (employee: Employee) => AppUser | undefined;
-  employeeCompanyName: (employee: Employee) => string;
-  employeeLocationLabel: (employee: Employee) => string;
   employeeDivisionName: (employee: Employee) => string;
   departmentName: (employee: Employee) => string;
   countryCode: string;
@@ -93,18 +113,30 @@ function accessBadges(accessJson: string): string[] {
   return parseUserAccess(accessJson).modules;
 }
 
+function formatLeaveDays(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+}
+
 export function EmployeeDirectoryTab({
   employees,
+  companies,
+  locations,
+  companyFilter,
+  locationFilter,
+  searchQuery,
+  onCompanyFilterChange,
+  onLocationFilterChange,
+  onSearchQueryChange,
   employeeLevels,
   orgTree,
   formData,
   showEmployeeForm,
   error,
   successMessage = null,
-  noCompanySelected = false,
+  leaveStatsFor,
   platformUserFor,
-  employeeCompanyName,
-  employeeLocationLabel,
   employeeDivisionName,
   departmentName,
   countryCode,
@@ -123,19 +155,57 @@ export function EmployeeDirectoryTab({
 }: Props) {
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<EmployeeSortColumn>();
 
-  useEffect(() => { resetSort(); }, [employees, resetSort]);
+  useEffect(() => { resetSort(); }, [employees, companyFilter, locationFilter, searchQuery, resetSort]);
+
+  const locationOptions = useMemo(() => {
+    const active = locations.filter(l => l.active !== false && l.companyActive !== false);
+    if (companyFilter === '') return active.sort((a, b) => a.name.localeCompare(b.name));
+    return active
+      .filter(l => l.companyId === companyFilter)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [locations, companyFilter]);
+
+  useEffect(() => {
+    if (locationFilter === '') return;
+    if (!locationOptions.some(l => l.id === locationFilter)) {
+      onLocationFilterChange('');
+    }
+  }, [locationOptions, locationFilter, onLocationFilterChange]);
+
+  const filteredEmployees = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return employees.filter(employee => {
+      const user = platformUserFor(employee);
+      if (companyFilter !== '') {
+        if (user?.companyId !== companyFilter) return false;
+      }
+      if (locationFilter !== '') {
+        const ids = user?.locationIds ?? [];
+        if (!ids.includes(locationFilter)) return false;
+      }
+      if (!q) return true;
+      const haystack = [
+        employee.employeeCode,
+        employee.name,
+        employee.email,
+        employee.position,
+        employee.mobile,
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [employees, companyFilter, locationFilter, searchQuery, platformUserFor]);
+
+  const noCompanySelected = companyFilter === '';
 
   const sortedEmployees = useMemo(
     () =>
       sortTableRows(
-        employees,
+        filteredEmployees,
         sortColumn,
         sortDirection,
         {
           employeeId: e => e.employeeCode,
           employee: e => e.name,
-          company: e => employeeCompanyName(e),
-          location: e => employeeLocationLabel(e),
           division: e => employeeDivisionName(e),
           department: e => departmentName(e),
           position: e => e.position,
@@ -147,22 +217,26 @@ export function EmployeeDirectoryTab({
             return accessBadges(user.accessJson).join(', ');
           },
           checkinMethod: e => checkinMethodLabel(e.checkinMethod ?? 'Biometrics'),
+          outstandingRdo: e => leaveStatsFor(e.id).outstandingRdo,
+          outstandingRph: e => leaveStatsFor(e.id).outstandingRph,
+          outstandingAl: e => leaveStatsFor(e.id).outstandingAl,
+          unpaidLeaveTaken: e => leaveStatsFor(e.id).unpaidLeaveTaken,
+          medicalLeaveTaken: e => leaveStatsFor(e.id).medicalLeaveTaken,
           active: e => e.active !== false,
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
     [
-      employees,
+      filteredEmployees,
       sortColumn,
       sortDirection,
-      employeeCompanyName,
-      employeeLocationLabel,
       employeeDivisionName,
       departmentName,
       levelName,
       employeeIsShift,
       platformUserFor,
       checkinMethodLabel,
+      leaveStatsFor,
     ],
   );
 
@@ -178,14 +252,67 @@ export function EmployeeDirectoryTab({
     onFormChange({ ...formData, [key]: value });
   };
 
+  const colSpan = EMPLOYEE_TABLE_COLUMNS.length;
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[160px]">
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company</label>
+          <select
+            value={companyFilter === '' ? '' : String(companyFilter)}
+            onChange={e => {
+              const v = e.target.value;
+              onCompanyFilterChange(v ? Number(v) : '');
+              onLocationFilterChange('');
+            }}
+            className={`${selectCls} mt-1`}
+          >
+            <option value="">All companies</option>
+            {companies.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="min-w-[160px]">
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Location</label>
+          <select
+            value={locationFilter === '' ? '' : String(locationFilter)}
+            onChange={e => {
+              const v = e.target.value;
+              onLocationFilterChange(v ? Number(v) : '');
+            }}
+            className={`${selectCls} mt-1`}
+          >
+            <option value="">All locations</option>
+            {locationOptions.map(l => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Search employee</label>
+          <div className="relative mt-1">
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={e => onSearchQueryChange(e.target.value)}
+              placeholder="Name, ID, email…"
+              className={`${inputCls} pl-8`}
+              aria-label="Search employee"
+            />
+          </div>
+        </div>
+
         <button
           type="button"
           onClick={onOpenAdd}
           disabled={noCompanySelected}
-          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+          title={noCompanySelected ? 'Select a company to add an employee' : undefined}
         >
           <Plus size={12} /> Add Employee
         </button>
@@ -305,7 +432,6 @@ export function EmployeeDirectoryTab({
         </div>
       )}
 
-      {!noCompanySelected && (
       <TableScrollContainer
         ref={scrollRootRef}
         className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto"
@@ -326,6 +452,7 @@ export function EmployeeDirectoryTab({
             {pagedEmployees.map(employee => {
               const user = platformUserFor(employee);
               const modules = user ? accessBadges(user.accessJson) : [];
+              const leave = leaveStatsFor(employee.id);
               return (
                 <tr
                   key={employee.id}
@@ -348,10 +475,6 @@ export function EmployeeDirectoryTab({
                         <div className="text-muted-foreground truncate">{employee.email}</div>
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{employeeCompanyName(employee)}</td>
-                  <td className="px-4 py-3 text-muted-foreground max-w-[160px] truncate" title={employeeLocationLabel(employee)}>
-                    {employeeLocationLabel(employee)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{employeeDivisionName(employee)}</td>
                   <td className="px-4 py-3 text-muted-foreground">{departmentName(employee)}</td>
@@ -395,6 +518,11 @@ export function EmployeeDirectoryTab({
                       {checkinMethodLabel(employee.checkinMethod ?? 'Biometrics')}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-center tabular-nums">{formatLeaveDays(leave.outstandingRdo)}</td>
+                  <td className="px-4 py-3 text-center tabular-nums">{formatLeaveDays(leave.outstandingRph)}</td>
+                  <td className="px-4 py-3 text-center tabular-nums">{formatLeaveDays(leave.outstandingAl)}</td>
+                  <td className="px-4 py-3 text-center tabular-nums">{formatLeaveDays(leave.unpaidLeaveTaken)}</td>
+                  <td className="px-4 py-3 text-center tabular-nums">{formatLeaveDays(leave.medicalLeaveTaken)}</td>
                   <td className="px-4 py-3 text-center">
                     <ToggleSwitch
                       checked={employee.active !== false}
@@ -405,18 +533,19 @@ export function EmployeeDirectoryTab({
                 </tr>
               );
             })}
-            {employees.length === 0 && (
+            {filteredEmployees.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
-                  No employees yet. Add an employee to get started.
+                <td colSpan={colSpan} className="px-4 py-8 text-center text-muted-foreground">
+                  {employees.length === 0
+                    ? 'No employees yet. Add an employee to get started.'
+                    : 'No employees match the current filters.'}
                 </td>
               </tr>
             )}
-            <InfiniteScrollTableSentinel colSpan={12} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={colSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>
-      )}
     </div>
   );
 }

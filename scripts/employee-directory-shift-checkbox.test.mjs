@@ -1,6 +1,6 @@
 /**
- * Employee Directory detail panel must show the Shift tick box
- * (read-only; driven by Employee Level), matching the directory list.
+ * Employee Directory: Shift tick, leave columns before Active,
+ * company/location as top filters, and employee search.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -27,5 +27,19 @@ assert.doesNotMatch(
   /Shift status: \{employeeIsShift/,
   'text-only shift status replaced by checkbox',
 );
+
+assert.match(list, /Outstanding RDO/, 'Outstanding RDO column');
+assert.match(list, /Outstanding RPH/, 'Outstanding RPH column');
+assert.match(list, /Outstanding AL/, 'Outstanding AL column');
+assert.match(list, /Unpaid Leave taken/, 'Unpaid Leave taken column');
+assert.match(list, /Medical Leave taken/, 'Medical Leave taken column');
+assert.match(list, /key: 'outstandingRdo'[\s\S]*key: 'active'/, 'leave columns appear before Active');
+
+assert.doesNotMatch(list, /key: 'company'/, 'Company removed as table column');
+assert.doesNotMatch(list, /key: 'location'/, 'Location removed as table column');
+assert.match(list, />Company</, 'Company filter label on top');
+assert.match(list, />Location</, 'Location filter label on top');
+assert.match(list, /Search employee/, 'Search employee control on top');
+assert.match(list, /aria-label="Search employee"/, 'Search input labeled');
 
 console.log('employee-directory-shift-checkbox.test.mjs: ok');
