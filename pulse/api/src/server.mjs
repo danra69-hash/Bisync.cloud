@@ -1,5 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   migrate,
   query,
@@ -25,7 +28,7 @@ import {
 import { seed } from './seed.mjs';
 
 const app = express();
-const PORT = Number(process.env.PULSE_API_PORT || 5400);
+
 
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
@@ -718,6 +721,22 @@ app.use((err, _req, res, _next) => {
 await migrate();
 await seed();
 
-app.listen(PORT, () => {
-  console.log(`Pulse API listening on http://localhost:${PORT} (PostgreSQL)`);
+// Production: serve Team web SPA from the same Cloud Run service (isolated from Bisync).
+const webDist = process.env.PULSE_WEB_DIST
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
+if (existsSync(webDist)) {
+  app.use(express.static(webDist, { index: false, fallthrough: true }));
+  app.get(/^(?!\/api(?:\/|$)).*/, (req, res, next) => {
+    // Missing static assets must 404 — never SPA-fallback them.
+    if (/\.[a-z0-9]+$/i.test(req.path) && !req.path.endsWith('.html')) {
+      return res.status(404).send('Not found');
+    }
+    res.sendFile(path.join(webDist, 'index.html'), (err) => (err ? next(err) : undefined));
+  });
+  console.log(`Serving Pulse web from ${webDist}`);
+}
+
+const listenPort = Number(process.env.PORT || process.env.PULSE_API_PORT || 5400);
+app.listen(listenPort, () => {
+  console.log(`Pulse API listening on http://localhost:${listenPort} (PostgreSQL)`);
 });

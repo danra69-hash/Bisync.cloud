@@ -12,6 +12,11 @@ name: Deploy Cloud Run
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - 'pulse/**'
+      - '.github/workflows/deploy-pulse.yml'
+      - '.github/workflows/ci-pulse.yml'
+      - 'pulse/**/*'
   workflow_dispatch:
 
 concurrency:

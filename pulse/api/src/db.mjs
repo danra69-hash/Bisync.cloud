@@ -18,12 +18,38 @@ const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function connectionConfig() {
+  if (process.env.PULSE_DATABASE_URL || process.env.DATABASE_URL) {
+    return {
+      connectionString: process.env.PULSE_DATABASE_URL || process.env.DATABASE_URL,
+    };
+  }
+
+  const user = process.env.PULSE_DB_USER || process.env.DB_USER || 'bisync';
+  const password = process.env.PULSE_DB_PASSWORD || process.env.DB_PASSWORD || 'bisync';
+  const database = process.env.PULSE_DB_NAME || 'pulse';
+  const cloudSql = process.env.PULSE_CLOUDSQL_CONNECTION || process.env.INSTANCE_CONNECTION_NAME;
+
+  if (cloudSql) {
+    // Cloud Run + Cloud SQL Auth Proxy unix socket
+    const encUser = encodeURIComponent(user);
+    const encPass = encodeURIComponent(password);
+    return {
+      connectionString: `postgresql://${encUser}:${encPass}@/${database}?host=/cloudsql/${cloudSql}`,
+    };
+  }
+
+  const host = process.env.PULSE_DB_HOST || '127.0.0.1';
+  const port = process.env.PULSE_DB_PORT || '5432';
   return {
-    connectionString:
-      process.env.PULSE_DATABASE_URL ||
-      process.env.DATABASE_URL ||
-      'postgresql://bisync:bisync@127.0.0.1:5432/pulse',
+    connectionString: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`,
   };
+}
+
+function adminConnectionString() {
+  const cfg = connectionConfig().connectionString;
+  const url = new URL(cfg);
+  url.pathname = '/postgres';
+  return url.toString();
 }
 
 /** @type {pg.Pool | null} */
@@ -178,9 +204,7 @@ export function mapTraining(row) {
 export async function ensureDatabaseExists() {
   const url = new URL(connectionConfig().connectionString);
   const dbName = (url.pathname.replace(/^\//, '') || 'pulse').replace(/[^a-zA-Z0-9_]/g, '');
-  const adminUrl = new URL(url);
-  adminUrl.pathname = '/postgres';
-  const admin = new Pool({ connectionString: adminUrl.toString() });
+  const admin = new Pool({ connectionString: adminConnectionString() });
   try {
     const exists = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
     if (exists.rowCount === 0) {

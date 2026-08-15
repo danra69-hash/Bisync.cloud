@@ -3,8 +3,16 @@ name: CI
 on:
   push:
     branches: [main, master, develop]
+    paths-ignore:
+      - 'pulse/**'
+      - '.github/workflows/ci-pulse.yml'
+      - '.github/workflows/deploy-pulse.yml'
   pull_request:
     branches: [main, master]
+    paths-ignore:
+      - 'pulse/**'
+      - '.github/workflows/ci-pulse.yml'
+      - '.github/workflows/deploy-pulse.yml'
 
 # Least privilege by default (CKV2_GHA_1). Jobs that need more override below.
 permissions:

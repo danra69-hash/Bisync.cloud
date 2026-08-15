@@ -1,0 +1,26 @@
+# Pulse-only image build (separate from root cloudbuild.yaml / Bisync).
+# Substitutions:
+#   _IMAGE      full Artifact Registry URI (required)
+#   _IMAGE_SHA  sha-tagged URI (required)
+
+substitutions:
+  _IMAGE: 'asia-southeast1-docker.pkg.dev/project-8d670aa9-f439-44d9-8e1/bisync/pulse-cloud:latest'
+  _IMAGE_SHA: 'asia-southeast1-docker.pkg.dev/project-8d670aa9-f439-44d9-8e1/bisync/pulse-cloud:manual'
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--no-cache'
+      - '--pull'
+      - '-f'
+      - 'pulse/Dockerfile'
+      - '-t'
+      - '${_IMAGE}'
+      - '-t'
+      - '${_IMAGE_SHA}'
+      - '.'
+
+images:
+  - '${_IMAGE}'
+  - '${_IMAGE_SHA}'
