@@ -30,33 +30,51 @@ export function connectionConfig() {
   const cloudSql = process.env.PULSE_CLOUDSQL_CONNECTION || process.env.INSTANCE_CONNECTION_NAME;
 
   if (cloudSql) {
-    // Cloud Run + Cloud SQL Auth Proxy unix socket
-    const encUser = encodeURIComponent(user);
-    const encPass = encodeURIComponent(password);
+    // Cloud Run + Cloud SQL Auth Proxy unix socket (object form avoids URL password quirks)
     return {
-      connectionString: `postgresql://${encUser}:${encPass}@/${database}?host=/cloudsql/${cloudSql}`,
+      user,
+      password,
+      database,
+      host: `/cloudsql/${cloudSql}`,
     };
   }
 
   const host = process.env.PULSE_DB_HOST || '127.0.0.1';
-  const port = process.env.PULSE_DB_PORT || '5432';
+  const port = Number(process.env.PULSE_DB_PORT || '5432');
   return {
-    connectionString: `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`,
+    user,
+    password,
+    database,
+    host,
+    port,
   };
 }
 
-function adminConnectionString() {
-  const cfg = connectionConfig().connectionString;
-  const url = new URL(cfg);
-  url.pathname = '/postgres';
-  return url.toString();
+function adminConnectionConfig() {
+  const cfg = connectionConfig();
+  if (cfg.connectionString) {
+    const url = new URL(cfg.connectionString);
+    url.pathname = '/postgres';
+    return { connectionString: url.toString() };
+  }
+  return { ...cfg, database: 'postgres' };
 }
 
 /** @type {pg.Pool | null} */
 let pool = null;
 
 export function getPool() {
-  if (!pool) pool = new Pool(connectionConfig());
+  if (!pool) {
+    pool = new Pool({
+      ...connectionConfig(),
+      connectionTimeoutMillis: 20_000,
+      idleTimeoutMillis: 30_000,
+      max: 5,
+    });
+    pool.on('error', (err) => {
+      console.error('Unexpected Pulse Postgres pool error:', err);
+    });
+  }
   return pool;
 }
 
@@ -202,9 +220,17 @@ export function mapTraining(row) {
 }
 
 export async function ensureDatabaseExists() {
-  const url = new URL(connectionConfig().connectionString);
-  const dbName = (url.pathname.replace(/^\//, '') || 'pulse').replace(/[^a-zA-Z0-9_]/g, '');
-  const admin = new Pool({ connectionString: adminConnectionString() });
+  // Cloud Run + Cloud SQL: the deploy workflow already creates the DB.
+  // The app DB user typically cannot CREATE DATABASE / connect as admin.
+  const cloudSql = process.env.PULSE_CLOUDSQL_CONNECTION || process.env.INSTANCE_CONNECTION_NAME;
+  if (cloudSql || process.env.PULSE_SKIP_ENSURE_DB === '1') {
+    console.log('Skipping ensureDatabaseExists (Cloud SQL / managed DB).');
+    return;
+  }
+
+  const cfg = connectionConfig();
+  const dbName = (cfg.database || 'pulse').replace(/[^a-zA-Z0-9_]/g, '');
+  const admin = new Pool(adminConnectionConfig());
   try {
     const exists = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
     if (exists.rowCount === 0) {

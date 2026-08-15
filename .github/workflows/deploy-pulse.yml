@@ -177,7 +177,7 @@ jobs:
             --max-instances=2 \
             --timeout=300 \
             --cpu-boost \
-            --startup-probe=tcpSocket.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=36 \
+            --startup-probe=tcpSocket.port=8080,initialDelaySeconds=5,timeoutSeconds=5,periodSeconds=5,failureThreshold=48 \
             --add-cloudsql-instances="${SQL_CONNECTION}" \
             --set-secrets="DB_PASSWORD=${SECRET_ID}:latest" \
             --set-env-vars="NODE_ENV=production" \

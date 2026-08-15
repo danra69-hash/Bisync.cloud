@@ -737,6 +737,7 @@ if (existsSync(webDist)) {
 }
 
 const listenPort = Number(process.env.PORT || process.env.PULSE_API_PORT || 5400);
-app.listen(listenPort, () => {
-  console.log(`Pulse API listening on http://localhost:${listenPort} (PostgreSQL)`);
+// Cloud Run requires the process to listen on 0.0.0.0:$PORT.
+app.listen(listenPort, '0.0.0.0', () => {
+  console.log(`Pulse API listening on http://0.0.0.0:${listenPort} (PostgreSQL)`);
 });
