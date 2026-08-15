@@ -6,7 +6,7 @@ import {
   isPromotionActive,
   ROLE_MODULES,
   requireRole,
-} from '../api/src/db.mjs';
+} from '../api/src/domain.mjs';
 
 test('role modules: sales cannot access payments', () => {
   const sales = { role: 'sales' };
