@@ -131,6 +131,16 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --role="roles/artifactregistry.writer" \
   --condition=None >/dev/null
 
+# Cloud Build source upload bucket access (required for gcloud builds submit)
+for sa in "${CLOUD_BUILD_SA}" "${COMPUTE_SA}"; do
+  for role in roles/storage.admin roles/logging.logWriter roles/cloudbuild.builds.builder; do
+    gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${sa}" \
+      --role="${role}" \
+      --condition=None >/dev/null
+  done
+done
+
 gcloud iam service-accounts add-iam-policy-binding "${COMPUTE_SA}" \
   --project="${PROJECT_ID}" \
   --member="serviceAccount:${SA_EMAIL}" \

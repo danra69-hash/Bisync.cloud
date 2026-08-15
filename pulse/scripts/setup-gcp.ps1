@@ -131,6 +131,17 @@ $ComputeSa = "$ProjectNumber-compute@developer.gserviceaccount.com"
     --condition=None `
     *> $null
 
+# Cloud Build source upload bucket access (required for gcloud builds submit)
+foreach ($sa in @($CloudBuildSa, $ComputeSa)) {
+    foreach ($role in @("roles/storage.admin", "roles/logging.logWriter", "roles/cloudbuild.builds.builder")) {
+        & $Gcloud projects add-iam-policy-binding $ProjectId `
+            --member="serviceAccount:$sa" `
+            --role=$role `
+            --condition=None `
+            *> $null
+    }
+}
+
 & $Gcloud iam service-accounts add-iam-policy-binding $ComputeSa `
     --project $ProjectId `
     --member="serviceAccount:$SaEmail" `
