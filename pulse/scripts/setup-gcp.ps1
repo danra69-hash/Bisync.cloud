@@ -1,7 +1,7 @@
-# One-time bootstrap for a STANDALONE Pulse GCP project (NOT Bisync).
+﻿# One-time bootstrap for a STANDALONE Pulse GCP project (NOT Bisync).
 #
 # Prerequisites:
-#   1. Google Cloud Console → create project (e.g. pulse-fitness-cloud) + link billing
+#   1. Google Cloud Console -> create project (e.g. pulse-fitness-cloud) + link billing
 #   2. gcloud installed and:  gcloud auth login
 #   3. Optional: gh auth login  (to set GitHub Actions variables)
 #
@@ -269,7 +269,7 @@ if ($null -ne $Gh) {
         Write-Host "GitHub variables set (check exit codes above)." -ForegroundColor Green
     }
 } else {
-    Write-Host "gh CLI not found — set the four variables manually in GitHub." -ForegroundColor Yellow
+    Write-Host "gh CLI not found - set the four variables manually in GitHub." -ForegroundColor Yellow
 }
 
 $SqlConn = & $Gcloud sql instances describe $SqlInstance --project $ProjectId --format="value(connectionName)"
