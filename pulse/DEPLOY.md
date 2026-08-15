@@ -28,21 +28,28 @@ Do **not** reuse `project-8d670aa9-f439-44d9-8e1`.
 
 ---
 
-## 2. Bootstrap from your machine (Windows or Mac/Linux)
+## 2. Bootstrap from your machine
 
-```bash
-# After: gcloud auth login
-chmod +x pulse/scripts/setup-gcp.sh
-./pulse/scripts/setup-gcp.sh --project=pulse-fitness-cloud
+### Windows (PowerShell)
+
+```powershell
+# Go to your clone of the repo (NOT C:\WINDOWS\system32)
+cd C:\path\to\Bisync.cloud
+git fetch origin
+git checkout pulse
+git pull origin pulse
+
+gcloud auth login
+
+# Replace with YOUR real project id from Console (not the placeholder text)
+powershell -ExecutionPolicy Bypass -File .\pulse\scripts\setup-gcp.ps1 -ProjectId pulse-fitness-cloud
 ```
 
-Or create the project from CLI too:
+### Mac / Linux / Git Bash
 
 ```bash
-./pulse/scripts/setup-gcp.sh \
-  --project=pulse-fitness-cloud \
-  --create-project \
-  --billing=YOUR_BILLING_ACCOUNT_ID
+cd /path/to/Bisync.cloud
+./pulse/scripts/setup-gcp.sh --project=pulse-fitness-cloud
 ```
 
 This creates Pulse-only: APIs, Artifact Registry `pulse`, Cloud SQL `pulse-pg`, DB `pulse`, secret `pulse-db-password`, WIF + deploy SA, and GitHub variables:
