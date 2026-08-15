@@ -2,7 +2,7 @@
 
 Hospitality operations platform — restaurant dashboard, revenue management, inventory, and vendor workflows.
 
-**Sister platform:** [`pulse/`](./pulse/) — **Pulse** fitness membership (own Cloud Run service `pulse-cloud`, own CD workflow `deploy-pulse.yml`). Completely separate from Bisync hospitality CI/CD.
+**Sister platform:** [`pulse/`](./pulse/) — **Pulse** fitness membership on a **separate GCP project / Cloud Run / `pulse` branch**. See [`pulse/DEPLOY.md`](./pulse/DEPLOY.md). Not deployed by Bisync `master`.
 
 **Design source:** [Figma Make — Bisync.cloud](https://www.figma.com/make/QgoQ4Z3lguzeuUlJU7ycoe/Bisync.cloud)
 
