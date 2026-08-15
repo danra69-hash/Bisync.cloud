@@ -183,6 +183,7 @@ if (-not (Invoke-GcloudQuiet sql instances describe $SqlInstance --project $Proj
     & $Gcloud sql instances create $SqlInstance `
         --project $ProjectId `
         --database-version=POSTGRES_16 `
+        --edition=ENTERPRISE `
         --tier=db-f1-micro `
         --region=$Region `
         --storage-auto-increase `

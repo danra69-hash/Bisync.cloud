@@ -172,6 +172,7 @@ if ! gcloud sql instances describe "${SQL_INSTANCE}" --project="${PROJECT_ID}" >
   gcloud sql instances create "${SQL_INSTANCE}" \
     --project="${PROJECT_ID}" \
     --database-version=POSTGRES_16 \
+    --edition=ENTERPRISE \
     --tier=db-f1-micro \
     --region="${REGION}" \
     --storage-auto-increase \
