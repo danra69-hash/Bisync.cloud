@@ -3,3 +3,5 @@
 CREATE DATABASE bisync_archive OWNER bisync;
 CREATE DATABASE bisync_audit OWNER bisync;
 CREATE DATABASE bisync_tag_suggestions OWNER bisync;
+-- Pulse fitness membership platform (standalone product under pulse/)
+CREATE DATABASE pulse OWNER bisync;

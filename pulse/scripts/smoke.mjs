@@ -25,6 +25,7 @@ async function req(path, { method = 'GET', token, body } = {}) {
 async function main() {
   const health = await req('/api/health');
   if (!health.ok) throw new Error('health failed');
+  if (health.db !== 'postgres') throw new Error(`expected postgres db, got ${health.db}`);
 
   const login = await req('/api/auth/login', {
     method: 'POST',

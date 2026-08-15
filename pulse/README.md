@@ -18,23 +18,54 @@ Standalone fitness-center operations platform (separate from Bisync.cloud hospit
 | Layer | Technology |
 |-------|------------|
 | Team web | React 19 + TypeScript + Vite + CSS tokens |
-| API | Node.js (Express) + JSON persistence |
+| API | Node.js (Express) + **PostgreSQL 16** |
 | Admin desktop | Electron |
+
+Default DB URL: `postgresql://bisync:bisync@127.0.0.1:5432/pulse`  
+Override with `PULSE_DATABASE_URL` or `DATABASE_URL`.
 
 ## Quick start
 
+### 0. PostgreSQL
+
+From repo root (same Docker Postgres as Bisync):
+
 ```bash
-# API (port 5400)
-cd pulse/api && npm install && npm run dev
-
-# Team web (port 5401) — proxies /api → API
-cd pulse/web && npm install && npm run dev
-
-# Admin desktop (loads web with surface=admin)
-cd pulse/desktop && npm install && npm run dev
+docker compose up -d
 ```
 
-Demo logins (password `pulse123` for all):
+Creates / uses database `pulse` (init SQL + API auto-create on first boot).
+
+### 1. API (port 5400)
+
+```bash
+cd pulse/api
+npm install
+npm run seed          # migrate + seed (safe to re-run)
+npm run dev
+```
+
+### 2. Team web (port 5401)
+
+```bash
+cd pulse/web
+npm install
+npm run dev
+```
+
+Vite proxies `/api` → API.
+
+### 3. Admin desktop (optional)
+
+```bash
+cd pulse/desktop
+npm install
+npm run dev
+```
+
+## Demo logins
+
+Password `pulse123` for all:
 
 | Email | Role |
 |-------|------|
@@ -44,7 +75,9 @@ Demo logins (password `pulse123` for all):
 | `coach@pulse.club` | Fitness Coach |
 | `sales@pulse.club` | Sales |
 
+Reset demo data: `cd pulse/api && npm run seed:force`
+
 ## Design
 
-Hallmark: genre **modern-minimal** · theme **Cobalt** · app shell **Workbench**.
+Hallmark: genre **modern-minimal** · theme **Cobalt** · app shell **Workbench**.  
 See `design.md`.

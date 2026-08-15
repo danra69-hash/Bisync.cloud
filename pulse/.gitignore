@@ -4,3 +4,6 @@ data/
 **/release/
 .DS_Store
 *.log
+.env
+.env.*
+!.env.example

@@ -7,11 +7,14 @@
     "dev": "node --watch src/server.mjs",
     "start": "node src/server.mjs",
     "seed": "node src/seed.mjs",
+    "seed:force": "node src/seed.mjs --force",
+    "migrate": "node -e \"import('./src/db.mjs').then(async m => { await m.migrate(); await m.closePool(); console.log('migrated'); })\"",
     "test": "node --test ../scripts/pulse-domain.test.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "nanoid": "^5.1.5"
+    "nanoid": "^5.1.5",
+    "pg": "^8.16.3"
   }
 }
