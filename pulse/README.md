@@ -9,6 +9,17 @@
 | Deploy branch | `master` | **`pulse`** |
 | Workflow | `deploy.yml` | `deploy-pulse.yml` |
 
+## Multi-tenancy
+
+Pulse is **company → location** scoped:
+
+- Staff belong to one or more companies (role per company).
+- Coaches/Sales may be limited to specific locations; Admin/Management/Accounting see all locations in their company.
+- API sends `X-Pulse-Company-Id` and optional `X-Pulse-Location-Id`.
+- Demo seed: **Pulse Fitness** (Downtown + Westside) and **Atlas Fit** (Harbor).
+
+Demo logins (password `pulse123`): `admin@pulse.club`, `mgmt@pulse.club`, `coach@pulse.club`, `sales@pulse.club`, `accounting@pulse.club`, plus `admin@atlas.fit` for the second company.
+
 ## Local
 
 ```bash

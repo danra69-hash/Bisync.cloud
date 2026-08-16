@@ -272,6 +272,32 @@ a:hover {
   font-weight: 600;
 }
 
+.topnav-tenant {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: auto;
+  margin-right: 0.75rem;
+}
+
+.tenant-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 8.5rem;
+}
+
+.tenant-field select {
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  padding: 0.28rem 0.45rem;
+  max-width: 11rem;
+}
+
 .topnav-user {
   display: flex;
   align-items: center;
@@ -640,6 +666,25 @@ textarea {
   .grid-2,
   .form-grid.two {
     grid-template-columns: 1fr;
+  }
+  .topnav {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--nav-h);
+    padding: 0.5rem 0.75rem;
+  }
+  .topnav-tenant {
+    order: 3;
+    width: 100%;
+    margin: 0.35rem 0 0;
+  }
+  .tenant-field {
+    flex: 1;
+    min-width: 0;
+  }
+  .tenant-field select {
+    max-width: none;
+    width: 100%;
   }
   .topnav-user span.role-label {
     display: none;

@@ -4,11 +4,12 @@ import type { Surface } from '../App';
 import { PulseMark } from '../components/PulseMark';
 
 const DEMOS = [
-  { email: 'admin@pulse.club', label: 'Admin' },
+  { email: 'admin@pulse.club', label: 'Pulse Admin' },
   { email: 'mgmt@pulse.club', label: 'Management' },
   { email: 'accounting@pulse.club', label: 'Accounting' },
   { email: 'coach@pulse.club', label: 'Coach' },
   { email: 'sales@pulse.club', label: 'Sales' },
+  { email: 'admin@atlas.fit', label: 'Atlas Admin' },
 ];
 
 export function LoginPage({
@@ -49,9 +50,9 @@ export function LoginPage({
           </div>
           <div className="login-hero reveal is-in">
             <p className="eyebrow">Fitness membership ops</p>
-            <h1>Run the floor from one workbench.</h1>
+            <h1>Run every club from one workbench.</h1>
             <p>
-              Membership CRM, trainer appointments, equipment, and training detail — role-gated for
+              Multi-tenant membership CRM across companies and locations — role-gated for
               Management, Admin, Accounting, Coaches, and Sales.
             </p>
           </div>

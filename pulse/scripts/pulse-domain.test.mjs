@@ -7,6 +7,7 @@ import {
   ROLE_MODULES,
   requireRole,
 } from '../api/src/domain.mjs';
+import { isCompanyWideRole, tenantWhere } from '../api/src/tenant.mjs';
 
 test('role modules: sales cannot access payments', () => {
   const sales = { role: 'sales' };
@@ -53,4 +54,22 @@ test('promotion scheduler window', () => {
     isPromotionActive({ ...promo, status: 'ended' }, new Date('2026-08-14T12:00:00.000Z')),
     false,
   );
+});
+
+test('company-wide roles see all locations', () => {
+  assert.equal(isCompanyWideRole('admin'), true);
+  assert.equal(isCompanyWideRole('management'), true);
+  assert.equal(isCompanyWideRole('accounting'), true);
+  assert.equal(isCompanyWideRole('fitness_coach'), false);
+  assert.equal(isCompanyWideRole('sales'), false);
+});
+
+test('tenantWhere builds company and location clauses', () => {
+  const companyOnly = tenantWhere('m', 'co_1', null);
+  assert.equal(companyOnly.clause, 'm.company_id = $1');
+  assert.deepEqual(companyOnly.params, ['co_1']);
+
+  const withLoc = tenantWhere('e', 'co_1', 'loc_2', 1, 'location_id');
+  assert.equal(withLoc.clause, 'e.company_id = $1 AND e.location_id = $2');
+  assert.deepEqual(withLoc.params, ['co_1', 'loc_2']);
 });

@@ -179,8 +179,12 @@ export function AppointmentsPage() {
               </label>
             </div>
             <label className="field">
-              <span>Location</span>
-              <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+              <span>Area / room</span>
+              <input
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                placeholder="Floor B, Studio 1…"
+              />
             </label>
             <label className="field">
               <span>Notes</span>

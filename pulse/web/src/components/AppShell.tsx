@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import type { ModuleId, User } from '../lib/api';
+import type { Membership, ModuleId, User } from '../lib/api';
 import type { Surface } from '../App';
 import { PulseMark } from './PulseMark';
 
@@ -8,15 +8,29 @@ export function AppShell({
   user,
   surface,
   nav,
+  memberships,
+  companyId,
+  locationId,
+  onCompanyChange,
+  onLocationChange,
   onLogout,
   children,
 }: {
   user: User;
   surface: Surface;
   nav: { id: ModuleId; path: string; label: string }[];
+  memberships: Membership[];
+  companyId: string | null;
+  locationId: string | null;
+  onCompanyChange: (companyId: string) => void;
+  onLocationChange: (locationId: string | null) => void;
   onLogout: () => void;
   children: ReactNode;
 }) {
+  const membership = memberships.find((m) => m.companyId === companyId) || memberships[0];
+  const locations = membership?.locations ?? [];
+  const companyWide = user.role === 'management' || user.role === 'admin' || user.role === 'accounting';
+
   return (
     <div className="app-shell">
       <header className="topnav">
@@ -37,6 +51,37 @@ export function AppShell({
             </NavLink>
           ))}
         </nav>
+        <div className="topnav-tenant" aria-label="Company and location">
+          <label className="tenant-field">
+            <span className="eyebrow">Company</span>
+            <select
+              value={companyId || ''}
+              onChange={(e) => onCompanyChange(e.target.value)}
+              aria-label="Company"
+            >
+              {memberships.map((m) => (
+                <option key={m.companyId} value={m.companyId}>
+                  {m.companyName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="tenant-field">
+            <span className="eyebrow">Location</span>
+            <select
+              value={locationId || 'all'}
+              onChange={(e) => onLocationChange(e.target.value === 'all' ? null : e.target.value)}
+              aria-label="Location"
+            >
+              {companyWide ? <option value="all">All locations</option> : null}
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="topnav-user">
           <div>
             <strong>{user.name}</strong>
@@ -47,7 +92,9 @@ export function AppShell({
           </button>
         </div>
       </header>
-      <main className="app-main">{children}</main>
+      <main className="app-main" key={`${companyId || ''}:${locationId || 'all'}`}>
+        {children}
+      </main>
     </div>
   );
 }

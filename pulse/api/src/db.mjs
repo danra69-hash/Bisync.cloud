@@ -13,6 +13,7 @@ export {
   applyPromotion,
   nowIso,
 } from './domain.mjs';
+export { isCompanyWideRole, modulesForRole, tenantWhere, COMPANY_WIDE_ROLES } from './tenant.mjs';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +31,6 @@ export function connectionConfig() {
   const cloudSql = process.env.PULSE_CLOUDSQL_CONNECTION || process.env.INSTANCE_CONNECTION_NAME;
 
   if (cloudSql) {
-    // Cloud Run + Cloud SQL Auth Proxy unix socket (object form avoids URL password quirks)
     return {
       user,
       password,
@@ -86,6 +86,33 @@ export function id(prefix) {
   return `${prefix}_${nanoid(10)}`;
 }
 
+export function mapCompany(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    currency: row.currency,
+    timezone: row.timezone,
+    plans: row.plans ?? ['Day Pass', 'Silver', 'Gold', 'Platinum'],
+    active: row.active,
+    createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+  };
+}
+
+export function mapLocation(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    companyId: row.company_id,
+    code: row.code,
+    name: row.name,
+    address: row.address ?? '',
+    active: row.active,
+    createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+  };
+}
+
 export function mapUser(row) {
   if (!row) return null;
   return {
@@ -103,6 +130,8 @@ export function mapMember(row) {
   if (!row) return null;
   return {
     id: row.id,
+    companyId: row.company_id,
+    homeLocationId: row.home_location_id ?? null,
     memberCode: row.member_code,
     firstName: row.first_name,
     lastName: row.last_name,
@@ -122,6 +151,7 @@ export function mapPromo(row) {
   if (!row) return null;
   return {
     id: row.id,
+    companyId: row.company_id,
     name: row.name,
     code: row.code,
     discountType: row.discount_type,
@@ -138,6 +168,7 @@ export function mapInvoice(row) {
   if (!row) return null;
   return {
     id: row.id,
+    companyId: row.company_id,
     number: row.number,
     memberId: row.member_id,
     status: row.status,
@@ -156,6 +187,7 @@ export function mapPayment(row) {
   if (!row) return null;
   return {
     id: row.id,
+    companyId: row.company_id,
     memberId: row.member_id,
     invoiceId: row.invoice_id,
     amount: Number(row.amount),
@@ -168,28 +200,36 @@ export function mapPayment(row) {
 
 export function mapAppointment(row) {
   if (!row) return null;
+  const area = row.area ?? row.location ?? '';
   return {
     id: row.id,
+    companyId: row.company_id,
+    locationId: row.location_id ?? null,
     memberId: row.member_id,
     coachUserId: row.coach_user_id,
     title: row.title,
     startsAt: row.starts_at?.toISOString?.() ?? row.starts_at,
     endsAt: row.ends_at?.toISOString?.() ?? row.ends_at,
     status: row.status,
-    location: row.location,
+    area,
+    location: area, // back-compat for older UI fields
     notes: row.notes,
   };
 }
 
 export function mapEquipment(row) {
   if (!row) return null;
+  const area = row.area ?? row.location ?? '';
   return {
     id: row.id,
+    companyId: row.company_id,
+    locationId: row.location_id ?? null,
     code: row.code,
     name: row.name,
     category: row.category,
     status: row.status,
-    location: row.location,
+    area,
+    location: area,
     lastServiceAt: row.last_service_at?.toISOString?.() ?? row.last_service_at,
     notes: row.notes,
   };
@@ -199,6 +239,7 @@ export function mapActivity(row) {
   if (!row) return null;
   return {
     id: row.id,
+    companyId: row.company_id,
     name: row.name,
     description: row.description,
   };
@@ -208,6 +249,8 @@ export function mapTraining(row) {
   if (!row) return null;
   return {
     id: row.id,
+    companyId: row.company_id,
+    locationId: row.location_id ?? null,
     memberId: row.member_id,
     coachUserId: row.coach_user_id,
     activityTypeId: row.activity_type_id,
@@ -220,8 +263,6 @@ export function mapTraining(row) {
 }
 
 export async function ensureDatabaseExists() {
-  // Cloud Run + Cloud SQL: the deploy workflow already creates the DB.
-  // The app DB user typically cannot CREATE DATABASE / connect as admin.
   const cloudSql = process.env.PULSE_CLOUDSQL_CONNECTION || process.env.INSTANCE_CONNECTION_NAME;
   if (cloudSql || process.env.PULSE_SKIP_ENSURE_DB === '1') {
     console.log('Skipping ensureDatabaseExists (Cloud SQL / managed DB).');
@@ -242,17 +283,171 @@ export async function ensureDatabaseExists() {
   }
 }
 
+async function columnExists(table, column) {
+  const { rows } = await query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [table, column],
+  );
+  return rows.length > 0;
+}
+
+async function addColumnIfMissing(table, column, ddl) {
+  if (!(await columnExists(table, column))) {
+    await query(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
+async function dropUniqueIfExists(table, constraintName) {
+  await query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${constraintName}`);
+}
+
+async function ensureUnique(table, constraintName, columnsSql) {
+  const { rows } = await query(
+    `SELECT 1 FROM pg_constraint WHERE conname = $1`,
+    [constraintName],
+  );
+  if (!rows.length) {
+    await query(`ALTER TABLE ${table} ADD CONSTRAINT ${constraintName} UNIQUE ${columnsSql}`);
+  }
+}
+
+/** Evolve legacy single-club tables into multi-tenant columns + backfill. */
+async function ensureTenantColumnsAndBackfill() {
+  await addColumnIfMissing('sessions', 'company_id', 'TEXT REFERENCES companies(id) ON DELETE SET NULL');
+  await addColumnIfMissing('sessions', 'location_id', 'TEXT REFERENCES locations(id) ON DELETE SET NULL');
+
+  await addColumnIfMissing('members', 'company_id', 'TEXT REFERENCES companies(id)');
+  await addColumnIfMissing('members', 'home_location_id', 'TEXT REFERENCES locations(id)');
+
+  await addColumnIfMissing('promotions', 'company_id', 'TEXT REFERENCES companies(id)');
+  await addColumnIfMissing('invoices', 'company_id', 'TEXT REFERENCES companies(id)');
+  await addColumnIfMissing('payments', 'company_id', 'TEXT REFERENCES companies(id)');
+
+  await addColumnIfMissing('appointments', 'company_id', 'TEXT REFERENCES companies(id)');
+  await addColumnIfMissing('appointments', 'location_id', 'TEXT REFERENCES locations(id)');
+  await addColumnIfMissing('appointments', 'area', "TEXT NOT NULL DEFAULT ''");
+
+  await addColumnIfMissing('equipment', 'company_id', 'TEXT REFERENCES companies(id)');
+  await addColumnIfMissing('equipment', 'location_id', 'TEXT REFERENCES locations(id)');
+  await addColumnIfMissing('equipment', 'area', "TEXT NOT NULL DEFAULT ''");
+
+  await addColumnIfMissing('activity_types', 'company_id', 'TEXT REFERENCES companies(id)');
+  await addColumnIfMissing('training_sessions', 'company_id', 'TEXT REFERENCES companies(id)');
+  await addColumnIfMissing('training_sessions', 'location_id', 'TEXT REFERENCES locations(id)');
+
+  // Rename free-text location → area when legacy column still exists.
+  if (await columnExists('appointments', 'location')) {
+    await query(`UPDATE appointments SET area = location WHERE (area IS NULL OR area = '') AND location IS NOT NULL`);
+  }
+  if (await columnExists('equipment', 'location')) {
+    await query(`UPDATE equipment SET area = location WHERE (area IS NULL OR area = '') AND location IS NOT NULL`);
+  }
+
+  // Drop legacy global uniques so composite uniques can be added after backfill.
+  await dropUniqueIfExists('members', 'members_member_code_key');
+  await dropUniqueIfExists('promotions', 'promotions_code_key');
+  await dropUniqueIfExists('invoices', 'invoices_number_key');
+  await dropUniqueIfExists('equipment', 'equipment_code_key');
+  await dropUniqueIfExists('activity_types', 'activity_types_name_key');
+
+  const companies = await query('SELECT COUNT(*)::int AS n FROM companies');
+  if (companies.rows[0].n === 0) {
+    const companyId = id('co');
+    const locDowntown = id('loc');
+    const locWest = id('loc');
+    const meta = await query('SELECT * FROM club_meta WHERE id = 1');
+    const m = meta.rows[0];
+    await query(
+      `INSERT INTO companies (id, code, name, currency, timezone, plans, active, created_at)
+       VALUES ($1,'PULS',$2,$3,$4,$5::jsonb,TRUE,NOW())`,
+      [
+        companyId,
+        m?.club_name || 'Pulse Fitness Club',
+        m?.currency || 'USD',
+        m?.timezone || 'UTC',
+        JSON.stringify(m?.plans || ['Day Pass', 'Silver', 'Gold', 'Platinum']),
+      ],
+    );
+    await query(
+      `INSERT INTO locations (id, company_id, code, name, address, active, created_at) VALUES
+        ($1,$3,'DT','Downtown','100 Main St',TRUE,NOW()),
+        ($2,$3,'WS','Westside','220 Harbor Ave',TRUE,NOW())`,
+      [locDowntown, locWest, companyId],
+    );
+
+    await query(`UPDATE members SET company_id = $1, home_location_id = COALESCE(home_location_id, $2) WHERE company_id IS NULL`, [
+      companyId,
+      locDowntown,
+    ]);
+    await query(`UPDATE promotions SET company_id = $1 WHERE company_id IS NULL`, [companyId]);
+    await query(`UPDATE invoices SET company_id = $1 WHERE company_id IS NULL`, [companyId]);
+    await query(`UPDATE payments SET company_id = $1 WHERE company_id IS NULL`, [companyId]);
+    await query(`UPDATE appointments SET company_id = $1, location_id = COALESCE(location_id, $2) WHERE company_id IS NULL`, [
+      companyId,
+      locDowntown,
+    ]);
+    await query(`UPDATE equipment SET company_id = $1, location_id = COALESCE(location_id, $2) WHERE company_id IS NULL`, [
+      companyId,
+      locDowntown,
+    ]);
+    await query(`UPDATE activity_types SET company_id = $1 WHERE company_id IS NULL`, [companyId]);
+    await query(`UPDATE training_sessions SET company_id = $1, location_id = COALESCE(location_id, $2) WHERE company_id IS NULL`, [
+      companyId,
+      locDowntown,
+    ]);
+
+    const users = await query('SELECT id, role FROM users');
+    for (const u of users.rows) {
+      await query(
+        `INSERT INTO user_company_memberships (user_id, company_id, role)
+         VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [u.id, companyId, u.role],
+      );
+      // Location-scoped roles get both clubs; company-wide roles rely on membership alone.
+      if (u.role === 'fitness_coach' || u.role === 'sales') {
+        await query(
+          `INSERT INTO user_location_access (user_id, location_id) VALUES ($1,$2), ($1,$3)
+           ON CONFLICT DO NOTHING`,
+          [u.id, locDowntown, locWest],
+        );
+      }
+    }
+    console.log(`Backfilled default company ${companyId} with Downtown + Westside locations.`);
+  }
+
+  await ensureUnique('members', 'members_company_code_uq', '(company_id, member_code)');
+  await ensureUnique('promotions', 'promotions_company_code_uq', '(company_id, code)');
+  await ensureUnique('invoices', 'invoices_company_number_uq', '(company_id, number)');
+  await ensureUnique('equipment', 'equipment_company_code_uq', '(company_id, code)');
+  await ensureUnique('activity_types', 'activity_types_company_name_uq', '(company_id, name)');
+}
+
 export async function migrate() {
   await ensureDatabaseExists();
   const schemaPath = path.resolve(__dirname, '../sql/schema.sql');
   const sql = fs.readFileSync(schemaPath, 'utf8');
   await query(sql);
-  await query(
-    `INSERT INTO club_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING`,
-  );
+  await query(`INSERT INTO club_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
+  await ensureTenantColumnsAndBackfill();
 }
 
-export async function getMeta() {
+export async function getMeta(companyId = null) {
+  if (companyId) {
+    const { rows } = await query('SELECT * FROM companies WHERE id = $1', [companyId]);
+    const row = rows[0];
+    if (row) {
+      return {
+        clubName: row.name,
+        companyId: row.id,
+        companyCode: row.code,
+        currency: row.currency,
+        timezone: row.timezone,
+        plans: row.plans ?? ['Day Pass', 'Silver', 'Gold', 'Platinum'],
+        roles: ROLES,
+      };
+    }
+  }
   const { rows } = await query('SELECT * FROM club_meta WHERE id = 1');
   const row = rows[0];
   return {
@@ -262,6 +457,59 @@ export async function getMeta() {
     plans: row?.plans ?? ['Day Pass', 'Silver', 'Gold', 'Platinum'],
     roles: ROLES,
   };
+}
+
+export async function loadUserMemberships(userId) {
+  const { rows } = await query(
+    `SELECT m.company_id, m.role, c.code AS company_code, c.name AS company_name,
+            c.currency, c.timezone, c.plans, c.active AS company_active
+     FROM user_company_memberships m
+     JOIN companies c ON c.id = m.company_id
+     WHERE m.user_id = $1 AND c.active = TRUE
+     ORDER BY c.name`,
+    [userId],
+  );
+
+  const memberships = [];
+  for (const r of rows) {
+    const locs = await query(
+      `SELECT l.* FROM locations l
+       WHERE l.company_id = $1 AND l.active = TRUE
+         AND (
+           EXISTS (
+             SELECT 1 FROM user_company_memberships ucm
+             WHERE ucm.user_id = $2 AND ucm.company_id = $1
+               AND ucm.role IN ('management','admin','accounting')
+           )
+           OR EXISTS (
+             SELECT 1 FROM user_location_access ula
+             WHERE ula.user_id = $2 AND ula.location_id = l.id
+           )
+         )
+       ORDER BY l.name`,
+      [r.company_id, userId],
+    );
+    // Company-wide roles see all locations even if access rows are empty.
+    let locationRows = locs.rows;
+    if (!locationRows.length && ['management', 'admin', 'accounting'].includes(r.role)) {
+      const all = await query(
+        `SELECT * FROM locations WHERE company_id = $1 AND active = TRUE ORDER BY name`,
+        [r.company_id],
+      );
+      locationRows = all.rows;
+    }
+    memberships.push({
+      companyId: r.company_id,
+      companyCode: r.company_code,
+      companyName: r.company_name,
+      role: r.role,
+      currency: r.currency,
+      timezone: r.timezone,
+      plans: r.plans,
+      locations: locationRows.map(mapLocation),
+    });
+  }
+  return memberships;
 }
 
 export async function closePool() {

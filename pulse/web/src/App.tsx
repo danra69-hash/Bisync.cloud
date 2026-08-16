@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
-import { api, getToken, setToken, type ModuleId, type User } from './lib/api';
+import {
+  api,
+  clearTenant,
+  getCompanyId,
+  getLocationId,
+  getToken,
+  setCompanyId,
+  setLocationId,
+  setToken,
+  type Membership,
+  type ModuleId,
+  type User,
+} from './lib/api';
 import { LoginPage } from './pages/LoginPage';
 import { AppShell } from './components/AppShell';
 import { DashboardPage } from './pages/DashboardPage';
@@ -37,10 +49,44 @@ function detectSurface(params: URLSearchParams): Surface {
   return 'team';
 }
 
+function applyTenantDefaults(
+  memberships: Membership[],
+  preferredCompany?: string | null,
+  preferredLocation?: string | null,
+) {
+  const company =
+    memberships.find((m) => m.companyId === preferredCompany) ||
+    memberships.find((m) => m.companyId === getCompanyId()) ||
+    memberships[0];
+  if (!company) {
+    clearTenant();
+    return { companyId: null as string | null, locationId: null as string | null };
+  }
+  setCompanyId(company.companyId);
+  const companyWide =
+    company.role === 'management' || company.role === 'admin' || company.role === 'accounting';
+  const storedLoc = preferredLocation ?? getLocationId();
+  const locOk = company.locations.some((l) => l.id === storedLoc);
+  if (locOk) {
+    setLocationId(storedLoc);
+    return { companyId: company.companyId, locationId: storedLoc };
+  }
+  if (companyWide) {
+    setLocationId(null);
+    return { companyId: company.companyId, locationId: null };
+  }
+  const first = company.locations[0]?.id || null;
+  setLocationId(first);
+  return { companyId: company.companyId, locationId: first };
+}
+
 export default function App() {
   const [params] = useSearchParams();
   const surface = useMemo(() => detectSurface(params), [params]);
   const [user, setUser] = useState<User | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [companyId, setCompanyIdState] = useState<string | null>(getCompanyId());
+  const [locationId, setLocationIdState] = useState<string | null>(getLocationId());
   const [loading, setLoading] = useState(true);
   const [bootError, setBootError] = useState<string | null>(null);
 
@@ -50,9 +96,30 @@ export default function App() {
       setLoading(false);
       return;
     }
-    api<{ user: User }>('/api/auth/me')
-      .then((r) => setUser(r.user))
-      .catch(() => setToken(null))
+    api<{
+      user: User;
+      memberships: Membership[];
+      defaultCompanyId?: string;
+      defaultLocationId?: string | null;
+    }>('/api/auth/me')
+      .then((r) => {
+        const list = r.memberships || r.user.memberships || [];
+        setMemberships(list);
+        const tenant = applyTenantDefaults(list, r.defaultCompanyId, r.defaultLocationId);
+        setCompanyIdState(tenant.companyId);
+        setLocationIdState(tenant.locationId);
+        const membership = list.find((m) => m.companyId === tenant.companyId);
+        setUser({
+          ...r.user,
+          role: membership?.role || r.user.role,
+          roleLabel: membership ? membership.role.replace(/_/g, ' ') : r.user.roleLabel,
+          modules: r.user.modules,
+        });
+      })
+      .catch(() => {
+        setToken(null);
+        clearTenant();
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -69,19 +136,36 @@ export default function App() {
     );
     nodes.forEach((n) => io.observe(n));
     return () => io.disconnect();
-  }, [user, loading]);
+  }, [user, loading, companyId, locationId]);
 
   async function login(email: string, password: string) {
     setBootError(null);
-    const res = await api<{ token: string; user: User }>('/api/auth/login', {
+    const res = await api<{
+      token: string;
+      user: User;
+      memberships: Membership[];
+      defaultCompanyId: string;
+      defaultLocationId: string | null;
+    }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    if (surface === 'admin' && res.user.role !== 'admin' && res.user.role !== 'management') {
+    const list = res.memberships || [];
+    const membership = list.find((m) => m.companyId === res.defaultCompanyId) || list[0];
+    const role = membership?.role || res.user.role;
+    if (surface === 'admin' && role !== 'admin' && role !== 'management') {
       throw new Error('Admin desktop requires Admin or Management role');
     }
     setToken(res.token);
-    setUser(res.user);
+    setMemberships(list);
+    const tenant = applyTenantDefaults(list, res.defaultCompanyId, res.defaultLocationId);
+    setCompanyIdState(tenant.companyId);
+    setLocationIdState(tenant.locationId);
+    setUser({
+      ...res.user,
+      role,
+      memberships: list,
+    });
   }
 
   async function logout() {
@@ -91,7 +175,43 @@ export default function App() {
       /* ignore */
     }
     setToken(null);
+    clearTenant();
     setUser(null);
+    setMemberships([]);
+    setCompanyIdState(null);
+    setLocationIdState(null);
+  }
+
+  function handleCompanyChange(nextCompanyId: string) {
+    const membership = memberships.find((m) => m.companyId === nextCompanyId);
+    if (!membership || !user) return;
+    setCompanyId(nextCompanyId);
+    setCompanyIdState(nextCompanyId);
+    const companyWide =
+      membership.role === 'management' ||
+      membership.role === 'admin' ||
+      membership.role === 'accounting';
+    const nextLoc = companyWide ? null : membership.locations[0]?.id || null;
+    setLocationId(nextLoc);
+    setLocationIdState(nextLoc);
+    const roleModules: Record<string, ModuleId[]> = {
+      management: MODULE_ROUTES.map((m) => m.id),
+      admin: MODULE_ROUTES.map((m) => m.id),
+      accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions'],
+      fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
+      sales: ['dashboard', 'members', 'promotions', 'appointments'],
+    };
+    setUser({
+      ...user,
+      role: membership.role,
+      roleLabel: membership.role.replace(/_/g, ' '),
+      modules: roleModules[membership.role] || user.modules,
+    });
+  }
+
+  function handleLocationChange(nextLocationId: string | null) {
+    setLocationId(nextLocationId);
+    setLocationIdState(nextLocationId);
   }
 
   if (loading) {
@@ -106,11 +226,22 @@ export default function App() {
     return <LoginPage surface={surface} onLogin={login} error={bootError} setError={setBootError} />;
   }
 
+  const activeMembership = memberships.find((m) => m.companyId === companyId);
+  const effectiveRole = activeMembership?.role || user.role;
+  const modules = user.modules?.length
+    ? user.modules
+    : (({
+        management: MODULE_ROUTES.map((m) => m.id),
+        admin: MODULE_ROUTES.map((m) => m.id),
+        accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions'],
+        fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
+        sales: ['dashboard', 'members', 'promotions', 'appointments'],
+      }[effectiveRole] as ModuleId[]) || []);
+
   const nav = MODULE_ROUTES.filter((m) => {
-    if (!user.modules.includes(m.id)) return false;
+    if (!modules.includes(m.id)) return false;
     if (surface === 'admin') return true;
-    // Team web: hide admin-heavy team directory unless management
-    if (m.adminOnly && user.role !== 'management' && user.role !== 'admin') return false;
+    if (m.adminOnly && effectiveRole !== 'management' && effectiveRole !== 'admin') return false;
     return true;
   });
 
@@ -119,7 +250,17 @@ export default function App() {
       <Route
         path="/app/*"
         element={
-          <AppShell user={user} surface={surface} nav={nav} onLogout={logout}>
+          <AppShell
+            user={{ ...user, role: effectiveRole }}
+            surface={surface}
+            nav={nav}
+            memberships={memberships}
+            companyId={companyId}
+            locationId={locationId}
+            onCompanyChange={handleCompanyChange}
+            onLocationChange={handleLocationChange}
+            onLogout={logout}
+          >
             <Routes>
               <Route index element={<DashboardPage />} />
               <Route path="members" element={<MembersPage />} />

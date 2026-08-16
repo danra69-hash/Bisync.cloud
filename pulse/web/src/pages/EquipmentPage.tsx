@@ -45,7 +45,7 @@ export function EquipmentPage() {
         <div>
           <p className="eyebrow">Floor</p>
           <h1>Fitness equipment</h1>
-          <p>Track availability, location, and maintenance for every machine.</p>
+          <p>Track availability, floor area, and maintenance for every machine.</p>
         </div>
       </div>
       {error ? <div className="error-banner">{error}</div> : null}

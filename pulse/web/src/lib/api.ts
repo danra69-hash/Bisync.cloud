@@ -11,6 +11,26 @@ export type ModuleId =
   | 'training'
   | 'team';
 
+export interface Location {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  address: string;
+  active: boolean;
+}
+
+export interface Membership {
+  companyId: string;
+  companyCode: string;
+  companyName: string;
+  role: Role;
+  currency?: string;
+  timezone?: string;
+  plans?: string[];
+  locations: Location[];
+}
+
 export interface User {
   id: string;
   name: string;
@@ -19,10 +39,13 @@ export interface User {
   roleLabel: string;
   modules: ModuleId[];
   active: boolean;
+  memberships?: Membership[];
 }
 
 export interface Member {
   id: string;
+  companyId?: string;
+  homeLocationId?: string | null;
   memberCode: string;
   firstName: string;
   lastName: string;
@@ -81,12 +104,15 @@ export interface Promotion {
 
 export interface Appointment {
   id: string;
+  companyId?: string;
+  locationId?: string | null;
   memberId: string;
   coachUserId: string;
   title: string;
   startsAt: string;
   endsAt: string;
   status: string;
+  area?: string;
   location: string;
   notes: string;
   member?: Member | null;
@@ -95,10 +121,13 @@ export interface Appointment {
 
 export interface Equipment {
   id: string;
+  companyId?: string;
+  locationId?: string | null;
   code: string;
   name: string;
   category: string;
   status: string;
+  area?: string;
   location: string;
   lastServiceAt: string;
   notes: string;
@@ -143,6 +172,8 @@ export interface DashboardData {
 }
 
 const TOKEN_KEY = 'pulse_token';
+const COMPANY_KEY = 'pulse_company_id';
+const LOCATION_KEY = 'pulse_location_id';
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -153,11 +184,38 @@ export function setToken(token: string | null) {
   else localStorage.setItem(TOKEN_KEY, token);
 }
 
+export function getCompanyId() {
+  return localStorage.getItem(COMPANY_KEY);
+}
+
+export function setCompanyId(id: string | null) {
+  if (!id) localStorage.removeItem(COMPANY_KEY);
+  else localStorage.setItem(COMPANY_KEY, id);
+}
+
+export function getLocationId() {
+  return localStorage.getItem(LOCATION_KEY);
+}
+
+export function setLocationId(id: string | null) {
+  if (!id || id === 'all') localStorage.removeItem(LOCATION_KEY);
+  else localStorage.setItem(LOCATION_KEY, id);
+}
+
+export function clearTenant() {
+  setCompanyId(null);
+  setLocationId(null);
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  const companyId = getCompanyId();
+  if (companyId) headers.set('X-Pulse-Company-Id', companyId);
+  const locationId = getLocationId();
+  if (locationId) headers.set('X-Pulse-Location-Id', locationId);
   const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
     let message = res.statusText;
