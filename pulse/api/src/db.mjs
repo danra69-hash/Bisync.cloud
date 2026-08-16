@@ -421,6 +421,15 @@ async function ensureTenantColumnsAndBackfill() {
   await ensureUnique('invoices', 'invoices_company_number_uq', '(company_id, number)');
   await ensureUnique('equipment', 'equipment_company_code_uq', '(company_id, code)');
   await ensureUnique('activity_types', 'activity_types_company_name_uq', '(company_id, name)');
+
+  // Indexes that reference tenant columns — must run AFTER columns exist on legacy DBs.
+  await query(`CREATE INDEX IF NOT EXISTS idx_locations_company ON locations(company_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_members_company ON members(company_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_invoices_company ON invoices(company_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_payments_company ON payments(company_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_appointments_company ON appointments(company_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_equipment_company ON equipment(company_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_training_company ON training_sessions(company_id)`);
 }
 
 export async function migrate() {

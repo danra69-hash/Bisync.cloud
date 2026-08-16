@@ -171,15 +171,9 @@ CREATE TABLE IF NOT EXISTS training_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_locations_company ON locations(company_id);
-CREATE INDEX IF NOT EXISTS idx_members_company ON members(company_id);
 CREATE INDEX IF NOT EXISTS idx_members_status ON members(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_member ON invoices(member_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_company ON invoices(company_id);
 CREATE INDEX IF NOT EXISTS idx_payments_member ON payments(member_id);
-CREATE INDEX IF NOT EXISTS idx_payments_company ON payments(company_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_starts ON appointments(starts_at);
-CREATE INDEX IF NOT EXISTS idx_appointments_company ON appointments(company_id);
-CREATE INDEX IF NOT EXISTS idx_equipment_company ON equipment(company_id);
 CREATE INDEX IF NOT EXISTS idx_training_started ON training_sessions(started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_training_company ON training_sessions(company_id);
+
