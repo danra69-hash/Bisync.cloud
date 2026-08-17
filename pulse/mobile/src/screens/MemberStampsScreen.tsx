@@ -106,6 +106,9 @@ export function MemberStampsScreen() {
                   disabled={used}
                   accessibilityRole="button"
                   accessibilityLabel={`Stamp ${s.index}`}
+                  {...(Platform.OS === 'web' && !used
+                    ? ({ onClick: () => chooseStamp(pack, s), cursor: 'pointer' } as object)
+                    : {})}
                 >
                   <Text style={[styles.stampText, used && styles.stampTextDone]}>
                     {used ? '✕' : s.index}
