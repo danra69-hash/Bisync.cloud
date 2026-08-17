@@ -1,4 +1,4 @@
-export type Role = 'superuser' | 'management' | 'admin' | 'accounting' | 'fitness_coach' | 'sales';
+export type Role = string;
 
 export type ModuleId =
   | 'dashboard'
@@ -27,6 +27,9 @@ export interface Membership {
   companyCode: string;
   companyName: string;
   role: Role;
+  roleLabel?: string;
+  modules?: ModuleId[];
+  companyWide?: boolean;
   currency?: string;
   timezone?: string;
   plans?: string[];

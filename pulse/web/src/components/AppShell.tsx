@@ -30,10 +30,12 @@ export function AppShell({
   const membership = memberships.find((m) => m.companyId === companyId) || memberships[0];
   const locations = membership?.locations ?? [];
   const companyWide =
-    user.role === 'superuser' ||
-    user.role === 'management' ||
-    user.role === 'admin' ||
-    user.role === 'accounting';
+    typeof membership?.companyWide === 'boolean'
+      ? membership.companyWide
+      : user.role === 'superuser' ||
+        user.role === 'management' ||
+        user.role === 'admin' ||
+        user.role === 'accounting';
 
   return (
     <div className="app-shell">

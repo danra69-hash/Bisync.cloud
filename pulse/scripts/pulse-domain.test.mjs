@@ -8,6 +8,8 @@ import {
   ALL_MODULES,
   DEFAULT_PLAN_PRICES,
   requireRole,
+  normalizeRoleCode,
+  sanitizeRoleModules,
 } from '../api/src/domain.mjs';
 import { isCompanyWideRole, tenantWhere } from '../api/src/tenant.mjs';
 
@@ -90,6 +92,22 @@ test('company-wide roles see all locations', () => {
   assert.equal(isCompanyWideRole('accounting'), true);
   assert.equal(isCompanyWideRole('fitness_coach'), false);
   assert.equal(isCompanyWideRole('sales'), false);
+  assert.equal(isCompanyWideRole('custom_x', true), true);
+  assert.equal(isCompanyWideRole('custom_x', false), false);
+});
+
+test('custom role helpers sanitize modules and slug codes', () => {
+  assert.equal(normalizeRoleCode('Front Desk!'), 'front_desk');
+  assert.deepEqual(sanitizeRoleModules(['members', 'nope', 'team']), ['members', 'team']);
+  assert.ok(ALL_MODULES.includes('system_config'));
+});
+
+test('requireRole honors user.modules override for custom roles', () => {
+  assert.equal(
+    requireRole({ role: 'custom_front_desk', modules: ['members', 'dashboard'] }, ['members']),
+    true,
+  );
+  assert.equal(requireRole({ role: 'custom_front_desk', modules: ['members'] }, ['payments']), false);
 });
 
 test('tenantWhere builds company and location clauses', () => {

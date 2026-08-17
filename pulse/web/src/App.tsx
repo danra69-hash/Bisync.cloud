@@ -43,7 +43,8 @@ const MODULE_ROUTES: { id: ModuleId; path: string; label: string; adminOnly?: bo
   { id: 'team', path: '/app/team', label: 'Team', adminOnly: true },
 ];
 
-function isCompanyWide(role: string) {
+function isCompanyWide(role: string, hint?: boolean) {
+  if (typeof hint === 'boolean') return hint;
   return role === 'superuser' || role === 'management' || role === 'admin' || role === 'accounting';
 }
 
@@ -80,7 +81,7 @@ function applyTenantDefaults(
     return { companyId: null as string | null, locationId: null as string | null };
   }
   setCompanyId(company.companyId);
-  const companyWide = isCompanyWide(company.role);
+  const companyWide = isCompanyWide(company.role, company.companyWide);
   const storedLoc = preferredLocation ?? getLocationId();
   const locOk = company.locations.some((l) => l.id === storedLoc);
   if (locOk) {
@@ -203,15 +204,15 @@ export default function App() {
     if (!membership || !user) return;
     setCompanyId(nextCompanyId);
     setCompanyIdState(nextCompanyId);
-    const companyWide = isCompanyWide(membership.role);
+    const companyWide = isCompanyWide(membership.role, membership.companyWide);
     const nextLoc = companyWide ? null : membership.locations[0]?.id || null;
     setLocationId(nextLoc);
     setLocationIdState(nextLoc);
     setUser({
       ...user,
       role: membership.role,
-      roleLabel: membership.role.replace(/_/g, ' '),
-      modules: ROLE_MODULE_FALLBACK[membership.role] || user.modules,
+      roleLabel: membership.roleLabel || membership.role.replace(/_/g, ' '),
+      modules: membership.modules || ROLE_MODULE_FALLBACK[membership.role] || user.modules,
     });
   }
 
@@ -236,13 +237,16 @@ export default function App() {
   const effectiveRole = activeMembership?.role || user.role;
   const modules = user.modules?.length
     ? user.modules
-    : ROLE_MODULE_FALLBACK[effectiveRole] || [];
+    : activeMembership?.modules?.length
+      ? activeMembership.modules
+      : ROLE_MODULE_FALLBACK[effectiveRole] || [];
 
   const nav = MODULE_ROUTES.filter((m) => {
     if (!modules.includes(m.id)) return false;
     if (surface === 'admin') return true;
     if (
       m.adminOnly &&
+      !modules.includes('team') &&
       effectiveRole !== 'management' &&
       effectiveRole !== 'admin' &&
       effectiveRole !== 'superuser'

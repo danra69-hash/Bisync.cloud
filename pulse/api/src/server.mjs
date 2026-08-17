@@ -10,6 +10,7 @@ import {
   nowIso,
   ROLE_LABELS,
   ROLE_MODULES,
+  ALL_MODULES,
   requireRole,
   computeInvoiceTotals,
   isPromotionActive,
@@ -27,6 +28,9 @@ import {
   mapProduct,
   loadUserMemberships,
   isCompanyWideRole,
+  resolveRoleAccess,
+  listRolesForCompany,
+  createCompanyRole,
 } from './db.mjs';
 import { seed } from './seed.mjs';
 import { mountMobileRoutes } from './mobile-routes.mjs';
@@ -42,7 +46,7 @@ function publicUser(u, extras = {}) {
   const { password, ...rest } = u;
   return {
     ...rest,
-    roleLabel: ROLE_LABELS[u.role] ?? u.role,
+    roleLabel: ROLE_LABELS[u.role] ?? String(u.role || '').replace(/_/g, ' '),
     modules: ROLE_MODULES[u.role] ?? [],
     ...extras,
   };
@@ -113,12 +117,17 @@ async function tenant(req, res, next) {
       [req.sessionToken, membership.companyId, locationId],
     );
 
-    req.user = { ...req.user, role: membership.role };
+    req.user = {
+      ...req.user,
+      role: membership.role,
+      modules: membership.modules || (await resolveRoleAccess(membership.role, membership.companyId)).modules,
+    };
     req.tenant = {
       companyId: membership.companyId,
       locationId,
       role: membership.role,
       membership,
+      companyWide: Boolean(membership.companyWide),
     };
     next();
   } catch (err) {
@@ -201,7 +210,11 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
     )
   `);
 
-  const scopedUser = publicUser({ ...user, role: membership.role }, { memberships });
+  const access = await resolveRoleAccess(membership.role, membership.companyId);
+  const scopedUser = publicUser(
+    { ...user, role: membership.role },
+    { memberships, modules: access.modules, roleLabel: access.label },
+  );
   res.json({
     token,
     user: scopedUser,
@@ -221,8 +234,12 @@ app.get('/api/auth/me', auth, asyncHandler(async (req, res) => {
   const companyId = req.headers['x-pulse-company-id'] || req.sessionRow?.company_id || memberships[0]?.companyId;
   const membership = memberships.find((m) => m.companyId === companyId) || memberships[0];
   const role = membership?.role || req.user.role;
+  const access = await resolveRoleAccess(role, membership?.companyId || null);
   res.json({
-    user: publicUser({ ...req.user, role }, { memberships }),
+    user: publicUser(
+      { ...req.user, role },
+      { memberships, modules: access.modules, roleLabel: access.label },
+    ),
     memberships,
     defaultCompanyId: membership?.companyId || null,
     defaultLocationId: req.sessionRow?.location_id || membership?.locations?.[0]?.id || null,
@@ -347,10 +364,11 @@ app.get('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) =
   const teammates = [];
   for (const r of rows) {
     const role = r.membership_role;
-    const companyWide = isCompanyWideRole(role);
+    const access = await resolveRoleAccess(role, companyId);
+    const companyWide = access.companyWide;
     let locationIds = [];
     if (!companyWide) {
-      const access = await query(
+      const accessLocs = await query(
         `SELECT ula.location_id
          FROM user_location_access ula
          JOIN locations l ON l.id = ula.location_id
@@ -358,14 +376,14 @@ app.get('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) =
          ORDER BY l.name`,
         [r.id, companyId],
       );
-      locationIds = access.rows.map((a) => a.location_id);
+      locationIds = accessLocs.rows.map((a) => a.location_id);
     } else {
       locationIds = locations.map((l) => l.id);
     }
-    const pub = publicUser({
-      ...mapUser(r),
-      role,
-    });
+    const pub = publicUser(
+      { ...mapUser(r), role },
+      { modules: access.modules, roleLabel: access.label },
+    );
     teammates.push({
       ...pub,
       locationIds,
@@ -374,7 +392,10 @@ app.get('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) =
     });
   }
 
-  res.json({ teammates, locations });
+  const roles = await listRolesForCompany(companyId, {
+    includeSuperuser: req.user.role === 'superuser',
+  });
+  res.json({ teammates, locations, roles, allModules: ALL_MODULES });
 }));
 
 app.get('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
@@ -389,27 +410,28 @@ app.get('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, re
   if (!rows.length) return res.status(404).json({ error: 'Teammate not found' });
   const r = rows[0];
   const role = r.membership_role;
-  const companyWide = isCompanyWideRole(role);
+  const access = await resolveRoleAccess(role, companyId);
+  const companyWide = access.companyWide;
   const locRes = await query(
     `SELECT id, code, name FROM locations WHERE company_id = $1 AND active = TRUE ORDER BY name`,
     [companyId],
   );
   let locationIds = locRes.rows.map((l) => l.id);
   if (!companyWide) {
-    const access = await query(
+    const accessLocs = await query(
       `SELECT ula.location_id
        FROM user_location_access ula
        JOIN locations l ON l.id = ula.location_id
        WHERE ula.user_id = $1 AND l.company_id = $2`,
       [r.id, companyId],
     );
-    locationIds = access.rows.map((a) => a.location_id);
+    locationIds = accessLocs.rows.map((a) => a.location_id);
   }
   res.json({
-    ...publicUser({ ...mapUser(r), role }),
+    ...publicUser({ ...mapUser(r), role }, { modules: access.modules, roleLabel: access.label }),
     locationIds,
     companyWide,
-    modules: ROLE_MODULES[role] || [],
+    modules: access.modules,
   });
 }));
 
@@ -438,9 +460,12 @@ app.patch('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, 
   const password = b.password != null && String(b.password).trim() ? String(b.password) : null;
 
   if (!name || !email) return res.status(400).json({ error: 'name and email required' });
-  if (!ROLE_MODULES[role]) return res.status(400).json({ error: 'Invalid role' });
   if (role === 'superuser' && req.user.role !== 'superuser') {
     return res.status(403).json({ error: 'Only a superuser can assign the superuser role' });
+  }
+  const access = await resolveRoleAccess(role, companyId);
+  if (!ROLE_MODULES[role] && !access.builtin && !(await roleCodeExists(companyId, role))) {
+    return res.status(400).json({ error: 'Invalid role' });
   }
 
   const emailClash = await query(
@@ -474,7 +499,7 @@ app.patch('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, 
     [userId, companyId],
   );
 
-  const companyWide = isCompanyWideRole(role);
+  const companyWide = access.companyWide;
   let locationIds = Array.isArray(b.locationIds) ? b.locationIds.map(String) : [];
   if (!companyWide) {
     if (!locationIds.length) {
@@ -495,7 +520,10 @@ app.patch('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, 
 
   const updated = await query('SELECT * FROM users WHERE id = $1', [userId]);
   res.json({
-    ...publicUser({ ...mapUser(updated.rows[0]), role }),
+    ...publicUser(
+      { ...mapUser(updated.rows[0]), role },
+      { modules: access.modules, roleLabel: access.label },
+    ),
     locationIds: companyWide
       ? (
           await query(`SELECT id FROM locations WHERE company_id = $1 AND active = TRUE`, [companyId])
@@ -508,14 +536,17 @@ app.patch('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, 
 app.post('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
   const { name, email, role, password, locationIds } = req.body || {};
   if (!name || !email || !role) return res.status(400).json({ error: 'name, email, role required' });
-  if (!ROLE_MODULES[role]) return res.status(400).json({ error: 'Invalid role' });
   if (role === 'superuser' && req.user.role !== 'superuser') {
     return res.status(403).json({ error: 'Only a superuser can assign the superuser role' });
   }
-  if (!isCompanyWideRole(role)) {
+  const access = await resolveRoleAccess(role, req.tenant.companyId);
+  if (!ROLE_MODULES[role] && !(await roleCodeExists(req.tenant.companyId, role))) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+  if (!access.companyWide) {
     const ids = Array.isArray(locationIds) ? locationIds : [];
     if (!ids.length) {
-      return res.status(400).json({ error: 'Select at least one location for coach/sales access' });
+      return res.status(400).json({ error: 'Select at least one location for location-scoped roles' });
     }
   }
   const exists = await query('SELECT * FROM users WHERE lower(email) = $1', [
@@ -557,7 +588,7 @@ app.post('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) 
      WHERE ula.location_id = l.id AND ula.user_id = $1 AND l.company_id = $2`,
     [userId, req.tenant.companyId],
   );
-  if (!isCompanyWideRole(role) && Array.isArray(locationIds)) {
+  if (!access.companyWide && Array.isArray(locationIds)) {
     for (const lid of locationIds) {
       const ok = await query(
         `SELECT id FROM locations WHERE id = $1 AND company_id = $2 AND active = TRUE`,
@@ -573,7 +604,40 @@ app.post('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) 
   const user = mapUser(
     (await query('SELECT * FROM users WHERE id = $1', [userId])).rows[0],
   );
-  res.status(201).json(publicUser({ ...user, role }));
+  res.status(201).json(
+    publicUser({ ...user, role }, { modules: access.modules, roleLabel: access.label }),
+  );
+}));
+
+async function roleCodeExists(companyId, role) {
+  if (ROLE_MODULES[role]) return true;
+  const r = await query(
+    `SELECT 1 FROM company_roles WHERE company_id = $1 AND code = $2 AND active = TRUE`,
+    [companyId, role],
+  );
+  return r.rowCount > 0;
+}
+
+app.get('/api/roles', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
+  const roles = await listRolesForCompany(req.tenant.companyId, {
+    includeSuperuser: req.user.role === 'superuser',
+  });
+  res.json({ roles, allModules: ALL_MODULES });
+}));
+
+app.post('/api/roles', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  try {
+    const role = await createCompanyRole(req.tenant.companyId, {
+      label: b.label || b.name,
+      modules: b.modules,
+      companyWide: Boolean(b.companyWide),
+    });
+    res.status(201).json(role);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 }));
 
 app.get('/api/members', auth, tenant, gate('members'), asyncHandler(async (req, res) => {

@@ -45,8 +45,25 @@ export const DEFAULT_PLAN_PRICES = {
 };
 
 export function requireRole(user, modules) {
-  const allowed = ROLE_MODULES[user.role] ?? [];
+  const allowed = Array.isArray(user?.modules) && user.modules.length
+    ? user.modules
+    : (ROLE_MODULES[user.role] ?? []);
   return modules.every((m) => allowed.includes(m));
+}
+
+export function normalizeRoleCode(label) {
+  const base = String(label || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 28);
+  return base || 'role';
+}
+
+export function sanitizeRoleModules(modules) {
+  const wanted = Array.isArray(modules) ? modules.map(String) : [];
+  return ALL_MODULES.filter((m) => wanted.includes(m));
 }
 
 export function computeInvoiceTotals(lines, taxRate = 0.08) {

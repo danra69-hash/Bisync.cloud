@@ -4,11 +4,13 @@ import { ROLE_MODULES } from './domain.mjs';
 
 export const COMPANY_WIDE_ROLES = new Set(['superuser', 'management', 'admin', 'accounting']);
 
-export function isCompanyWideRole(role) {
+export function isCompanyWideRole(role, companyWideHint = null) {
+  if (typeof companyWideHint === 'boolean') return companyWideHint;
   return COMPANY_WIDE_ROLES.has(role);
 }
 
-export function modulesForRole(role) {
+export function modulesForRole(role, modulesHint = null) {
+  if (Array.isArray(modulesHint)) return modulesHint;
   return ROLE_MODULES[role] ?? [];
 }
 

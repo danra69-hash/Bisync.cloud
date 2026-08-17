@@ -10,6 +10,8 @@ import {
   ALL_MODULES,
   DEFAULT_PLAN_PRICES,
   requireRole,
+  normalizeRoleCode,
+  sanitizeRoleModules,
   computeInvoiceTotals,
   isPromotionActive,
   applyPromotion,
@@ -22,12 +24,15 @@ export {
   ALL_MODULES,
   DEFAULT_PLAN_PRICES,
   requireRole,
+  normalizeRoleCode,
+  sanitizeRoleModules,
   computeInvoiceTotals,
   isPromotionActive,
   applyPromotion,
   nowIso,
 };
 export { isCompanyWideRole, modulesForRole, tenantWhere, COMPANY_WIDE_ROLES } from './tenant.mjs';
+import { COMPANY_WIDE_ROLES } from './tenant.mjs';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -531,6 +536,98 @@ export async function getMeta(companyId = null) {
   };
 }
 
+export async function resolveRoleAccess(role, companyId = null) {
+  if (ROLE_MODULES[role]) {
+    return {
+      code: role,
+      label: ROLE_LABELS[role] || role,
+      modules: [...ROLE_MODULES[role]],
+      companyWide: COMPANY_WIDE_ROLES.has(role),
+      builtin: true,
+    };
+  }
+  if (!companyId) {
+    return { code: role, label: role, modules: [], companyWide: false, builtin: false };
+  }
+  const { rows } = await query(
+    `SELECT * FROM company_roles
+     WHERE company_id = $1 AND code = $2 AND active = TRUE
+     LIMIT 1`,
+    [companyId, role],
+  );
+  if (!rows.length) {
+    return { code: role, label: role, modules: [], companyWide: false, builtin: false };
+  }
+  const r = rows[0];
+  return {
+    id: r.id,
+    code: r.code,
+    label: r.label,
+    modules: sanitizeRoleModules(r.modules || []),
+    companyWide: Boolean(r.company_wide),
+    builtin: false,
+  };
+}
+
+export async function listRolesForCompany(companyId, { includeSuperuser = false } = {}) {
+  const builtin = ROLES.filter((r) => includeSuperuser || r !== 'superuser').map((r) => ({
+    code: r,
+    label: ROLE_LABELS[r] || r,
+    modules: [...(ROLE_MODULES[r] || [])],
+    companyWide: COMPANY_WIDE_ROLES.has(r),
+    builtin: true,
+  }));
+  const { rows } = await query(
+    `SELECT * FROM company_roles
+     WHERE company_id = $1 AND active = TRUE
+     ORDER BY label ASC`,
+    [companyId],
+  );
+  const custom = rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    label: r.label,
+    modules: sanitizeRoleModules(r.modules || []),
+    companyWide: Boolean(r.company_wide),
+    builtin: false,
+  }));
+  return [...builtin, ...custom];
+}
+
+export async function createCompanyRole(companyId, { label, modules, companyWide = false }) {
+  const cleanLabel = String(label || '').trim();
+  if (!cleanLabel) throw Object.assign(new Error('Role name required'), { status: 400 });
+  const mods = sanitizeRoleModules(modules);
+  if (!mods.length) throw Object.assign(new Error('Select at least one module'), { status: 400 });
+
+  let code = `custom_${normalizeRoleCode(cleanLabel)}`;
+  if (ROLE_MODULES[code] || ROLES.includes(code)) {
+    code = `${code}_${nanoid(4).toLowerCase()}`;
+  }
+  const clash = await query(
+    `SELECT 1 FROM company_roles WHERE company_id = $1 AND code = $2`,
+    [companyId, code],
+  );
+  if (clash.rowCount) {
+    code = `${code}_${nanoid(4).toLowerCase()}`;
+  }
+
+  const roleId = id('role');
+  await query(
+    `INSERT INTO company_roles (id, company_id, code, label, modules, company_wide, active, created_at)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6,TRUE,$7)`,
+    [roleId, companyId, code, cleanLabel, JSON.stringify(mods), Boolean(companyWide), nowIso()],
+  );
+  return {
+    id: roleId,
+    code,
+    label: cleanLabel,
+    modules: mods,
+    companyWide: Boolean(companyWide),
+    builtin: false,
+  };
+}
+
 export async function loadUserMemberships(userId) {
   const { rows } = await query(
     `SELECT m.company_id, m.role, c.code AS company_code, c.name AS company_name,
@@ -544,6 +641,7 @@ export async function loadUserMemberships(userId) {
 
   const memberships = [];
   for (const r of rows) {
+    const access = await resolveRoleAccess(r.role, r.company_id);
     const locs = await query(
       `SELECT l.* FROM locations l
        WHERE l.company_id = $1 AND l.active = TRUE
@@ -551,7 +649,14 @@ export async function loadUserMemberships(userId) {
            EXISTS (
              SELECT 1 FROM user_company_memberships ucm
              WHERE ucm.user_id = $2 AND ucm.company_id = $1
-               AND ucm.role IN ('superuser','management','admin','accounting')
+               AND (
+                 ucm.role IN ('superuser','management','admin','accounting')
+                 OR EXISTS (
+                   SELECT 1 FROM company_roles cr
+                   WHERE cr.company_id = $1 AND cr.code = ucm.role
+                     AND cr.company_wide = TRUE AND cr.active = TRUE
+                 )
+               )
            )
            OR EXISTS (
              SELECT 1 FROM user_location_access ula
@@ -563,7 +668,7 @@ export async function loadUserMemberships(userId) {
     );
     // Company-wide roles see all locations even if access rows are empty.
     let locationRows = locs.rows;
-    if (!locationRows.length && ['superuser', 'management', 'admin', 'accounting'].includes(r.role)) {
+    if (!locationRows.length && access.companyWide) {
       const all = await query(
         `SELECT * FROM locations WHERE company_id = $1 AND active = TRUE ORDER BY name`,
         [r.company_id],
@@ -575,6 +680,9 @@ export async function loadUserMemberships(userId) {
       companyCode: r.company_code,
       companyName: r.company_name,
       role: r.role,
+      roleLabel: access.label,
+      modules: access.modules,
+      companyWide: access.companyWide,
       currency: r.currency,
       timezone: r.timezone,
       plans: r.plans,

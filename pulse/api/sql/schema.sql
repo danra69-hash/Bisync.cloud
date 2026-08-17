@@ -54,6 +54,19 @@ CREATE TABLE IF NOT EXISTS user_location_access (
   PRIMARY KEY (user_id, location_id)
 );
 
+-- Company-defined roles (in addition to built-in ROLE_MODULES keys).
+CREATE TABLE IF NOT EXISTS company_roles (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  label TEXT NOT NULL,
+  modules JSONB NOT NULL DEFAULT '[]'::jsonb,
+  company_wide BOOLEAN NOT NULL DEFAULT FALSE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (company_id, code)
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
