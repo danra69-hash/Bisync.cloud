@@ -131,22 +131,24 @@ export function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Home</Text>
-            <Text style={styles.sub}>All appointments on your calendar</Text>
-          </View>
-          <Pressable
-            style={styles.addBtn}
-            onPress={() => openComposer()}
-            accessibilityRole="button"
-            accessibilityLabel="Add appointment"
-          >
-            <Text style={styles.addBtnText}>+ Add</Text>
-          </Pressable>
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Home</Text>
+          <Text style={styles.sub}>All appointments on your calendar</Text>
         </View>
+        <Pressable
+          style={styles.addBtn}
+          onPress={() => openComposer()}
+          accessibilityRole="button"
+          accessibilityLabel="Add appointment"
+          // @ts-expect-error web cursor
+          cursor="pointer"
+        >
+          <Text style={styles.addBtnText}>+ Add</Text>
+        </Pressable>
+      </View>
 
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {error && !composerOpen ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.calCard}>
@@ -372,8 +374,16 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.paper },
-  content: { padding: 16, gap: 12, paddingBottom: 40 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  content: { padding: 16, gap: 12, paddingBottom: 40, paddingTop: 8 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+    backgroundColor: colors.paper,
+  },
   title: { fontSize: 24, fontWeight: '700', color: colors.ink },
   sub: { color: colors.muted, marginTop: 2 },
   addBtn: {
