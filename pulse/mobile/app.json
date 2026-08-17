@@ -27,10 +27,15 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "club.pulse.mobile",
-      "permissions": ["CAMERA", "USE_BIOMETRIC", "USE_FINGERPRINT"]
+      "permissions": [
+        "CAMERA",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
       "expo-secure-store",
@@ -46,6 +51,9 @@
           "cameraPermission": "Allow mobile.pulse to scan QR codes."
         }
       ]
-    ]
+    ],
+    "experiments": {
+      "baseUrl": "/m"
+    }
   }
 }

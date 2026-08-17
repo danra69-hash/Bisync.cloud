@@ -12,6 +12,18 @@ export const colors = {
   white: '#FFFFFF',
 };
 
-export const API_BASE =
-  process.env.EXPO_PUBLIC_PULSE_API_URL ||
-  'https://pulse-cloud-etx3n2bf5q-as.a.run.app';
+const LIVE_API = 'https://pulse-cloud-etx3n2bf5q-as.a.run.app';
+
+function resolveApiBase() {
+  const fromEnv = process.env.EXPO_PUBLIC_PULSE_API_URL;
+  if (typeof fromEnv === 'string' && fromEnv.trim()) {
+    return fromEnv.replace(/\/$/, '');
+  }
+  // Hosted at /m on the same Cloud Run origin — call API relatively.
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return LIVE_API;
+}
+
+export const API_BASE = resolveApiBase();

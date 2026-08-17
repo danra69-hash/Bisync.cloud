@@ -2,6 +2,16 @@
 
 Expo (React Native) companion app for Pulse — **Subscriber** and **Fitness coach** modes.
 
+## Live URL
+
+Hosted with Pulse Cloud Run (Expo web build):
+
+**https://pulse-cloud-etx3n2bf5q-as.a.run.app/m/**
+
+Alias: `/mobile` → redirects to `/m/`.
+
+Open on a phone browser (Add to Home Screen) for a near-native experience. Camera QR works best in Chrome/Safari; PIN unlock works without biometrics on web.
+
 ## Features
 
 | | Subscriber | Fitness coach |
@@ -21,7 +31,7 @@ Password / PIN: `pulse123` / `1234`
 - Subscriber: `sam.nguyen@email.com`
 - Coach: `coach@pulse.club`
 
-## Run
+## Run locally (Expo Go / native)
 
 ```bash
 cd pulse/mobile
@@ -30,3 +40,10 @@ EXPO_PUBLIC_PULSE_API_URL=https://pulse-cloud-etx3n2bf5q-as.a.run.app npm start
 ```
 
 Then open in Expo Go (iOS/Android) or press `w` for web.
+
+## Build web bundle (served at /m/)
+
+```bash
+cd pulse/mobile
+npm run build:web
+```

@@ -12,6 +12,17 @@ RUN npm run build \
   && test -f dist/index.html \
   && test -f dist/favicon.svg
 
+# ── Mobile (Expo web — coach + subscriber) ───────────────────────────────────
+FROM node:22-alpine AS mobile-build
+WORKDIR /src/mobile
+COPY pulse/mobile/package.json pulse/mobile/package-lock.json ./
+RUN npm ci
+COPY pulse/mobile/ ./
+ENV EXPO_PUBLIC_PULSE_API_URL=
+RUN npm run build:web \
+  && test -f dist/index.html \
+  && test -d dist/_expo
+
 # ── API ──────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS api-build
 WORKDIR /src/api
@@ -25,9 +36,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV PULSE_WEB_DIST=/app/web/dist
+ENV PULSE_MOBILE_DIST=/app/mobile/dist
 RUN addgroup -S pulse && adduser -S pulse -G pulse
 COPY --from=api-build --chown=pulse:pulse /src/api /app
 COPY --from=web-build --chown=pulse:pulse /src/web/dist /app/web/dist
+COPY --from=mobile-build --chown=pulse:pulse /src/mobile/dist /app/mobile/dist
 USER pulse
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

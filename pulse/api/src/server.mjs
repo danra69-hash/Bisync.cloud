@@ -1348,9 +1348,25 @@ await seed();
 
 const webDist = process.env.PULSE_WEB_DIST
   || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
+const mobileDist = process.env.PULSE_MOBILE_DIST
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../mobile/dist');
+
+// mobile.pulse (Expo web) — must mount before the admin SPA catch-all.
+if (existsSync(mobileDist)) {
+  app.get(['/mobile', '/mobile/'], (_req, res) => res.redirect(302, '/m/'));
+  app.use('/m', express.static(mobileDist, { index: false, fallthrough: true }));
+  app.get(/^\/m(?:\/.*)?$/, (req, res, next) => {
+    if (/\.[a-z0-9]+$/i.test(req.path) && !req.path.endsWith('.html')) {
+      return res.status(404).send('Not found');
+    }
+    res.sendFile(path.join(mobileDist, 'index.html'), (err) => (err ? next(err) : undefined));
+  });
+  console.log(`Serving mobile.pulse from ${mobileDist} at /m/`);
+}
+
 if (existsSync(webDist)) {
   app.use(express.static(webDist, { index: false, fallthrough: true }));
-  app.get(/^(?!\/api(?:\/|$)).*/, (req, res, next) => {
+  app.get(/^(?!\/api(?:\/|$)|\/m(?:\/|$)|\/mobile(?:\/|$)).*/, (req, res, next) => {
     if (/\.[a-z0-9]+$/i.test(req.path) && !req.path.endsWith('.html')) {
       return res.status(404).send('Not found');
     }

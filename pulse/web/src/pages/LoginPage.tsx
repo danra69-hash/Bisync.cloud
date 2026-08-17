@@ -122,6 +122,12 @@ export function LoginPage({
               </button>
             ))}
           </div>
+          <p className="muted" style={{ marginTop: '1rem', fontSize: '0.85rem' }}>
+            Coach / member app:{' '}
+            <a href="/m/" style={{ color: 'inherit', fontWeight: 600 }}>
+              mobile.pulse (/m/)
+            </a>
+          </p>
         </form>
       </section>
     </div>

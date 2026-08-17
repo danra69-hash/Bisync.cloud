@@ -22,12 +22,12 @@ Demo logins (password `pulse123`): `admin@pulse.club`, `mgmt@pulse.club`, `coach
 
 ## mobile.pulse
 
-Native companion app (Expo) under [`mobile/`](./mobile/):
+Companion app for **subscribers** and **fitness coaches** under [`mobile/`](./mobile/).
 
-- Subscriber + Fitness coach modes
+**Live:** https://pulse-cloud-etx3n2bf5q-as.a.run.app/m/
+
 - Training sets (strength / cardio), calendar booking, coaching stamp card, QR attendance
-
-See [`mobile/README.md`](./mobile/README.md).
+- Also runnable via Expo Go — see [`mobile/README.md`](./mobile/README.md)
 
 ## Local
 
