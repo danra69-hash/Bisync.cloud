@@ -40,6 +40,8 @@ public sealed class LedgerPostingService(BisyncDbContext db)
         if (companyId <= 0)
             throw new InvalidOperationException("Company context is required for ledger operations.");
 
+        await SchemaPatcher.EnsureGlLedgerTablesAsync(db);
+
         var currency = CurrencyForCountry(countryCode);
         _ = currency;
 

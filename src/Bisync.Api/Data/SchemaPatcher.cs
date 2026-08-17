@@ -2843,7 +2843,7 @@ public static class SchemaPatcher
     public static Task EnsureTenantRegistryAsync(BisyncDbContext db) =>
         BackfillTenantConnectionsAsync(db);
 
-    static async Task EnsureGlLedgerTablesAsync(BisyncDbContext db)
+    public static async Task EnsureGlLedgerTablesAsync(BisyncDbContext db)
     {
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "GlAccounts" (
