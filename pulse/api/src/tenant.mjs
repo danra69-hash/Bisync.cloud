@@ -2,7 +2,7 @@
 
 import { ROLE_MODULES } from './domain.mjs';
 
-export const COMPANY_WIDE_ROLES = new Set(['management', 'admin', 'accounting']);
+export const COMPANY_WIDE_ROLES = new Set(['superuser', 'management', 'admin', 'accounting']);
 
 export function isCompanyWideRole(role) {
   return COMPANY_WIDE_ROLES.has(role);

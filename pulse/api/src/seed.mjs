@@ -8,6 +8,9 @@ import {
 } from './db.mjs';
 
 const PASSWORD = 'pulse123';
+const SUPERUSER_EMAIL = 'dra@cubevalue.com';
+const SUPERUSER_NAME = 'DRA';
+const SUPERUSER_PASSWORD = process.env.PULSE_SUPERUSER_PASSWORD || PASSWORD;
 
 const PULSE_USERS = [
   { email: 'admin@pulse.club', name: 'Ava Chen', role: 'admin' },
@@ -15,6 +18,7 @@ const PULSE_USERS = [
   { email: 'accounting@pulse.club', name: 'Priya Shah', role: 'accounting' },
   { email: 'coach@pulse.club', name: 'Jordan Blake', role: 'fitness_coach' },
   { email: 'sales@pulse.club', name: 'Elena Ortiz', role: 'sales' },
+  { email: SUPERUSER_EMAIL, name: SUPERUSER_NAME, role: 'superuser' },
 ];
 
 const ATLAS_USERS = [
@@ -90,8 +94,9 @@ export async function seed({ force = false } = {}) {
     try {
       await ensureSecondaryDemoTenant();
       await ensureMobileDemo();
+      await ensureSuperuser();
     } catch (err) {
-      console.warn('ensureSecondaryDemoTenant/mobile:', err.message);
+      console.warn('ensureSecondaryDemoTenant/mobile/superuser:', err.message);
     }
     return;
   }
@@ -132,10 +137,11 @@ export async function seed({ force = false } = {}) {
   for (const u of [...PULSE_USERS, ...ATLAS_USERS]) {
     const uid = id('usr');
     userIds[u.email] = uid;
+    const password = u.role === 'superuser' ? SUPERUSER_PASSWORD : PASSWORD;
     await query(
       `INSERT INTO users (id, name, email, role, password, active, created_at)
        VALUES ($1,$2,$3,$4,$5,TRUE,$6)`,
-      [uid, u.name, u.email, u.role, PASSWORD, nowIso()],
+      [uid, u.name, u.email, u.role, password, nowIso()],
     );
   }
 
@@ -151,6 +157,11 @@ export async function seed({ force = false } = {}) {
       );
     }
   }
+  // Superuser also belongs to Atlas with full access.
+  await query(
+    `INSERT INTO user_company_memberships (user_id, company_id, role) VALUES ($1,$2,'superuser')`,
+    [userIds[SUPERUSER_EMAIL], atlasCo],
+  );
   for (const u of ATLAS_USERS) {
     await query(
       `INSERT INTO user_company_memberships (user_id, company_id, role) VALUES ($1,$2,$3)`,
@@ -317,6 +328,42 @@ export async function seed({ force = false } = {}) {
     `Seeded Pulse multi-tenant demo: companies PULS + ATLA, locations Downtown/Westside/Harbor. Roles: ${ROLES.join(', ')}`,
   );
   console.log('mobile.pulse demo: subscriber sam.nguyen@email.com / pulse123 PIN 1234; coach@pulse.club / pulse123 PIN 1234');
+  console.log(`Superuser: ${SUPERUSER_EMAIL} (full access)`);
+  await ensureSuperuser();
+}
+
+/** Ensure platform superuser exists with membership on every company. */
+async function ensureSuperuser() {
+  const email = SUPERUSER_EMAIL.toLowerCase();
+  const existing = await query('SELECT id FROM users WHERE lower(email) = $1', [email]);
+  let userId;
+  if (existing.rowCount) {
+    userId = existing.rows[0].id;
+    await query(
+      `UPDATE users
+       SET name = $2, role = 'superuser', password = $3, active = TRUE
+       WHERE id = $1`,
+      [userId, SUPERUSER_NAME, SUPERUSER_PASSWORD],
+    );
+  } else {
+    userId = id('usr');
+    await query(
+      `INSERT INTO users (id, name, email, role, password, active, created_at)
+       VALUES ($1,$2,$3,'superuser',$4,TRUE,$5)`,
+      [userId, SUPERUSER_NAME, email, SUPERUSER_PASSWORD, nowIso()],
+    );
+  }
+
+  const companies = await query(`SELECT id FROM companies WHERE active = TRUE`);
+  for (const c of companies.rows) {
+    await query(
+      `INSERT INTO user_company_memberships (user_id, company_id, role)
+       VALUES ($1,$2,'superuser')
+       ON CONFLICT (user_id, company_id) DO UPDATE SET role = 'superuser'`,
+      [userId, c.id],
+    );
+  }
+  console.log(`Superuser ensured: ${email} → ${companies.rowCount} companies`);
 }
 
 async function seedMobileDemo({ companyId, memberId, locationId }) {

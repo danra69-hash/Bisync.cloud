@@ -1,4 +1,4 @@
-export type Role = 'management' | 'admin' | 'accounting' | 'fitness_coach' | 'sales';
+export type Role = 'superuser' | 'management' | 'admin' | 'accounting' | 'fitness_coach' | 'sales';
 
 export type ModuleId =
   | 'dashboard'
@@ -10,6 +10,7 @@ export type ModuleId =
   | 'equipment'
   | 'training'
   | 'products'
+  | 'system_config'
   | 'team';
 
 export interface Location {

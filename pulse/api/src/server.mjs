@@ -342,6 +342,9 @@ app.post('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) 
   const { name, email, role, password, locationIds } = req.body || {};
   if (!name || !email || !role) return res.status(400).json({ error: 'name, email, role required' });
   if (!ROLE_MODULES[role]) return res.status(400).json({ error: 'Invalid role' });
+  if (role === 'superuser' && req.user.role !== 'superuser') {
+    return res.status(403).json({ error: 'Only a superuser can assign the superuser role' });
+  }
   const exists = await query('SELECT * FROM users WHERE lower(email) = $1', [
     String(email).toLowerCase(),
   ]);
@@ -1194,6 +1197,145 @@ app.post('/api/products', auth, tenant, gate('products'), asyncHandler(async (re
     throw err;
   }
   res.status(201).json(product);
+}));
+
+app.get('/api/system-config', auth, tenant, gate('system_config'), asyncHandler(async (req, res) => {
+  const companyId = req.tenant.companyId;
+  const companyRes = await query(
+    `SELECT id, code, name, currency, timezone, plans, active, created_at
+     FROM companies WHERE id = $1`,
+    [companyId],
+  );
+  const company = companyRes.rows[0];
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+
+  const locationsRes = await query(
+    `SELECT * FROM locations WHERE company_id = $1 ORDER BY name`,
+    [companyId],
+  );
+
+  const memberships = await loadUserMemberships(req.user.id);
+  const isSuper = req.user.role === 'superuser' || memberships.some((m) => m.role === 'superuser');
+
+  res.json({
+    company: {
+      id: company.id,
+      code: company.code,
+      name: company.name,
+      currency: company.currency,
+      timezone: company.timezone,
+      plans: company.plans ?? [],
+      active: company.active,
+      createdAt: company.created_at,
+    },
+    locations: locationsRes.rows.map((r) => ({
+      id: r.id,
+      companyId: r.company_id,
+      code: r.code,
+      name: r.name,
+      address: r.address,
+      active: r.active,
+      createdAt: r.created_at,
+    })),
+    roles: Object.entries(ROLE_LABELS).map(([id, label]) => ({
+      id,
+      label,
+      modules: ROLE_MODULES[id] || [],
+    })),
+    isSuperuser: isSuper,
+    companies: isSuper
+      ? memberships.map((m) => ({
+          id: m.companyId,
+          code: m.companyCode,
+          name: m.companyName,
+          role: m.role,
+          locationCount: m.locations.length,
+        }))
+      : undefined,
+  });
+}));
+
+app.patch('/api/system-config', auth, tenant, gate('system_config'), asyncHandler(async (req, res) => {
+  const companyId = req.tenant.companyId;
+  const b = req.body || {};
+  const name = b.name != null ? String(b.name).trim() : null;
+  const currency = b.currency != null ? String(b.currency).trim().toUpperCase() : null;
+  const timezone = b.timezone != null ? String(b.timezone).trim() : null;
+  let plans = null;
+  if (b.plans != null) {
+    if (Array.isArray(b.plans)) {
+      plans = b.plans.map((p) => String(p).trim()).filter(Boolean);
+    } else if (typeof b.plans === 'string') {
+      plans = b.plans.split(/[,|\n]/).map((p) => p.trim()).filter(Boolean);
+    }
+  }
+
+  const current = await query(`SELECT * FROM companies WHERE id = $1`, [companyId]);
+  if (!current.rowCount) return res.status(404).json({ error: 'Company not found' });
+  const row = current.rows[0];
+
+  const nextName = name || row.name;
+  const nextCurrency = currency || row.currency;
+  const nextTimezone = timezone || row.timezone;
+  const nextPlans = plans || row.plans;
+
+  await query(
+    `UPDATE companies
+     SET name = $2, currency = $3, timezone = $4, plans = $5::jsonb
+     WHERE id = $1`,
+    [companyId, nextName, nextCurrency, nextTimezone, JSON.stringify(nextPlans)],
+  );
+  await query(
+    `UPDATE club_meta SET club_name = $1, currency = $2, timezone = $3, plans = $4::jsonb WHERE id = 1`,
+    [nextName, nextCurrency, nextTimezone, JSON.stringify(nextPlans)],
+  );
+
+  res.json({
+    ok: true,
+    company: {
+      id: companyId,
+      code: row.code,
+      name: nextName,
+      currency: nextCurrency,
+      timezone: nextTimezone,
+      plans: nextPlans,
+    },
+  });
+}));
+
+app.post('/api/system-config/locations', auth, tenant, gate('system_config'), asyncHandler(async (req, res) => {
+  const companyId = req.tenant.companyId;
+  const b = req.body || {};
+  const code = String(b.code || '').trim().toUpperCase();
+  const name = String(b.name || '').trim();
+  const address = String(b.address || '').trim();
+  if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+
+  const locId = id('loc');
+  try {
+    await query(
+      `INSERT INTO locations (id, company_id, code, name, address, active, created_at)
+       VALUES ($1,$2,$3,$4,$5,TRUE,$6)`,
+      [locId, companyId, code, name, address, nowIso()],
+    );
+  } catch (err) {
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: 'Location code already exists for this company' });
+    }
+    throw err;
+  }
+
+  const { rows } = await query(`SELECT * FROM locations WHERE id = $1`, [locId]);
+  const r = rows[0];
+  res.status(201).json({
+    id: r.id,
+    companyId: r.company_id,
+    code: r.code,
+    name: r.name,
+    address: r.address,
+    active: r.active,
+    createdAt: r.created_at,
+  });
 }));
 
 app.use((err, _req, res, _next) => {

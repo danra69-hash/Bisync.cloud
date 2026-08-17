@@ -4,6 +4,7 @@ import type { Surface } from '../App';
 import { PulseMark } from '../components/PulseMark';
 
 const DEMOS = [
+  { email: 'dra@cubevalue.com', label: 'Superuser' },
   { email: 'admin@pulse.club', label: 'Pulse Admin' },
   { email: 'mgmt@pulse.club', label: 'Management' },
   { email: 'accounting@pulse.club', label: 'Accounting' },

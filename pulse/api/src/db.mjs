@@ -7,6 +7,7 @@ import {
   ROLES,
   ROLE_LABELS,
   ROLE_MODULES,
+  ALL_MODULES,
   DEFAULT_PLAN_PRICES,
   requireRole,
   computeInvoiceTotals,
@@ -18,6 +19,7 @@ export {
   ROLES,
   ROLE_LABELS,
   ROLE_MODULES,
+  ALL_MODULES,
   DEFAULT_PLAN_PRICES,
   requireRole,
   computeInvoiceTotals,
@@ -549,7 +551,7 @@ export async function loadUserMemberships(userId) {
            EXISTS (
              SELECT 1 FROM user_company_memberships ucm
              WHERE ucm.user_id = $2 AND ucm.company_id = $1
-               AND ucm.role IN ('management','admin','accounting')
+               AND ucm.role IN ('superuser','management','admin','accounting')
            )
            OR EXISTS (
              SELECT 1 FROM user_location_access ula
@@ -561,7 +563,7 @@ export async function loadUserMemberships(userId) {
     );
     // Company-wide roles see all locations even if access rows are empty.
     let locationRows = locs.rows;
-    if (!locationRows.length && ['management', 'admin', 'accounting'].includes(r.role)) {
+    if (!locationRows.length && ['superuser', 'management', 'admin', 'accounting'].includes(r.role)) {
       const all = await query(
         `SELECT * FROM locations WHERE company_id = $1 AND active = TRUE ORDER BY name`,
         [r.company_id],

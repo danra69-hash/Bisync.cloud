@@ -5,6 +5,7 @@ import {
   applyPromotion,
   isPromotionActive,
   ROLE_MODULES,
+  ALL_MODULES,
   DEFAULT_PLAN_PRICES,
   requireRole,
 } from '../api/src/domain.mjs';
@@ -25,6 +26,16 @@ test('role modules: sales can access products', () => {
   assert.equal(ROLE_MODULES.admin.indexOf('products'), 2, 'Product should sit early in admin nav modules');
   assert.ok(!ROLE_MODULES.fitness_coach.includes('products'));
   assert.equal(requireRole({ role: 'fitness_coach' }, ['products']), false);
+});
+
+test('superuser has full module access including system_config', () => {
+  assert.deepEqual(ROLE_MODULES.superuser, ALL_MODULES);
+  assert.ok(ROLE_MODULES.superuser.includes('system_config'));
+  assert.equal(requireRole({ role: 'superuser' }, ['system_config', 'team', 'products']), true);
+  assert.equal(ROLE_MODULES.admin.indexOf('system_config'), 3, 'System Config follows Product');
+  assert.ok(ROLE_MODULES.management.includes('system_config'));
+  assert.ok(!ROLE_MODULES.sales.includes('system_config'));
+  assert.ok(!ROLE_MODULES.accounting.includes('system_config'));
 });
 
 test('default plan prices cover seed catalog', () => {
@@ -73,6 +84,7 @@ test('promotion scheduler window', () => {
 });
 
 test('company-wide roles see all locations', () => {
+  assert.equal(isCompanyWideRole('superuser'), true);
   assert.equal(isCompanyWideRole('admin'), true);
   assert.equal(isCompanyWideRole('management'), true);
   assert.equal(isCompanyWideRole('accounting'), true);

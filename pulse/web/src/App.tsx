@@ -24,6 +24,7 @@ import { AppointmentsPage } from './pages/AppointmentsPage';
 import { EquipmentPage } from './pages/EquipmentPage';
 import { TrainingPage } from './pages/TrainingPage';
 import { ProductsPage } from './pages/ProductsPage';
+import { SystemConfigPage } from './pages/SystemConfigPage';
 import { TeamPage } from './pages/TeamPage';
 
 export type Surface = 'team' | 'admin';
@@ -32,6 +33,7 @@ const MODULE_ROUTES: { id: ModuleId; path: string; label: string; adminOnly?: bo
   { id: 'dashboard', path: '/app', label: 'Dashboard' },
   { id: 'members', path: '/app/members', label: 'Members' },
   { id: 'products', path: '/app/products', label: 'Product' },
+  { id: 'system_config', path: '/app/system-config', label: 'System Config' },
   { id: 'payments', path: '/app/payments', label: 'Payments' },
   { id: 'invoices', path: '/app/invoices', label: 'Invoices' },
   { id: 'promotions', path: '/app/promotions', label: 'Promotions' },
@@ -40,6 +42,19 @@ const MODULE_ROUTES: { id: ModuleId; path: string; label: string; adminOnly?: bo
   { id: 'training', path: '/app/training', label: 'Training' },
   { id: 'team', path: '/app/team', label: 'Team', adminOnly: true },
 ];
+
+function isCompanyWide(role: string) {
+  return role === 'superuser' || role === 'management' || role === 'admin' || role === 'accounting';
+}
+
+const ROLE_MODULE_FALLBACK: Record<string, ModuleId[]> = {
+  superuser: MODULE_ROUTES.map((m) => m.id),
+  management: MODULE_ROUTES.map((m) => m.id),
+  admin: MODULE_ROUTES.map((m) => m.id),
+  accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
+  fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
+  sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
+};
 
 function detectSurface(params: URLSearchParams): Surface {
   const q = params.get('surface');
@@ -65,8 +80,7 @@ function applyTenantDefaults(
     return { companyId: null as string | null, locationId: null as string | null };
   }
   setCompanyId(company.companyId);
-  const companyWide =
-    company.role === 'management' || company.role === 'admin' || company.role === 'accounting';
+  const companyWide = isCompanyWide(company.role);
   const storedLoc = preferredLocation ?? getLocationId();
   const locOk = company.locations.some((l) => l.id === storedLoc);
   if (locOk) {
@@ -155,8 +169,8 @@ export default function App() {
     const list = res.memberships || [];
     const membership = list.find((m) => m.companyId === res.defaultCompanyId) || list[0];
     const role = membership?.role || res.user.role;
-    if (surface === 'admin' && role !== 'admin' && role !== 'management') {
-      throw new Error('Admin desktop requires Admin or Management role');
+    if (surface === 'admin' && role !== 'admin' && role !== 'management' && role !== 'superuser') {
+      throw new Error('Admin desktop requires Admin, Management, or Superuser role');
     }
     setToken(res.token);
     setMemberships(list);
@@ -189,25 +203,15 @@ export default function App() {
     if (!membership || !user) return;
     setCompanyId(nextCompanyId);
     setCompanyIdState(nextCompanyId);
-    const companyWide =
-      membership.role === 'management' ||
-      membership.role === 'admin' ||
-      membership.role === 'accounting';
+    const companyWide = isCompanyWide(membership.role);
     const nextLoc = companyWide ? null : membership.locations[0]?.id || null;
     setLocationId(nextLoc);
     setLocationIdState(nextLoc);
-    const roleModules: Record<string, ModuleId[]> = {
-      management: MODULE_ROUTES.map((m) => m.id),
-      admin: MODULE_ROUTES.map((m) => m.id),
-      accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
-      fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-      sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
-    };
     setUser({
       ...user,
       role: membership.role,
       roleLabel: membership.role.replace(/_/g, ' '),
-      modules: roleModules[membership.role] || user.modules,
+      modules: ROLE_MODULE_FALLBACK[membership.role] || user.modules,
     });
   }
 
@@ -232,18 +236,19 @@ export default function App() {
   const effectiveRole = activeMembership?.role || user.role;
   const modules = user.modules?.length
     ? user.modules
-    : (({
-        management: MODULE_ROUTES.map((m) => m.id),
-        admin: MODULE_ROUTES.map((m) => m.id),
-        accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
-        fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-        sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
-      }[effectiveRole] as ModuleId[]) || []);
+    : ROLE_MODULE_FALLBACK[effectiveRole] || [];
 
   const nav = MODULE_ROUTES.filter((m) => {
     if (!modules.includes(m.id)) return false;
     if (surface === 'admin') return true;
-    if (m.adminOnly && effectiveRole !== 'management' && effectiveRole !== 'admin') return false;
+    if (
+      m.adminOnly &&
+      effectiveRole !== 'management' &&
+      effectiveRole !== 'admin' &&
+      effectiveRole !== 'superuser'
+    ) {
+      return false;
+    }
     return true;
   });
 
@@ -273,6 +278,7 @@ export default function App() {
               <Route path="equipment" element={<EquipmentPage />} />
               <Route path="training" element={<TrainingPage />} />
               <Route path="products" element={<ProductsPage />} />
+              <Route path="system-config" element={<SystemConfigPage />} />
               <Route path="team" element={<TeamPage />} />
               <Route path="*" element={<Navigate to="/app" replace />} />
             </Routes>

@@ -10,6 +10,8 @@ const ROLES = [
   { id: 'sales', label: 'Sales' },
 ];
 
+// Superuser is seeded / platform-only — not creatable from Team invite.
+
 export function TeamPage() {
   const [rows, setRows] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function TeamPage() {
         <div>
           <p className="eyebrow">Admin</p>
           <h1>Team</h1>
-          <p>Management / Admin / Accounting / Fitness Coach / Sales — module access follows role.</p>
+          <p>Management / Admin / Accounting / Fitness Coach / Sales — module access follows role. Superuser is platform-seeded.</p>
         </div>
       </div>
       {error ? <div className="error-banner">{error}</div> : null}

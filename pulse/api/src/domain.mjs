@@ -1,8 +1,9 @@
 /** Pure Pulse domain helpers — no DB drivers (safe for CI unit tests). */
 
-export const ROLES = ['management', 'admin', 'accounting', 'fitness_coach', 'sales'];
+export const ROLES = ['superuser', 'management', 'admin', 'accounting', 'fitness_coach', 'sales'];
 
 export const ROLE_LABELS = {
+  superuser: 'Superuser',
   management: 'Management',
   admin: 'Admin',
   accounting: 'Accounting',
@@ -10,9 +11,26 @@ export const ROLE_LABELS = {
   sales: 'Sales',
 };
 
+/** Canonical module order used by nav + ROLE_MODULES. */
+export const ALL_MODULES = [
+  'dashboard',
+  'members',
+  'products',
+  'system_config',
+  'payments',
+  'invoices',
+  'promotions',
+  'appointments',
+  'equipment',
+  'training',
+  'team',
+];
+
 export const ROLE_MODULES = {
-  management: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'team'],
-  admin: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'team'],
+  // Platform operator — every module across every tenant membership.
+  superuser: [...ALL_MODULES],
+  management: [...ALL_MODULES],
+  admin: [...ALL_MODULES],
   accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
   fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
   sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
