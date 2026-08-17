@@ -2725,36 +2725,69 @@ public static class SchemaPatcher
             || !await DatabaseSchemaHelper.ColumnExistsAsync(db, "PurchaseOrders", "VendorAcceptExpiryDate"))
             return;
 
+        // Prefer a direct ALTER (idempotent when already date). Avoid relying solely on
+        // information_schema casing, which can miss the column on some Postgres setups.
         try
         {
             await db.Database.ExecuteSqlRawAsync("""
-                DO $$
-                BEGIN
-                  IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND lower(table_name) = lower('PurchaseOrders')
-                      AND lower(column_name) = lower('VendorAcceptExpiryDate')
-                      AND data_type IN ('text', 'character varying')
-                  ) THEN
-                    ALTER TABLE "PurchaseOrders"
-                    ALTER COLUMN "VendorAcceptExpiryDate" TYPE date
-                    USING (
-                      CASE
-                        WHEN "VendorAcceptExpiryDate" IS NULL
-                          OR btrim("VendorAcceptExpiryDate"::text) = '' THEN NULL
-                        WHEN "VendorAcceptExpiryDate"::text ~ '^\d{4}-\d{2}-\d{2}'
-                          THEN ("VendorAcceptExpiryDate"::text)::date
-                        ELSE NULL
-                      END
-                    );
-                  END IF;
-                END $$;
+                UPDATE "PurchaseOrders"
+                SET "VendorAcceptExpiryDate" = left(btrim("VendorAcceptExpiryDate"::text), 10)
+                WHERE "VendorAcceptExpiryDate" IS NOT NULL
+                  AND pg_typeof("VendorAcceptExpiryDate")::text IN ('text', 'character varying')
+                  AND length(btrim("VendorAcceptExpiryDate"::text)) >= 10
+                  AND left(btrim("VendorAcceptExpiryDate"::text), 10) ~ '^\d{4}-\d{2}-\d{2}$';
                 """);
         }
         catch
         {
-            // Concurrent alter or non-Postgres — leave column as-is.
+            // Column may already be date — typeof/update path not needed.
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE "PurchaseOrders"
+                ALTER COLUMN "VendorAcceptExpiryDate" TYPE date
+                USING (
+                  CASE
+                    WHEN "VendorAcceptExpiryDate" IS NULL THEN NULL
+                    WHEN pg_typeof("VendorAcceptExpiryDate")::text IN ('date') THEN "VendorAcceptExpiryDate"::date
+                    WHEN btrim("VendorAcceptExpiryDate"::text) = '' THEN NULL
+                    WHEN left(btrim("VendorAcceptExpiryDate"::text), 10) ~ '^\d{4}-\d{2}-\d{2}$'
+                      THEN left(btrim("VendorAcceptExpiryDate"::text), 10)::date
+                    ELSE NULL
+                  END
+                );
+                """);
+        }
+        catch
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync("""
+                    ALTER TABLE "PurchaseOrders"
+                    ALTER COLUMN "VendorAcceptExpiryDate" TYPE date
+                    USING (NULL::date);
+                    """);
+            }
+            catch
+            {
+                // Already date, or locked — leave as-is.
+            }
+        }
+
+        try
+        {
+            if (db.Database.GetDbConnection() is Npgsql.NpgsqlConnection npgsql)
+            {
+                if (npgsql.State != System.Data.ConnectionState.Open)
+                    await npgsql.OpenAsync();
+                await npgsql.ReloadTypesAsync();
+            }
+        }
+        catch
+        {
+            // Type reload is best-effort after ALTER.
         }
     }
 

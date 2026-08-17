@@ -518,6 +518,15 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.ToLocationExternalId).HasMaxLength(100);
         });
         modelBuilder.Entity<PurchaseOrder>().HasIndex(p => p.PoNumber).IsUnique();
+        // Legacy tenant DBs store VendorAcceptExpiryDate as TEXT; Npgsql cannot read DateOnly
+        // from text. Convert via string so both text and date columns work.
+        modelBuilder.Entity<PurchaseOrder>()
+            .Property(p => p.VendorAcceptExpiryDate)
+            .HasConversion(
+                v => v.HasValue ? v.Value.ToString("yyyy-MM-dd") : null,
+                v => string.IsNullOrWhiteSpace(v)
+                    ? null
+                    : (DateOnly.TryParse(v.Length >= 10 ? v[..10] : v, out var d) ? d : null));
         modelBuilder.Entity<PurchaseOrder>()
             .HasMany(p => p.Items)
             .WithOne(i => i.PurchaseOrder)
