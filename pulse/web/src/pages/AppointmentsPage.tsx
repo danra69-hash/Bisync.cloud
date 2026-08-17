@@ -25,8 +25,8 @@ export function AppointmentsPage() {
     setRows(a);
     setMembers(m.filter((x) => x.status === 'active' || x.status === 'lead'));
     try {
-      const team = await api<User[]>('/api/team');
-      setCoaches(team.filter((u) => u.role === 'fitness_coach'));
+      const team = await api<{ teammates: User[] }>('/api/team');
+      setCoaches((team.teammates || []).filter((u) => u.role === 'fitness_coach'));
     } catch {
       setCoaches([]);
     }

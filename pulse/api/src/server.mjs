@@ -320,22 +320,189 @@ app.get('/api/dashboard', auth, tenant, gate('dashboard'), asyncHandler(async (r
 }));
 
 app.get('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
+  const companyId = req.tenant.companyId;
   const { rows } = await query(
     `SELECT u.*, m.role AS membership_role
      FROM users u
      JOIN user_company_memberships m ON m.user_id = u.id
      WHERE m.company_id = $1
      ORDER BY u.created_at`,
-    [req.tenant.companyId],
+    [companyId],
   );
-  res.json(
-    rows.map((r) =>
-      publicUser({
-        ...mapUser(r),
-        role: r.membership_role,
-      }),
-    ),
+  const locRes = await query(
+    `SELECT id, code, name, address, active
+     FROM locations
+     WHERE company_id = $1 AND active = TRUE
+     ORDER BY name`,
+    [companyId],
   );
+  const locations = locRes.rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    address: r.address || '',
+    active: r.active,
+  }));
+
+  const teammates = [];
+  for (const r of rows) {
+    const role = r.membership_role;
+    const companyWide = isCompanyWideRole(role);
+    let locationIds = [];
+    if (!companyWide) {
+      const access = await query(
+        `SELECT ula.location_id
+         FROM user_location_access ula
+         JOIN locations l ON l.id = ula.location_id
+         WHERE ula.user_id = $1 AND l.company_id = $2 AND l.active = TRUE
+         ORDER BY l.name`,
+        [r.id, companyId],
+      );
+      locationIds = access.rows.map((a) => a.location_id);
+    } else {
+      locationIds = locations.map((l) => l.id);
+    }
+    const pub = publicUser({
+      ...mapUser(r),
+      role,
+    });
+    teammates.push({
+      ...pub,
+      locationIds,
+      locations: locations.filter((l) => locationIds.includes(l.id)),
+      companyWide,
+    });
+  }
+
+  res.json({ teammates, locations });
+}));
+
+app.get('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
+  const companyId = req.tenant.companyId;
+  const { rows } = await query(
+    `SELECT u.*, m.role AS membership_role
+     FROM users u
+     JOIN user_company_memberships m ON m.user_id = u.id
+     WHERE u.id = $1 AND m.company_id = $2`,
+    [req.params.id, companyId],
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Teammate not found' });
+  const r = rows[0];
+  const role = r.membership_role;
+  const companyWide = isCompanyWideRole(role);
+  const locRes = await query(
+    `SELECT id, code, name FROM locations WHERE company_id = $1 AND active = TRUE ORDER BY name`,
+    [companyId],
+  );
+  let locationIds = locRes.rows.map((l) => l.id);
+  if (!companyWide) {
+    const access = await query(
+      `SELECT ula.location_id
+       FROM user_location_access ula
+       JOIN locations l ON l.id = ula.location_id
+       WHERE ula.user_id = $1 AND l.company_id = $2`,
+      [r.id, companyId],
+    );
+    locationIds = access.rows.map((a) => a.location_id);
+  }
+  res.json({
+    ...publicUser({ ...mapUser(r), role }),
+    locationIds,
+    companyWide,
+    modules: ROLE_MODULES[role] || [],
+  });
+}));
+
+app.patch('/api/team/:id', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
+  const companyId = req.tenant.companyId;
+  const userId = req.params.id;
+  const b = req.body || {};
+
+  const existing = await query(
+    `SELECT u.*, m.role AS membership_role
+     FROM users u
+     JOIN user_company_memberships m ON m.user_id = u.id
+     WHERE u.id = $1 AND m.company_id = $2`,
+    [userId, companyId],
+  );
+  if (!existing.rowCount) return res.status(404).json({ error: 'Teammate not found' });
+  const current = existing.rows[0];
+  if (current.membership_role === 'superuser' && req.user.role !== 'superuser') {
+    return res.status(403).json({ error: 'Only a superuser can edit a superuser' });
+  }
+
+  const name = b.name != null ? String(b.name).trim() : current.name;
+  const email = b.email != null ? String(b.email).trim().toLowerCase() : current.email;
+  const role = b.role != null ? String(b.role) : current.membership_role;
+  const active = b.active != null ? Boolean(b.active) : current.active;
+  const password = b.password != null && String(b.password).trim() ? String(b.password) : null;
+
+  if (!name || !email) return res.status(400).json({ error: 'name and email required' });
+  if (!ROLE_MODULES[role]) return res.status(400).json({ error: 'Invalid role' });
+  if (role === 'superuser' && req.user.role !== 'superuser') {
+    return res.status(403).json({ error: 'Only a superuser can assign the superuser role' });
+  }
+
+  const emailClash = await query(
+    `SELECT id FROM users WHERE lower(email) = $1 AND id <> $2`,
+    [email, userId],
+  );
+  if (emailClash.rowCount) return res.status(409).json({ error: 'Email already in use' });
+
+  if (password) {
+    await query(
+      `UPDATE users SET name = $2, email = $3, role = $4, active = $5, password = $6 WHERE id = $1`,
+      [userId, name, email, role, active, password],
+    );
+  } else {
+    await query(
+      `UPDATE users SET name = $2, email = $3, role = $4, active = $5 WHERE id = $1`,
+      [userId, name, email, role, active],
+    );
+  }
+
+  await query(
+    `UPDATE user_company_memberships SET role = $3 WHERE user_id = $1 AND company_id = $2`,
+    [userId, companyId, role],
+  );
+
+  // Refresh location access for this company.
+  await query(
+    `DELETE FROM user_location_access ula
+     USING locations l
+     WHERE ula.location_id = l.id AND ula.user_id = $1 AND l.company_id = $2`,
+    [userId, companyId],
+  );
+
+  const companyWide = isCompanyWideRole(role);
+  let locationIds = Array.isArray(b.locationIds) ? b.locationIds.map(String) : [];
+  if (!companyWide) {
+    if (!locationIds.length) {
+      return res.status(400).json({ error: 'Select at least one location for this role' });
+    }
+    for (const lid of locationIds) {
+      const ok = await query(
+        `SELECT id FROM locations WHERE id = $1 AND company_id = $2 AND active = TRUE`,
+        [lid, companyId],
+      );
+      if (!ok.rowCount) continue;
+      await query(
+        `INSERT INTO user_location_access (user_id, location_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [userId, lid],
+      );
+    }
+  }
+
+  const updated = await query('SELECT * FROM users WHERE id = $1', [userId]);
+  res.json({
+    ...publicUser({ ...mapUser(updated.rows[0]), role }),
+    locationIds: companyWide
+      ? (
+          await query(`SELECT id FROM locations WHERE company_id = $1 AND active = TRUE`, [companyId])
+        ).rows.map((r) => r.id)
+      : locationIds,
+    companyWide,
+  });
 }));
 
 app.post('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) => {
@@ -345,12 +512,22 @@ app.post('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) 
   if (role === 'superuser' && req.user.role !== 'superuser') {
     return res.status(403).json({ error: 'Only a superuser can assign the superuser role' });
   }
+  if (!isCompanyWideRole(role)) {
+    const ids = Array.isArray(locationIds) ? locationIds : [];
+    if (!ids.length) {
+      return res.status(400).json({ error: 'Select at least one location for coach/sales access' });
+    }
+  }
   const exists = await query('SELECT * FROM users WHERE lower(email) = $1', [
     String(email).toLowerCase(),
   ]);
   let userId;
   if (exists.rowCount) {
     userId = exists.rows[0].id;
+    await query(
+      `UPDATE users SET name = $2, role = $3, active = TRUE WHERE id = $1`,
+      [userId, String(name).trim(), role],
+    );
   } else {
     userId = id('usr');
     await query(
@@ -372,10 +549,21 @@ app.post('/api/team', auth, tenant, gate('team'), asyncHandler(async (req, res) 
      ON CONFLICT (user_id, company_id) DO UPDATE SET role = EXCLUDED.role`,
     [userId, req.tenant.companyId, role],
   );
+
+  // Reset then apply location access for location-scoped roles.
+  await query(
+    `DELETE FROM user_location_access ula
+     USING locations l
+     WHERE ula.location_id = l.id AND ula.user_id = $1 AND l.company_id = $2`,
+    [userId, req.tenant.companyId],
+  );
   if (!isCompanyWideRole(role) && Array.isArray(locationIds)) {
     for (const lid of locationIds) {
-      const ok = req.tenant.membership.locations.some((l) => l.id === lid);
-      if (!ok) continue;
+      const ok = await query(
+        `SELECT id FROM locations WHERE id = $1 AND company_id = $2 AND active = TRUE`,
+        [lid, req.tenant.companyId],
+      );
+      if (!ok.rowCount) continue;
       await query(
         `INSERT INTO user_location_access (user_id, location_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
         [userId, lid],
