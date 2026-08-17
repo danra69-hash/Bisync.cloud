@@ -24,6 +24,7 @@ import {
   mapEquipment,
   mapActivity,
   mapTraining,
+  mapProduct,
   loadUserMemberships,
   isCompanyWideRole,
 } from './db.mjs';
@@ -1088,6 +1089,109 @@ app.post('/api/training', auth, tenant, gate('training'), asyncHandler(async (re
     ],
   );
   res.status(201).json(session);
+}));
+
+app.get('/api/products', auth, tenant, gate('products'), asyncHandler(async (req, res) => {
+  const companyId = req.tenant.companyId;
+  const [productsRes, promosRes, memberCounts] = await Promise.all([
+    query(
+      `SELECT * FROM subscription_products
+       WHERE company_id = $1
+       ORDER BY price ASC, name ASC`,
+      [companyId],
+    ),
+    query(
+      `SELECT * FROM promotions WHERE company_id = $1 ORDER BY starts_at DESC`,
+      [companyId],
+    ),
+    query(
+      `SELECT plan, status, COUNT(*)::int AS n
+       FROM members WHERE company_id = $1
+       GROUP BY plan, status`,
+      [companyId],
+    ),
+  ]);
+
+  const countsByPlan = {};
+  for (const row of memberCounts.rows) {
+    if (!countsByPlan[row.plan]) countsByPlan[row.plan] = { active: 0, lead: 0, total: 0 };
+    countsByPlan[row.plan][row.status] = (countsByPlan[row.plan][row.status] || 0) + row.n;
+    countsByPlan[row.plan].total += row.n;
+  }
+
+  const promotions = promosRes.rows.map((r) => {
+    const p = mapPromo(r);
+    return { ...p, currentlyActive: isPromotionActive(p) };
+  });
+
+  const subscriptions = productsRes.rows.map((r) => {
+    const product = mapProduct(r);
+    const related = promotions.filter(
+      (p) => p.appliesTo === 'any' || p.appliesTo === product.planCode,
+    );
+    const counts = countsByPlan[product.planCode] || { active: 0, lead: 0, total: 0 };
+    return {
+      ...product,
+      memberCounts: counts,
+      promotions: related,
+      activePromotionCount: related.filter((p) => p.currentlyActive).length,
+    };
+  });
+
+  res.json({
+    subscriptions,
+    promotions,
+    summary: {
+      productCount: subscriptions.length,
+      activeProductCount: subscriptions.filter((s) => s.active).length,
+      promotionCount: promotions.length,
+      livePromotionCount: promotions.filter((p) => p.currentlyActive).length,
+    },
+  });
+}));
+
+app.post('/api/products', auth, tenant, gate('products'), asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const name = String(b.name || '').trim();
+  const planCode = String(b.planCode || b.plan || name || '').trim();
+  if (!name || !planCode) {
+    return res.status(400).json({ error: 'name and planCode required' });
+  }
+  const product = {
+    id: id('prd'),
+    companyId: req.tenant.companyId,
+    name,
+    planCode,
+    price: Number(b.price) || 0,
+    billingInterval: String(b.billingInterval || 'month'),
+    description: String(b.description || ''),
+    active: b.active !== false,
+    createdAt: nowIso(),
+  };
+  try {
+    await query(
+      `INSERT INTO subscription_products
+        (id, company_id, name, plan_code, price, billing_interval, description, active, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        product.id,
+        product.companyId,
+        product.name,
+        product.planCode,
+        product.price,
+        product.billingInterval,
+        product.description,
+        product.active,
+        product.createdAt,
+      ],
+    );
+  } catch (err) {
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: 'A product with that plan code already exists' });
+    }
+    throw err;
+  }
+  res.status(201).json(product);
 }));
 
 app.use((err, _req, res, _next) => {

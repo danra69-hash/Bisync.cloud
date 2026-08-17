@@ -23,6 +23,7 @@ import { PromotionsPage } from './pages/PromotionsPage';
 import { AppointmentsPage } from './pages/AppointmentsPage';
 import { EquipmentPage } from './pages/EquipmentPage';
 import { TrainingPage } from './pages/TrainingPage';
+import { ProductsPage } from './pages/ProductsPage';
 import { TeamPage } from './pages/TeamPage';
 
 export type Surface = 'team' | 'admin';
@@ -36,6 +37,7 @@ const MODULE_ROUTES: { id: ModuleId; path: string; label: string; adminOnly?: bo
   { id: 'appointments', path: '/app/appointments', label: 'Appointments' },
   { id: 'equipment', path: '/app/equipment', label: 'Equipment' },
   { id: 'training', path: '/app/training', label: 'Training' },
+  { id: 'products', path: '/app/products', label: 'Product' },
   { id: 'team', path: '/app/team', label: 'Team', adminOnly: true },
 ];
 
@@ -197,9 +199,9 @@ export default function App() {
     const roleModules: Record<string, ModuleId[]> = {
       management: MODULE_ROUTES.map((m) => m.id),
       admin: MODULE_ROUTES.map((m) => m.id),
-      accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions'],
+      accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'products'],
       fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-      sales: ['dashboard', 'members', 'promotions', 'appointments'],
+      sales: ['dashboard', 'members', 'promotions', 'appointments', 'products'],
     };
     setUser({
       ...user,
@@ -233,9 +235,9 @@ export default function App() {
     : (({
         management: MODULE_ROUTES.map((m) => m.id),
         admin: MODULE_ROUTES.map((m) => m.id),
-        accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions'],
+        accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'products'],
         fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-        sales: ['dashboard', 'members', 'promotions', 'appointments'],
+        sales: ['dashboard', 'members', 'promotions', 'appointments', 'products'],
       }[effectiveRole] as ModuleId[]) || []);
 
   const nav = MODULE_ROUTES.filter((m) => {
@@ -270,6 +272,7 @@ export default function App() {
               <Route path="appointments" element={<AppointmentsPage />} />
               <Route path="equipment" element={<EquipmentPage />} />
               <Route path="training" element={<TrainingPage />} />
+              <Route path="products" element={<ProductsPage />} />
               <Route path="team" element={<TeamPage />} />
               <Route path="*" element={<Navigate to="/app" replace />} />
             </Routes>

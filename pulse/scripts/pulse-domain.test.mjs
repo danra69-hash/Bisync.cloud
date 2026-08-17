@@ -5,6 +5,7 @@ import {
   applyPromotion,
   isPromotionActive,
   ROLE_MODULES,
+  DEFAULT_PLAN_PRICES,
   requireRole,
 } from '../api/src/domain.mjs';
 import { isCompanyWideRole, tenantWhere } from '../api/src/tenant.mjs';
@@ -15,6 +16,19 @@ test('role modules: sales cannot access payments', () => {
   assert.equal(requireRole(sales, ['payments']), false);
   assert.ok(ROLE_MODULES.fitness_coach.includes('training'));
   assert.ok(ROLE_MODULES.admin.includes('team'));
+});
+
+test('role modules: sales can access products', () => {
+  const sales = { role: 'sales' };
+  assert.equal(requireRole(sales, ['products']), true);
+  assert.ok(ROLE_MODULES.admin.includes('products'));
+  assert.equal(requireRole({ role: 'fitness_coach' }, ['products']), false);
+});
+
+test('default plan prices cover seed catalog', () => {
+  assert.equal(DEFAULT_PLAN_PRICES.Gold.price, 89);
+  assert.equal(DEFAULT_PLAN_PRICES.Silver.billingInterval, 'month');
+  assert.equal(DEFAULT_PLAN_PRICES['Day Pass'].billingInterval, 'day');
 });
 
 test('invoice totals include tax', () => {

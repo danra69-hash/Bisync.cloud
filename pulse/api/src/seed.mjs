@@ -98,7 +98,7 @@ export async function seed({ force = false } = {}) {
   if (force) {
     await query(`
       TRUNCATE training_sessions, appointments, payments, invoices, promotions,
-               members, sessions, equipment, activity_types,
+               members, sessions, equipment, activity_types, subscription_products,
                user_location_access, user_company_memberships,
                locations, companies, users RESTART IDENTITY CASCADE
     `);

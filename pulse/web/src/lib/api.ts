@@ -9,6 +9,7 @@ export type ModuleId =
   | 'appointments'
   | 'equipment'
   | 'training'
+  | 'products'
   | 'team';
 
 export interface Location {

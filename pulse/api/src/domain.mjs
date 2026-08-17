@@ -11,11 +11,19 @@ export const ROLE_LABELS = {
 };
 
 export const ROLE_MODULES = {
-  management: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'team'],
-  admin: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'team'],
-  accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions'],
+  management: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'products', 'team'],
+  admin: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'products', 'team'],
+  accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'products'],
   fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-  sales: ['dashboard', 'members', 'promotions', 'appointments'],
+  sales: ['dashboard', 'members', 'promotions', 'appointments', 'products'],
+};
+
+/** Default list prices used when seeding the Product catalog from company plans. */
+export const DEFAULT_PLAN_PRICES = {
+  'Day Pass': { price: 25, billingInterval: 'day' },
+  Silver: { price: 59, billingInterval: 'month' },
+  Gold: { price: 89, billingInterval: 'month' },
+  Platinum: { price: 129, billingInterval: 'month' },
 };
 
 export function requireRole(user, modules) {

@@ -3,16 +3,28 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { nanoid } from 'nanoid';
-export {
+import {
   ROLES,
   ROLE_LABELS,
   ROLE_MODULES,
+  DEFAULT_PLAN_PRICES,
   requireRole,
   computeInvoiceTotals,
   isPromotionActive,
   applyPromotion,
   nowIso,
 } from './domain.mjs';
+export {
+  ROLES,
+  ROLE_LABELS,
+  ROLE_MODULES,
+  DEFAULT_PLAN_PRICES,
+  requireRole,
+  computeInvoiceTotals,
+  isPromotionActive,
+  applyPromotion,
+  nowIso,
+};
 export { isCompanyWideRole, modulesForRole, tenantWhere, COMPANY_WIDE_ROLES } from './tenant.mjs';
 
 const { Pool } = pg;
@@ -262,6 +274,21 @@ export function mapTraining(row) {
   };
 }
 
+export function mapProduct(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    companyId: row.company_id,
+    name: row.name,
+    planCode: row.plan_code,
+    price: Number(row.price),
+    billingInterval: row.billing_interval,
+    description: row.description ?? '',
+    active: row.active,
+    createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+  };
+}
+
 export async function ensureDatabaseExists() {
   const cloudSql = process.env.PULSE_CLOUDSQL_CONNECTION || process.env.INSTANCE_CONNECTION_NAME;
   if (cloudSql || process.env.PULSE_SKIP_ENSURE_DB === '1') {
@@ -430,6 +457,35 @@ async function ensureTenantColumnsAndBackfill() {
   await query(`CREATE INDEX IF NOT EXISTS idx_appointments_company ON appointments(company_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_equipment_company ON equipment(company_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_training_company ON training_sessions(company_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_subscription_products_company ON subscription_products(company_id)`);
+}
+
+/** Ensure each company has catalog rows for its plans (idempotent). */
+export async function ensureSubscriptionCatalog(companyId = null) {
+  const companies = companyId
+    ? await query('SELECT id, plans FROM companies WHERE id = $1', [companyId])
+    : await query('SELECT id, plans FROM companies WHERE active = TRUE');
+  for (const co of companies.rows) {
+    const plans = Array.isArray(co.plans) ? co.plans : ['Day Pass', 'Silver', 'Gold', 'Platinum'];
+    for (const planName of plans) {
+      const defaults = DEFAULT_PLAN_PRICES[planName] || { price: 0, billingInterval: 'month' };
+      await query(
+        `INSERT INTO subscription_products
+          (id, company_id, name, plan_code, price, billing_interval, description, active, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,NOW())
+         ON CONFLICT (company_id, plan_code) DO NOTHING`,
+        [
+          id('prd'),
+          co.id,
+          `${planName} membership`,
+          planName,
+          defaults.price,
+          defaults.billingInterval,
+          `Subscription plan: ${planName}`,
+        ],
+      );
+    }
+  }
 }
 
 export async function migrate() {
@@ -439,6 +495,7 @@ export async function migrate() {
   await query(sql);
   await query(`INSERT INTO club_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
   await ensureTenantColumnsAndBackfill();
+  await ensureSubscriptionCatalog();
 }
 
 export async function getMeta(companyId = null) {

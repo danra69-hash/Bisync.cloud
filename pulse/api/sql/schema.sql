@@ -170,6 +170,20 @@ CREATE TABLE IF NOT EXISTS training_sessions (
   calories INTEGER
 );
 
+-- Subscription catalog (Product tab). Details expanded later via Create.
+CREATE TABLE IF NOT EXISTS subscription_products (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  plan_code TEXT NOT NULL,
+  price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  billing_interval TEXT NOT NULL DEFAULT 'month',
+  description TEXT NOT NULL DEFAULT '',
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (company_id, plan_code)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_members_status ON members(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_member ON invoices(member_id);
