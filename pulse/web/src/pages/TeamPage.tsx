@@ -162,7 +162,7 @@ function AccessConfig({
       </div>
 
       {adding ? (
-        <form className="add-role-form" onSubmit={createRole}>
+        <div className="add-role-form">
           <p className="eyebrow" style={{ margin: 0 }}>
             Create new role
           </p>
@@ -199,10 +199,15 @@ function AccessConfig({
               ))}
             </div>
           </div>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy || !newRole.label.trim() || newRole.modules.length === 0}
+            onClick={() => void createRole()}
+          >
             {busy ? 'Saving…' : 'Save role'}
           </button>
-        </form>
+        </div>
       ) : null}
 
       <div className="field">
