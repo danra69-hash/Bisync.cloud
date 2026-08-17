@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -138,7 +137,12 @@ export function HomeScreen() {
             <Text style={styles.title}>Home</Text>
             <Text style={styles.sub}>All appointments on your calendar</Text>
           </View>
-          <Pressable style={styles.addBtn} onPress={() => openComposer()}>
+          <Pressable
+            style={styles.addBtn}
+            onPress={() => openComposer()}
+            accessibilityRole="button"
+            accessibilityLabel="Add appointment"
+          >
             <Text style={styles.addBtnText}>+ Add</Text>
           </Pressable>
         </View>
@@ -264,84 +268,104 @@ export function HomeScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={composerOpen} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
+      {composerOpen ? (
+        <View style={styles.modalBackdrop} pointerEvents="box-none">
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>New appointment</Text>
-            <Text style={styles.label}>Title</Text>
-            <TextInput style={styles.input} value={title} onChangeText={setTitle} />
-            <Text style={styles.label}>Date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              value={dateValue}
-              onChangeText={setDateValue}
-              autoCapitalize="none"
-              placeholder="2026-08-17"
-              placeholderTextColor={colors.muted}
-            />
-            <Text style={styles.label}>Time (HH:MM)</Text>
-            <TextInput
-              style={styles.input}
-              value={timeValue}
-              onChangeText={setTimeValue}
-              autoCapitalize="none"
-              placeholder="09:00"
-              placeholderTextColor={colors.muted}
-            />
-            <Text style={styles.label}>Duration (minutes)</Text>
-            <TextInput
-              style={styles.input}
-              value={durationMin}
-              onChangeText={setDurationMin}
-              keyboardType="number-pad"
-            />
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
+            >
+              <Text style={styles.modalTitle}>New appointment</Text>
+              <Text style={styles.label}>Title</Text>
+              <TextInput style={styles.input} value={title} onChangeText={setTitle} />
+              <Text style={styles.label}>Date (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.input}
+                value={dateValue}
+                onChangeText={setDateValue}
+                autoCapitalize="none"
+                placeholder="2026-08-18"
+                placeholderTextColor={colors.muted}
+              />
+              <Text style={styles.label}>Time (HH:MM)</Text>
+              <TextInput
+                style={styles.input}
+                value={timeValue}
+                onChangeText={setTimeValue}
+                autoCapitalize="none"
+                placeholder="09:00"
+                placeholderTextColor={colors.muted}
+              />
+              <Text style={styles.label}>Duration (minutes)</Text>
+              <TextInput
+                style={styles.input}
+                value={durationMin}
+                onChangeText={setDurationMin}
+                keyboardType="number-pad"
+              />
 
-            <Text style={styles.label}>Tag member</Text>
-            <TextInput
-              style={styles.input}
-              value={memberQuery}
-              onChangeText={setMemberQuery}
-              placeholder="Search members"
-              placeholderTextColor={colors.muted}
-            />
-            <ScrollView style={styles.memberList} nestedScrollEnabled>
-              {filteredMembers.map((m) => (
-                <Pressable key={m.id} onPress={() => setMemberId(m.id)} style={styles.memberRow}>
-                  <Text style={{ color: memberId === m.id ? colors.accent : colors.ink2 }}>
-                    {memberId === m.id ? '● ' : '○ '}
-                    {m.firstName} {m.lastName}
+              <Text style={styles.label}>Tag member</Text>
+              <TextInput
+                style={styles.input}
+                value={memberQuery}
+                onChangeText={setMemberQuery}
+                placeholder="Search members"
+                placeholderTextColor={colors.muted}
+              />
+              <View style={styles.memberList}>
+                {filteredMembers.map((m) => (
+                  <Pressable
+                    key={m.id}
+                    onPress={() => setMemberId(m.id)}
+                    style={styles.memberRow}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ color: memberId === m.id ? colors.accent : colors.ink2 }}>
+                      {memberId === m.id ? '● ' : '○ '}
+                      {m.firstName} {m.lastName}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Location</Text>
+              {locations.map((l) => (
+                <Pressable
+                  key={l.id}
+                  onPress={() => setLocationId(l.id)}
+                  style={styles.memberRow}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: locationId === l.id ? colors.accent : colors.ink2 }}>
+                    {locationId === l.id ? '● ' : '○ '}
+                    {l.name}
                   </Text>
                 </Pressable>
               ))}
+
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={styles.ghost}
+                  onPress={() => setComposerOpen(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.ghostText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.primary, { flex: 1 }, saving && { opacity: 0.6 }]}
+                  disabled={saving}
+                  onPress={() => void saveAppointment()}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save appointment'}</Text>
+                </Pressable>
+              </View>
             </ScrollView>
-
-            <Text style={styles.label}>Location</Text>
-            {locations.map((l) => (
-              <Pressable key={l.id} onPress={() => setLocationId(l.id)} style={styles.memberRow}>
-                <Text style={{ color: locationId === l.id ? colors.accent : colors.ink2 }}>
-                  {locationId === l.id ? '● ' : '○ '}
-                  {l.name}
-                </Text>
-              </Pressable>
-            ))}
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-
-            <View style={styles.modalActions}>
-              <Pressable style={styles.ghost} onPress={() => setComposerOpen(false)}>
-                <Text style={styles.ghostText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.primary, { flex: 1 }, saving && { opacity: 0.6 }]}
-                disabled={saving}
-                onPress={() => void saveAppointment()}
-              >
-                <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save appointment'}</Text>
-              </Pressable>
-            </View>
           </View>
         </View>
-      </Modal>
+      ) : null}
     </View>
   );
 }
@@ -458,16 +482,16 @@ const styles = StyleSheet.create({
   ghostText: { color: colors.accent, fontWeight: '600' },
   error: { color: colors.danger },
   modalBackdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(27,36,48,0.45)',
     justifyContent: 'flex-end',
+    zIndex: 50,
   },
   modalSheet: {
     backgroundColor: colors.white,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 16,
-    gap: 8,
     maxHeight: '92%',
   },
   modalTitle: { fontSize: 18, fontWeight: '700', color: colors.ink, marginBottom: 4 },
