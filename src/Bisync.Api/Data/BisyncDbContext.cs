@@ -117,6 +117,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<DevConsolePasswordTicket> DevConsolePasswordTickets => Set<DevConsolePasswordTicket>();
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
     public DbSet<TenantRollupSnapshot> TenantRollupSnapshots => Set<TenantRollupSnapshot>();
+    public DbSet<GlAccount> GlAccounts => Set<GlAccount>();
+    public DbSet<GlFiscalPeriod> GlFiscalPeriods => Set<GlFiscalPeriod>();
+    public DbSet<GlJournal> GlJournals => Set<GlJournal>();
+    public DbSet<GlJournalLine> GlJournalLines => Set<GlJournalLine>();
+    public DbSet<GlPeriodBalance> GlPeriodBalances => Set<GlPeriodBalance>();
+    public DbSet<GlDocCounter> GlDocCounters => Set<GlDocCounter>();
+    public DbSet<GlOutboxMessage> GlOutboxMessages => Set<GlOutboxMessage>();
     public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
@@ -909,6 +916,77 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
                 .WithMany(c => c.ProjectTasks)
                 .HasForeignKey(x => x.ConversationId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GlAccount>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Code }).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.AccountType).HasMaxLength(32);
+            e.Property(x => x.NormalBalance).HasMaxLength(1);
+        });
+        modelBuilder.Entity<GlFiscalPeriod>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Year, x.PeriodNo }).IsUnique();
+            e.Property(x => x.Status).HasMaxLength(24);
+        });
+        modelBuilder.Entity<GlJournal>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.DocSeries, x.FiscalYear, x.DocNumber })
+                .IsUnique()
+                .HasFilter("\"DocNumber\" IS NOT NULL");
+            e.HasIndex(x => new { x.CompanyId, x.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            e.HasIndex(x => new { x.CompanyId, x.PostedAt });
+            e.Property(x => x.LedgerKind).HasMaxLength(32);
+            e.Property(x => x.JournalType).HasMaxLength(32);
+            e.Property(x => x.DocSeries).HasMaxLength(32);
+            e.Property(x => x.DocNumber).HasMaxLength(64);
+            e.Property(x => x.SourceModule).HasMaxLength(32);
+            e.Property(x => x.SourceDocKey).HasMaxLength(120);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(160);
+            e.Property(x => x.CreatedBy).HasMaxLength(120);
+            e.HasMany(x => x.Lines)
+                .WithOne(x => x.Journal)
+                .HasForeignKey(x => x.JournalId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Period)
+                .WithMany()
+                .HasForeignKey(x => x.PeriodId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<GlJournalLine>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.JournalId, x.LineNo }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.AccountId, x.EffectiveDate });
+            e.Property(x => x.Direction).HasMaxLength(1);
+            e.Property(x => x.Currency).HasMaxLength(3);
+            e.Property(x => x.FuncCurrency).HasMaxLength(3);
+            e.HasOne(x => x.Account)
+                .WithMany()
+                .HasForeignKey(x => x.AccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<GlPeriodBalance>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AccountId, x.PeriodId, x.Currency }).IsUnique();
+            e.Property(x => x.Currency).HasMaxLength(3);
+        });
+        modelBuilder.Entity<GlDocCounter>(e =>
+        {
+            e.HasKey(x => new { x.CompanyId, x.Series, x.FiscalYear });
+            e.Property(x => x.Series).HasMaxLength(32);
+        });
+        modelBuilder.Entity<GlOutboxMessage>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            e.HasIndex(x => new { x.CompanyId, x.CreatedAt });
+            e.Property(x => x.EventType).HasMaxLength(80);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(160);
         });
     }
 

@@ -9,7 +9,10 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/payroll-runs")]
-public class PayrollRunsController(BisyncDbContext db, PayrollCalculationService calculator) : ControllerBase
+public class PayrollRunsController(
+    BisyncDbContext db,
+    PayrollCalculationService calculator,
+    AccountingBridgeService accountingBridge) : ControllerBase
 {
     [HttpGet("preview")]
     public async Task<ActionResult<PayrollPreviewResult>> Preview(
@@ -104,6 +107,8 @@ public class PayrollRunsController(BisyncDbContext db, PayrollCalculationService
 
         db.PayrollRuns.Add(run);
         await db.SaveChangesAsync();
+
+        await accountingBridge.OnPayrollProcessedAsync(run);
 
         var saved = await db.PayrollRuns.AsNoTracking()
             .Include(r => r.Company)

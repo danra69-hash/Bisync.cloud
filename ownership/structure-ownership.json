@@ -771,7 +771,19 @@
       "route": "/accounting",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
-      "createdAt": "2026-07-15"
+      "createdAt": "2026-07-15",
+      "notes": "Company Accounting hub: Payroll, Ops→Finance bridges, Books Phase 0"
+    },
+    {
+      "id": "dr.api.accounting-ledger",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AccountingLedgerController.cs",
+      "symbol": "AccountingLedgerController",
+      "route": "api/accounting",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-17",
+      "notes": "Phase 0 Books: journals, trial balance, periods, outbox; bridged from payroll and PO consolidate"
     },
     {
       "id": "dr.page.pos-test-tap",

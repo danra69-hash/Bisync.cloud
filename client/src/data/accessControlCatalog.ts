@@ -223,8 +223,21 @@ function hrmRows(): AccessControlRow[] {
   ]);
 }
 
+/**
+ * Accounting AC rows.
+ * Live workspace tasks are enforceable today.
+ * General Ledger / AP / AR / payroll-GL rows are reserved for Books Phase B+
+ * (see docs/ACCOUNTING_ARCHITECTURE.md). Keep function keys stable so stored
+ * matrices do not break; do not wire these ids to UI until APIs exist.
+ */
 function accountingRows(): AccessControlRow[] {
   return rowsFromGroups('Accounting', [
+    labelTasks('Workspace', [
+      'Open Accounting',
+      'View Payroll Workspace',
+      'View Ops Finance Bridges',
+      'View Books Roadmap',
+    ]),
     labelTasks('General Ledger', [
       'View Chart of Accounts',
       'Manage Journal Entries',

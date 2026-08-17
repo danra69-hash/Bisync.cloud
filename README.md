@@ -115,6 +115,14 @@ For production, configure `ConnectionStrings__DefaultConnection` and `Connection
 | GET | `/api/revenue?period=week` | Revenue trend data |
 | GET | `/api/progress` | Development milestones |
 
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [`docs/SAAS_DB_TENANCY.md`](./docs/SAAS_DB_TENANCY.md) | Company DB promotion + location partitions |
+| [`docs/PRODUCT_TARGET_ARCHITECTURE.md`](./docs/PRODUCT_TARGET_ARCHITECTURE.md) | B2C / B2B / Sub-Product / FIFO rules |
+| [`docs/ACCOUNTING_ARCHITECTURE.md`](./docs/ACCOUNTING_ARCHITECTURE.md) | Accounting module: live payroll/bridges vs statutory GL roadmap |
+
 ## Development progress
 
 Progress is tracked in the database (`DevelopmentMilestones` table) and exposed via `/api/progress`. See [PROGRESS.md](./PROGRESS.md) for the full roadmap.

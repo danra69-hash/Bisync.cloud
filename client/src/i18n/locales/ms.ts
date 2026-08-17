@@ -527,12 +527,12 @@ export const ms = {
       },
       accounting: {
         title: 'Accounting',
-        ledger: 'General ledger built for hospitality',
-        apAr: 'Accounts payable & receivable',
-        period: 'Period close aligned to operations',
-        reports: 'Financial reports and audit trails',
+        ledger: 'Payroll workspace and ops cost bridges today',
+        apAr: 'Statutory GL, AP & AR on the product roadmap',
+        period: 'Ops period close via consolidate and COGS audit',
+        reports: 'COGS, stock card, and purchase exports for finance',
         costLink: 'Linked to live recipe & inventory cost',
-        export: 'Export-ready books for finance teams',
+        export: 'Export-ready ops figures for finance teams',
       },
     },
 
@@ -666,7 +666,7 @@ export const ms = {
   },
   accounting: {
     title: 'Perakaunan',
-    placeholder: 'Modul perakaunan akan datang.',
+    placeholder: 'Buka Perakaunan untuk penggajian dan jambatan ops→kewangan.',
   },
   hr: {
     title: 'Sumber Manusia',

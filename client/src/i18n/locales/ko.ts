@@ -526,12 +526,12 @@ export const ko = {
       },
       accounting: {
         title: 'Accounting',
-        ledger: 'General ledger built for hospitality',
-        apAr: 'Accounts payable & receivable',
-        period: 'Period close aligned to operations',
-        reports: 'Financial reports and audit trails',
+        ledger: 'Payroll workspace and ops cost bridges today',
+        apAr: 'Statutory GL, AP & AR on the product roadmap',
+        period: 'Ops period close via consolidate and COGS audit',
+        reports: 'COGS, stock card, and purchase exports for finance',
         costLink: 'Linked to live recipe & inventory cost',
-        export: 'Export-ready books for finance teams',
+        export: 'Export-ready ops figures for finance teams',
       },
     },
 
@@ -665,7 +665,7 @@ export const ko = {
   },
   accounting: {
     title: '회계',
-    placeholder: '회계 모듈이 곧 제공됩니다.',
+    placeholder: '회계에서 급여와 ops→재무 브리지를 엽니다.',
   },
   hr: {
     title: '인사',

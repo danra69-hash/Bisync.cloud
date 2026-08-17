@@ -63,7 +63,7 @@ export const FIFO_GUIDE_STEPS: FifoGuideStep[] = [
     number: 7,
     title: 'Financial Posting and Closure',
     body:
-      'Post the financial values of the adjustments calculated in Steps 5 and 6 to the general ledger—typically debiting an Inventory Variance or Shrinkage account for shortages and crediting it for overages. Lock the accounting period on the stock card to prevent backdated transactions that could break the FIFO sequence.',
+      'Hand the financial values of the adjustments from Steps 5 and 6 to finance (COGS Audit / export). When Bisync Books (GL) is live, post them as sealed journals—typically Inventory Variance or Shrinkage. Until then, lock the stock-card period to prevent backdated transactions that could break the FIFO sequence. See docs/ACCOUNTING_ARCHITECTURE.md.',
   },
 ];
 

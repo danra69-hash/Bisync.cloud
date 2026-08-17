@@ -4,6 +4,10 @@ namespace Bisync.Api.Services;
 
 public static class CompanyModuleRules
 {
+    /// <summary>
+    /// Product modules. Accounting is company-scoped only and today hosts payroll +
+    /// ops→finance bridges; statutory GL follows docs/ACCOUNTING_ARCHITECTURE.md.
+    /// </summary>
     public static readonly string[] AllModules = ["RMS", "POS", "HRM", "Accounting"];
     public static readonly string[] LocationModules = ["RMS", "POS", "HRM"];
     public static readonly HashSet<string> AllowedModules = new(AllModules, StringComparer.Ordinal);

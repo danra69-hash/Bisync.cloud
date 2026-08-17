@@ -1443,7 +1443,8 @@ public class PurchaseOrdersController(
     FifoBatchIssueService fifoBatches,
     PreCommittedPoDrawdownService preCommittedDrawdown,
     CreditNoteService creditNotes,
-    PurchaseOrderAcceptExpiryService purchaseOrderAcceptExpiry) : ControllerBase
+    PurchaseOrderAcceptExpiryService purchaseOrderAcceptExpiry,
+    AccountingBridgeService accountingBridge) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
@@ -2235,6 +2236,10 @@ public class PurchaseOrdersController(
 
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
+
+        // Accounting affirmation → Books outbox + inventory/AP journal (best-effort).
+        await accountingBridge.OnPurchaseAffirmedAsync(order);
+
         return Ok(new
         {
             order = await MapPurchaseOrderAsync(order, allowPartial),

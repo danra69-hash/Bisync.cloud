@@ -97,6 +97,8 @@ builder.Services.AddHttpClient<PublicHolidayCatalogService>();
 builder.Services.AddScoped<PublicHolidaySyncService>();
 builder.Services.AddScoped<PayrollCalculationService>();
 builder.Services.AddScoped<IncomeTaxService>();
+builder.Services.AddScoped<LedgerPostingService>();
+builder.Services.AddScoped<AccountingBridgeService>();
 builder.Services.AddScoped<ReplacementPublicHolidayService>();
 builder.Services.AddScoped<ComponentFifoCostingService>();
 builder.Services.AddScoped<FifoBatchIssueService>();

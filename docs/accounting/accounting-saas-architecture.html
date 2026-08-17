@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bisync Accounting SaaS Architecture</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --ink: #161616;
+      --muted: #5a564c;
+      --line: #d0c9bb;
+      --accent: #0f5c4c;
+      --panel: rgba(255,255,255,0.55);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+      background:
+        linear-gradient(115deg, rgba(15,92,76,0.07), transparent 40%),
+        radial-gradient(circle at 90% 10%, #e4ece7, transparent 35%),
+        var(--bg);
+      line-height: 1.55;
+    }
+    header {
+      padding: 3rem 1.5rem 1.5rem;
+      max-width: 56rem;
+      margin: 0 auto;
+    }
+    header p.kicker {
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 0.72rem;
+      color: var(--accent);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      margin: 0 0 0.75rem;
+    }
+    h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); margin: 0 0 0.75rem; letter-spacing: -0.02em; }
+    header .sub { color: var(--muted); max-width: 40rem; margin: 0; }
+    main { max-width: 56rem; margin: 0 auto; padding: 0 1.5rem 4rem; }
+    section {
+      margin-top: 2rem;
+      padding: 1.25rem 1.35rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(6px);
+    }
+    h2 { font-size: 1.2rem; margin: 0 0 0.75rem; }
+    h3 { font-size: 1rem; margin: 1.1rem 0 0.4rem; }
+    p, li { font-size: 0.95rem; color: var(--ink); }
+    .muted { color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 0.75rem; }
+    th, td { text-align: left; padding: 0.45rem 0.4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.84em; }
+    pre {
+      overflow: auto;
+      background: #1c2421;
+      color: #e8f0ec;
+      padding: 1rem;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="kicker">Bisync.cloud · Accounting</p>
+    <h1>Accounting SaaS architecture</h1>
+    <p class="sub">
+      Upstream multi-tenant ledger blueprint adapted to the <strong>current Bisync build</strong>:
+      company = tenant, ASP.NET Core + PostgreSQL, optional dedicated company DBs, payroll and RMS
+      inventory as live bridges into Books Phase 0.
+    </p>
+  </header>
+  <main>
+    <section>
+      <h2>What is live today</h2>
+      <table>
+        <thead><tr><th>Surface</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Accounting module (company-only)</td><td>Payroll + Ops→Finance + Books UI</td></tr>
+          <tr><td>Payroll process</td><td>Posts sealed <code>PAYROLL</code> journal + <code>hrm.payroll_posted</code> outbox</td></tr>
+          <tr><td>PO consolidate (reconcile)</td><td>Posts <code>PURCH</code> Inventory/AP journal + <code>ops.purchase_affirmed</code></td></tr>
+          <tr><td>Stock card / FIFO / COGS</td><td>Ops subledger (source documents; not statutory GL)</td></tr>
+          <tr><td>API</td><td><code>/api/accounting/*</code> status, accounts, journals, trial balance, outbox</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Bisync ADRs (vs upstream blueprint)</h2>
+      <table>
+        <thead><tr><th>Decision</th><th>Bisync choice</th></tr></thead>
+        <tbody>
+          <tr><td>Stack</td><td>Stay on ASP.NET Core + EF Core (not Django)</td></tr>
+          <tr><td>Tenancy</td><td><code>TenantConnections</code> + app <code>CompanyId</code> (RLS optional later)</td></tr>
+          <tr><td>Ledger store</td><td>Postgres on company operational DB; immutable journals</td></tr>
+          <tr><td>Money</td><td>Integer minor units + ISO currency</td></tr>
+          <tr><td>Side effects</td><td><code>GlOutboxMessages</code> in the posting transaction</td></tr>
+          <tr><td>Subledger → GL</td><td><code>AccountingBridgeService</code> from payroll &amp; consolidate</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Module map</h2>
+      <pre>CONTROL PLANE (shared)
+  tenants · TenantConnections · identity · modules
+
+APPLICATION (shared or bisync_c_{id})
+  Accounting
+    ├── Payroll (live HRM)
+    ├── Ops → Finance bridges (docs + wired events)
+    └── Books Phase 0
+          GlAccount · GlFiscalPeriod · GlJournal(+Lines)
+          GlPeriodBalance · GlDocCounter · GlOutboxMessage
+
+RMS / POS / HRM ──events──► AccountingBridge ──► LedgerPostingService</pre>
+    </section>
+
+    <section>
+      <h2>Wiring</h2>
+      <h3>Payroll</h3>
+      <p class="muted"><code>PayrollRunsController.Process</code> → <code>AccountingBridgeService.OnPayrollProcessedAsync</code></p>
+      <p>Dr 5100 salaries + Dr 5110 employer statutory · Cr 2100/2110/2120/2130 payables. Idempotent key <code>hrm.payroll_posted:{company}:{year}:{month}</code>.</p>
+      <h3>Inventory / purchase</h3>
+      <p class="muted"><code>PurchaseOrdersController.Reconcile</code> (consolidate) → <code>OnPurchaseAffirmedAsync</code></p>
+      <p>Dr 1400 Inventory · Cr 2000 AP for affirmed component lines (excludes returnable deposits). Stock card / FIFO remain the quantity/cost layers.</p>
+      <h3>Failure policy</h3>
+      <p>Bridge errors are logged and outboxed; they must not fail payroll or consolidate — ops remains source of truth.</p>
+    </section>
+
+    <section>
+      <h2>Phase roadmap</h2>
+      <ol>
+        <li><strong>Phase A / B (this build)</strong> — Hub honesty + Phase 0 post/reverse/TB/outbox + payroll &amp; consolidate bridges.</li>
+        <li><strong>Phase C</strong> — Versioned SLA rule sets, richer COA, AP/AR open items.</li>
+        <li><strong>Phase D</strong> — Localisation packs, e-invoicing aggregator, statutory exports.</li>
+      </ol>
+      <p class="muted">Binding detail: <a href="../ACCOUNTING_ARCHITECTURE.md">ACCOUNTING_ARCHITECTURE.md</a> · <a href="./index.html">Docs index</a></p>
+    </section>
+  </main>
+</body>
+</html>

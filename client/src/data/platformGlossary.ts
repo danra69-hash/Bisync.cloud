@@ -49,7 +49,8 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
       },
       {
         term: 'Accounting',
-        meaning: 'Company-level accounting module (not assigned per location).',
+        meaning:
+          'Company-level module: live payroll + ops→finance bridges; statutory GL/AP/AR are roadmap (see docs/ACCOUNTING_ARCHITECTURE.md). Not assigned per location.',
         dbName: 'ModulesJson ("Accounting")',
       },
       {

@@ -5443,4 +5443,77 @@ export const api = {
     fetchJsonWithMethod<PlatformPriceDisplaySettings>('/api/platform-price-display', 'PUT', data),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),
+
+  accountingStatus: (companyId: number) =>
+    fetchJson<AccountingLedgerStatus>(`/api/accounting/status?companyId=${companyId}`),
+  accountingJournals: (companyId: number, take = 40) =>
+    fetchJson<AccountingJournalSummary[]>(
+      `/api/accounting/journals?companyId=${companyId}&take=${take}`,
+    ),
+  accountingTrialBalance: (companyId: number, periodId?: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (periodId) params.set('periodId', String(periodId));
+    return fetchJson<AccountingTrialBalance>(`/api/accounting/trial-balance?${params}`);
+  },
+  accountingOutbox: (companyId: number, take = 30) =>
+    fetchJson<AccountingOutboxRow[]>(
+      `/api/accounting/outbox?companyId=${companyId}&take=${take}`,
+    ),
+};
+
+export type AccountingLedgerStatus = {
+  companyId: number;
+  currency: string;
+  phase: string;
+  phaseLabel: string;
+  accounts: number;
+  postedJournals: number;
+  pendingOutbox: number;
+  openPeriods: number;
+  bridges: Array<{ eventType: string; module: string; status: string }>;
+};
+
+export type AccountingJournalSummary = {
+  id: number;
+  docNumber: string | null;
+  journalType: string;
+  sourceModule: string;
+  sourceDocKey: string | null;
+  narration: string;
+  effectiveDate: string;
+  postedAt: string | null;
+  reversesJournalId: number | null;
+  lineCount: number;
+};
+
+export type AccountingTrialBalance = {
+  period: {
+    id: number;
+    year: number;
+    periodNo: number;
+    status: string;
+    startDate: string;
+    endDate: string;
+  };
+  balanced: boolean;
+  totalDr: number;
+  totalCr: number;
+  rows: Array<{
+    accountCode: string;
+    accountName: string;
+    accountType?: string;
+    currency: string;
+    periodDr: number;
+    periodCr: number;
+    closing: number;
+  }>;
+};
+
+export type AccountingOutboxRow = {
+  id: number;
+  eventType: string;
+  idempotencyKey: string | null;
+  createdAt: string;
+  processedAt: string | null;
+  payloadJson: string;
 };

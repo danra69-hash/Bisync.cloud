@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bisync Accounting — Docs</title>
+  <style>
+    :root {
+      --bg: #f4f0e8;
+      --ink: #1a1a1a;
+      --muted: #5c574e;
+      --line: #d4cfc4;
+      --accent: #0f5c4c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      background:
+        radial-gradient(ellipse at 10% 0%, #e8efe9 0%, transparent 45%),
+        linear-gradient(180deg, #f7f3ec 0%, var(--bg) 40%, #ebe6dc 100%);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main { max-width: 42rem; margin: 0 auto; padding: 3.5rem 1.5rem 4rem; }
+    h1 { font-size: clamp(2rem, 5vw, 2.75rem); font-weight: 600; letter-spacing: -0.02em; margin: 0 0 0.75rem; }
+    .lede { color: var(--muted); font-size: 1.05rem; line-height: 1.55; margin: 0 0 2rem; }
+    nav { display: grid; gap: 0.75rem; border-top: 1px solid var(--line); padding-top: 1.5rem; }
+    a {
+      display: block;
+      text-decoration: none;
+      color: var(--ink);
+      padding: 0.9rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    a strong { display: block; font-size: 1.05rem; color: var(--accent); }
+    a span { display: block; margin-top: 0.25rem; font-size: 0.9rem; color: var(--muted); line-height: 1.45; }
+    footer { margin-top: 2.5rem; font-size: 0.8rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Bisync Accounting</h1>
+    <p class="lede">
+      Statutory books adapted to the current Bisync.cloud build — ASP.NET Core, company tenancy via
+      TenantConnections, payroll and RMS inventory as live subledgers.
+    </p>
+    <nav>
+      <a href="./accounting-saas-architecture.html">
+        <strong>Architecture overview</strong>
+        <span>ADRs, module map, payroll/inventory bridges, Phase 0 ledger foundations.</span>
+      </a>
+      <a href="../ACCOUNTING_ARCHITECTURE.md">
+        <strong>ACCOUNTING_ARCHITECTURE.md</strong>
+        <span>Binding markdown for engineers (repo docs).</span>
+      </a>
+      <a href="../SAAS_DB_TENANCY.md">
+        <strong>SaaS DB tenancy</strong>
+        <span>Company DB promotion — the Bisync equivalent of promotable tenancy.</span>
+      </a>
+    </nav>
+    <footer>Aligned to Bisync.cloud · not a Django rewrite of the upstream SaaS blueprint.</footer>
+  </main>
+</body>
+</html>

@@ -105,7 +105,7 @@ export const en = {
       rms: 'Purchasing, inventory, products, and sales operations.',
       pos: 'Front-of-house selling, menus, and device control.',
       hrm: 'People, attendance, leave, and workforce setup.',
-      accounting: 'Payroll links, ledgers, and financial close.',
+      accounting: 'Payroll and ops→finance bridges. Statutory books on the roadmap.',
     },
     messages: {
       title: 'Messages',
@@ -528,12 +528,12 @@ export const en = {
       },
       accounting: {
         title: 'Accounting',
-        ledger: 'General ledger built for hospitality',
-        apAr: 'Accounts payable & receivable',
-        period: 'Period close aligned to operations',
-        reports: 'Financial reports and audit trails',
+        ledger: 'Payroll workspace and ops cost bridges today',
+        apAr: 'Statutory GL, AP & AR on the product roadmap',
+        period: 'Ops period close via consolidate and COGS audit',
+        reports: 'COGS, stock card, and purchase exports for finance',
         costLink: 'Linked to live recipe & inventory cost',
-        export: 'Export-ready books for finance teams',
+        export: 'Export-ready ops figures for finance teams',
       },
     },
 
@@ -637,7 +637,7 @@ export const en = {
   },
   accounting: {
     title: 'Accounting',
-    placeholder: 'Accounting module is coming soon.',
+    placeholder: 'Open Accounting for payroll and ops→finance bridges.',
   },
   hr: {
     title: 'Human Resources',
