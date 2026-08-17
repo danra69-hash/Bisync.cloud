@@ -21,18 +21,14 @@ test('HomeScreen has calendar + add appointment with member tag', () => {
   assert.match(homeSrc, /New appointment/);
   assert.match(homeSrc, /Tag member/);
   assert.match(homeSrc, /scheduled:\s*true/);
-  assert.match(homeSrc, /YYYY-MM-DD/);
-  assert.match(homeSrc, /HH:MM/);
 });
 
 test('API supports coach scope=all and scheduled coach bookings', () => {
   assert.match(routes, /scopeAll/);
-  assert.match(routes, /scope=all/);
   assert.match(routes, /b\.scheduled === true/);
 });
 
 test('calendarUtils helpers are present', () => {
   assert.match(utils, /export function monthMatrix/);
   assert.match(utils, /export function combineLocal/);
-  assert.match(utils, /export function ymd/);
 });

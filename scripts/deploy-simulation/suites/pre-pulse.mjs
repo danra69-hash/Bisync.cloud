@@ -32,6 +32,9 @@ run('node', ['--test', 'pulse/scripts/mobile-domain.test.mjs'])
 log('coach Home appointments regression')
 run('node', ['--test', 'pulse/scripts/coach-home-appointments.test.mjs'])
 
+log('coach Member + Attendance regression')
+run('node', ['--test', 'pulse/scripts/coach-member-attendance.test.mjs'])
+
 log('pulse web production build')
 run('npm', ['run', 'build'], { cwd: webDir })
 

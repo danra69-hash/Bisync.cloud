@@ -11,6 +11,8 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { TrainingScreen } from './src/screens/TrainingScreen';
 import { CalendarScreen } from './src/screens/CalendarScreen';
 import { PackagesScreen } from './src/screens/PackagesScreen';
+import { MembersScreen, AttendanceScreen } from './src/screens/MembersScreen';
+import { MemberStampsScreen } from './src/screens/MemberStampsScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { colors } from './src/theme';
 import type { MainTabParamList, RootStackParamList } from './src/navigation';
@@ -47,12 +49,28 @@ function MainTabs() {
         component={TrainingScreen}
         options={{ title: user?.type === 'coach' ? 'Coach training' : 'My training' }}
       />
-      <Tabs.Screen name="Calendar" component={CalendarScreen} />
-      <Tabs.Screen
-        name="Packages"
-        component={PackagesScreen}
-        options={{ title: 'Packages & stamps' }}
-      />
+      {isCoach ? (
+        <Tabs.Screen
+          name="Member"
+          component={MembersScreen}
+          options={{ title: 'Members', tabBarLabel: 'Member' }}
+        />
+      ) : (
+        <Tabs.Screen name="Calendar" component={CalendarScreen} />
+      )}
+      {isCoach ? (
+        <Tabs.Screen
+          name="Attendance"
+          component={AttendanceScreen}
+          options={{ title: 'Attendance', tabBarLabel: 'Attendance' }}
+        />
+      ) : (
+        <Tabs.Screen
+          name="Packages"
+          component={PackagesScreen}
+          options={{ title: 'Packages & stamps' }}
+        />
+      )}
     </Tabs.Navigator>
   );
 }
@@ -77,6 +95,11 @@ function Root() {
       <Stack.Navigator>
         <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
         <Stack.Screen name="Scan" component={ScanScreen} options={{ title: 'Scan QR' }} />
+        <Stack.Screen
+          name="MemberStamps"
+          component={MemberStampsScreen}
+          options={{ title: 'Stamps' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

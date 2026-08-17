@@ -29,6 +29,18 @@ export function parseAttendanceQr(payload) {
   return { locationId, date, time, random4, stampId };
 }
 
+/** Member check-in QR shown to coaches: PULSEMEMBER|{memberId} */
+export function buildMemberQr(memberId) {
+  if (!memberId) throw new Error('memberId required');
+  return `PULSEMEMBER|${memberId}`;
+}
+
+export function parseMemberQr(payload) {
+  const parts = String(payload || '').trim().split('|');
+  if (parts.length !== 2 || parts[0] !== 'PULSEMEMBER' || !parts[1]) return null;
+  return { memberId: parts[1] };
+}
+
 export function validateStrengthSet(set) {
   const weight = Number(set.weight);
   const reps = Number(set.reps);

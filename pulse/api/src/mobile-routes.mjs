@@ -12,6 +12,7 @@ import {
 import {
   buildAttendanceQr,
   parseAttendanceQr,
+  parseMemberQr,
   randomFourDigits,
   normalizeTrainingSet,
 } from './mobile-domain.mjs';
@@ -290,6 +291,8 @@ router.get(
           }
         : null,
       coachingPackages: result,
+      memberQr: `PULSEMEMBER|${memberId}`,
+      memberId,
     });
   }),
 );
@@ -307,6 +310,165 @@ router.get(
       [req.mobile.companyId],
     );
     res.json(rows.map(mapMember));
+  }),
+);
+
+/** Members who purchased coaching sessions, with purchased vs used totals. */
+router.get(
+  '/members/coaching',
+  mobileAuth,
+  asyncHandler(async (req, res) => {
+    if (req.mobile.actorType !== 'coach') {
+      return res.status(403).json({ error: 'Coaches only' });
+    }
+    const { rows } = await query(
+      `SELECT m.*,
+              COALESCE(SUM(mp.stamps_total), 0)::int AS sessions_purchased,
+              COALESCE(SUM(mp.stamps_used), 0)::int AS sessions_used,
+              COUNT(mp.id)::int AS package_count
+       FROM members m
+       JOIN member_packages mp ON mp.member_id = m.id AND mp.company_id = m.company_id
+       WHERE m.company_id = $1 AND mp.status IN ('active', 'completed')
+       GROUP BY m.id
+       HAVING COALESCE(SUM(mp.stamps_total), 0) > 0
+       ORDER BY m.first_name, m.last_name`,
+      [req.mobile.companyId],
+    );
+    res.json(
+      rows.map((r) => ({
+        ...mapMember(r),
+        sessionsPurchased: r.sessions_purchased,
+        sessionsUsed: r.sessions_used,
+        sessionsRemaining: Math.max(0, r.sessions_purchased - r.sessions_used),
+        packageCount: r.package_count,
+      })),
+    );
+  }),
+);
+
+/**
+ * Coach selected a stamp slot, then scanned the member's QR.
+ * Accepts PULSEMEMBER|{memberId} or a member-minted attendance PULSE|... QR.
+ */
+router.post(
+  '/attendance/stamp/coach-scan',
+  mobileAuth,
+  asyncHandler(async (req, res) => {
+    if (req.mobile.actorType !== 'coach') {
+      return res.status(403).json({ error: 'Coaches only' });
+    }
+    const { memberPackageId, stampIndex, locationId, qrPayload } = req.body || {};
+    if (!memberPackageId || stampIndex == null || !locationId || !qrPayload) {
+      return res.status(400).json({
+        error: 'memberPackageId, stampIndex, locationId, qrPayload required',
+      });
+    }
+
+    const pack = await query(
+      `SELECT * FROM member_packages WHERE id = $1 AND company_id = $2`,
+      [memberPackageId, req.mobile.companyId],
+    );
+    if (!pack.rowCount) return res.status(404).json({ error: 'Package not found' });
+    const memberPackage = pack.rows[0];
+
+    const loc = await query(`SELECT id FROM locations WHERE id = $1 AND company_id = $2`, [
+      locationId,
+      req.mobile.companyId,
+    ]);
+    if (!loc.rowCount) return res.status(400).json({ error: 'Invalid location' });
+
+    const stampRes = await query(
+      `SELECT * FROM attendance_stamps
+       WHERE member_package_id = $1 AND stamp_index = $2`,
+      [memberPackageId, Number(stampIndex)],
+    );
+    if (!stampRes.rowCount) return res.status(404).json({ error: 'Stamp not found' });
+    const stamp = stampRes.rows[0];
+    if (stamp.status === 'confirmed') {
+      return res.status(400).json({ error: 'Stamp already used' });
+    }
+
+    const memberQr = parseMemberQr(qrPayload);
+    const attendanceQr = parseAttendanceQr(qrPayload);
+
+    if (memberQr) {
+      if (memberQr.memberId !== memberPackage.member_id) {
+        return res.status(400).json({ error: 'QR member does not match this package' });
+      }
+    } else if (attendanceQr) {
+      if (attendanceQr.stampId !== stamp.id) {
+        return res.status(400).json({ error: 'QR stamp does not match selected stamp' });
+      }
+      if (stamp.qr_payload && stamp.qr_payload !== qrPayload) {
+        return res.status(400).json({ error: 'QR does not match stamp challenge' });
+      }
+      if (stamp.created_by_role === 'coach') {
+        return res.status(400).json({
+          error: 'Scan the member check-in QR (or a subscriber-minted stamp QR)',
+        });
+      }
+    } else {
+      return res.status(400).json({ error: 'Unrecognized QR — expect member or attendance QR' });
+    }
+
+    const now = new Date();
+    const sessionDate = now.toISOString().slice(0, 10);
+    const sessionTime = now.toISOString().slice(11, 16);
+    const random4 = stamp.random4 || randomFourDigits();
+    const finalPayload =
+      attendanceQr && stamp.qr_payload
+        ? stamp.qr_payload
+        : buildAttendanceQr({
+            locationId,
+            date: sessionDate,
+            time: sessionTime,
+            random4,
+            stampId: stamp.id,
+          });
+
+    await query(
+      `UPDATE attendance_stamps SET
+         status = 'confirmed',
+         location_id = $2,
+         session_date = $3,
+         session_time = $4,
+         random4 = $5,
+         qr_payload = $6,
+         created_by_role = COALESCE(created_by_role, 'subscriber'),
+         created_by_id = COALESCE(created_by_id, $7),
+         confirmed_by_role = 'coach',
+         confirmed_by_id = $8,
+         confirmed_at = $9
+       WHERE id = $1`,
+      [
+        stamp.id,
+        locationId,
+        sessionDate,
+        sessionTime,
+        random4,
+        finalPayload,
+        memberPackage.member_id,
+        req.mobile.actorId,
+        nowIso(),
+      ],
+    );
+    await query(
+      `UPDATE member_packages SET stamps_used = LEAST(stamps_total, stamps_used + 1)
+       WHERE id = $1`,
+      [memberPackageId],
+    );
+
+    res.json({
+      ok: true,
+      stampId: stamp.id,
+      stampIndex: Number(stampIndex),
+      memberPackageId,
+      memberId: memberPackage.member_id,
+      locationId,
+      sessionDate,
+      sessionTime,
+      status: 'confirmed',
+    });
   }),
 );
 
