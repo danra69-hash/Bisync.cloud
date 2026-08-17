@@ -465,13 +465,15 @@ router.get(
       LEFT JOIN users u ON u.id = a.coach_user_id
       WHERE a.company_id = $1`;
     const params = [req.mobile.companyId];
+    const scopeAll = String(req.query?.scope || '') === 'all';
     if (req.mobile.actorType === 'subscriber') {
       sql += ` AND a.member_id = $2`;
       params.push(req.mobile.member.id);
-    } else {
+    } else if (!scopeAll) {
       sql += ` AND a.coach_user_id = $2`;
       params.push(req.mobile.actorId);
     }
+    // Coaches with scope=all see every company appointment on Home.
     sql += ` ORDER BY a.starts_at`;
     const { rows } = await query(sql, params);
     res.json(
@@ -529,7 +531,12 @@ router.post(
       if (!memberId) return res.status(400).json({ error: 'memberId required' });
       coachUserId = req.mobile.actorId;
       requestOrigin = 'coach';
-      requestStatus = 'pending';
+      // Home "Add appointment" confirms immediately; Calendar tab can still request accept.
+      const confirm =
+        b.scheduled === true ||
+        b.confirm === true ||
+        String(b.requestStatus || b.status || '').toLowerCase() === 'scheduled';
+      requestStatus = confirm ? 'scheduled' : 'pending';
     }
 
     const appointment = {

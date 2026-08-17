@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/AuthContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { PinScreen } from './src/screens/PinScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
 import { TrainingScreen } from './src/screens/TrainingScreen';
 import { CalendarScreen } from './src/screens/CalendarScreen';
 import { PackagesScreen } from './src/screens/PackagesScreen';
@@ -19,6 +20,7 @@ const Tabs = createBottomTabNavigator<MainTabParamList>();
 
 function MainTabs() {
   const { logout, user } = useAuth();
+  const isCoach = user?.type === 'coach';
   return (
     <Tabs.Navigator
       screenOptions={{
@@ -33,6 +35,13 @@ function MainTabs() {
         tabBarStyle: { backgroundColor: colors.white, borderTopColor: colors.rule },
       }}
     >
+      {isCoach ? (
+        <Tabs.Screen
+          name="Home"
+          component={HomeScreen}
+          options={{ title: 'Home', tabBarLabel: 'Home' }}
+        />
+      ) : null}
       <Tabs.Screen
         name="Training"
         component={TrainingScreen}
