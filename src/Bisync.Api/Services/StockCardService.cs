@@ -26,8 +26,10 @@ public class StockCardService(
         var rows = new List<StockCardListRow>();
         var mode = NormalizeUomMode(uomMode);
 
-        var ingredients = await db.Ingredients.AsNoTracking()
-            .Where(i => i.Active)
+        IQueryable<Ingredient> ingredientQuery = db.Ingredients.AsNoTracking().Where(i => i.Active);
+        if (companyId is int ingredientCompanyId)
+            ingredientQuery = ingredientQuery.Where(i => i.CompanyId == null || i.CompanyId == ingredientCompanyId);
+        var ingredients = await ingredientQuery
             .OrderBy(i => i.Group)
             .ThenBy(i => i.Name)
             .ToListAsync(cancellationToken);

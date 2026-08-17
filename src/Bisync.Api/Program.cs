@@ -343,10 +343,16 @@ app.Use(async (context, next) =>
         logger?.LogError(ex, "Unhandled error on {Method} {Path}", context.Request.Method, context.Request.Path);
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json";
-        var message = app.Environment.IsDevelopment()
+        var debug = context.Request.Headers.TryGetValue("X-Bisync-Debug", out var debugHeader)
+            && string.Equals(debugHeader.ToString(), "1", StringComparison.Ordinal);
+        var message = app.Environment.IsDevelopment() || debug
             ? ex.Message
             : "An unexpected error occurred. Please try again.";
-        await context.Response.WriteAsJsonAsync(new { message });
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message,
+            detail = debug ? ex.ToString() : null,
+        });
     }
 });
 

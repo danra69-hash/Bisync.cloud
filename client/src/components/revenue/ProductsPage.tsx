@@ -561,16 +561,16 @@ export function ProductsPage({
   }, [name, savedProducts, selectedProductId]);
 
   const loadComponents = useCallback(() => {
-    if (!orgReady) {
+    if (!orgReady || !selectedCompanyId) {
       setComponents([]);
       return Promise.resolve();
     }
     setLoading(true);
-    return api.ingredients()
+    return api.ingredients(selectedCompanyId)
       .then(rows => setComponents(rows.map(ingredientToRow)))
       .catch(() => setComponents([]))
       .finally(() => setLoading(false));
-  }, [orgReady]);
+  }, [orgReady, selectedCompanyId]);
 
   const loadSavedProducts = useCallback(() => {
     if (!selectedCompanyId) {

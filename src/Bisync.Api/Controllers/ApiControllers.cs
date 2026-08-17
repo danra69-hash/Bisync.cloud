@@ -1149,7 +1149,8 @@ public class IngredientsController(
     ITenantContext tenant,
     SplitUseService splitUse,
     IngredientUsageMetricsService usageMetrics,
-    StockCardService stockCardService) : ControllerBase
+    StockCardService stockCardService,
+    ILogger<IngredientsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll(
@@ -1181,27 +1182,49 @@ public class IngredientsController(
                 .ToListAsync(cancellationToken);
         }
 
-        var metrics = cid is int companyForMetrics
-            ? await usageMetrics.ComputeAsync(companyForMetrics, locationIdList, cancellationToken)
-            : new IngredientUsageMetricsResult(
+        IngredientUsageMetricsResult metrics;
+        try
+        {
+            metrics = cid is int companyForMetrics
+                ? await usageMetrics.ComputeAsync(companyForMetrics, locationIdList, cancellationToken)
+                : new IngredientUsageMetricsResult(
+                    new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase),
+                    new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    IngredientUsageMetricsService.LookbackDays);
+        }
+        catch (Exception ex)
+        {
+            // Component list must still render when usage enrichment fails (legacy dupes / sales data).
+            logger.LogError(ex, "Ingredient usage metrics failed for company {CompanyId}", cid);
+            metrics = new IngredientUsageMetricsResult(
                 new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                 IngredientUsageMetricsService.LookbackDays);
+        }
 
         var onHandByKey = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         if (locationIdList.Count > 0)
         {
-            var stockRows = await stockCardService.ListAsync(
-                cid,
-                locationIdList,
-                "component",
-                "recipe",
-                period: null,
-                cancellationToken);
-            foreach (var row in stockRows)
+            try
             {
-                onHandByKey.TryGetValue(row.ItemKey, out var existing);
-                onHandByKey[row.ItemKey] = existing + row.OnHandQty;
+                var stockRows = await stockCardService.ListAsync(
+                    cid,
+                    locationIdList,
+                    "component",
+                    "recipe",
+                    period: null,
+                    cancellationToken);
+                foreach (var row in stockRows)
+                {
+                    if (string.IsNullOrWhiteSpace(row.ItemKey))
+                        continue;
+                    onHandByKey.TryGetValue(row.ItemKey, out var existing);
+                    onHandByKey[row.ItemKey] = existing + row.OnHandQty;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Ingredient on-hand enrichment failed for company {CompanyId}", cid);
             }
         }
 
@@ -1213,23 +1236,34 @@ public class IngredientsController(
         var purchasedComponentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (componentIds.Count > 0)
         {
-            IQueryable<InventoryPurchase> purchaseQuery = db.InventoryPurchases.AsNoTracking()
-                .Where(p => componentIds.Contains(p.ComponentId));
-            if (cid is int purchaseCompanyId)
-                purchaseQuery = purchaseQuery.Where(p => p.CompanyId == null || p.CompanyId == purchaseCompanyId);
-            var purchased = await purchaseQuery
-                .Select(p => p.ComponentId)
-                .Distinct()
-                .ToListAsync(cancellationToken);
-            foreach (var purchasedId in purchased)
-                purchasedComponentIds.Add(purchasedId);
+            try
+            {
+                IQueryable<InventoryPurchase> purchaseQuery = db.InventoryPurchases.AsNoTracking()
+                    .Where(p => componentIds.Contains(p.ComponentId));
+                if (cid is int purchaseCompanyId)
+                    purchaseQuery = purchaseQuery.Where(p => p.CompanyId == null || p.CompanyId == purchaseCompanyId);
+                var purchased = await purchaseQuery
+                    .Select(p => p.ComponentId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+                foreach (var purchasedId in purchased)
+                {
+                    if (!string.IsNullOrWhiteSpace(purchasedId))
+                        purchasedComponentIds.Add(purchasedId);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Ingredient purchase-record enrichment failed for company {CompanyId}", cid);
+            }
         }
 
         return Ok(ingredients.Select(i =>
         {
-            metrics.DailyUsageByComponentId.TryGetValue(i.ComponentId, out var computedUsage);
-            metrics.OrderFreqDaysByComponentId.TryGetValue(i.ComponentId, out var computedFreq);
-            onHandByKey.TryGetValue(i.ComponentId, out var onHand);
+            var componentId = i.ComponentId ?? string.Empty;
+            metrics.DailyUsageByComponentId.TryGetValue(componentId, out var computedUsage);
+            metrics.OrderFreqDaysByComponentId.TryGetValue(componentId, out var computedFreq);
+            onHandByKey.TryGetValue(componentId, out var onHand);
             var dailyUsage = computedUsage > 0 ? computedUsage : i.DailyUsage;
             var orderFreq = computedFreq > 0 ? computedFreq : i.OrderFreqDays;
             var parStock = i.ParStock > 0
@@ -1256,7 +1290,8 @@ public class IngredientsController(
                 parStock,
                 parStockUom,
                 onHandQty = onHand,
-                hasPurchaseRecord = purchasedComponentIds.Contains(i.ComponentId),
+                hasPurchaseRecord = !string.IsNullOrWhiteSpace(componentId)
+                    && purchasedComponentIds.Contains(componentId),
                 metricsLookbackDays = metrics.LookbackDays,
                 dailyUsageAuto = computedUsage > 0,
                 orderFreqAuto = computedFreq > 0,
@@ -2633,11 +2668,22 @@ public class PurchaseOrdersController(
             .Where(id => id.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var deliveryByExternalId = deliveryIds.Count == 0
-            ? new Dictionary<string, DeliveryLocation>(StringComparer.OrdinalIgnoreCase)
-            : await db.DeliveryLocations.AsNoTracking()
+        Dictionary<string, DeliveryLocation> deliveryByExternalId;
+        if (deliveryIds.Count == 0)
+        {
+            deliveryByExternalId = new Dictionary<string, DeliveryLocation>(StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            var deliveryRows = await db.DeliveryLocations.AsNoTracking()
                 .Where(d => deliveryIds.Contains(d.ExternalId))
-                .ToDictionaryAsync(d => d.ExternalId, StringComparer.OrdinalIgnoreCase);
+                .ToListAsync();
+            // Duplicate ExternalId rows must not take down PO list / detail mapping.
+            deliveryByExternalId = deliveryRows
+                .Where(d => !string.IsNullOrWhiteSpace(d.ExternalId))
+                .GroupBy(d => d.ExternalId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.OrderBy(d => d.Id).First(), StringComparer.OrdinalIgnoreCase);
+        }
 
         var companyIds = orders
             .Where(o => o.CompanyId is > 0)
@@ -2829,10 +2875,14 @@ public class PurchaseOrdersController(
             .Where(v => externalIds.Contains(v.ExternalId))
             .Select(v => new { v.ExternalId, v.AllowPartialDelivery })
             .ToListAsync();
-        var byExternal = vendors.ToDictionary(
-            v => v.ExternalId,
-            v => v.AllowPartialDelivery,
-            StringComparer.OrdinalIgnoreCase);
+        // Duplicate vendor ExternalId rows (legacy) must not break PO mapping.
+        var byExternal = vendors
+            .Where(v => !string.IsNullOrWhiteSpace(v.ExternalId))
+            .GroupBy(v => v.ExternalId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.First().AllowPartialDelivery,
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var order in orders)
         {

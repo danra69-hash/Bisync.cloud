@@ -74,11 +74,20 @@ public sealed class IngredientUsageMetricsService(BisyncDbContext db)
             .ToListAsync(ct);
         var productsById = products.ToDictionary(p => p.Id);
 
-        var subProducts = await db.Products
+        // Legacy data can contain duplicate ProductId values among active sub-products.
+        // ToDictionary would throw and take down /api/ingredients enrichment.
+        var subProductRows = await db.Products
             .AsNoTracking()
             .Include(p => p.Items)
             .Where(p => p.CompanyId == companyId && p.IsSubProduct && p.Active)
-            .ToDictionaryAsync(p => p.ProductId, StringComparer.OrdinalIgnoreCase, ct);
+            .ToListAsync(ct);
+        var subProducts = subProductRows
+            .Where(p => !string.IsNullOrWhiteSpace(p.ProductId))
+            .GroupBy(p => p.ProductId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(p => p.Id).First(),
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var line in lines)
         {

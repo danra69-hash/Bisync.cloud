@@ -117,12 +117,19 @@ public class ProductSaleInventoryService(
 
         var finishedQty = scaleByWeight ? bomMultiplier : quantitySold;
 
-        var subProductsByCode = await db.Products
+        var subProductRows = await db.Products
             .AsNoTracking()
             .Include(p => p.Items)
             .Include(p => p.PackagingItems)
             .Where(p => p.IsSubProduct && p.Active)
-            .ToDictionaryAsync(p => p.ProductId, StringComparer.OrdinalIgnoreCase, cancellationToken);
+            .ToListAsync(cancellationToken);
+        var subProductsByCode = subProductRows
+            .Where(p => !string.IsNullOrWhiteSpace(p.ProductId))
+            .GroupBy(p => p.ProductId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(p => p.Id).First(),
+                StringComparer.OrdinalIgnoreCase);
 
         var ingredientsByCode = await LoadActiveIngredientsByCodeAsync(product.CompanyId, cancellationToken);
 
