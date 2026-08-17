@@ -31,6 +31,48 @@ public sealed class DeferredDbStartupHostedService(
             .UseNpgsql(resolver.DefaultOperationalConnection)
             .Options;
 
+        // Control-plane schema must exist before seeders. Retries cover Cloud SQL
+        // socket race right after a new Cloud Run revision starts.
+        var schemaReady = false;
+        for (var attempt = 1; attempt <= 40; attempt++)
+        {
+            try
+            {
+                await PostgresDatabaseBootstrap.EnsureExistsAsync(
+                    resolver.DefaultOperationalConnection,
+                    cancellationToken);
+                await PostgresDatabaseBootstrap.EnsureExistsAsync(
+                    resolver.DefaultArchiveConnection,
+                    cancellationToken);
+                await using (var bootDb = new BisyncDbContext(controlOptions))
+                {
+                    await bootDb.Database.EnsureCreatedAsync(cancellationToken);
+                    await SchemaPatcher.ApplyAsync(bootDb);
+                }
+                schemaReady = true;
+                logger.LogInformation("Control-plane schema ready (attempt {Attempt})", attempt);
+                break;
+            }
+            catch (Exception bootEx) when (attempt < 40)
+            {
+                logger.LogWarning(
+                    bootEx,
+                    "Control-plane bootstrap attempt {Attempt}/40 failed; retrying",
+                    attempt);
+                await Task.Delay(TimeSpan.FromSeconds(3), CancellationToken.None);
+            }
+            catch (Exception bootEx)
+            {
+                logger.LogError(bootEx, "Control-plane bootstrap failed after retries");
+            }
+        }
+
+        if (!schemaReady)
+        {
+            logger.LogError("Skipping deferred seeders — control-plane schema not ready");
+            return;
+        }
+
         // Identity merge / POS floor-plan table must not block PORT bind.
         try
         {

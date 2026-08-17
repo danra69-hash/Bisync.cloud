@@ -145,8 +145,8 @@ jobs:
           AUDIT_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_audit;Username=${DB_USER}"
           TAG_SUGGESTION_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_tag_suggestions;Username=${DB_USER}"
 
-          # Startup probe: give the revision ~4 minutes to bind PORT=8080 while
-          # EnsureCreated/SchemaPatcher run, then deferred seeders continue after listen.
+          # Startup probe: PORT must bind immediately. Schema/seeders run in
+          # DeferredDbStartupHostedService after listen (with Cloud SQL retries).
           gcloud run deploy "${SERVICE_NAME}" \
             --project="${PROJECT_ID}" \
             --image="${IMAGE}" \
@@ -161,7 +161,7 @@ jobs:
             --timeout=600 \
             --cpu-boost \
             --no-cpu-throttling \
-            --startup-probe=tcpSocket.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=48 \
+            --startup-probe=tcpSocket.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=24 \
             --add-cloudsql-instances="${SQL_CONNECTION}" \
             --set-secrets="DB_PASSWORD=bisync-db-password:latest" \
             --set-env-vars="ASPNETCORE_ENVIRONMENT=Production" \

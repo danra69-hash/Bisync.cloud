@@ -194,22 +194,9 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    // Critical control-plane bootstrap only — keep this short so Cloud Run
-    // can bind PORT before the startup probe times out. Seeders / partitions
-    // run in DeferredDbStartupHostedService after Kestrel is listening.
-    var resolver = scope.ServiceProvider.GetRequiredService<ITenantConnectionResolver>();
-    var controlOptions = new DbContextOptionsBuilder<BisyncDbContext>()
-        .UseNpgsql(resolver.DefaultOperationalConnection)
-        .Options;
-    await using var db = new BisyncDbContext(controlOptions);
-    await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultOperationalConnection);
-    await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultArchiveConnection);
-    await db.Database.EnsureCreatedAsync();
-    await SchemaPatcher.ApplyAsync(db);
-    // RevMgmt seed + tenant registry warm-up run in DeferredDbStartupHostedService.
-}
+// Do NOT block PORT bind on Cloud SQL bootstrap. EnsureCreated/SchemaPatcher
+// run in DeferredDbStartupHostedService (with retries) after Kestrel listens,
+// so Cloud Run startup probes succeed even when the socket is slow to appear.
 
 if (app.Environment.IsDevelopment())
 {
