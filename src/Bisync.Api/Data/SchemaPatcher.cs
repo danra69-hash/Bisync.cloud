@@ -1,6 +1,7 @@
 using Bisync.Api.Models;
 using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Bisync.Api.Data;
 
@@ -280,7 +281,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorShareToken", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedAt", "TEXT");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedBy", "TEXT NOT NULL DEFAULT ''");
-        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptExpiryDate", "TEXT");
+        // Model is DateOnly? — must be PostgreSQL date (legacy installs used TEXT).
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptExpiryDate", "date");
+        await MigrateVendorAcceptExpiryDateToDateAsync(db);
 
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "PurchaseOrders"
@@ -2708,6 +2711,87 @@ public static class SchemaPatcher
     static async Task EnsureFifoIssueStockAsync(BisyncDbContext db)
     {
         await db.Database.ExecuteSqlRawAsync(FifoIssueStockSql.CreateTablesAndFunction);
+    }
+
+    /// <summary>
+    /// Legacy SQLite→Postgres path created VendorAcceptExpiryDate as TEXT while the
+    /// entity uses <see cref="Models.PurchaseOrder.VendorAcceptExpiryDate"/> as DateOnly?.
+    /// Npgsql cannot read DateOnly from text columns when a value is present.
+    /// </summary>
+    public static async Task MigrateVendorAcceptExpiryDateToDateAsync(BisyncDbContext db)
+    {
+        if (!await DatabaseSchemaHelper.TableExistsAsync(db, "PurchaseOrders")
+            || !await DatabaseSchemaHelper.ColumnExistsAsync(db, "PurchaseOrders", "VendorAcceptExpiryDate"))
+            return;
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                DO $$
+                BEGIN
+                  IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'PurchaseOrders'
+                      AND column_name = 'VendorAcceptExpiryDate'
+                      AND data_type = 'text'
+                  ) THEN
+                    ALTER TABLE "PurchaseOrders"
+                    ALTER COLUMN "VendorAcceptExpiryDate" TYPE date
+                    USING (
+                      CASE
+                        WHEN "VendorAcceptExpiryDate" IS NULL
+                          OR btrim("VendorAcceptExpiryDate") = '' THEN NULL
+                        WHEN "VendorAcceptExpiryDate" ~ '^\d{4}-\d{2}-\d{2}'
+                          THEN "VendorAcceptExpiryDate"::date
+                        ELSE NULL
+                      END
+                    );
+                  END IF;
+                END $$;
+                """);
+        }
+        catch
+        {
+            // Concurrent alter or non-Postgres — leave column as-is.
+        }
+    }
+
+    /// <summary>Apply VendorAcceptExpiryDate text→date on every active tenant operational DB.</summary>
+    public static async Task MigrateVendorAcceptExpiryDateAcrossTenantsAsync(
+        BisyncDbContext controlDb,
+        ILogger? logger = null,
+        CancellationToken cancellationToken = default)
+    {
+        var connections = await controlDb.TenantConnections.AsNoTracking()
+            .Where(t => t.IsActive)
+            .Select(t => new { t.CompanyId, t.ConnectionString })
+            .ToListAsync(cancellationToken);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var conn in connections)
+        {
+            if (string.IsNullOrWhiteSpace(conn.ConnectionString))
+                continue;
+            if (!seen.Add(conn.ConnectionString.Trim()))
+                continue;
+
+            try
+            {
+                var options = new DbContextOptionsBuilder<BisyncDbContext>()
+                    .UseNpgsql(conn.ConnectionString)
+                    .Options;
+                await using var ops = new BisyncDbContext(options);
+                await MigrateVendorAcceptExpiryDateToDateAsync(ops);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(
+                    ex,
+                    "VendorAcceptExpiryDate migration failed for company {CompanyId}",
+                    conn.CompanyId);
+            }
+        }
     }
 
     /// <summary>Public hook so Program can refresh registry after companies are seeded.</summary>

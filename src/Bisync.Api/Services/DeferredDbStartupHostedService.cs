@@ -73,6 +73,19 @@ public sealed class DeferredDbStartupHostedService(
             return;
         }
 
+        try
+        {
+            await using var expiryDb = new BisyncDbContext(controlOptions);
+            await SchemaPatcher.MigrateVendorAcceptExpiryDateAcrossTenantsAsync(
+                expiryDb,
+                logger,
+                cancellationToken);
+        }
+        catch (Exception expiryEx)
+        {
+            logger.LogError(expiryEx, "VendorAcceptExpiryDate tenant migration failed; continuing startup");
+        }
+
         // Identity merge / POS floor-plan table must not block PORT bind.
         try
         {
