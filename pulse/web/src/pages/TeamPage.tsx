@@ -129,7 +129,9 @@ function AccessConfig({
             <button
               type="button"
               className="btn btn-ghost access-add-role"
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 setAdding((v) => !v);
                 setFormError(null);
               }}
