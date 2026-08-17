@@ -538,7 +538,7 @@ export async function loadUserMemberships(userId) {
      FROM user_company_memberships m
      JOIN companies c ON c.id = m.company_id
      WHERE m.user_id = $1 AND c.active = TRUE
-     ORDER BY c.name`,
+     ORDER BY CASE WHEN c.code = 'PULS' THEN 0 ELSE 1 END, c.name`,
     [userId],
   );
 
