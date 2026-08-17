@@ -89,15 +89,18 @@ export async function seed({ force = false } = {}) {
     console.log('Pulse Postgres already seeded — skipping full seed (use --force to reset).');
     try {
       await ensureSecondaryDemoTenant();
+      await ensureMobileDemo();
     } catch (err) {
-      console.warn('ensureSecondaryDemoTenant:', err.message);
+      console.warn('ensureSecondaryDemoTenant/mobile:', err.message);
     }
     return;
   }
 
   if (force) {
     await query(`
-      TRUNCATE training_sessions, appointments, payments, invoices, promotions,
+      TRUNCATE mobile_training_sets, mobile_training_sessions, attendance_stamps,
+               member_packages, coaching_packages, subscriber_accounts, mobile_sessions,
+               training_sessions, appointments, payments, invoices, promotions,
                members, sessions, equipment, activity_types, subscription_products,
                user_location_access, user_company_memberships,
                locations, companies, users RESTART IDENTITY CASCADE
@@ -304,9 +307,75 @@ export async function seed({ force = false } = {}) {
     ],
   );
 
+  await seedMobileDemo({
+    companyId: pulseCo,
+    memberId: memGold,
+    locationId: pulseDt,
+  });
+
   console.log(
     `Seeded Pulse multi-tenant demo: companies PULS + ATLA, locations Downtown/Westside/Harbor. Roles: ${ROLES.join(', ')}`,
   );
+  console.log('mobile.pulse demo: subscriber sam.nguyen@email.com / pulse123 PIN 1234; coach@pulse.club / pulse123 PIN 1234');
+}
+
+async function seedMobileDemo({ companyId, memberId, locationId }) {
+  const existing = await query(
+    `SELECT 1 FROM subscriber_accounts WHERE lower(email) = 'sam.nguyen@email.com'`,
+  );
+  if (existing.rowCount) return;
+
+  await query(
+    `INSERT INTO subscriber_accounts (id, company_id, member_id, email, password, pin, active, created_at)
+     VALUES ($1,$2,$3,'sam.nguyen@email.com','pulse123','1234',TRUE,NOW())`,
+    [id('sub'), companyId, memberId],
+  );
+
+  const pkgId = id('cpkg');
+  await query(
+    `INSERT INTO coaching_packages (id, company_id, name, stamp_total, price, description, active)
+     VALUES ($1,$2,'PT 10-Pack',10,499,'Ten coached sessions — stamp card',$3)`,
+    [pkgId, companyId, true],
+  );
+
+  const mpId = id('mpkg');
+  await query(
+    `INSERT INTO member_packages (id, company_id, member_id, package_id, stamps_total, stamps_used, status, purchased_at)
+     VALUES ($1,$2,$3,$4,10,0,'active',NOW())`,
+    [mpId, companyId, memberId, pkgId],
+  );
+
+  for (let i = 1; i <= 10; i += 1) {
+    await query(
+      `INSERT INTO attendance_stamps (id, company_id, member_package_id, stamp_index, status)
+       VALUES ($1,$2,$3,$4,'available')`,
+      [id('stamp'), companyId, mpId, i],
+    );
+  }
+
+  // Ensure coach PIN
+  await query(`UPDATE users SET pin = '1234' WHERE lower(email) = 'coach@pulse.club'`);
+}
+
+/** Soft-add mobile demo for already-seeded Cloud SQL DBs. */
+async function ensureMobileDemo() {
+  let mem = await query(
+    `SELECT m.id AS member_id, m.company_id, m.home_location_id
+     FROM members m WHERE lower(m.email) = 'sam.nguyen@email.com' LIMIT 1`,
+  );
+  if (!mem.rowCount) {
+    mem = await query(
+      `SELECT m.id AS member_id, m.company_id, m.home_location_id
+       FROM members m WHERE m.member_code = 'PLS-1001' LIMIT 1`,
+    );
+  }
+  if (!mem.rowCount) return;
+  await seedMobileDemo({
+    companyId: mem.rows[0].company_id,
+    memberId: mem.rows[0].member_id,
+    locationId: mem.rows[0].home_location_id,
+  });
+  console.log('mobile.pulse demo accounts ensured.');
 }
 
 const isMain = process.argv[1] && process.argv[1].endsWith('seed.mjs');

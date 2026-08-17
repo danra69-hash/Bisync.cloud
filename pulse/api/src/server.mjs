@@ -29,11 +29,13 @@ import {
   isCompanyWideRole,
 } from './db.mjs';
 import { seed } from './seed.mjs';
+import { mountMobileRoutes } from './mobile-routes.mjs';
 
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
+mountMobileRoutes(app);
 
 function publicUser(u, extras = {}) {
   if (!u) return null;

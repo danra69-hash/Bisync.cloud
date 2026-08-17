@@ -20,12 +20,22 @@ Pulse is **company → location** scoped:
 
 Demo logins (password `pulse123`): `admin@pulse.club`, `mgmt@pulse.club`, `coach@pulse.club`, `sales@pulse.club`, `accounting@pulse.club`, plus `admin@atlas.fit` for the second company.
 
+## mobile.pulse
+
+Native companion app (Expo) under [`mobile/`](./mobile/):
+
+- Subscriber + Fitness coach modes
+- Training sets (strength / cardio), calendar booking, coaching stamp card, QR attendance
+
+See [`mobile/README.md`](./mobile/README.md).
+
 ## Local
 
 ```bash
 docker compose up -d
 cd pulse/api && npm install && npm run seed && npm run dev
 cd pulse/web && npm install && npm run dev
+cd pulse/mobile && npm install && npm start
 ```
 
 ## Cloud (standalone)

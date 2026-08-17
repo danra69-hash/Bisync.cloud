@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "mobile.pulse",
+    "slug": "mobile-pulse",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F4F7FB"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "club.pulse.mobile",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock mobile.pulse with Face ID",
+        "NSCameraUsageDescription": "Scan attendance and session QR codes"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "club.pulse.mobile",
+      "permissions": ["CAMERA", "USE_BIOMETRIC", "USE_FINGERPRINT"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow mobile.pulse to use Face ID."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow mobile.pulse to scan QR codes."
+        }
+      ]
+    ]
+  }
+}

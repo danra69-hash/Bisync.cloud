@@ -458,6 +458,10 @@ async function ensureTenantColumnsAndBackfill() {
   await query(`CREATE INDEX IF NOT EXISTS idx_equipment_company ON equipment(company_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_training_company ON training_sessions(company_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_subscription_products_company ON subscription_products(company_id)`);
+
+  await addColumnIfMissing('users', 'pin', "TEXT NOT NULL DEFAULT '1234'");
+  await addColumnIfMissing('appointments', 'request_origin', "TEXT NOT NULL DEFAULT 'subscriber'");
+  await addColumnIfMissing('appointments', 'request_status', "TEXT NOT NULL DEFAULT 'scheduled'");
 }
 
 /** Ensure each company has catalog rows for its plans (idempotent). */
