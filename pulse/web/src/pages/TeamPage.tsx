@@ -92,8 +92,7 @@ function AccessConfig({
     }));
   }
 
-  async function createRole(e: FormEvent) {
-    e.preventDefault();
+  async function createRole() {
     setFormError(null);
     setBusy(true);
     try {
