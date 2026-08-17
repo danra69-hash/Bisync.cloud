@@ -1,5 +1,6 @@
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -2732,18 +2733,18 @@ public static class SchemaPatcher
                   IF EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'public'
-                      AND table_name = 'PurchaseOrders'
-                      AND column_name = 'VendorAcceptExpiryDate'
-                      AND data_type = 'text'
+                      AND lower(table_name) = lower('PurchaseOrders')
+                      AND lower(column_name) = lower('VendorAcceptExpiryDate')
+                      AND data_type IN ('text', 'character varying')
                   ) THEN
                     ALTER TABLE "PurchaseOrders"
                     ALTER COLUMN "VendorAcceptExpiryDate" TYPE date
                     USING (
                       CASE
                         WHEN "VendorAcceptExpiryDate" IS NULL
-                          OR btrim("VendorAcceptExpiryDate") = '' THEN NULL
-                        WHEN "VendorAcceptExpiryDate" ~ '^\d{4}-\d{2}-\d{2}'
-                          THEN "VendorAcceptExpiryDate"::date
+                          OR btrim("VendorAcceptExpiryDate"::text) = '' THEN NULL
+                        WHEN "VendorAcceptExpiryDate"::text ~ '^\d{4}-\d{2}-\d{2}'
+                          THEN ("VendorAcceptExpiryDate"::text)::date
                         ELSE NULL
                       END
                     );
@@ -2763,23 +2764,33 @@ public static class SchemaPatcher
         ILogger? logger = null,
         CancellationToken cancellationToken = default)
     {
+        await MigrateVendorAcceptExpiryDateToDateAsync(controlDb);
+
         var connections = await controlDb.TenantConnections.AsNoTracking()
             .Where(t => t.IsActive)
-            .Select(t => new { t.CompanyId, t.ConnectionString })
+            .Select(t => new { t.CompanyId, t.ConnectionString, t.DatabaseName })
             .ToListAsync(cancellationToken);
 
+        var controlCs = controlDb.Database.GetConnectionString() ?? string.Empty;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var conn in connections)
         {
-            if (string.IsNullOrWhiteSpace(conn.ConnectionString))
-                continue;
-            if (!seen.Add(conn.ConnectionString.Trim()))
+            var cs = (conn.ConnectionString ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(cs))
+            {
+                var dbName = (conn.DatabaseName ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(dbName) || string.IsNullOrWhiteSpace(controlCs))
+                    continue;
+                cs = TenantConnectionResolver.ReplaceDatabase(controlCs, dbName);
+            }
+
+            if (!seen.Add(cs))
                 continue;
 
             try
             {
                 var options = new DbContextOptionsBuilder<BisyncDbContext>()
-                    .UseNpgsql(conn.ConnectionString)
+                    .UseNpgsql(cs)
                     .Options;
                 await using var ops = new BisyncDbContext(options);
                 await MigrateVendorAcceptExpiryDateToDateAsync(ops);

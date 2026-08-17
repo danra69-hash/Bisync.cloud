@@ -1448,6 +1448,7 @@ public class PurchaseOrdersController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
     {
+        await SchemaPatcher.MigrateVendorAcceptExpiryDateToDateAsync(db);
         var orders = await BaseQuery().ToListAsync();
         return Ok(await MapPurchaseOrdersAsync(orders));
     }
@@ -1457,6 +1458,7 @@ public class PurchaseOrdersController(
     {
         // Include Reconciled / Expired so Active Purchase KPIs can bucket PR / accepted / received / reconciled / expired.
         // Commitment Closed masters stay out of this queue.
+        await SchemaPatcher.MigrateVendorAcceptExpiryDateToDateAsync(db);
         await purchaseOrderAcceptExpiry.ExpireOverdueAsync();
 
         var query = BaseQuery()
@@ -1635,6 +1637,7 @@ public class PurchaseOrdersController(
     [HttpGet("{id:int}")]
     public async Task<ActionResult<object>> GetById(int id)
     {
+        await SchemaPatcher.MigrateVendorAcceptExpiryDateToDateAsync(db);
         await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, [id]);
         var order = await LoadOrderAsync(id);
         return order is null ? NotFound() : await MapPurchaseOrderAsync(order);
