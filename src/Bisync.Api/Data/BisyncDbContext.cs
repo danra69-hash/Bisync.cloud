@@ -524,9 +524,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .Property(p => p.VendorAcceptExpiryDate)
             .HasConversion(
                 v => v.HasValue ? v.Value.ToString("yyyy-MM-dd") : null,
-                v => string.IsNullOrWhiteSpace(v)
-                    ? null
-                    : (DateOnly.TryParse(v.Length >= 10 ? v[..10] : v, out var d) ? d : null));
+                v => ParseOptionalDateOnly(v));
         modelBuilder.Entity<PurchaseOrder>()
             .HasMany(p => p.Items)
             .WithOne(i => i.PurchaseOrder)
@@ -912,5 +910,14 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
                 .HasForeignKey(x => x.ConversationId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+    }
+
+    static DateOnly? ParseOptionalDateOnly(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim();
+        var datePart = trimmed.Length >= 10 ? trimmed.Substring(0, 10) : trimmed;
+        return DateOnly.TryParse(datePart, out var parsed) ? parsed : null;
     }
 }
