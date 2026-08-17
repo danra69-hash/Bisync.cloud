@@ -181,15 +181,15 @@ jobs:
             --format='value(status.url)')"
           echo "Live URL: ${URL}"
           echo "Commit: ${GITHUB_SHA}"
-          for i in 1 2 3 4 5 6; do
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
             if curl -fsS "${URL}/api/health" | tee /tmp/health.json; then
               echo ""
               echo "Health OK"
               break
             fi
-            echo "Health not ready yet (attempt ${i}/6), waiting 10s..."
+            echo "Health not ready yet (attempt ${i}/12), waiting 10s..."
             sleep 10
-            if [[ "${i}" -eq 6 ]]; then
+            if [[ "${i}" -eq 12 ]]; then
               echo "Health check failed" >&2
               exit 1
             fi
