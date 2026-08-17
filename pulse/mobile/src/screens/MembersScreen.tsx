@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../api';
@@ -33,6 +33,14 @@ export function MembersScreen({ mode = 'directory' }: { mode?: 'directory' | 'at
     }, [load]),
   );
 
+  function openStamps(m: CoachingMember) {
+    const root = nav.getParent() ?? nav;
+    root.navigate('MemberStamps', {
+      memberId: m.id,
+      memberName: `${m.firstName} ${m.lastName}`,
+    });
+  }
+
   const title = mode === 'attendance' ? 'Attendance' : 'Members';
   const sub =
     mode === 'attendance'
@@ -54,13 +62,11 @@ export function MembersScreen({ mode = 'directory' }: { mode?: 'directory' | 'at
           <Pressable
             key={m.id}
             style={styles.card}
-            onPress={() =>
-              nav.navigate('MemberStamps', {
-                memberId: m.id,
-                memberName: `${m.firstName} ${m.lastName}`,
-              })
-            }
+            onPress={() => openStamps(m)}
             accessibilityRole="button"
+            {...(Platform.OS === 'web'
+              ? ({ onClick: () => openStamps(m), cursor: 'pointer' } as object)
+              : {})}
           >
             <Text style={styles.name}>
               {m.firstName} {m.lastName}
