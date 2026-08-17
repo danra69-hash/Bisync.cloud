@@ -38,6 +38,13 @@ test('randomFourDigits is always 4 digits', () => {
   }
 });
 
+test('member QR encode/decode', async () => {
+  const { buildMemberQr, parseMemberQr } = await import('../api/src/mobile-domain.mjs');
+  assert.equal(buildMemberQr('mem_1'), 'PULSEMEMBER|mem_1');
+  assert.deepEqual(parseMemberQr('PULSEMEMBER|mem_1'), { memberId: 'mem_1' });
+  assert.equal(parseMemberQr('PULSE|x'), null);
+});
+
 test('normalizeTrainingSet strength and cardio', () => {
   const s = normalizeTrainingSet({ modality: 'strength', weight: 60, reps: 8, setsCount: 3 });
   assert.equal(s.ok, true);

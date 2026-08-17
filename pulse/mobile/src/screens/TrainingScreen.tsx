@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -8,10 +8,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { colors } from '../theme';
+import type { MainTabParamList } from '../navigation';
 
 type SetRow = {
   id: string;
@@ -33,16 +35,22 @@ type Session = {
   endQrPayload?: string | null;
 };
 
+type Equipment = { id: string; name: string; code?: string; category?: string };
+
 export function TrainingScreen() {
   const { user } = useAuth();
+  const route = useRoute<RouteProp<MainTabParamList, 'Training'>>();
+  const incoming = route.params;
   const [session, setSession] = useState<Session | null>(null);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
-  const [locationId, setLocationId] = useState('');
+  const [locationId, setLocationId] = useState(incoming?.locationId || '');
   const [members, setMembers] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
-  const [memberId, setMemberId] = useState('');
-  const [stampId, setStampId] = useState('');
+  const [memberId, setMemberId] = useState(incoming?.memberId || '');
+  const [stampId, setStampId] = useState(incoming?.stampId || '');
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [modality, setModality] = useState<'strength' | 'cardio'>('strength');
   const [equipmentName, setEquipmentName] = useState('');
+  const [equipmentId, setEquipmentId] = useState<string | null>(null);
   const [weight, setWeight] = useState('60');
   const [reps, setReps] = useState('8');
   const [setsCount, setSetsCount] = useState('3');
@@ -51,22 +59,33 @@ export function TrainingScreen() {
   const [durationSec, setDurationSec] = useState('600');
   const [endQr, setEndQr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoStarted, setAutoStarted] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
     const me = await api<{ locations: { id: string; name: string }[] }>('/api/mobile/me');
     setLocations(me.locations || []);
-    if (!locationId && me.locations?.[0]) setLocationId(me.locations[0].id);
+    if (!locationId && (incoming?.locationId || me.locations?.[0])) {
+      setLocationId(incoming?.locationId || me.locations![0].id);
+    }
     const active = await api<Session | null>('/api/mobile/training/active');
     setSession(active);
     if (user?.type === 'coach') {
-      const m = await api<{ id: string; firstName: string; lastName: string }[]>(
-        '/api/mobile/members',
-      );
+      const [m, eq] = await Promise.all([
+        api<{ id: string; firstName: string; lastName: string }[]>('/api/mobile/members'),
+        api<Equipment[]>('/api/mobile/equipment'),
+      ]);
       setMembers(m);
-      if (!memberId && m[0]) setMemberId(m[0].id);
+      setEquipment(eq);
+      if (!memberId && (incoming?.memberId || m[0])) {
+        setMemberId(incoming?.memberId || m[0].id);
+      }
+      if (incoming?.stampId) setStampId(incoming.stampId);
+    } else {
+      const eq = await api<Equipment[]>('/api/mobile/equipment');
+      setEquipment(eq);
     }
-  }, [locationId, memberId, user?.type]);
+  }, [incoming?.locationId, incoming?.memberId, incoming?.stampId, locationId, memberId, user?.type]);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,13 +93,19 @@ export function TrainingScreen() {
     }, [load]),
   );
 
-  async function start() {
+  async function start(overrides?: {
+    locationId?: string;
+    memberId?: string;
+    stampId?: string;
+  }) {
     try {
       setError(null);
-      const body: Record<string, string> = { locationId };
+      const body: Record<string, string> = {
+        locationId: overrides?.locationId || locationId,
+      };
       if (user?.type === 'coach') {
-        body.memberId = memberId;
-        body.attendanceStampId = stampId;
+        body.memberId = overrides?.memberId || memberId;
+        body.attendanceStampId = overrides?.stampId || stampId;
       }
       const s = await api<Session>('/api/mobile/training/start', {
         method: 'POST',
@@ -93,15 +118,42 @@ export function TrainingScreen() {
     }
   }
 
+  useEffect(() => {
+    if (
+      !autoStarted &&
+      incoming?.autoStart &&
+      user?.type === 'coach' &&
+      incoming.stampId &&
+      (incoming.memberId || memberId) &&
+      (incoming.locationId || locationId) &&
+      (!session || session.status !== 'active')
+    ) {
+      setAutoStarted(true);
+      void start({
+        stampId: incoming.stampId,
+        memberId: incoming.memberId || memberId,
+        locationId: incoming.locationId || locationId,
+      });
+    }
+  }, [autoStarted, incoming, locationId, memberId, session, user?.type]);
+
   async function addSet() {
     if (!session) return;
     try {
       const body =
         modality === 'strength'
-          ? { modality, equipmentName, weight: Number(weight), reps: Number(reps), setsCount: Number(setsCount) }
+          ? {
+              modality,
+              equipmentName,
+              equipmentId,
+              weight: Number(weight),
+              reps: Number(reps),
+              setsCount: Number(setsCount),
+            }
           : {
               modality,
               equipmentName,
+              equipmentId,
               speed: Number(speed),
               incline: Number(incline),
               durationSec: Number(durationSec),
@@ -131,12 +183,22 @@ export function TrainingScreen() {
     }
   }
 
+  function pickEquipment(eq: Equipment) {
+    setEquipmentId(eq.id);
+    setEquipmentName(eq.name);
+    if (String(eq.category || '').toLowerCase().includes('cardio')) {
+      setModality('cardio');
+    } else {
+      setModality('strength');
+    }
+  }
+
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, gap: 12 }}>
       <Text style={styles.title}>Training</Text>
       <Text style={styles.sub}>
         {user?.type === 'coach'
-          ? 'Confirm attendance first, then log sets. Ending creates a QR for the subscriber.'
+          ? 'After attendance, log sets by machine — weight, reps, and sets as you go.'
           : 'Start your own session and log strength or cardio sets.'}
       </Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -168,7 +230,7 @@ export function TrainingScreen() {
                 style={styles.input}
                 value={stampId}
                 onChangeText={setStampId}
-                placeholder="From attendance confirm"
+                placeholder="From attendance scan"
                 placeholderTextColor={colors.muted}
               />
             </>
@@ -179,7 +241,10 @@ export function TrainingScreen() {
         </View>
       ) : (
         <View style={styles.card}>
-          <Text style={styles.label}>Active session · {session.sets.length} sets</Text>
+          <Text style={styles.label}>
+            Active session
+            {incoming?.memberName ? ` · ${incoming.memberName}` : ''} · {session.sets.length} sets
+          </Text>
           {session.sets.map((s) => (
             <Text key={s.id} style={styles.setLine}>
               #{s.setIndex ?? ''} {s.modality} {s.equipmentName}{' '}
@@ -188,6 +253,39 @@ export function TrainingScreen() {
                 : `${s.weight}kg × ${s.reps} × ${s.setsCount}`}
             </Text>
           ))}
+
+          <Text style={styles.label}>Machine / equipment</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 48 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {equipment.map((eq) => (
+                <Pressable
+                  key={eq.id}
+                  style={[styles.eqChip, equipmentId === eq.id && styles.eqChipOn]}
+                  onPress={() => pickEquipment(eq)}
+                >
+                  <Text
+                    style={{
+                      color: equipmentId === eq.id ? colors.accent : colors.ink2,
+                      fontWeight: '600',
+                      fontSize: 12,
+                    }}
+                  >
+                    {eq.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+          <TextInput
+            style={styles.input}
+            value={equipmentName}
+            onChangeText={(t) => {
+              setEquipmentName(t);
+              setEquipmentId(null);
+            }}
+            placeholder="Or type machine name"
+            placeholderTextColor={colors.muted}
+          />
 
           <View style={styles.segment}>
             <Pressable
@@ -203,24 +301,53 @@ export function TrainingScreen() {
               <Text>Cardio</Text>
             </Pressable>
           </View>
-          <TextInput
-            style={styles.input}
-            value={equipmentName}
-            onChangeText={setEquipmentName}
-            placeholder="Equipment"
-            placeholderTextColor={colors.muted}
-          />
           {modality === 'strength' ? (
             <View style={styles.row}>
-              <TextInput style={[styles.input, styles.flex]} value={weight} onChangeText={setWeight} placeholder="Weight" keyboardType="decimal-pad" />
-              <TextInput style={[styles.input, styles.flex]} value={reps} onChangeText={setReps} placeholder="Reps" keyboardType="number-pad" />
-              <TextInput style={[styles.input, styles.flex]} value={setsCount} onChangeText={setSetsCount} placeholder="Sets" keyboardType="number-pad" />
+              <TextInput
+                style={[styles.input, styles.flex]}
+                value={weight}
+                onChangeText={setWeight}
+                placeholder="Weight"
+                keyboardType="decimal-pad"
+              />
+              <TextInput
+                style={[styles.input, styles.flex]}
+                value={reps}
+                onChangeText={setReps}
+                placeholder="Reps"
+                keyboardType="number-pad"
+              />
+              <TextInput
+                style={[styles.input, styles.flex]}
+                value={setsCount}
+                onChangeText={setSetsCount}
+                placeholder="Sets"
+                keyboardType="number-pad"
+              />
             </View>
           ) : (
             <View style={styles.row}>
-              <TextInput style={[styles.input, styles.flex]} value={speed} onChangeText={setSpeed} placeholder="Speed" keyboardType="decimal-pad" />
-              <TextInput style={[styles.input, styles.flex]} value={incline} onChangeText={setIncline} placeholder="Incline" keyboardType="decimal-pad" />
-              <TextInput style={[styles.input, styles.flex]} value={durationSec} onChangeText={setDurationSec} placeholder="Seconds" keyboardType="number-pad" />
+              <TextInput
+                style={[styles.input, styles.flex]}
+                value={speed}
+                onChangeText={setSpeed}
+                placeholder="Speed"
+                keyboardType="decimal-pad"
+              />
+              <TextInput
+                style={[styles.input, styles.flex]}
+                value={incline}
+                onChangeText={setIncline}
+                placeholder="Incline"
+                keyboardType="decimal-pad"
+              />
+              <TextInput
+                style={[styles.input, styles.flex]}
+                value={durationSec}
+                onChangeText={setDurationSec}
+                placeholder="Seconds"
+                keyboardType="number-pad"
+              />
             </View>
           )}
           <Pressable style={styles.primary} onPress={() => void addSet()}>
@@ -281,6 +408,15 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontWeight: '700' },
   error: { color: colors.danger },
   chip: { paddingVertical: 6 },
+  eqChip: {
+    borderWidth: 1,
+    borderColor: colors.rule,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: colors.paper,
+  },
+  eqChipOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   row: { flexDirection: 'row', gap: 8 },
   flex: { flex: 1 },
   segment: { flexDirection: 'row', gap: 8 },

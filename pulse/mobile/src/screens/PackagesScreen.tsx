@@ -35,6 +35,8 @@ type PackagesResponse = {
     renewsAt?: string | null;
   } | null;
   coachingPackages: Pack[];
+  memberQr?: string;
+  memberId?: string;
 };
 
 export function PackagesScreen() {
@@ -143,6 +145,17 @@ export function PackagesScreen() {
           </Pressable>
         ))}
       </View>
+
+      {user?.type === 'subscriber' && data?.memberQr ? (
+        <View style={[styles.card, { alignItems: 'center' }]}>
+          <Text style={styles.label}>Your check-in QR</Text>
+          <Text style={styles.meta}>Show this to your coach for attendance</Text>
+          <QRCode value={data.memberQr} size={180} />
+          <Text selectable style={styles.mono}>
+            {data.memberQr}
+          </Text>
+        </View>
+      ) : null}
 
       {data?.subscription ? (
         <View style={styles.card}>
