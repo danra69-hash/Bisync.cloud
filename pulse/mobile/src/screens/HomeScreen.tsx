@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -7,8 +8,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { api } from '../api';
+import { useAuth } from '../AuthContext';
 import { colors } from '../theme';
 import { combineLocal, monthMatrix, parseYmd, ymd } from '../calendarUtils';
 
@@ -27,7 +29,43 @@ type Apt = {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+function TapButton({
+  onPress,
+  style,
+  children,
+  accessibilityLabel,
+}: {
+  onPress: () => void;
+  style?: object;
+  children: React.ReactNode;
+  accessibilityLabel?: string;
+}) {
+  const webHandlers =
+    Platform.OS === 'web'
+      ? ({
+          onClick: (e: { stopPropagation?: () => void }) => {
+            e?.stopPropagation?.();
+            onPress();
+          },
+          cursor: 'pointer',
+        } as Record<string, unknown>)
+      : {};
+  return (
+    <Pressable
+      onPress={onPress}
+      style={style}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      {...webHandlers}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
 export function HomeScreen() {
+  const navigation = useNavigation();
+  const { logout } = useAuth();
   const today = useMemo(() => new Date(), []);
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState(() => ymd(today));
@@ -44,6 +82,32 @@ export function HomeScreen() {
   const [memberQuery, setMemberQuery] = useState('');
   const [locationId, setLocationId] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const openComposer = useCallback((day?: string) => {
+    setError(null);
+    setDateValue(day || selectedDay);
+    setTimeValue('09:00');
+    setDurationMin('60');
+    setTitle('Training session');
+    setMemberQuery('');
+    setComposerOpen(true);
+  }, [selectedDay]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 12 }}>
+          <TapButton onPress={() => openComposer()} accessibilityLabel="Add appointment">
+            <Text style={{ color: colors.accent, fontWeight: '700' }}>+ Add</Text>
+          </TapButton>
+          <TapButton onPress={() => void logout()} accessibilityLabel="Sign out">
+            <Text style={{ color: colors.accent, fontWeight: '600' }}>Sign out</Text>
+          </TapButton>
+        </View>
+      ),
+    });
+  }, [navigation, openComposer, logout]);
+
 
   const load = useCallback(async () => {
     const [cal, me, mem] = await Promise.all([
@@ -64,6 +128,13 @@ export function HomeScreen() {
     }, [load]),
   );
 
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('openAdd') === '1') {
+      openComposer();
+    }
+  }, [openComposer]);
+
   const byDay = useMemo(() => {
     const map = new Map<string, Apt[]>();
     for (const a of rows) {
@@ -82,16 +153,6 @@ export function HomeScreen() {
     if (!q) return members;
     return members.filter((m) => `${m.firstName} ${m.lastName}`.toLowerCase().includes(q));
   }, [memberQuery, members]);
-
-  function openComposer(day?: string) {
-    setError(null);
-    setDateValue(day || selectedDay);
-    setTimeValue('09:00');
-    setDurationMin('60');
-    setTitle('Training session');
-    setMemberQuery('');
-    setComposerOpen(true);
-  }
 
   async function saveAppointment() {
     try {
@@ -136,16 +197,13 @@ export function HomeScreen() {
           <Text style={styles.title}>Home</Text>
           <Text style={styles.sub}>All appointments on your calendar</Text>
         </View>
-        <Pressable
+        <TapButton
           style={styles.addBtn}
           onPress={() => openComposer()}
-          accessibilityRole="button"
           accessibilityLabel="Add appointment"
-          // @ts-expect-error web cursor
-          cursor="pointer"
         >
           <Text style={styles.addBtnText}>+ Add</Text>
-        </Pressable>
+        </TapButton>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -233,17 +291,17 @@ export function HomeScreen() {
               day: 'numeric',
             }) || selectedDay}
           </Text>
-          <Pressable onPress={() => openComposer(selectedDay)}>
+          <TapButton onPress={() => openComposer(selectedDay)}>
             <Text style={styles.link}>New appointment</Text>
-          </Pressable>
+          </TapButton>
         </View>
 
         {dayAppointments.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No appointments this day</Text>
-            <Pressable style={styles.primary} onPress={() => openComposer(selectedDay)}>
+            <TapButton style={styles.primary} onPress={() => openComposer(selectedDay)}>
               <Text style={styles.primaryText}>Add appointment</Text>
-            </Pressable>
+            </TapButton>
           </View>
         ) : (
           dayAppointments.map((a) => (
