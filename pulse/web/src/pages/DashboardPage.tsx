@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, fmtWhen, money, type DashboardData } from '../lib/api';
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [productCount, setProductCount] = useState<number | null>(null);
 
   useEffect(() => {
     api<DashboardData>('/api/dashboard')
       .then(setData)
       .catch((e) => setError(e.message));
+    api<{ summary?: { productCount?: number } }>('/api/products')
+      .then((r) => setProductCount(r.summary?.productCount ?? 0))
+      .catch(() => setProductCount(null));
   }, []);
 
   if (error) return <div className="error-banner">{error}</div>;
@@ -17,12 +22,17 @@ export function DashboardPage() {
   const s = data.stats;
   return (
     <div className="stack reveal is-in">
-      <div className="page-head">
+      <div className="page-head" style={{ alignItems: 'flex-end' }}>
         <div>
           <p className="eyebrow">Overview</p>
           <h1>Club pulse</h1>
           <p>Live membership, billing, trainer load, and equipment health.</p>
         </div>
+        {productCount !== null ? (
+          <Link to="/app/products" className="btn btn-primary">
+            Product catalog ({productCount})
+          </Link>
+        ) : null}
       </div>
 
       <div className="stat-row">

@@ -11,11 +11,11 @@ export const ROLE_LABELS = {
 };
 
 export const ROLE_MODULES = {
-  management: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'products', 'team'],
-  admin: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'products', 'team'],
-  accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'products'],
+  management: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'team'],
+  admin: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions', 'appointments', 'equipment', 'training', 'team'],
+  accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
   fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-  sales: ['dashboard', 'members', 'promotions', 'appointments', 'products'],
+  sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
 };
 
 /** Default list prices used when seeding the Product catalog from company plans. */

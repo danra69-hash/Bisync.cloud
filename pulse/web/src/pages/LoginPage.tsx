@@ -7,8 +7,8 @@ const DEMOS = [
   { email: 'admin@pulse.club', label: 'Pulse Admin' },
   { email: 'mgmt@pulse.club', label: 'Management' },
   { email: 'accounting@pulse.club', label: 'Accounting' },
-  { email: 'coach@pulse.club', label: 'Coach' },
   { email: 'sales@pulse.club', label: 'Sales' },
+  { email: 'coach@pulse.club', label: 'Coach (no Product)' },
   { email: 'admin@atlas.fit', label: 'Atlas Admin' },
 ];
 
@@ -23,7 +23,9 @@ export function LoginPage({
   error: string | null;
   setError: (v: string | null) => void;
 }) {
-  const [email, setEmail] = useState(surface === 'admin' ? 'admin@pulse.club' : 'coach@pulse.club');
+  // Default to admin so Product (and the full module set) is visible on first sign-in.
+  // Coach demos still work via the account chips — coaches intentionally lack Product.
+  const [email, setEmail] = useState('admin@pulse.club');
   const [password, setPassword] = useState('pulse123');
   const [busy, setBusy] = useState(false);
 

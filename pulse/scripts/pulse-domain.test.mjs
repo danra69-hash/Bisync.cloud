@@ -22,6 +22,8 @@ test('role modules: sales can access products', () => {
   const sales = { role: 'sales' };
   assert.equal(requireRole(sales, ['products']), true);
   assert.ok(ROLE_MODULES.admin.includes('products'));
+  assert.equal(ROLE_MODULES.admin.indexOf('products'), 2, 'Product should sit early in admin nav modules');
+  assert.ok(!ROLE_MODULES.fitness_coach.includes('products'));
   assert.equal(requireRole({ role: 'fitness_coach' }, ['products']), false);
 });
 

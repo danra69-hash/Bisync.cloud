@@ -243,10 +243,11 @@ a:hover {
 
 .topnav-links {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.15rem;
   flex: 1;
-  overflow-x: auto;
   min-width: 0;
+  align-items: center;
 }
 
 .nav-link {
@@ -655,6 +656,24 @@ textarea {
   }
 }
 
+@media (max-width: 1180px) {
+  .topnav {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--nav-h);
+    padding: 0.5rem 0.75rem;
+    row-gap: 0.45rem;
+  }
+  .topnav-links {
+    order: 3;
+    flex: 1 1 100%;
+  }
+  .topnav-tenant {
+    margin-left: auto;
+    margin-right: 0.5rem;
+  }
+}
+
 @media (max-width: 860px) {
   .login-page {
     grid-template-columns: 1fr;
@@ -677,6 +696,9 @@ textarea {
     order: 3;
     width: 100%;
     margin: 0.35rem 0 0;
+  }
+  .topnav-links {
+    order: 4;
   }
   .tenant-field {
     flex: 1;

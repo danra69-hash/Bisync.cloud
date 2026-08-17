@@ -31,13 +31,13 @@ export type Surface = 'team' | 'admin';
 const MODULE_ROUTES: { id: ModuleId; path: string; label: string; adminOnly?: boolean }[] = [
   { id: 'dashboard', path: '/app', label: 'Dashboard' },
   { id: 'members', path: '/app/members', label: 'Members' },
+  { id: 'products', path: '/app/products', label: 'Product' },
   { id: 'payments', path: '/app/payments', label: 'Payments' },
   { id: 'invoices', path: '/app/invoices', label: 'Invoices' },
   { id: 'promotions', path: '/app/promotions', label: 'Promotions' },
   { id: 'appointments', path: '/app/appointments', label: 'Appointments' },
   { id: 'equipment', path: '/app/equipment', label: 'Equipment' },
   { id: 'training', path: '/app/training', label: 'Training' },
-  { id: 'products', path: '/app/products', label: 'Product' },
   { id: 'team', path: '/app/team', label: 'Team', adminOnly: true },
 ];
 
@@ -199,9 +199,9 @@ export default function App() {
     const roleModules: Record<string, ModuleId[]> = {
       management: MODULE_ROUTES.map((m) => m.id),
       admin: MODULE_ROUTES.map((m) => m.id),
-      accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'products'],
+      accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
       fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-      sales: ['dashboard', 'members', 'promotions', 'appointments', 'products'],
+      sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
     };
     setUser({
       ...user,
@@ -235,9 +235,9 @@ export default function App() {
     : (({
         management: MODULE_ROUTES.map((m) => m.id),
         admin: MODULE_ROUTES.map((m) => m.id),
-        accounting: ['dashboard', 'members', 'payments', 'invoices', 'promotions', 'products'],
+        accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
         fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
-        sales: ['dashboard', 'members', 'promotions', 'appointments', 'products'],
+        sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
       }[effectiveRole] as ModuleId[]) || []);
 
   const nav = MODULE_ROUTES.filter((m) => {

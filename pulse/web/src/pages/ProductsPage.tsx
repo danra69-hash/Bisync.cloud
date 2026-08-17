@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { api, fmtWhen, money, type Promotion } from '../lib/api';
+import { api, getCompanyId, fmtWhen, money, type Promotion } from '../lib/api';
 
 interface ProductSummary {
   id: string;
@@ -37,14 +37,17 @@ export function ProductsPage() {
     billingInterval: 'month',
     description: '',
   });
+  const companyId = getCompanyId();
 
   async function load() {
     setData(await api<ProductsResponse>('/api/products'));
   }
 
   useEffect(() => {
+    setError(null);
+    setData(null);
     load().catch((e) => setError(e.message));
-  }, []);
+  }, [companyId]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -84,6 +87,7 @@ export function ProductsPage() {
         </button>
       </div>
       {error ? <div className="error-banner">{error}</div> : null}
+      {!error && !data ? <p className="mono muted">Loading products…</p> : null}
 
       {summary ? (
         <div className="stat-grid">
