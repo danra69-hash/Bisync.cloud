@@ -79,7 +79,9 @@ function productMatchesLocations(product: Product, locationIds: string[]): boole
   const productLocs = product.locationExternalIds ?? [];
   if (locationIds.length === 0) return false;
   if (productLocs.length === 0) return true;
-  return locationIds.some(id => productLocs.includes(id));
+  return locationIds.some(selected =>
+    productLocs.some(id => id.localeCompare(selected, undefined, { sensitivity: 'accent' }) === 0),
+  );
 }
 
 function VariationStack({
@@ -224,9 +226,10 @@ export function ProductListPage({
     setLoading(true);
     setError(null);
     try {
-      await resyncStaleTaggedComponentPrices();
       const data = await api.products(selectedCompanyId);
       setProducts(data);
+      // Price backfill is best-effort and must not block the product grid.
+      void resyncStaleTaggedComponentPrices(selectedCompanyId);
     } catch (e) {
       setProducts([]);
       setError(e instanceof Error ? e.message : 'Failed to load products.');

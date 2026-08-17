@@ -167,7 +167,9 @@ function productMatchesLocations(product: Product, locationIds: string[]): boole
   const productLocs = product.locationExternalIds ?? [];
   if (locationIds.length === 0) return false;
   if (productLocs.length === 0) return true;
-  return locationIds.some(id => productLocs.includes(id));
+  return locationIds.some(selected =>
+    productLocs.some(id => id.localeCompare(selected, undefined, { sensitivity: 'accent' }) === 0),
+  );
 }
 
 type ProductTypeFilter = 'b2b' | 'sub-product';
@@ -343,13 +345,13 @@ export function ProductManagementPage({
     setLoading(true);
     setError(null);
     try {
-      await resyncStaleTaggedComponentPrices();
       const [productData, managementData] = await Promise.all([
         api.products(selectedCompanyId),
         api.productManagement(selectedCompanyId, selectedLocationIds, viewMode),
       ]);
       setProducts(productData);
       setManagementRows(managementData);
+      void resyncStaleTaggedComponentPrices(selectedCompanyId);
     } catch (e) {
       setProducts([]);
       setManagementRows([]);

@@ -194,7 +194,7 @@ export function VendorProductsList({
       setTaggedProductIds(new Set());
       return;
     }
-    void resyncStaleTaggedComponentPrices().finally(() => {
+    void resyncStaleTaggedComponentPrices(selectedCompanyId).finally(() => {
       void loadTaggedState();
     });
   }, [selectedCompanyId, productIds, products]);

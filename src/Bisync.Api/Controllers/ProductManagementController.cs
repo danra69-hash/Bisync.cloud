@@ -934,7 +934,8 @@ public class ProductManagementController(
         var productLocs = PurchaseOrderWorkflow.DeserializeLocationIds(product.LocationIdsJson);
         if (productLocs.Count == 0)
             return true;
-        return locationIds.Any(productLocs.Contains);
+        return locationIds.Any(selected =>
+            productLocs.Any(id => id.Equals(selected, StringComparison.OrdinalIgnoreCase)));
     }
 
     async Task<Product> ResolveOrCreateBiProductAsync(Product parent, ProduceSubProductOutputRequest output)

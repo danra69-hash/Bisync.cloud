@@ -579,7 +579,10 @@ export function ProductsPage({
     }
     api.products(selectedCompanyId)
       .then(setSavedProducts)
-      .catch(() => setSavedProducts([]));
+      .catch(err => {
+        setSavedProducts([]);
+        setError(err instanceof Error ? err.message : 'Failed to load products.');
+      });
   }, [selectedCompanyId]);
 
   useEffect(() => {
@@ -733,7 +736,9 @@ export function ProductsPage({
       product.isSubProduct
       && product.active
       && (!product.locationExternalIds?.length
-        || product.locationExternalIds.some(id => selectedLocationIds.includes(id))),
+        || product.locationExternalIds.some(id =>
+          selectedLocationIds.some(selected =>
+            id.localeCompare(selected, undefined, { sensitivity: 'accent' }) === 0))),
     ),
     [savedProducts, selectedLocationIds],
   );
