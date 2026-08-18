@@ -141,7 +141,8 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 ### Phase B — Ledger foundations ✅ (honest)
 
 - `GlJournal` / lines / periods / balances / counters / outbox on company operational DB.
-- Post, reverse, soft-close with **opening-balance roll-forward**, trial balance / BS on **closing balances**.
+- Soft-close with **opening-balance roll-forward** (year-end NI folds into retained earnings); platform-admin **rebuild** and **hard-close**.
+- Posting runs in a DB transaction so period-balance `FOR UPDATE` holds.
 - Books API requires a signed-in user; company is taken from the verified tenant (not a client-supplied `companyId`).
 - Bridges: payroll process + PO reconcile → sealed journals (best-effort; never fails ops). Purchase AP uses `ap_control` (2010).
 

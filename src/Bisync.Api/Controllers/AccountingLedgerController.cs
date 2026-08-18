@@ -268,6 +268,39 @@ public class AccountingLedgerController(
         }
     }
 
+    [HttpPost("periods/{id:int}/hard-close")]
+    public async Task<ActionResult> HardClose(int id, [FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (!tenant.IsPlatformAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Hard-close requires a platform admin." });
+        try
+        {
+            await ledger.HardClosePeriodAsync(cid, id);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("period-balances/rebuild")]
+    public async Task<ActionResult<object>> RebuildBalances([FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (!tenant.IsPlatformAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Rebuild requires a platform admin." });
+        try
+        {
+            return Ok(await ledger.RebuildPeriodBalancesAsync(cid));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("journals/{id:int}/reverse")]
     public async Task<ActionResult<object>> Reverse(int id, [FromQuery] int? companyId)
     {
@@ -453,6 +486,8 @@ public class AccountingLedgerController(
     public async Task<ActionResult> Reopen(int id, [FromQuery] int? companyId)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (!tenant.IsPlatformAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Reopen requires a platform admin." });
         try
         {
             await ledger.ReopenPeriodAsync(cid, id);

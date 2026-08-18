@@ -5608,22 +5608,53 @@ export const api = {
     if (asOf) params.set('asOf', asOf);
     return fetchJson<AccountingAging>(`/api/accounting/books/aging?${params}`);
   },
+  accountingControlReconciliation: (companyId: number, subledger: string, asOf?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId), subledger });
+    if (asOf) params.set('asOf', asOf);
+    return fetchJson<{
+      asOf: string;
+      subledger: string;
+      controlAccount: string;
+      functionalCurrency: string;
+      glControl: number;
+      subledgerOpen: number;
+      drift: number;
+      reconciled: boolean;
+      note: string;
+    }>(`/api/accounting/books/control-reconciliation?${params}`);
+  },
   accountingBankStatements: (companyId: number) =>
     fetchJson<AccountingBankStatement[]>(`/api/accounting/books/bank-statements?companyId=${companyId}`),
   accountingCreateBankStatement: (
     companyId: number,
     body: {
       accountLabel?: string;
+      bankAccountCode?: string;
       statementDate: string;
       currency?: string;
       source?: string;
+      opening?: number;
+      closing?: number;
       lines?: Array<{ valueDate: string; narrative: string; amount: number }>;
     },
   ) =>
-    fetchJsonWithMethod<{ id: number; accountLabel: string; statementDate: string; lineCount: number }>(
+    fetchJsonWithMethod<{
+      id: number;
+      accountLabel: string;
+      bankAccountCode?: string;
+      statementDate: string;
+      opening?: number;
+      closing?: number;
+      lineCount: number;
+    }>(
       `/api/accounting/books/bank-statements?companyId=${companyId}`,
       'POST',
       body,
+    ),
+  accountingFinaliseBankStatement: (companyId: number, id: number) =>
+    fetchJsonWithMethod<{ id: number; status: string; difference?: number }>(
+      `/api/accounting/books/bank-statements/${id}/finalise?companyId=${companyId}`,
+      'POST',
     ),
   accountingApplications: (companyId: number, take = 50) =>
     fetchJson<Array<{ id: number; appliedFromId: number; appliedToId: number; amount: number; effectiveDate: string; reversalOfId: number | null; createdBy: string }>>(
@@ -5931,8 +5962,11 @@ export type AccountingAging = {
 export type AccountingBankStatement = {
   id: number;
   accountLabel: string;
+  bankAccountCode?: string;
   currency: string;
   statementDate: string;
+  opening?: number;
+  closing?: number;
   source: string;
   status: string;
   lineCount: number;

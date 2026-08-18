@@ -216,6 +216,7 @@ export function OpenItemsPanel({
 }) {
   const [items, setItems] = useState<AccountingOpenItem[]>([]);
   const [aging, setAging] = useState<AccountingAging | null>(null);
+  const [recon, setRecon] = useState<{ glControl: number; subledgerOpen: number; drift: number; reconciled: boolean; controlAccount: string } | null>(null);
   const [apps, setApps] = useState<Array<{ id: number; appliedFromId: number; appliedToId: number; amount: number; reversalOfId: number | null }>>([]);
   const [name, setName] = useState('');
   const [gross, setGross] = useState('');
@@ -232,14 +233,16 @@ export function OpenItemsPanel({
 
   const load = async () => {
     try {
-      const [list, age, applications] = await Promise.all([
+      const [list, age, applications, control] = await Promise.all([
         api.accountingOpenItems(companyId, subledger),
         api.accountingAging(companyId, subledger),
         api.accountingApplications(companyId),
+        api.accountingControlReconciliation(companyId, subledger).catch(() => null),
       ]);
       setItems(list);
       setAging(age);
       setApps(applications.filter(a => !a.reversalOfId || a.amount < 0));
+      setRecon(control);
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Failed to load open items');
     }
@@ -426,6 +429,12 @@ export function OpenItemsPanel({
           Aging: current {money(aging.buckets.current ?? 0)} · 1–30 {money(aging.buckets['1-30'] ?? 0)} · 31–60 {money(aging.buckets['31-60'] ?? 0)} · 61–90 {money(aging.buckets['61-90'] ?? 0)} · 90+ {money(aging.buckets['90+'] ?? 0)}
         </p>
       )}
+      {recon && (
+        <p className="font-sans text-muted-foreground">
+          Control {recon.controlAccount}: GL {money(recon.glControl)} · subledger {money(recon.subledgerOpen)} · drift {money(recon.drift)}
+          {recon.reconciled ? ' · tied' : ' · out of balance'}
+        </p>
+      )}
 
       <table className="w-full border-collapse">
         <thead>
@@ -513,9 +522,11 @@ export function BankPanel({
     try {
       await api.accountingCreateBankStatement(companyId, {
         accountLabel: 'Operating account',
+        bankAccountCode: '1000',
         statementDate: todayIso(),
         currency: functionalCurrency,
         source: 'manual',
+        opening: 0,
         lines: [{ valueDate: todayIso(), narrative: narrative.trim(), amount: amt }],
       });
       setNarrative('');
@@ -629,7 +640,14 @@ export function BankPanel({
       </div>
       <ul className="text-muted-foreground">
         {rows.map(r => (
-          <li key={r.id} className="font-sans">{r.statementDate} · {r.lineCount} line(s) · {r.status}</li>
+          <li key={r.id} className="font-sans flex gap-2 items-center">
+            <span>{r.statementDate} · {r.lineCount} line(s) · {r.status}{r.opening != null ? ` · open ${money(r.opening)}` : ''}{r.closing != null ? ` · close ${money(r.closing)}` : ''}</span>
+            {r.status === 'open' && (
+              <button type="button" className="underline" onClick={() => void api.accountingFinaliseBankStatement(companyId, r.id).then(load).catch(e => onError(e instanceof Error ? e.message : 'Finalise failed'))}>
+                Finalise
+              </button>
+            )}
+          </li>
         ))}
       </ul>
     </div>

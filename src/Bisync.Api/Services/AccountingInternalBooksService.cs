@@ -15,6 +15,38 @@ public sealed class AccountingInternalBooksService(
     AccountingSubledgerService subledger,
     MalaysiaAccountingPackService malaysiaPack)
 {
+    public async Task<object> FinaliseBankStatementAsync(int companyId, int statementId, CancellationToken ct = default)
+    {
+        var stmt = await db.GlBankStatements
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == statementId && s.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException("Bank statement not found.");
+        if (stmt.Status == "finalised")
+            return new { stmt.Id, stmt.Status, message = "Already finalised." };
+
+        var unmatched = stmt.Lines.Count(l => l.MatchGroupId is null);
+        if (unmatched > 0)
+            throw new InvalidOperationException($"Cannot finalise: {unmatched} unmatched line(s) remain.");
+
+        var lineSum = stmt.Lines.Sum(l => l.AmountMinor);
+        var expectedClosing = stmt.OpeningMinor + lineSum;
+        if (expectedClosing != stmt.ClosingMinor)
+            throw new InvalidOperationException(
+                $"Statement does not tie out: opening {LedgerPostingService.FromMinor(stmt.OpeningMinor, stmt.Currency)} + lines {LedgerPostingService.FromMinor(lineSum, stmt.Currency)} ≠ closing {LedgerPostingService.FromMinor(stmt.ClosingMinor, stmt.Currency)}.");
+
+        stmt.Status = "finalised";
+        await db.SaveChangesAsync(ct);
+        return new
+        {
+            stmt.Id,
+            stmt.Status,
+            stmt.BankAccountCode,
+            opening = LedgerPostingService.FromMinor(stmt.OpeningMinor, stmt.Currency),
+            closing = LedgerPostingService.FromMinor(stmt.ClosingMinor, stmt.Currency),
+            difference = 0m,
+        };
+    }
+
     public async Task UnapplyAsync(int companyId, int applicationId, string createdBy, CancellationToken ct = default)
     {
         var app = await db.GlItemApplications
@@ -494,6 +526,8 @@ public sealed class AccountingInternalBooksService(
             {
                 try
                 {
+                    var depExpense = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "dep_expense", "5810", ct);
+                    var accumDep = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "accum_depreciation", "1510", ct);
                     journal = await ledger.PostAsync(
                         companyId,
                         countryCode,
@@ -507,8 +541,8 @@ public sealed class AccountingInternalBooksService(
                         "fa-run",
                         $"fa-dep:{companyId}:{asset.Id}:{bookId}:{year}:{periodNo}",
                         [
-                            ("5810", "D", amountMajor, "Depreciation expense"),
-                            ("1510", "C", amountMajor, "Accumulated depreciation"),
+                            (depExpense, "D", amountMajor, "Depreciation expense"),
+                            (accumDep, "C", amountMajor, "Accumulated depreciation"),
                         ],
                         ct,
                         txnCurrency: asset.Currency);
@@ -594,6 +628,8 @@ public sealed class AccountingInternalBooksService(
         if (obl.RecognisedMinor + minor > obl.AllocatedMinor)
             throw new InvalidOperationException("Recognition exceeds allocated transaction price.");
 
+        var deferred = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "deferred_revenue", "2400", ct);
+        var revenue = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "revenue_default", "4000", ct);
         var journal = await ledger.PostAsync(
             companyId,
             countryCode,
@@ -607,8 +643,8 @@ public sealed class AccountingInternalBooksService(
             "revrec",
             $"revrec:{companyId}:{obligationId}:{obl.RecognisedMinor + minor}",
             [
-                ("2400", "D", amount, "Deferred revenue release"),
-                ("4000", "C", amount, "Revenue recognised"),
+                (deferred, "D", amount, "Deferred revenue release"),
+                (revenue, "C", amount, "Revenue recognised"),
             ],
             ct,
             txnCurrency: cur);

@@ -431,6 +431,49 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             if (existing is not null) return existing;
         }
 
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var posted = await PostInTransactionAsync(
+                companyId, countryCode, journalType, docSeries, effectiveDate, documentDate,
+                sourceModule, sourceDocKey, narration, createdBy, idempotencyKey, lines,
+                txnCurrency, fxRate, fxRateDate, ct);
+            await tx.CommitAsync(ct);
+            return posted;
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+    }
+
+    async Task<GlJournal> PostInTransactionAsync(
+        int companyId,
+        string? countryCode,
+        string journalType,
+        string docSeries,
+        DateOnly effectiveDate,
+        DateOnly documentDate,
+        string sourceModule,
+        string? sourceDocKey,
+        string narration,
+        string createdBy,
+        string? idempotencyKey,
+        IReadOnlyList<(string AccountCode, string Direction, decimal Amount, string LineNarration)> lines,
+        string? txnCurrency,
+        decimal? fxRate,
+        DateOnly? fxRateDate,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            var raced = await db.GlJournals
+                .Include(j => j.Lines)
+                .FirstOrDefaultAsync(j => j.CompanyId == companyId && j.IdempotencyKey == idempotencyKey, ct);
+            if (raced is not null) return raced;
+        }
+
         var funcCurrency = await ResolveFunctionalCurrencyAsync(companyId, countryCode, persist: true, ct);
         var txn = string.IsNullOrWhiteSpace(txnCurrency)
             ? funcCurrency
@@ -558,6 +601,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         return journal;
     }
 
+
     public async Task<string> AllocateDocNumberAsync(int companyId, string series, int fiscalYear, CancellationToken ct = default)
     {
         await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -650,7 +694,48 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             return (0, 0);
         }
 
-        return (bal.OpeningDrMinor + bal.PeriodDrMinor, bal.OpeningCrMinor + bal.PeriodCrMinor);
+        var openDr = bal.OpeningDrMinor + bal.PeriodDrMinor;
+        var openCr = bal.OpeningCrMinor + bal.PeriodCrMinor;
+
+        // Crossing into a new calendar year: fold prior-year NI into retained earnings openings.
+        if (account is not null
+            && prior.Year != period.Year
+            && account.Code == "3000")
+        {
+            var ni = await PriorYearNetIncomeMinorAsync(companyId, prior.Year, currency, ct);
+            if (ni > 0) openCr += ni;
+            else openDr += -ni;
+        }
+
+        return (openDr, openCr);
+    }
+
+    async Task<long> PriorYearNetIncomeMinorAsync(int companyId, int year, string currency, CancellationToken ct)
+    {
+        var lastPeriod = await db.GlFiscalPeriods.AsNoTracking()
+            .Where(p => p.CompanyId == companyId && p.Year == year)
+            .OrderByDescending(p => p.PeriodNo)
+            .FirstOrDefaultAsync(ct);
+        if (lastPeriod is null) return 0;
+
+        var bals = await db.GlPeriodBalances.AsNoTracking()
+            .Where(b => b.CompanyId == companyId && b.PeriodId == lastPeriod.Id && b.Currency == currency)
+            .ToListAsync(ct);
+        var accountIds = bals.Select(b => b.AccountId).Distinct().ToList();
+        var accounts = await db.GlAccounts.AsNoTracking()
+            .Where(a => a.CompanyId == companyId && accountIds.Contains(a.Id))
+            .ToDictionaryAsync(a => a.Id, ct);
+
+        long income = 0, expense = 0;
+        foreach (var b in bals)
+        {
+            if (!accounts.TryGetValue(b.AccountId, out var a)) continue;
+            var closeDr = b.OpeningDrMinor + b.PeriodDrMinor;
+            var closeCr = b.OpeningCrMinor + b.PeriodCrMinor;
+            if (a.AccountType == "income") income += closeCr - closeDr;
+            else if (a.AccountType == "expense") expense += closeDr - closeCr;
+        }
+        return income - expense;
     }
 
     public async Task<GlJournal> ReverseAsync(
@@ -722,6 +807,53 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task HardClosePeriodAsync(int companyId, int periodId, CancellationToken ct = default)
+    {
+        var period = await db.GlFiscalPeriods
+            .FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException("Period not found.");
+        if (period.Status == "open")
+            await SoftClosePeriodAsync(companyId, periodId, ct);
+        period = await db.GlFiscalPeriods
+            .FirstAsync(p => p.Id == periodId && p.CompanyId == companyId, ct);
+        period.Status = "hard_closed";
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Rebuild period-balance cube from sealed journals. Clears then replays in effective-date order.
+    /// </summary>
+    public async Task<object> RebuildPeriodBalancesAsync(int companyId, CancellationToken ct = default)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var existing = await db.GlPeriodBalances.Where(b => b.CompanyId == companyId).ToListAsync(ct);
+        db.GlPeriodBalances.RemoveRange(existing);
+        await db.SaveChangesAsync(ct);
+
+        var journals = await db.GlJournals.AsNoTracking()
+            .Include(j => j.Lines)
+            .Where(j => j.CompanyId == companyId && j.PostedAt != null)
+            .OrderBy(j => j.EffectiveDate).ThenBy(j => j.Id)
+            .ToListAsync(ct);
+
+        foreach (var journal in journals)
+        {
+            foreach (var line in journal.Lines.OrderBy(l => l.LineNo))
+            {
+                await ApplyPeriodBalanceAsync(
+                    companyId, line.AccountId, line.PeriodId, line.FuncCurrency, line.Direction, line.FuncAmountMinor, ct);
+                if (!string.Equals(line.Currency, line.FuncCurrency, StringComparison.Ordinal))
+                {
+                    await ApplyPeriodBalanceAsync(
+                        companyId, line.AccountId, line.PeriodId, line.Currency, line.Direction, line.AmountMinor, ct);
+                }
+            }
+        }
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return new { companyId, journalsReplayed = journals.Count, balances = await db.GlPeriodBalances.CountAsync(b => b.CompanyId == companyId, ct) };
+    }
+
     public async Task RollForwardOpeningsAsync(int companyId, GlFiscalPeriod period, CancellationToken ct = default)
     {
         var nextStart = period.EndDate.AddDays(1);
@@ -738,14 +870,15 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             .Where(b => b.CompanyId == companyId && b.PeriodId == period.Id)
             .ToListAsync(ct);
 
+        var yearEnd = next.Year != period.Year;
+        var niByCurrency = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var bal in current)
         {
             accounts.TryGetValue(bal.AccountId, out var acct);
             var closeDr = bal.OpeningDrMinor + bal.PeriodDrMinor;
             var closeCr = bal.OpeningCrMinor + bal.PeriodCrMinor;
-            if (acct is not null
-                && next.Year != period.Year
-                && acct.AccountType is "income" or "expense")
+            if (yearEnd && acct is not null && acct.AccountType is "income" or "expense")
             {
                 closeDr = 0;
                 closeCr = 0;
@@ -771,5 +904,54 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             dest.OpeningDrMinor = closeDr;
             dest.OpeningCrMinor = closeCr;
         }
+
+        if (yearEnd)
+        {
+            // Recompute NI cleanly: income credit net minus expense debit net.
+            niByCurrency.Clear();
+            foreach (var bal in current)
+            {
+                if (!accounts.TryGetValue(bal.AccountId, out var acct)) continue;
+                if (acct.AccountType is not ("income" or "expense")) continue;
+                var closeDr = bal.OpeningDrMinor + bal.PeriodDrMinor;
+                var closeCr = bal.OpeningCrMinor + bal.PeriodCrMinor;
+                var amount = acct.AccountType == "income" ? closeCr - closeDr : closeDr - closeCr;
+                if (acct.AccountType == "income")
+                    niByCurrency[bal.Currency] = niByCurrency.GetValueOrDefault(bal.Currency) + amount;
+                else
+                    niByCurrency[bal.Currency] = niByCurrency.GetValueOrDefault(bal.Currency) - amount;
+            }
+
+            var reAccount = await db.GlAccounts.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.Code == "3000", ct);
+            if (reAccount is not null)
+            {
+                foreach (var (currency, ni) in niByCurrency)
+                {
+                    if (ni == 0) continue;
+                    var dest = await db.GlPeriodBalances
+                        .FirstOrDefaultAsync(b =>
+                            b.CompanyId == companyId
+                            && b.AccountId == reAccount.Id
+                            && b.PeriodId == next.Id
+                            && b.Currency == currency, ct);
+                    if (dest is null)
+                    {
+                        dest = new GlPeriodBalance
+                        {
+                            CompanyId = companyId,
+                            AccountId = reAccount.Id,
+                            PeriodId = next.Id,
+                            Currency = currency,
+                        };
+                        db.GlPeriodBalances.Add(dest);
+                    }
+                    // Positive NI increases equity (credit). Negative NI increases debit opening.
+                    if (ni > 0) dest.OpeningCrMinor += ni;
+                    else dest.OpeningDrMinor += -ni;
+                }
+            }
+        }
     }
 }
+

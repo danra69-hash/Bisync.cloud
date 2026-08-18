@@ -49,20 +49,22 @@ assert.match(ledger, /EnsurePeriodsForYearAsync/, 'periods can be created for th
 assert.match(ledgerCtrl, /basis = "closing-balance"/, 'TB reports closing-balance basis');
 assert.match(ledgerCtrl, /openingDr/, 'TB exposes opening columns');
 
-assert.match(internal, /\("2400", "D"/, 'rev rec debits deferred revenue');
+assert.match(internal, /ResolveRoleAccountCodeAsync\(companyId, "deferred_revenue"/, 'rev rec uses deferred_revenue role');
 assert.doesNotMatch(internal, /\("1200", "D", amount, "Contract liability/, 'rev rec must not debit deposits asset');
-assert.match(internal, /\("5810", "D", amountMajor, "Depreciation expense"\)/, 'depreciation expense account');
-assert.match(internal, /\("1510", "C", amountMajor, "Accumulated depreciation"\)/, 'accum dep contra');
+assert.match(internal, /ResolveRoleAccountCodeAsync\(companyId, "dep_expense"/, 'depreciation uses dep_expense role');
+assert.match(internal, /ResolveRoleAccountCodeAsync\(companyId, "accum_depreciation"/, 'accum dep contra via role');
 assert.doesNotMatch(internal, /\("1500", "C"/, 'depreciation must not credit gross FA');
 assert.match(internal, /bookId == "ifrs"/, 'only IFRS book posts to primary GL');
 assert.match(internal, /item\.OpenMinor -= minor/, 'bank match reduces open balance');
 assert.match(internal, /group\.JournalId = journal\.Id/, 'bank match stores the cash journal');
+assert.match(internal, /FinaliseBankStatementAsync/, 'bank statement finalise exists');
 
 assert.match(subledger, /ar\.credit_note\.posted/, 'AR credit note has its own SLA event');
 assert.match(subledger, /docSeries: journalSeries/, 'open-item journals use ARJ/APJ, not the item series');
 assert.match(subledger, /AreComplementaryKinds/, 'apply rejects invoice-to-invoice');
 assert.match(subledger, /VoidOpenItemAsync/, 'void exists');
 assert.match(subledger, /i\.Kind == "invoice" \|\| i\.Kind == "bill"/, 'aging is invoices/bills only');
+assert.match(subledger, /ControlAccountReconciliationAsync/, 'AR/AP–GL control recon exists');
 
 assert.match(bridge, /ap_control/, 'purchase bridge uses AP control role');
 assert.doesNotMatch(bridge, /\("2000", "C"/, 'purchase bridge must not hardcode 2000');
@@ -79,9 +81,25 @@ assert.doesNotMatch(panels, /setApprover\('approver'\)/, 'UI must not default a 
 assert.doesNotMatch(panels, /setActor\(subledger === 'ap' \? 'clerk'/, 'UI must not default clerk');
 assert.match(panels, /accountingVoidOpenItem/, 'UI can void an unused open item');
 assert.match(panels, /accountingBankSuggest/, 'bank suggest is wired');
+assert.match(panels, /accountingControlReconciliation/, 'control recon wired in UI');
 assert.match(panels, /getFullYear\(\)/, 'Books dates use local calendar day');
 assert.match(workspace, /getFullYear\(\)/, 'workspace dates use local calendar day');
 assert.doesNotMatch(workspace, /toISOString\(\)\.slice\(0, 10\)/, 'workspace must not use UTC today');
+
+assert.match(ledger, /BeginTransactionAsync/, 'posting runs in a DB transaction so FOR UPDATE holds');
+assert.match(ledger, /RebuildPeriodBalancesAsync/, 'period-balance rebuild from journals');
+assert.match(ledger, /HardClosePeriodAsync/, 'hard-close is reachable');
+assert.match(ledger, /PriorYearNetIncomeMinorAsync/, 'year-boundary NI folds into RE openings');
+assert.match(ledger, /OpeningCrMinor \+= ni/, 'soft-close year-end credits RE with NI');
+
+assert.match(booksCtrl, /control-reconciliation/, 'control recon endpoint exposed');
+assert.match(booksCtrl, /bank-statements\/\{id:int\}\/finalise/, 'bank finalise endpoint');
+assert.match(ledgerCtrl, /period-balances\/rebuild/, 'rebuild endpoint');
+assert.match(ledgerCtrl, /hard-close/, 'hard-close endpoint');
+assert.match(ledgerCtrl, /Reopen requires a platform admin/, 'reopen is admin-gated');
+
+assert.match(read('src/Bisync.Api/Models/GlBooks.cs'), /OpeningMinor/, 'bank statement has opening balance');
+assert.match(read('src/Bisync.Api/Models/GlBooks.cs'), /BankAccountCode/, 'bank statement ties to a GL account');
 
 assert.match(arch, /Phase C1 — Malaysia-first full Books surface 🟡/, 'architecture must not mark C1 complete');
 assert.match(arch, /Phase C2 — Internal depth \(no external connections\) 🟡/, 'architecture must not mark C2 complete');

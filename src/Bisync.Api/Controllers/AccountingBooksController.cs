@@ -253,6 +253,28 @@ public class AccountingBooksController(
             asOf ?? DateOnly.FromDateTime(DateTime.UtcNow)));
     }
 
+    [HttpGet("control-reconciliation")]
+    public async Task<ActionResult<object>> ControlReconciliation(
+        [FromQuery] int? companyId,
+        [FromQuery] string subledger = "ar",
+        [FromQuery] DateOnly? asOf = null)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
+        try
+        {
+            return Ok(await books.ControlAccountReconciliationAsync(
+                cid,
+                subledger,
+                asOf ?? DateOnly.FromDateTime(DateTime.UtcNow)));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("bank-statements")]
     public async Task<ActionResult<object>> BankStatements([FromQuery] int? companyId)
     {
@@ -267,8 +289,11 @@ public class AccountingBooksController(
             {
                 s.Id,
                 s.AccountLabel,
+                s.BankAccountCode,
                 s.Currency,
                 s.StatementDate,
+                opening = LedgerPostingService.FromMinor(s.OpeningMinor, s.Currency),
+                closing = LedgerPostingService.FromMinor(s.ClosingMinor, s.Currency),
                 s.Source,
                 s.Status,
                 lineCount = s.Lines.Count,
@@ -279,9 +304,12 @@ public class AccountingBooksController(
 
     public sealed record CreateBankStatementRequest(
         string? AccountLabel,
+        string? BankAccountCode,
         DateOnly StatementDate,
         string? Currency,
         string? Source,
+        decimal? Opening,
+        decimal? Closing,
         List<BankLineDto>? Lines);
 
     public sealed record BankLineDto(DateOnly ValueDate, string Narrative, decimal Amount);
@@ -295,20 +323,33 @@ public class AccountingBooksController(
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         await books.EnsureReadyAsync(cid, company?.CountryCode);
         var cur = string.IsNullOrWhiteSpace(body.Currency)
-            ? LedgerPostingService.CurrencyForCountry(company?.CountryCode)
+            ? await db.Companies.Where(c => c.Id == cid).Select(c => c.FunctionalCurrency).FirstOrDefaultAsync()
+                is { Length: 3 } fc
+                ? fc
+                : LedgerPostingService.CurrencyForCountry(company?.CountryCode)
             : LedgerPostingService.NormalizeCurrency(body.Currency);
+        var bankCode = string.IsNullOrWhiteSpace(body.BankAccountCode) ? "1000" : body.BankAccountCode.Trim();
+        var opening = LedgerPostingService.ToMinor(body.Opening ?? 0, cur);
+        var lines = body.Lines ?? [];
+        var lineSum = lines.Sum(l => LedgerPostingService.ToMinor(l.Amount, cur));
+        var closing = body.Closing is null
+            ? opening + lineSum
+            : LedgerPostingService.ToMinor(body.Closing.Value, cur);
         var stmt = new GlBankStatement
         {
             CompanyId = cid,
             AccountLabel = string.IsNullOrWhiteSpace(body.AccountLabel) ? "Operating account" : body.AccountLabel.Trim(),
+            BankAccountCode = bankCode,
             Currency = cur,
             StatementDate = body.StatementDate,
+            OpeningMinor = opening,
+            ClosingMinor = closing,
             Source = string.IsNullOrWhiteSpace(body.Source) ? "manual" : body.Source.Trim(),
             Status = "open",
             CreatedAt = DateTime.UtcNow,
         };
         var n = 1;
-        foreach (var line in body.Lines ?? [])
+        foreach (var line in lines)
         {
             stmt.Lines.Add(new GlBankStatementLine
             {
@@ -322,7 +363,30 @@ public class AccountingBooksController(
         }
         db.GlBankStatements.Add(stmt);
         await db.SaveChangesAsync();
-        return Ok(new { stmt.Id, stmt.AccountLabel, stmt.StatementDate, lineCount = stmt.Lines.Count });
+        return Ok(new
+        {
+            stmt.Id,
+            stmt.AccountLabel,
+            stmt.BankAccountCode,
+            stmt.StatementDate,
+            opening = LedgerPostingService.FromMinor(stmt.OpeningMinor, cur),
+            closing = LedgerPostingService.FromMinor(stmt.ClosingMinor, cur),
+            lineCount = stmt.Lines.Count,
+        });
+    }
+
+    [HttpPost("bank-statements/{id:int}/finalise")]
+    public async Task<ActionResult<object>> FinaliseBankStatement(int id, [FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        try
+        {
+            return Ok(await internalBooks.FinaliseBankStatementAsync(cid, id));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpGet("applications")]

@@ -3162,6 +3162,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "RejectionReason", "TEXT");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankMatchGroups", "Status", "TEXT NOT NULL DEFAULT 'active'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankMatchGroups", "JournalId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankStatements", "BankAccountCode", "TEXT NOT NULL DEFAULT '1000'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankStatements", "OpeningMinor", "BIGINT NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankStatements", "ClosingMinor", "BIGINT NOT NULL DEFAULT 0");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "GlBankMatchLinks" (

@@ -132,8 +132,12 @@ public class GlBankStatement
     public int Id { get; set; }
     public int CompanyId { get; set; }
     public string AccountLabel { get; set; } = "Operating account";
+    /// <summary>GL cash account code this statement ties to (e.g. 1000).</summary>
+    public string BankAccountCode { get; set; } = "1000";
     public string Currency { get; set; } = "MYR";
     public DateOnly StatementDate { get; set; }
+    public long OpeningMinor { get; set; }
+    public long ClosingMinor { get; set; }
     public string Source { get; set; } = "manual";
     public string Status { get; set; } = "open";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

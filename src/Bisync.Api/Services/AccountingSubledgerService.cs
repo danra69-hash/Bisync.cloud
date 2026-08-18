@@ -418,4 +418,83 @@ public sealed class AccountingSubledgerService(
         static bool IsTarget(string k) => k is "invoice" or "bill";
         return (IsSource(fromKind) && IsTarget(toKind)) || (IsSource(toKind) && IsTarget(fromKind));
     }
+
+    public async Task<object> ControlAccountReconciliationAsync(
+        int companyId,
+        string subledger,
+        DateOnly asOf,
+        CancellationToken ct = default)
+    {
+        subledger = subledger.Trim().ToLowerInvariant();
+        if (subledger is not ("ar" or "ap"))
+            throw new InvalidOperationException("subledger must be ar or ap.");
+
+        var roleCode = subledger == "ar" ? "ar_control" : "ap_control";
+        var fallback = subledger == "ar" ? "1110" : "2010";
+        var accountCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, roleCode, fallback, ct);
+        var account = await db.GlAccounts.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.Code == accountCode, ct)
+            ?? throw new InvalidOperationException($"Control account {accountCode} not found.");
+
+        var func = await ledger.ResolveFunctionalCurrencyAsync(companyId, null, persist: false, ct);
+        var period = await db.GlFiscalPeriods.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.CompanyId == companyId && p.StartDate <= asOf && p.EndDate >= asOf, ct);
+        long glMinor = 0;
+        if (period is not null)
+        {
+            var bal = await db.GlPeriodBalances.AsNoTracking()
+                .FirstOrDefaultAsync(b =>
+                    b.CompanyId == companyId
+                    && b.AccountId == account.Id
+                    && b.PeriodId == period.Id
+                    && b.Currency == func, ct);
+            if (bal is not null)
+            {
+                var closing = bal.OpeningDrMinor + bal.PeriodDrMinor - bal.OpeningCrMinor - bal.PeriodCrMinor;
+                // AR normal debit; AP normal credit — report absolute control balance in natural sign.
+                glMinor = account.NormalBalance == "D" ? closing : -closing;
+            }
+        }
+
+        var openItems = await db.GlOpenItems.AsNoTracking()
+            .Where(i => i.CompanyId == companyId
+                && i.Subledger == subledger
+                && i.Status != "void"
+                && i.Status != "rejected"
+                && i.OpenMinor > 0
+                && i.JournalId != null
+                && (i.Kind == "invoice" || i.Kind == "bill")
+                && (i.Subledger != "ap" || i.ApprovalStatus == "approved")
+                && i.IssueDate <= asOf)
+            .ToListAsync(ct);
+
+        var byCurrency = openItems
+            .GroupBy(i => i.Currency)
+            .Select(g => new
+            {
+                currency = g.Key,
+                open = LedgerPostingService.FromMinor(g.Sum(x => x.OpenMinor), g.Key),
+                count = g.Count(),
+            })
+            .ToList();
+
+        var subledgerFuncMinor = openItems
+            .Where(i => i.Currency == func)
+            .Sum(i => i.OpenMinor);
+        var drift = subledgerFuncMinor - glMinor;
+
+        return new
+        {
+            asOf,
+            subledger,
+            controlAccount = accountCode,
+            functionalCurrency = func,
+            glControl = LedgerPostingService.FromMinor(glMinor, func),
+            subledgerOpen = LedgerPostingService.FromMinor(subledgerFuncMinor, func),
+            drift = LedgerPostingService.FromMinor(drift, func),
+            reconciled = drift == 0,
+            byCurrency,
+            note = "Compares posted open invoices/bills in functional currency to the GL control closing balance. Foreign-currency open items are listed separately and excluded from the drift figure.",
+        };
+    }
 }
