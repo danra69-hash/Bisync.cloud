@@ -179,7 +179,9 @@ public class AccountingBooksController(
         bool? PostJournal,
         string? CreatedBy,
         bool? RequireApApproval,
-        List<CreateOpenItemLineRequest>? Lines);
+        List<CreateOpenItemLineRequest>? Lines,
+        decimal? FxRate,
+        DateOnly? FxRateDate);
 
     [HttpPost("open-items")]
     public async Task<ActionResult<object>> CreateOpenItem(
@@ -221,7 +223,9 @@ public class AccountingBooksController(
                 body.PostJournal ?? true,
                 string.IsNullOrWhiteSpace(body.CreatedBy) ? actor : body.CreatedBy,
                 body.RequireApApproval ?? true,
-                lineInputs);
+                lineInputs,
+                body.FxRate,
+                body.FxRateDate);
             return Ok(new
             {
                 item.Id,
@@ -244,7 +248,13 @@ public class AccountingBooksController(
         }
     }
 
-    public sealed record ApplyRequest(int FromId, int ToId, decimal Amount, DateOnly? EffectiveDate);
+    public sealed record ApplyRequest(
+        int FromId,
+        int ToId,
+        decimal Amount,
+        DateOnly? EffectiveDate,
+        decimal? SettlementFxRate,
+        DateOnly? SettlementFxRateDate);
 
     [HttpPost("open-items/apply")]
     public async Task<ActionResult> Apply(
@@ -252,6 +262,7 @@ public class AccountingBooksController(
         [FromBody] ApplyRequest body)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try
         {
             await books.ApplyAsync(
@@ -260,7 +271,10 @@ public class AccountingBooksController(
                 body.ToId,
                 body.Amount,
                 body.EffectiveDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
-                createdBy: actor);
+                createdBy: actor,
+                countryCode: company?.CountryCode,
+                settlementFxRate: body.SettlementFxRate,
+                settlementFxRateDate: body.SettlementFxRateDate);
             return NoContent();
         }
         catch (InvalidOperationException ex)

@@ -115,6 +115,8 @@ public sealed class AccountingSubledgerService(
         string? createdBy = null,
         bool requireApApproval = true,
         IReadOnlyList<OpenItemLineInput>? lines = null,
+        decimal? fxRate = null,
+        DateOnly? fxRateDate = null,
         CancellationToken ct = default)
     {
         await EnsureReadyAsync(companyId, countryCode, ct);
@@ -127,6 +129,23 @@ public sealed class AccountingSubledgerService(
             ? func
             : LedgerPostingService.NormalizeCurrency(currency);
         var actor = string.IsNullOrWhiteSpace(createdBy) ? "accounting-ui" : createdBy.Trim();
+
+        decimal? resolvedFx = null;
+        DateOnly? resolvedFxDate = null;
+        if (cur != func)
+        {
+            resolvedFxDate = fxRateDate ?? issueDate;
+            resolvedFx = fxRate is > 0
+                ? fxRate
+                : await FindFxRateAsync(companyId, cur, func, resolvedFxDate.Value, ct);
+            if (resolvedFx is null or <= 0)
+                throw new InvalidOperationException(
+                    $"Enter a conversion rate ({func} per 1 {cur}) for the transaction date.");
+            // Persist estimate so remittance can adjust against it later.
+            await UpsertFxRateAsync(
+                companyId, cur, func, resolvedFxDate.Value, resolvedFx.Value,
+                rateType: "estimate", source: "transaction-ui", ct);
+        }
 
         var approval = "approved";
         if (subledger == "ap" && requireApApproval && kind is "bill" or "payment" or "credit_note")
@@ -223,8 +242,8 @@ public sealed class AccountingSubledgerService(
                 journalLines,
                 ct,
                 txnCurrency: cur,
-                fxRate: cur == func ? null : await FindFxRateAsync(companyId, cur, func, issueDate, ct),
-                fxRateDate: issueDate);
+                fxRate: resolvedFx,
+                fxRateDate: resolvedFxDate);
             item.JournalId = journal.Id;
         }
 
@@ -306,6 +325,14 @@ public sealed class AccountingSubledgerService(
         var lines = await BuildSlaLinesAsync(companyId, eventType, net, tax, gross, ct);
         var series = item.Subledger == "ar" ? "AR" : "AP";
         var journalSeries = item.Subledger == "ar" ? "ARJ" : "APJ";
+        decimal? fx = null;
+        if (item.Currency != func)
+        {
+            fx = await FindFxRateAsync(companyId, item.Currency, func, item.IssueDate, ct);
+            if (fx is null or <= 0)
+                throw new InvalidOperationException(
+                    $"Enter a conversion rate ({func} per 1 {item.Currency}) for {item.IssueDate:yyyy-MM-dd} before posting.");
+        }
         var journal = await ledger.PostAsync(
             companyId,
             countryCode,
@@ -321,7 +348,7 @@ public sealed class AccountingSubledgerService(
             lines,
             ct,
             txnCurrency: item.Currency,
-            fxRate: item.Currency == func ? null : await FindFxRateAsync(companyId, item.Currency, func, item.IssueDate, ct),
+            fxRate: fx,
             fxRateDate: item.IssueDate);
         item.JournalId = journal.Id;
         await db.SaveChangesAsync(ct);
@@ -381,6 +408,9 @@ public sealed class AccountingSubledgerService(
         decimal amount,
         DateOnly effectiveDate,
         string createdBy,
+        string? countryCode = null,
+        decimal? settlementFxRate = null,
+        DateOnly? settlementFxRateDate = null,
         CancellationToken ct = default)
     {
         if (amount <= 0) throw new InvalidOperationException("Application amount must be positive.");
@@ -397,6 +427,23 @@ public sealed class AccountingSubledgerService(
             throw new InvalidOperationException("AP items must be approved before application.");
         if (!AreComplementaryKinds(from.Kind, to.Kind))
             throw new InvalidOperationException("Apply requires a payment/credit against an invoice or bill — not two invoices.");
+
+        var func = await ledger.ResolveFunctionalCurrencyAsync(companyId, countryCode, persist: false, ct);
+        if (from.Currency != func)
+        {
+            var rateDate = settlementFxRateDate ?? effectiveDate;
+            var rate = settlementFxRate is > 0
+                ? settlementFxRate.Value
+                : await FindFxRateAsync(companyId, from.Currency, func, rateDate, ct);
+            if (rate is null or <= 0)
+                throw new InvalidOperationException(
+                    $"Enter the remittance conversion rate ({func} per 1 {from.Currency}) for {rateDate:yyyy-MM-dd}. "
+                    + "This may differ from the rate estimated when the document was issued.");
+            // Settlement rate is stored separately from the issue estimate so remittance can be adjusted.
+            await UpsertFxRateAsync(
+                companyId, from.Currency, func, rateDate, rate.Value,
+                rateType: "settlement", source: "remittance-ui", ct);
+        }
 
         var minor = LedgerPostingService.ToMinor(amount, from.Currency);
         if (minor > from.OpenMinor || minor > to.OpenMinor)

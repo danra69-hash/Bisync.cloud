@@ -3,10 +3,10 @@ import {
   api,
   type AccountingAging,
   type AccountingBankStatement,
-  type AccountingFxRate,
   type AccountingOpenItem,
   type AccountingPackStatus,
 } from '../../api';
+import { FxRateEntryModal } from './FxRateEntryModal';
 
 function money(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -108,99 +108,6 @@ export function MalaysiaPackPanel({
   );
 }
 
-export function FxRatesPanel({
-  companyId,
-  functionalCurrency,
-  onError,
-}: {
-  companyId: number;
-  functionalCurrency: string;
-  onError: (msg: string | null) => void;
-}) {
-  const [rows, setRows] = useState<AccountingFxRate[]>([]);
-  const [fromCurrency, setFromCurrency] = useState('USD');
-  const [rate, setRate] = useState('');
-  const [rateDate, setRateDate] = useState(todayIso());
-  const [busy, setBusy] = useState(false);
-
-  const load = async () => {
-    try {
-      setRows(await api.accountingFxRates(companyId));
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Failed to load FX rates');
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
-
-  const save = async () => {
-    const n = Number(rate);
-    if (!(n > 0)) {
-      onError(`Enter ${functionalCurrency} per 1 ${fromCurrency}`);
-      return;
-    }
-    setBusy(true);
-    onError(null);
-    try {
-      await api.accountingUpsertFxRate(companyId, {
-        fromCurrency,
-        toCurrency: functionalCurrency,
-        rateDate,
-        rate: n,
-        rateType: 'manual',
-        source: 'accounting-ui',
-      });
-      setRate('');
-      await load();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Save FX rate failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4 max-w-3xl border-t border-border pt-3 text-xs">
-      <p className="text-muted-foreground">
-        Store conversion rates as <strong>{functionalCurrency} per 1 foreign unit</strong>.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-        <label className="space-y-1">
-          <span className="text-muted-foreground">From</span>
-          <select className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={fromCurrency} onChange={e => setFromCurrency(e.target.value)}>
-            {['USD', 'SGD', 'EUR', 'GBP', 'AUD', 'THB', 'IDR', 'JPY', 'CNY'].filter(c => c !== functionalCurrency).map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-1">
-          <span className="text-muted-foreground">Rate ({functionalCurrency}/1)</span>
-          <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} />
-        </label>
-        <label className="space-y-1">
-          <span className="text-muted-foreground">Date</span>
-          <input type="date" className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={rateDate} onChange={e => setRateDate(e.target.value)} />
-        </label>
-        <div className="flex items-end">
-          <button type="button" disabled={busy} onClick={() => void save()} className="w-full text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50">
-            Save rate
-          </button>
-        </div>
-      </div>
-      <ul className="space-y-1">
-        {rows.map(r => (
-          <li key={r.id} className="font-sans border-b border-border/50 py-1">
-            {r.rateDate} · 1 {r.fromCurrency} = {r.rate} {r.toCurrency} · {r.rateType}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export function OpenItemsPanel({
   companyId,
   subledger,
@@ -223,13 +130,25 @@ export function OpenItemsPanel({
   const [tax, setTax] = useState('0');
   const [taxCode, setTaxCode] = useState('SST-6');
   const [currency, setCurrency] = useState(functionalCurrency);
+  const [fxRate, setFxRate] = useState('');
+  const [fxRateDate, setFxRateDate] = useState(todayIso());
+  const [fxModalOpen, setFxModalOpen] = useState(false);
   const [issueDate, setIssueDate] = useState(todayIso());
   const [dueDate, setDueDate] = useState(todayIso());
   const [kind, setKind] = useState(subledger === 'ar' ? 'invoice' : 'bill');
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [applyAmt, setApplyAmt] = useState('');
+  const [applyDate, setApplyDate] = useState(todayIso());
+  const [settlementFxRate, setSettlementFxRate] = useState('');
+  const [settlementFxDate, setSettlementFxDate] = useState(todayIso());
+  const [remitFxModalOpen, setRemitFxModalOpen] = useState(false);
+  const [estimatedFxHint, setEstimatedFxHint] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const foreign = currency !== functionalCurrency;
+  const rateNum = Number(fxRate);
+  const rateOk = !foreign || (Number.isFinite(rateNum) && rateNum > 0);
 
   const load = async () => {
     try {
@@ -250,6 +169,8 @@ export function OpenItemsPanel({
 
   useEffect(() => {
     setCurrency(functionalCurrency);
+    setFxRate('');
+    setFxModalOpen(false);
     setKind(subledger === 'ar' ? 'invoice' : 'bill');
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -260,6 +181,11 @@ export function OpenItemsPanel({
     const t = Number(tax) || 0;
     if (!name.trim() || !(g > 0)) {
       onError('Counterparty and gross amount required.');
+      return;
+    }
+    if (foreign && !rateOk) {
+      onError(`Enter a conversion rate (${functionalCurrency} per 1 ${currency}) for the issue date.`);
+      setFxModalOpen(true);
       return;
     }
     setBusy(true);
@@ -278,10 +204,14 @@ export function OpenItemsPanel({
         narration: `${subledger.toUpperCase()} ${name.trim()}`,
         postJournal: true,
         requireApApproval: subledger === 'ap',
+        fxRate: foreign ? rateNum : undefined,
+        fxRateDate: foreign ? fxRateDate || issueDate : undefined,
       });
       setName('');
       setGross('');
       setTax('0');
+      setFxRate('');
+      setCurrency(functionalCurrency);
       await load();
       onPosted();
     } catch (e) {
@@ -291,21 +221,26 @@ export function OpenItemsPanel({
     }
   };
 
-  const apply = async () => {
+  const applySelected = async (opts?: { settlementFxRate?: number; settlementFxRateDate?: string }) => {
     const amount = Number(applyAmt);
     if (!(Number(fromId) > 0) || !(Number(toId) > 0) || !(amount > 0)) {
       onError('Select payment/doc ids and amount to apply.');
       return;
     }
     setBusy(true);
+    onError(null);
     try {
       await api.accountingApplyOpenItems(companyId, {
         fromId: Number(fromId),
         toId: Number(toId),
         amount,
-        effectiveDate: todayIso(),
+        effectiveDate: applyDate,
+        settlementFxRate: opts?.settlementFxRate,
+        settlementFxRateDate: opts?.settlementFxRateDate,
       });
       setApplyAmt('');
+      setSettlementFxRate('');
+      setRemitFxModalOpen(false);
       await load();
       onPosted();
     } catch (e) {
@@ -313,6 +248,36 @@ export function OpenItemsPanel({
     } finally {
       setBusy(false);
     }
+  };
+
+  const apply = async () => {
+    const from = items.find(i => i.id === Number(fromId));
+    const to = items.find(i => i.id === Number(toId));
+    const txnCurrency = from?.currency ?? to?.currency ?? functionalCurrency;
+    if (txnCurrency !== functionalCurrency) {
+      // Prefill with estimate (issue-day) rate when available; remittance rate is adjustable.
+      try {
+        const rates = await api.accountingFxRates(companyId, 80);
+        const estimate = rates.find(
+          r =>
+            r.fromCurrency === txnCurrency
+            && r.toCurrency === functionalCurrency
+            && (r.rateType === 'estimate' || r.rateType === 'manual'),
+        );
+        const hint = estimate ? String(estimate.rate) : settlementFxRate;
+        setEstimatedFxHint(hint);
+        setSettlementFxRate(hint);
+        setSettlementFxDate(applyDate);
+        setRemitFxModalOpen(true);
+        return;
+      } catch {
+        setEstimatedFxHint('');
+        setSettlementFxDate(applyDate);
+        setRemitFxModalOpen(true);
+        return;
+      }
+    }
+    await applySelected();
   };
 
   return (
@@ -358,12 +323,50 @@ export function OpenItemsPanel({
         </label>
         <label className="space-y-1">
           <span className="text-muted-foreground">Currency</span>
-          <select className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={currency} onChange={e => setCurrency(e.target.value)}>
+          <select
+            className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans"
+            value={currency}
+            onChange={e => {
+              const next = e.target.value;
+              setCurrency(next);
+              if (next === functionalCurrency) {
+                setFxRate('');
+                setFxModalOpen(false);
+              } else {
+                setFxRateDate(issueDate);
+                setFxModalOpen(true);
+              }
+            }}
+          >
             {[functionalCurrency, 'USD', 'SGD', 'EUR'].filter((c, i, a) => a.indexOf(c) === i).map(c => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>{c}{c === functionalCurrency ? ' (home)' : ''}</option>
             ))}
           </select>
         </label>
+        <div className="space-y-1">
+          <span className="text-muted-foreground">FX rate</span>
+          {foreign ? (
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              {rateOk ? (
+                <span className="font-sans text-[11px]">
+                  {rateNum} {functionalCurrency}/1 {currency}
+                  <span className="text-muted-foreground"> · {fxRateDate}</span>
+                </span>
+              ) : (
+                <span className="text-[11px] text-destructive">Rate required</span>
+              )}
+              <button
+                type="button"
+                className="text-[11px] font-semibold underline text-muted-foreground hover:text-foreground"
+                onClick={() => setFxModalOpen(true)}
+              >
+                {rateOk ? 'Adjust' : 'Enter'}
+              </button>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground pt-1.5">Home currency</p>
+          )}
+        </div>
         <label className="space-y-1">
           <span className="text-muted-foreground">Issue</span>
           <input type="date" className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
@@ -373,11 +376,34 @@ export function OpenItemsPanel({
           <input type="date" className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={dueDate} onChange={e => setDueDate(e.target.value)} />
         </label>
         <div className="flex items-end">
-          <button type="button" disabled={busy} onClick={() => void create()} className="text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50">
+          <button type="button" disabled={busy || (foreign && !rateOk)} onClick={() => void create()} className="text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50">
             Create {kind}
           </button>
         </div>
       </div>
+
+      <FxRateEntryModal
+        open={fxModalOpen && foreign}
+        foreignCurrency={currency}
+        functionalCurrency={functionalCurrency}
+        defaultRateDate={fxRateDate || issueDate}
+        initialRate={fxRate}
+        title={`FX rate · ${kind} · ${currency}`}
+        hint={`Manual rate for the day this ${kind} was issued (${functionalCurrency} per 1 ${currency}). Remittance can use a different rate later.`}
+        confirmLabel="Use estimate"
+        onConfirm={({ rate, rateDate }) => {
+          setFxRate(String(rate));
+          setFxRateDate(rateDate);
+          setFxModalOpen(false);
+        }}
+        onCancel={() => {
+          setFxModalOpen(false);
+          if (!rateOk) {
+            setCurrency(functionalCurrency);
+            setFxRate('');
+          }
+        }}
+      />
 
       <div className="border-t border-border pt-3 space-y-2">
         <p className="font-semibold">Apply payment / document</p>
@@ -404,12 +430,32 @@ export function OpenItemsPanel({
             <span className="text-muted-foreground">Amount</span>
             <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" inputMode="decimal" value={applyAmt} onChange={e => setApplyAmt(e.target.value)} />
           </label>
-          <div className="flex items-end">
+          <label className="space-y-1">
+            <span className="text-muted-foreground">Remittance date</span>
+            <input type="date" className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={applyDate} onChange={e => setApplyDate(e.target.value)} />
+          </label>
+          <div className="flex items-end sm:col-span-4">
             <button type="button" disabled={busy} onClick={() => void apply()} className="text-xs font-bold border border-border px-3 py-1.5 rounded-md disabled:opacity-50">
               Apply
             </button>
           </div>
         </div>
+        <FxRateEntryModal
+          open={remitFxModalOpen}
+          foreignCurrency={(items.find(i => i.id === Number(fromId)) ?? items.find(i => i.id === Number(toId)))?.currency ?? currency}
+          functionalCurrency={functionalCurrency}
+          defaultRateDate={settlementFxDate || applyDate}
+          initialRate={settlementFxRate || estimatedFxHint}
+          title="Remittance FX rate"
+          hint={`Rate on the day funds are remitted may differ from the PO/issue estimate. Adjust here (${functionalCurrency} per 1 foreign unit).`}
+          confirmLabel="Apply with this rate"
+          onConfirm={({ rate, rateDate }) => {
+            setSettlementFxRate(String(rate));
+            setSettlementFxDate(rateDate);
+            void applySelected({ settlementFxRate: rate, settlementFxRateDate: rateDate });
+          }}
+          onCancel={() => setRemitFxModalOpen(false)}
+        />
         <ul className="space-y-1 text-muted-foreground">
           {apps.slice(0, 12).map(a => (
             <li key={a.id} className="font-sans flex gap-2 items-center">
