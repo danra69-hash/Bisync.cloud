@@ -12,16 +12,27 @@ import type { AccessModule } from '../../data/userAccess';
 import type { NavItem } from '../../data/revenueManagement';
 import { isNavItemPlatformLive, type ModulesGoLiveMap } from '../../data/platformGoLiveModules';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import type { DropdownLocation } from '../../utils/orgFilters';
 import { PlatformTeamChatPanel } from '../chat/PlatformTeamChatPanel';
+import { LocationDropdown } from '../overview/LocationDropdown';
 import { DesktopUpdateNotice } from './DesktopUpdateNotice';
 import { HomeDesktopDownloadCard } from './HomeDesktopDownloadCard';
 import { HomeDeviceUnlockCard } from './HomeDeviceUnlockCard';
+import { HomeLocationPosList } from './HomeLocationPosList';
 
 type Props = {
   enabledModules: AccessModule[];
   modulesGoLive: ModulesGoLiveMap | null;
   onOpenModule: (item: NavItem) => void;
+  selectedCompanyId: number | null;
+  locations: DropdownLocation[];
+  selectedLocationIds: string[];
+  onLocationChange: (externalIds: string[]) => void;
+  orgLoading?: boolean;
 };
+
+/** Show a dedicated Locations control when the operator manages several outlets. */
+const MANY_LOCATIONS_THRESHOLD = 3;
 
 const MODULE_VISUAL: Record<
   AccessModule,
@@ -122,8 +133,18 @@ const MODULE_BLURB_KEY: Record<AccessModule, string> = {
   Accounting: 'home.modules.accounting',
 };
 
-export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props) {
+export function HomePage({
+  enabledModules,
+  modulesGoLive,
+  onOpenModule,
+  selectedCompanyId,
+  locations,
+  selectedLocationIds,
+  onLocationChange,
+  orgLoading = false,
+}: Props) {
   const { t, navLabel } = useAppTranslation();
+  const showLocationsButton = locations.length >= MANY_LOCATIONS_THRESHOLD;
 
   return (
     <div className="w-full min-w-0 flex flex-col lg:flex-row gap-3 items-stretch">
@@ -137,10 +158,29 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
       </div>
 
       <div className="flex-1 min-w-0 space-y-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground leading-tight">{t('nav.home')}</h1>
-          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('home.subtitle')}</p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-foreground leading-tight">{t('nav.home')}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('home.subtitle')}</p>
+          </div>
+          {showLocationsButton ? (
+            <div className="shrink-0">
+              <LocationDropdown
+                locations={locations}
+                selected={selectedLocationIds}
+                onChange={onLocationChange}
+                disabled={!selectedCompanyId}
+                loading={orgLoading}
+              />
+            </div>
+          ) : null}
         </div>
+
+        <HomeLocationPosList
+          companyId={selectedCompanyId}
+          locations={locations}
+          selectedLocationIds={selectedLocationIds}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {PLATFORM_MODULES.map(module => {

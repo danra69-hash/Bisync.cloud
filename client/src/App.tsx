@@ -545,6 +545,14 @@ export default function App() {
               enabledModules={enabledModules}
               modulesGoLive={modulesGoLive}
               onOpenModule={handleNavigate}
+              selectedCompanyId={selectedCompanyId}
+              locations={headerLocations}
+              selectedLocationIds={selectedLocationIds}
+              onLocationChange={(ids) => {
+                setSelectedLocationIds(ids);
+                writeStoredLocationIds(selectedCompanyId, ids);
+              }}
+              orgLoading={orgLoading}
             />
           ) : isRevenueSection ? (
             <RevenueSection

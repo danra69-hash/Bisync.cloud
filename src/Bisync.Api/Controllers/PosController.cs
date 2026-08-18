@@ -99,6 +99,99 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         return Ok(await q.OrderByDescending(x => x.UpdatedAt).Take(200).ToListAsync());
     }
 
+    /// <summary>
+    /// Batch today's POS KPIs per location (gross sales, covers, closed checks, last paid time).
+    /// Used by the platform Home location list.
+    /// </summary>
+    [HttpGet("locations-today")]
+    public async Task<ActionResult<object>> GetLocationsToday(
+        [FromQuery] int companyId,
+        [FromQuery] string? locationExternalIds = null,
+        [FromQuery] DateOnly? businessDate = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        if (cid is null)
+            return BadRequest(new { error = "companyId is required." });
+
+        var date = businessDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var end = start.AddDays(1);
+
+        var requested = (locationExternalIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(200)
+            .ToList();
+
+        var closedQ = db.PosClosedChecks.AsNoTracking()
+            .Where(x => x.CompanyId == cid.Value && x.PaidAt >= start && x.PaidAt < end);
+        if (requested.Count > 0)
+            closedQ = closedQ.Where(x => requested.Contains(x.LocationExternalId));
+
+        var closedRows = await closedQ
+            .Select(x => new { x.LocationExternalId, x.GrossCents, x.Covers, x.PaidAt })
+            .ToListAsync();
+
+        var openQ = db.PosOpenChecks.AsNoTracking()
+            .Where(x => x.CompanyId == cid.Value && x.Active);
+        if (requested.Count > 0)
+            openQ = openQ.Where(x => requested.Contains(x.LocationExternalId));
+
+        var openByLoc = await openQ
+            .GroupBy(x => x.LocationExternalId)
+            .Select(g => new { LocationExternalId = g.Key, Count = g.Count() })
+            .ToListAsync();
+        var openMap = openByLoc.ToDictionary(
+            x => x.LocationExternalId,
+            x => x.Count,
+            StringComparer.OrdinalIgnoreCase);
+
+        var aggregates = closedRows
+            .GroupBy(x => x.LocationExternalId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    salesCents = g.Sum(r => r.GrossCents),
+                    covers = g.Sum(r => Math.Max(0, r.Covers)),
+                    checks = g.Count(),
+                    lastPaidAt = g.Max(r => (DateTimeOffset?)r.PaidAt),
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+        var locationIds = requested.Count > 0
+            ? requested
+            : aggregates.Keys
+                .Concat(openMap.Keys)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+        var asOf = DateTimeOffset.UtcNow;
+        var locations = locationIds.Select(id =>
+        {
+            aggregates.TryGetValue(id, out var agg);
+            openMap.TryGetValue(id, out var openCount);
+            return new
+            {
+                locationExternalId = id,
+                salesCents = agg?.salesCents ?? 0L,
+                covers = agg?.covers ?? 0,
+                checks = agg?.checks ?? 0,
+                openChecks = openCount,
+                lastPaidAt = agg?.lastPaidAt,
+            };
+        });
+
+        return Ok(new
+        {
+            businessDate = date.ToString("yyyy-MM-dd"),
+            asOf,
+            locations,
+        });
+    }
+
     [HttpGet("eod-sessions")]
     public async Task<ActionResult<IEnumerable<PosEodSession>>> ListEodSessions(
         [FromQuery] int? companyId = null,

@@ -3038,6 +3038,21 @@ export interface PosEodBundleDto {
   closed?: boolean;
 }
 
+export interface PosLocationTodayRow {
+  locationExternalId: string;
+  salesCents: number;
+  covers: number;
+  checks: number;
+  openChecks: number;
+  lastPaidAt?: string | null;
+}
+
+export interface PosLocationsTodayDto {
+  businessDate: string;
+  asOf: string;
+  locations: PosLocationTodayRow[];
+}
+
 export interface Product {
   id: number;
   productId: string;
@@ -5064,6 +5079,14 @@ export const api = {
     });
     if (businessDate) params.set('businessDate', businessDate);
     return fetchJson<PosEodBundleDto>(`/api/pos/eod/summary?${params}`);
+  },
+  posLocationsToday: (companyId: number, locationExternalIds: string[], businessDate?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (locationExternalIds.length > 0) {
+      params.set('locationExternalIds', locationExternalIds.join(','));
+    }
+    if (businessDate) params.set('businessDate', businessDate);
+    return fetchJson<PosLocationsTodayDto>(`/api/pos/locations-today?${params}`);
   },
   posEodUpsertSession: (payload: {
     companyId: number;
