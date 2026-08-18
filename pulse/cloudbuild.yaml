@@ -1,0 +1,22 @@
+# Pulse-only image build — runs in the Pulse GCP project (not Bisync).
+substitutions:
+  _IMAGE: 'asia-southeast1-docker.pkg.dev/REPLACE_PULSE_PROJECT/pulse/pulse-cloud:latest'
+  _IMAGE_SHA: 'asia-southeast1-docker.pkg.dev/REPLACE_PULSE_PROJECT/pulse/pulse-cloud:manual'
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--no-cache'
+      - '--pull'
+      - '-f'
+      - 'pulse/Dockerfile'
+      - '-t'
+      - '${_IMAGE}'
+      - '-t'
+      - '${_IMAGE_SHA}'
+      - '.'
+
+images:
+  - '${_IMAGE}'
+  - '${_IMAGE_SHA}'
