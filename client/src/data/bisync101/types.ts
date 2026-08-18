@@ -10,6 +10,13 @@ export type Bisync101Hotspot = {
 export type Bisync101Step = {
   title: string;
   detail: string;
+  /**
+   * Narration spoken while this screenshot step plays.
+   * When omitted, the player speaks `${title}. ${detail}`.
+   */
+  voiceover?: string;
+  /** Optional start offset (ms) within a recorded clip for voice/step sync. */
+  startMs?: number;
   hotspot?: Bisync101Hotspot;
 };
 

@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pause, Play, RotateCcw } from 'lucide-react';
+import { Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import type { Bisync101Hotspot, Bisync101Task } from '../../data/bisync101/types';
 import { bisync101ClipUrl } from '../../data/bisync101/catalog';
+import {
+  cancelBisync101Speech,
+  readBisync101VoiceEnabled,
+  speakBisync101Step,
+  writeBisync101VoiceEnabled,
+} from '../../data/bisync101/voice';
 
 type Props = {
   task: Bisync101Task;
@@ -29,20 +35,44 @@ type ScreenKind =
   | 'accounting'
   | 'system';
 
+function resolveVideoStepIndex(task: Bisync101Task, currentTimeSec: number, durationSec: number): number {
+  const steps = task.steps;
+  if (steps.length === 0) return 0;
+  const withStarts = steps.every(s => typeof s.startMs === 'number' && Number.isFinite(s.startMs));
+  if (withStarts) {
+    const ms = currentTimeSec * 1000;
+    let idx = 0;
+    for (let i = 0; i < steps.length; i++) {
+      if ((steps[i].startMs ?? 0) <= ms) idx = i;
+    }
+    return idx;
+  }
+  if (!(durationSec > 0)) return 0;
+  const introSec = Math.min(1.2, durationSec * 0.08);
+  const usable = Math.max(0.001, durationSec - introSec);
+  const t = Math.max(0, currentTimeSec - introSec);
+  return Math.min(steps.length - 1, Math.max(0, Math.floor((t / usable) * steps.length)));
+}
+
 /**
  * Short per-task capture player.
  * Prefers a live-UI WebM under /bisync101/clips (cursor + typed examples);
  * otherwise plays an animated Bisync.cloud chrome lesson fallback.
+ * Each screenshot step speaks a voice-over (browser TTS) unless muted.
  */
 export function Bisync101ScreenLesson({ task }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSpokenStep = useRef<number | null>(null);
   const clipSrc = useMemo(() => bisync101ClipUrl(task), [task]);
   const [useVideo, setUseVideo] = useState(Boolean(clipSrc));
   const [playing, setPlaying] = useState(true);
   const [stepIndex, setStepIndex] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [voiceEnabled, setVoiceEnabled] = useState(() =>
+    typeof window === 'undefined' ? true : readBisync101VoiceEnabled(),
+  );
   const startedAt = useRef<number | null>(null);
   const pausedAt = useRef(0);
 
@@ -56,7 +86,27 @@ export function Bisync101ScreenLesson({ task }: Props) {
     setVideoProgress(0);
     startedAt.current = null;
     pausedAt.current = 0;
+    lastSpokenStep.current = null;
+    cancelBisync101Speech();
   }, [task.id, clipSrc]);
+
+  useEffect(() => () => cancelBisync101Speech(), []);
+
+  useEffect(() => {
+    if (!voiceEnabled) {
+      cancelBisync101Speech();
+      lastSpokenStep.current = null;
+      return;
+    }
+    if (!playing) {
+      cancelBisync101Speech();
+      lastSpokenStep.current = null;
+      return;
+    }
+    if (lastSpokenStep.current === stepIndex) return;
+    lastSpokenStep.current = stepIndex;
+    speakBisync101Step(task.steps[stepIndex], true);
+  }, [stepIndex, playing, voiceEnabled, task]);
 
   useEffect(() => {
     if (useVideo) return;
@@ -129,15 +179,19 @@ export function Bisync101ScreenLesson({ task }: Props) {
       startedAt.current = null;
       setElapsed(0);
       setStepIndex(0);
+      lastSpokenStep.current = null;
     }
     setPlaying(true);
   }
 
   function replay() {
+    lastSpokenStep.current = null;
+    cancelBisync101Speech();
     if (useVideo && videoRef.current) {
       videoRef.current.currentTime = 0;
       void videoRef.current.play();
       setPlaying(true);
+      setStepIndex(0);
       return;
     }
     pausedAt.current = 0;
@@ -145,6 +199,20 @@ export function Bisync101ScreenLesson({ task }: Props) {
     setElapsed(0);
     setStepIndex(0);
     setPlaying(true);
+  }
+
+  function toggleVoice() {
+    const next = !voiceEnabled;
+    setVoiceEnabled(next);
+    writeBisync101VoiceEnabled(next);
+    if (!next) {
+      cancelBisync101Speech();
+      lastSpokenStep.current = null;
+    } else if (playing) {
+      lastSpokenStep.current = null;
+      speakBisync101Step(task.steps[stepIndex], true);
+      lastSpokenStep.current = stepIndex;
+    }
   }
 
   const progress = useVideo
@@ -166,7 +234,10 @@ export function Bisync101ScreenLesson({ task }: Props) {
             onEnded={() => setPlaying(false)}
             onTimeUpdate={e => {
               const el = e.currentTarget;
-              if (el.duration > 0) setVideoProgress(el.currentTime / el.duration);
+              if (el.duration > 0) {
+                setVideoProgress(el.currentTime / el.duration);
+                setStepIndex(resolveVideoStepIndex(task, el.currentTime, el.duration));
+              }
             }}
             onLoadedMetadata={e => {
               e.currentTarget.playbackRate = VIDEO_PLAYBACK_RATE;
@@ -179,6 +250,7 @@ export function Bisync101ScreenLesson({ task }: Props) {
               setPlaying(true);
               pausedAt.current = 0;
               startedAt.current = null;
+              lastSpokenStep.current = null;
             }}
           />
         ) : (
@@ -194,6 +266,7 @@ export function Bisync101ScreenLesson({ task }: Props) {
           {useVideo
             ? `Platform screen · ${task.durationLabel} · slowed`
             : `Platform screen · ~${Math.max(1, Math.round(totalMs / 1000))} sec`}
+          {voiceEnabled ? ' · voice-over' : ' · muted'}
         </div>
       </div>
 
@@ -213,6 +286,15 @@ export function Bisync101ScreenLesson({ task }: Props) {
           aria-label="Replay"
         >
           <RotateCcw size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleVoice}
+          className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-white/15 text-white/80 hover:bg-white/10"
+          aria-label={voiceEnabled ? 'Mute voice-over' : 'Enable voice-over'}
+          title={voiceEnabled ? 'Mute voice-over' : 'Enable voice-over'}
+        >
+          {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
         </button>
         <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
           <div
@@ -425,15 +507,72 @@ function drawTable(
   });
 }
 
-function drawHome(ctx: CanvasRenderingContext2D, w: number, h: number, headerH: number) {
+function drawHome(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  headerH: number,
+  opts?: { showLocationsToday?: boolean; showChatRail?: boolean },
+) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, headerH, w, h - headerH);
+
+  if (opts?.showChatRail) {
+    ctx.fillStyle = SOFT;
+    ctx.fillRect(0, headerH, w * 0.28, h - headerH);
+    ctx.fillStyle = SADDLE;
+    ctx.font = '700 12px Nunito, system-ui, sans-serif';
+    ctx.fillText('Team chat', 16, headerH + 28);
+    ctx.fillStyle = ORANGE;
+    roundRect(ctx, w * 0.28 - 64, headerH + 14, 48, 22, 11);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 10px Nunito, system-ui, sans-serif';
+    ctx.fillText('Hide', w * 0.28 - 52, headerH + 28);
+    ctx.fillStyle = '#fff';
+    roundRect(ctx, 12, headerH + 48, w * 0.28 - 24, h - headerH - 70, 8);
+    ctx.fill();
+  }
+
+  const left = opts?.showChatRail ? w * 0.3 : 24;
   ctx.fillStyle = SADDLE;
   ctx.font = '700 18px Nunito, system-ui, sans-serif';
-  ctx.fillText('Home', 24, headerH + 32);
+  ctx.fillText('Home', left, headerH + 32);
   ctx.fillStyle = MUTED;
   ctx.font = '400 11px Nunito, system-ui, sans-serif';
-  ctx.fillText('Open a module to continue — only enabled modules are available.', 24, headerH + 52);
+  ctx.fillText('Open a module to continue — only enabled modules are available.', left, headerH + 52);
+
+  if (opts?.showLocationsToday) {
+    const boxX = left;
+    const boxY = headerH + 64;
+    const boxW = w - left - 24;
+    ctx.fillStyle = '#fff';
+    roundRect(ctx, boxX, boxY, boxW, 110, 10);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(42,33,24,0.12)';
+    ctx.stroke();
+    ctx.fillStyle = SADDLE;
+    ctx.font = '700 12px Nunito, system-ui, sans-serif';
+    ctx.fillText('Locations today', boxX + 14, boxY + 22);
+    ctx.fillStyle = MUTED;
+    ctx.font = '400 10px Nunito, system-ui, sans-serif';
+    ctx.fillText('Business day · Data as of now', boxX + 14, boxY + 40);
+    ctx.fillStyle = ORANGE;
+    roundRect(ctx, boxX + boxW - 110, boxY + 12, 92, 22, 11);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 10px Nunito, system-ui, sans-serif';
+    ctx.fillText('Locations', boxX + boxW - 96, boxY + 27);
+    drawTable(
+      ctx,
+      boxX + 10,
+      boxY + 50,
+      boxW - 20,
+      52,
+      ['Location', 'Sales', 'Covers', 'Check'],
+      [['Weissbrau KL', 'RM 4,280', '186', 'RM 23.01']],
+    );
+  }
 
   const tiles: Array<{ code: string; name: string; accent: string }> = [
     { code: 'RMS', name: 'Revenue Management', accent: ORANGE },
@@ -441,34 +580,35 @@ function drawHome(ctx: CanvasRenderingContext2D, w: number, h: number, headerH: 
     { code: 'HRM', name: 'Human Resources', accent: '#3B6EA5' },
     { code: 'Accounting', name: 'Accounting', accent: '#8A6A2A' },
   ];
-  const tileW = 440;
-  const tileH = 150;
+  const tileW = opts?.showChatRail ? 300 : 440;
+  const tileH = opts?.showLocationsToday ? 110 : 150;
+  const tileTop = opts?.showLocationsToday ? headerH + 190 : headerH + 70;
   tiles.forEach((tile, i) => {
     const col = i % 2;
     const row = Math.floor(i / 2);
-    const x = 24 + col * (tileW + 16);
-    const y = headerH + 70 + row * (tileH + 16);
+    const x = left + col * (tileW + 16);
+    const y = tileTop + row * (tileH + 12);
     ctx.fillStyle = '#fff';
     roundRect(ctx, x, y, tileW, tileH, 12);
     ctx.fill();
     ctx.strokeStyle = 'rgba(42,33,24,0.12)';
     ctx.stroke();
     ctx.fillStyle = SOFT;
-    ctx.fillRect(x + tileW - 120, y + 24, 104, tileH - 48);
+    ctx.fillRect(x + tileW - 100, y + 16, 84, tileH - 32);
     ctx.fillStyle = tile.accent;
     for (let b = 0; b < 4; b++) {
-      const bh = 28 + b * 10;
-      ctx.fillRect(x + tileW - 108 + b * 22, y + tileH - 36 - bh / 2, 14, bh / 2);
+      const bh = 20 + b * 8;
+      ctx.fillRect(x + tileW - 90 + b * 18, y + tileH - 28 - bh / 2, 12, bh / 2);
     }
     ctx.fillStyle = tile.accent;
     ctx.font = '700 10px Nunito, system-ui, sans-serif';
-    ctx.fillText(tile.code, x + 16, y + 28);
+    ctx.fillText(tile.code, x + 16, y + 24);
     ctx.fillStyle = SADDLE;
-    ctx.font = '700 15px Nunito, system-ui, sans-serif';
-    ctx.fillText(tile.name, x + 16, y + 52);
+    ctx.font = '700 14px Nunito, system-ui, sans-serif';
+    ctx.fillText(tile.name, x + 16, y + 46);
     ctx.fillStyle = ORANGE;
     ctx.font = '700 11px Nunito, system-ui, sans-serif';
-    ctx.fillText('Open module →', x + 16, y + 78);
+    ctx.fillText('Open module →', x + 16, y + 68);
   });
 }
 
@@ -537,7 +677,10 @@ function drawLessonFrame(
   } else {
     drawHeader(ctx, w, headerH, title);
     if (kind === 'home' || kind === 'home-sidebar' || kind === 'home-101') {
-      drawHome(ctx, w, h, headerH);
+      drawHome(ctx, w, h, headerH, {
+        showLocationsToday: task.id === 'gs-home-locations-today',
+        showChatRail: task.id === 'gs-home-chat',
+      });
       if (kind === 'home-sidebar') {
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.fillRect(0, 0, w, h);

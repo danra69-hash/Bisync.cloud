@@ -3,7 +3,7 @@ import type { Bisync101Module } from '../types';
 export const gettingStartedModule: Bisync101Module = {
   id: 'getting-started',
   title: 'Getting Started',
-  blurb: 'Sign in, pick your company and location, and move around the Bisync.cloud shell.',
+  blurb: 'Sign in, pick your company and location, use Home Locations today and Team chat, and move around the Bisync.cloud shell.',
   icon: 'home',
   tasks: [
     {
@@ -120,18 +120,83 @@ export const gettingStartedModule: Bisync101Module = {
         {
           title: 'Open Bisync101',
           detail: 'Click the Bisync101 button immediately after the language flag.',
+          voiceover: 'Open Bisync 101 from the top bar, right after the language flag.',
           hotspot: { x: 86, y: 3, w: 8, h: 9, label: 'Bisync101' },
         },
         {
           title: 'Pick a module',
           detail: 'Choose a module on the left (Getting Started, RMS, POS, HR, and more).',
+          voiceover: 'Pick a module on the left — Getting Started, Revenue Management, POS, HR, or Accounting.',
           hotspot: { x: 4, y: 18, w: 22, h: 50, label: 'Modules' },
         },
         {
           title: 'Play a task clip',
-          detail: 'Select a task, watch the short capture, then follow the numbered steps on the right.',
+          detail: 'Select a task, watch the short capture with voice-over, then follow the numbered steps on the right.',
+          voiceover: 'Select a task, watch the screenshot lesson with voice-over, and follow the numbered steps on the right. Mute voice anytime with the speaker button.',
           hotspot: { x: 30, y: 20, w: 40, h: 35, label: 'Clip + steps' },
         },
+      ],
+    },
+    {
+      id: 'gs-home-chat',
+      title: 'Hide and reopen Team chat on Home',
+      summary: 'Collapse the Home chat rail to enlarge content, then reopen from the Chat chip or unread bell.',
+      durationLabel: '~25 sec',
+      whereInApp: 'Home → Team chat',
+      steps: [
+        {
+          title: 'Find Team chat',
+          detail: 'On Home, Team chat sits in the left rail beside module tiles and location stats.',
+          voiceover: 'On Home, Team chat lives in the left rail next to your modules and location stats.',
+          hotspot: { x: 2, y: 14, w: 28, h: 55, label: 'Chat rail' },
+        },
+        {
+          title: 'Hide the rail',
+          detail: 'Click Hide on the chat toolbar. The rail disappears so the rest of Home expands to full width.',
+          voiceover: 'Click Hide on the chat toolbar. The rail collapses like the sidebar so Home content expands.',
+          hotspot: { x: 18, y: 14, w: 10, h: 6, label: 'Hide' },
+        },
+        {
+          title: 'Reopen from Chat or bell',
+          detail: 'Use the compact Chat chip to reopen. When there are unread messages, a notification bell appears instead.',
+          voiceover: 'Reopen with the Chat chip, or the notification bell when you have unread messages. Chat also stays available from the header bell.',
+          hotspot: { x: 2, y: 12, w: 16, h: 8, label: 'Chat / bell' },
+        },
+      ],
+      tips: [
+        'Revenue Management no longer hosts a chat rail — use Home or the header notification bell.',
+        'Hide preference is remembered in this browser.',
+      ],
+    },
+    {
+      id: 'gs-home-locations-today',
+      title: 'Read Locations today on Home',
+      summary: 'See live POS Sales, Covers, and Check average per outlet, with the data timestamp.',
+      durationLabel: '~30 sec',
+      whereInApp: 'Home → Locations today',
+      steps: [
+        {
+          title: 'Open Home',
+          detail: 'Go to Home. Below the title you will see Locations today with live POS figures.',
+          voiceover: 'On Home, Locations today shows live POS Sales, Covers, and Check average for each selected outlet.',
+          hotspot: { x: 32, y: 18, w: 64, h: 28, label: 'Locations today' },
+        },
+        {
+          title: 'Use Locations when you have many outlets',
+          detail: 'If the company has three or more locations, a Locations button appears at the top so you can filter the list.',
+          voiceover: 'When you manage many locations, use the Locations button at the top of Home to filter which outlets appear.',
+          hotspot: { x: 78, y: 12, w: 16, h: 8, label: 'Locations' },
+        },
+        {
+          title: 'Check the timestamp',
+          detail: 'Each row shows Sales, Covers, Check (average), and when the data was last updated from POS closed checks.',
+          voiceover: 'Read Sales, Covers, and Check, then confirm the Updated time so you know how fresh the POS data is. Refresh to pull the latest totals.',
+          hotspot: { x: 32, y: 28, w: 64, h: 24, label: 'POS KPIs' },
+        },
+      ],
+      tips: [
+        'Figures come from live POS closed checks for the business day — zeros mean no closed checks yet.',
+        'Header company and location filters also drive this list.',
       ],
     },
   ],

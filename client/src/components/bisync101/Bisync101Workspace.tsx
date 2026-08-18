@@ -254,7 +254,10 @@ export function Bisync101Workspace({
               <Bisync101ScreenLesson task={activeTask} />
 
               <section className="space-y-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-[#8a7c6e]">How to do it</h4>
+                <div className="flex items-baseline justify-between gap-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#8a7c6e]">How to do it</h4>
+                  <p className="text-[10px] text-[#8a7c6e]">Voice-over plays with each screenshot step</p>
+                </div>
                 <ol className="space-y-3">
                   {activeTask.steps.map((step, index) => (
                     <li
@@ -267,6 +270,11 @@ export function Bisync101Workspace({
                       <div className="min-w-0">
                         <p className="text-sm font-semibold">{step.title}</p>
                         <p className="text-xs text-[#5c534a] mt-1 leading-relaxed">{step.detail}</p>
+                        {step.voiceover ? (
+                          <p className="text-[10px] text-[#8a7c6e] mt-1.5 leading-snug italic">
+                            Voice: {step.voiceover}
+                          </p>
+                        ) : null}
                       </div>
                     </li>
                   ))}

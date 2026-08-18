@@ -3,7 +3,7 @@ import type { Bisync101Module } from '../types';
 export const hrModule: Bisync101Module = {
   id: 'hr',
   title: 'Human Resources',
-  blurb: 'Employees, attendance, leave, schedules, team RMS orders, and HR configuration.',
+  blurb: 'Employees, attendance, leave, schedules, Team app (/TEAM) Locations today, staff orders, and HR configuration.',
   icon: 'users',
   tasks: [
     {
@@ -112,13 +112,46 @@ export const hrModule: Bisync101Module = {
         {
           title: 'Open Team',
           detail: 'From HR, open Team or the Employee Portal. Mobile users can use /TEAM.',
+          voiceover: 'Open Team from Human Resources, or go to slash TEAM on mobile for the standalone Team app.',
           hotspot: { x: 8, y: 52, w: 18, h: 8, label: 'Team' },
         },
         {
           title: 'Place the request',
           detail: 'Select allowed items and submit for outlet approval as configured.',
+          voiceover: 'Choose allowed items and submit the staff purchase request for outlet approval.',
           hotspot: { x: 28, y: 28, w: 60, h: 40, label: 'Team order' },
         },
+      ],
+    },
+    {
+      id: 'hr-team-app-home',
+      title: 'Team app Home · Locations today',
+      summary: 'On /TEAM Home, review live POS Sales, Covers, and Check per location before chats.',
+      durationLabel: '~30 sec',
+      whereInApp: '/TEAM → Home',
+      steps: [
+        {
+          title: 'Open /TEAM and sign in',
+          detail: 'Open the Team app URL (/TEAM) and sign in with your employee email/mobile and password or PIN.',
+          voiceover: 'Open slash TEAM and sign in with your employee account. Home is the first bottom tab.',
+          hotspot: { x: 30, y: 30, w: 40, h: 35, label: 'Team login' },
+        },
+        {
+          title: 'Read Locations today',
+          detail: 'Above chats, Locations today lists each selected outlet with Sales, Covers, Check, and the data time.',
+          voiceover: 'On Home, Locations today sits above chats and shows live POS Sales, Covers, and Check with the timestamp.',
+          hotspot: { x: 20, y: 14, w: 60, h: 32, label: 'Locations today' },
+        },
+        {
+          title: 'Filter many locations',
+          detail: 'When there are three or more outlets, use the Locations control to focus the list, then continue into chats or My Work.',
+          voiceover: 'If you have many locations, tap Locations to filter the list, then use chats or My Work as needed.',
+          hotspot: { x: 62, y: 12, w: 22, h: 8, label: 'Locations' },
+        },
+      ],
+      tips: [
+        'Team Home is the chats tab — Locations today appears above the conversation list.',
+        'Figures refresh about every minute from POS closed checks.',
       ],
     },
     {
