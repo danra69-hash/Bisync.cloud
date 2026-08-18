@@ -3,7 +3,9 @@ import { Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import type { Bisync101Hotspot, Bisync101Task } from '../../data/bisync101/types';
 import { bisync101ClipUrl } from '../../data/bisync101/catalog';
 import {
+  bisync101StepVoiceText,
   cancelBisync101Speech,
+  estimateBisync101SpeechMs,
   readBisync101VoiceEnabled,
   speakBisync101Step,
   writeBisync101VoiceEnabled,
@@ -13,7 +15,7 @@ type Props = {
   task: Bisync101Task;
 };
 
-const STEP_MS = 5600;
+const MIN_STEP_MS = 4200;
 const INTRO_MS = 1400;
 /** Recorded WebM clips play slower so the on-screen cursor is easier to follow. */
 const VIDEO_PLAYBACK_RATE = 0.65;
@@ -34,6 +36,33 @@ type ScreenKind =
   | 'hr'
   | 'accounting'
   | 'system';
+
+function stepDurationsMs(task: Bisync101Task, voiceEnabled: boolean): number[] {
+  return task.steps.map(step => {
+    const speechMs = voiceEnabled
+      ? estimateBisync101SpeechMs(bisync101StepVoiceText(step))
+      : MIN_STEP_MS;
+    return Math.max(MIN_STEP_MS, speechMs);
+  });
+}
+
+function cumulativeEnds(durations: number[]): number[] {
+  const ends: number[] = [];
+  let acc = 0;
+  for (const d of durations) {
+    acc += d;
+    ends.push(acc);
+  }
+  return ends;
+}
+
+function resolveCanvasStepIndex(afterIntroMs: number, ends: number[]): number {
+  if (ends.length === 0) return 0;
+  for (let i = 0; i < ends.length; i++) {
+    if (afterIntroMs < ends[i]) return i;
+  }
+  return ends.length - 1;
+}
 
 function resolveVideoStepIndex(task: Bisync101Task, currentTimeSec: number, durationSec: number): number {
   const steps = task.steps;
@@ -58,12 +87,16 @@ function resolveVideoStepIndex(task: Bisync101Task, currentTimeSec: number, dura
  * Short per-task capture player.
  * Prefers a live-UI WebM under /bisync101/clips (cursor + typed examples);
  * otherwise plays an animated Bisync.cloud chrome lesson fallback.
- * Each screenshot step speaks a voice-over (browser TTS) unless muted.
+ * Each screenshot step speaks a female voice-over (browser TTS) unless muted.
+ * Step timing waits for the full script so lines are never cut off mid-sentence.
  */
 export function Bisync101ScreenLesson({ task }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSpokenStep = useRef<number | null>(null);
+  const speechDoneRef = useRef<Promise<void>>(Promise.resolve());
+  const speechBusyRef = useRef(false);
+  const holdingForSpeechRef = useRef(false);
   const clipSrc = useMemo(() => bisync101ClipUrl(task), [task]);
   const [useVideo, setUseVideo] = useState(Boolean(clipSrc));
   const [playing, setPlaying] = useState(true);
@@ -76,7 +109,9 @@ export function Bisync101ScreenLesson({ task }: Props) {
   const startedAt = useRef<number | null>(null);
   const pausedAt = useRef(0);
 
-  const totalMs = INTRO_MS + Math.max(task.steps.length, 1) * STEP_MS;
+  const durations = useMemo(() => stepDurationsMs(task, voiceEnabled), [task, voiceEnabled]);
+  const ends = useMemo(() => cumulativeEnds(durations), [durations]);
+  const totalMs = INTRO_MS + (ends[ends.length - 1] ?? MIN_STEP_MS);
 
   useEffect(() => {
     setUseVideo(Boolean(clipSrc));
@@ -87,6 +122,8 @@ export function Bisync101ScreenLesson({ task }: Props) {
     startedAt.current = null;
     pausedAt.current = 0;
     lastSpokenStep.current = null;
+    speechBusyRef.current = false;
+    holdingForSpeechRef.current = false;
     cancelBisync101Speech();
   }, [task.id, clipSrc]);
 
@@ -96,16 +133,23 @@ export function Bisync101ScreenLesson({ task }: Props) {
     if (!voiceEnabled) {
       cancelBisync101Speech();
       lastSpokenStep.current = null;
+      speechBusyRef.current = false;
+      holdingForSpeechRef.current = false;
       return;
     }
     if (!playing) {
       cancelBisync101Speech();
       lastSpokenStep.current = null;
+      speechBusyRef.current = false;
       return;
     }
     if (lastSpokenStep.current === stepIndex) return;
     lastSpokenStep.current = stepIndex;
-    speakBisync101Step(task.steps[stepIndex], true);
+    speechBusyRef.current = true;
+    const speakPromise = speakBisync101Step(task.steps[stepIndex], true).finally(() => {
+      speechBusyRef.current = false;
+    });
+    speechDoneRef.current = speakPromise;
   }, [stepIndex, playing, voiceEnabled, task]);
 
   useEffect(() => {
@@ -115,8 +159,28 @@ export function Bisync101ScreenLesson({ task }: Props) {
     let raf = 0;
     const tick = (now: number) => {
       if (startedAt.current == null) startedAt.current = now - pausedAt.current;
-      const ms = now - startedAt.current;
+      let ms = now - startedAt.current;
+
+      // Hold the clock at the end of the current step until TTS finishes.
+      if (voiceEnabled && speechBusyRef.current && ends.length > 0) {
+        const prevEnd = stepIndex <= 0 ? 0 : ends[stepIndex - 1];
+        const curEnd = ends[stepIndex] ?? prevEnd;
+        const holdAt = INTRO_MS + curEnd - 40;
+        if (ms > holdAt) {
+          startedAt.current = now - holdAt;
+          ms = holdAt;
+        }
+      }
+
       if (ms >= totalMs) {
+        // Don't end while the final line is still speaking.
+        if (voiceEnabled && speechBusyRef.current) {
+          startedAt.current = now - (totalMs - 40);
+          setElapsed(totalMs - 40);
+          setStepIndex(task.steps.length - 1);
+          raf = requestAnimationFrame(tick);
+          return;
+        }
         setElapsed(totalMs);
         setStepIndex(task.steps.length - 1);
         setPlaying(false);
@@ -124,16 +188,13 @@ export function Bisync101ScreenLesson({ task }: Props) {
         return;
       }
       setElapsed(ms);
-      const idx = Math.min(
-        task.steps.length - 1,
-        Math.max(0, Math.floor((ms - INTRO_MS) / STEP_MS)),
-      );
-      setStepIndex(idx);
+      const afterIntro = Math.max(0, ms - INTRO_MS);
+      setStepIndex(resolveCanvasStepIndex(afterIntro, ends));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, task.id, task.steps.length, totalMs, useVideo]);
+  }, [playing, task.id, task.steps.length, totalMs, useVideo, voiceEnabled, ends, stepIndex]);
 
   useEffect(() => {
     if (useVideo) return;
@@ -142,7 +203,11 @@ export function Bisync101ScreenLesson({ task }: Props) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const afterIntro = Math.max(0, elapsed - INTRO_MS);
-    const stepProgress = ((afterIntro % STEP_MS) + STEP_MS) % STEP_MS / STEP_MS;
+    const prevEnd = stepIndex <= 0 ? 0 : ends[stepIndex - 1] ?? 0;
+    const curEnd = ends[stepIndex] ?? prevEnd + MIN_STEP_MS;
+    const stepLen = Math.max(1, curEnd - prevEnd);
+    const intoStep = Math.max(0, afterIntro - prevEnd);
+    const stepProgress = Math.min(1, intoStep / stepLen);
     drawLessonFrame(
       ctx,
       canvas.width,
@@ -151,12 +216,43 @@ export function Bisync101ScreenLesson({ task }: Props) {
       stepIndex,
       stepProgress,
     );
-  }, [elapsed, stepIndex, task, totalMs, useVideo]);
+  }, [elapsed, stepIndex, task, totalMs, useVideo, ends]);
 
   useEffect(() => {
     if (!useVideo || !videoRef.current) return;
     videoRef.current.playbackRate = VIDEO_PLAYBACK_RATE;
   }, [useVideo, clipSrc, playing]);
+
+  async function holdVideoForSpeech(desiredIdx: number) {
+    const video = videoRef.current;
+    if (!video || !voiceEnabled) {
+      setStepIndex(desiredIdx);
+      return;
+    }
+    if (desiredIdx <= stepIndex) {
+      setStepIndex(desiredIdx);
+      return;
+    }
+    if (holdingForSpeechRef.current) return;
+    if (speechBusyRef.current) {
+      holdingForSpeechRef.current = true;
+      video.pause();
+      try {
+        await speechDoneRef.current;
+      } finally {
+        holdingForSpeechRef.current = false;
+      }
+      if (!videoEnabledSafe()) return;
+      setStepIndex(desiredIdx);
+      if (playing) void video.play();
+      return;
+    }
+    setStepIndex(desiredIdx);
+  }
+
+  function videoEnabledSafe() {
+    return Boolean(videoRef.current);
+  }
 
   function togglePlay() {
     if (useVideo && videoRef.current) {
@@ -186,6 +282,8 @@ export function Bisync101ScreenLesson({ task }: Props) {
 
   function replay() {
     lastSpokenStep.current = null;
+    speechBusyRef.current = false;
+    holdingForSpeechRef.current = false;
     cancelBisync101Speech();
     if (useVideo && videoRef.current) {
       videoRef.current.currentTime = 0;
@@ -208,9 +306,14 @@ export function Bisync101ScreenLesson({ task }: Props) {
     if (!next) {
       cancelBisync101Speech();
       lastSpokenStep.current = null;
+      speechBusyRef.current = false;
     } else if (playing) {
       lastSpokenStep.current = null;
-      speakBisync101Step(task.steps[stepIndex], true);
+      speechBusyRef.current = true;
+      const p = speakBisync101Step(task.steps[stepIndex], true).finally(() => {
+        speechBusyRef.current = false;
+      });
+      speechDoneRef.current = p;
       lastSpokenStep.current = stepIndex;
     }
   }
@@ -231,12 +334,20 @@ export function Bisync101ScreenLesson({ task }: Props) {
             autoPlay
             playsInline
             controls={false}
-            onEnded={() => setPlaying(false)}
+            onEnded={() => {
+              // Let the last voice-over finish before marking complete.
+              if (voiceEnabled && speechBusyRef.current) {
+                void speechDoneRef.current.finally(() => setPlaying(false));
+                return;
+              }
+              setPlaying(false);
+            }}
             onTimeUpdate={e => {
               const el = e.currentTarget;
               if (el.duration > 0) {
                 setVideoProgress(el.currentTime / el.duration);
-                setStepIndex(resolveVideoStepIndex(task, el.currentTime, el.duration));
+                const desired = resolveVideoStepIndex(task, el.currentTime, el.duration);
+                void holdVideoForSpeech(desired);
               }
             }}
             onLoadedMetadata={e => {
@@ -266,7 +377,7 @@ export function Bisync101ScreenLesson({ task }: Props) {
           {useVideo
             ? `Platform screen · ${task.durationLabel} · slowed`
             : `Platform screen · ~${Math.max(1, Math.round(totalMs / 1000))} sec`}
-          {voiceEnabled ? ' · voice-over' : ' · muted'}
+          {voiceEnabled ? ' · female voice-over' : ' · muted'}
         </div>
       </div>
 
@@ -292,7 +403,7 @@ export function Bisync101ScreenLesson({ task }: Props) {
           onClick={toggleVoice}
           className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-white/15 text-white/80 hover:bg-white/10"
           aria-label={voiceEnabled ? 'Mute voice-over' : 'Enable voice-over'}
-          title={voiceEnabled ? 'Mute voice-over' : 'Enable voice-over'}
+          title={voiceEnabled ? 'Mute voice-over' : 'Enable female voice-over'}
         >
           {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
         </button>
