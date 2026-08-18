@@ -5649,6 +5649,8 @@ export const api = {
     if (actor) params.set('actor', actor);
     return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/reject?${params}`, 'POST', { reason });
   },
+  accountingVoidOpenItem: (companyId: number, id: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/void?companyId=${companyId}`, 'POST'),
   accountingBankQueue: (companyId: number) =>
     fetchJson<{
       unmatched: Array<{ id: number; statementId: number; lineNo: number; valueDate: string; narrative: string; amount: number; currency: string }>;
@@ -5794,16 +5796,23 @@ export type AccountingTrialBalance = {
     endDate: string;
   };
   currency?: string;
+  basis?: string;
   balanced: boolean;
   totalDr: number;
   totalCr: number;
+  periodDr?: number;
+  periodCr?: number;
   rows: Array<{
     accountCode: string;
     accountName: string;
     accountType?: string;
     currency: string;
+    openingDr?: number;
+    openingCr?: number;
     periodDr: number;
     periodCr: number;
+    closingDr?: number;
+    closingCr?: number;
     closing: number;
   }>;
 };

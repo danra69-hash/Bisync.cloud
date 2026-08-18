@@ -12,7 +12,8 @@ namespace Bisync.Api.Services;
 public sealed class AccountingInternalBooksService(
     BisyncDbContext db,
     LedgerPostingService ledger,
-    AccountingSubledgerService subledger)
+    AccountingSubledgerService subledger,
+    MalaysiaAccountingPackService malaysiaPack)
 {
     public async Task UnapplyAsync(int companyId, int applicationId, string createdBy, CancellationToken ct = default)
     {
@@ -86,6 +87,8 @@ public sealed class AccountingInternalBooksService(
             && string.Equals(item.CreatedBy, actor, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Segregation of duties: creator cannot reject their own AP item.");
         item.ApprovalStatus = "rejected";
+        item.Status = "rejected";
+        item.OpenMinor = 0;
         item.ApprovedBy = actor;
         item.ApprovedAt = DateTime.UtcNow;
         item.RejectionReason = reason?.Trim() ?? "";
@@ -232,8 +235,12 @@ public sealed class AccountingInternalBooksService(
             if (item.Subledger == "ap" && item.ApprovalStatus != "approved")
                 throw new InvalidOperationException($"AP item {item.InternalDocumentNo} is not approved.");
             var minor = LedgerPostingService.ToMinor(amount, item.Currency);
+            if (item.Status is "void" or "rejected")
+                throw new InvalidOperationException($"Open item {item.InternalDocumentNo} is {item.Status}.");
             if (minor <= 0 || minor > item.OpenMinor)
                 throw new InvalidOperationException($"Invalid match amount for {item.InternalDocumentNo}.");
+            item.OpenMinor -= minor;
+            item.Status = item.OpenMinor == 0 ? "settled" : "partial";
             itemSum += minor;
             links.Add(new GlBankMatchLink
             {
@@ -270,6 +277,47 @@ public sealed class AccountingInternalBooksService(
             link.MatchGroupId = group.Id;
             db.GlBankMatchLinks.Add(link);
         }
+
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
+        var bankCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "bank_default", "1000", ct);
+        var arCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "ar_control", "1100", ct);
+        var apCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "ap_control", "2010", ct);
+        var netBank = lines.Sum(l => l.AmountMinor);
+        var amountMajor = LedgerPostingService.FromMinor(itemSum, lines[0].Currency);
+        var subledgers = await db.GlOpenItems.AsNoTracking()
+            .Where(i => links.Select(l => l.OpenItemId).Contains(i.Id))
+            .Select(i => i.Subledger)
+            .Distinct()
+            .ToListAsync(ct);
+        var contra = subledgers.Contains("ap") && !subledgers.Contains("ar") ? apCode : arCode;
+        var journalLines = netBank >= 0
+            ? new List<(string, string, decimal, string)>
+            {
+                (bankCode, "D", amountMajor, "Bank match receipt"),
+                (contra, "C", amountMajor, "Bank match clearing"),
+            }
+            : new List<(string, string, decimal, string)>
+            {
+                (contra, "D", amountMajor, "Bank match clearing"),
+                (bankCode, "C", amountMajor, "Bank match payment"),
+            };
+
+        var journal = await ledger.PostAsync(
+            companyId,
+            company?.CountryCode,
+            "BANK",
+            "BNK",
+            lines.Min(l => l.ValueDate),
+            lines.Min(l => l.ValueDate),
+            "BANK",
+            $"match:{group.Id}",
+            notes?.Trim() ?? "Bank match",
+            createdBy,
+            $"bank-match:{companyId}:{group.Id}",
+            journalLines,
+            ct,
+            txnCurrency: lines[0].Currency);
+        group.JournalId = journal.Id;
         await db.SaveChangesAsync(ct);
         return group;
     }
@@ -292,7 +340,16 @@ public sealed class AccountingInternalBooksService(
         var links = await db.GlBankMatchLinks
             .Where(l => l.CompanyId == companyId && l.MatchGroupId == matchGroupId)
             .ToListAsync(ct);
+        foreach (var link in links)
+        {
+            var item = await db.GlOpenItems.FirstOrDefaultAsync(i => i.Id == link.OpenItemId && i.CompanyId == companyId, ct);
+            if (item is null) continue;
+            item.OpenMinor += link.AmountMinor;
+            item.Status = item.OpenMinor >= item.GrossMinor ? "open" : "partial";
+        }
         db.GlBankMatchLinks.RemoveRange(links);
+        if (group.JournalId is int journalId)
+            await ledger.ReverseAsync(companyId, journalId, "bank-unmatch", ct);
         group.Status = "void";
         await db.SaveChangesAsync(ct);
     }
@@ -308,11 +365,18 @@ public sealed class AccountingInternalBooksService(
         foreach (var line in unmatched)
         {
             var abs = Math.Abs(line.AmountMinor);
+            var alreadyLinked = await db.GlBankMatchLinks.AsNoTracking()
+                .Where(l => l.CompanyId == companyId)
+                .Join(db.GlBankMatchGroups.AsNoTracking().Where(g => g.CompanyId == companyId && g.Status == "active"),
+                    l => l.MatchGroupId, g => g.Id, (l, _) => l.OpenItemId)
+                .ToListAsync(ct);
             var candidates = await db.GlOpenItems
                 .Where(i => i.CompanyId == companyId
                     && i.Currency == line.Currency
                     && i.OpenMinor == abs
                     && i.Status != "void"
+                    && i.Status != "rejected"
+                    && !alreadyLinked.Contains(i.Id)
                     && (i.ApprovalStatus == "approved" || i.Subledger == "ar"))
                 .ToListAsync(ct);
             var hit = candidates
@@ -406,6 +470,7 @@ public sealed class AccountingInternalBooksService(
         {
             var book = asset.Books.FirstOrDefault(b => b.BookId == bookId && b.Status == "active");
             if (book is null || book.Method == "none") continue;
+            // Tax book is a schedule only — posting both books into the primary ledger double-counts.
 
             var exists = await db.GlDepreciationRuns.AnyAsync(r =>
                 r.CompanyId == companyId && r.AssetId == asset.Id && r.BookId == bookId
@@ -425,30 +490,33 @@ public sealed class AccountingInternalBooksService(
 
             var amountMajor = LedgerPostingService.FromMinor(amount, asset.Currency);
             GlJournal? journal = null;
-            try
+            if (bookId == "ifrs")
             {
-                journal = await ledger.PostAsync(
-                    companyId,
-                    countryCode,
-                    "FA",
-                    "FA",
-                    new DateOnly(year, Math.Clamp(periodNo, 1, 12), 1),
-                    new DateOnly(year, Math.Clamp(periodNo, 1, 12), 1),
-                    "FIXED_ASSETS",
-                    $"{asset.AssetTag}:{bookId}:{year}-{periodNo:00}",
-                    $"Depreciation {asset.AssetTag} ({bookId})",
-                    "fa-run",
-                    $"fa-dep:{companyId}:{asset.Id}:{bookId}:{year}:{periodNo}",
-                    [
-                        ("5800", "D", amountMajor, "Depreciation expense"),
-                        ("1500", "C", amountMajor, "Accumulated depreciation (net FA)"),
-                    ],
-                    ct,
-                    txnCurrency: asset.Currency);
-            }
-            catch (InvalidOperationException)
-            {
-                // If period closed or accounts missing, still record schedule row without journal.
+                try
+                {
+                    journal = await ledger.PostAsync(
+                        companyId,
+                        countryCode,
+                        "FA",
+                        "FA",
+                        new DateOnly(year, Math.Clamp(periodNo, 1, 12), 1),
+                        new DateOnly(year, Math.Clamp(periodNo, 1, 12), 1),
+                        "FIXED_ASSETS",
+                        $"{asset.AssetTag}:{bookId}:{year}-{periodNo:00}",
+                        $"Depreciation {asset.AssetTag} ({bookId})",
+                        "fa-run",
+                        $"fa-dep:{companyId}:{asset.Id}:{bookId}:{year}:{periodNo}",
+                        [
+                            ("5810", "D", amountMajor, "Depreciation expense"),
+                            ("1510", "C", amountMajor, "Accumulated depreciation"),
+                        ],
+                        ct,
+                        txnCurrency: asset.Currency);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Period closed or accounts missing — schedule still recorded.
+                }
             }
 
             db.GlDepreciationRuns.Add(new GlDepreciationRun
@@ -539,7 +607,7 @@ public sealed class AccountingInternalBooksService(
             "revrec",
             $"revrec:{companyId}:{obligationId}:{obl.RecognisedMinor + minor}",
             [
-                ("1200", "D", amount, "Contract liability / deferred release"),
+                ("2400", "D", amount, "Deferred revenue release"),
                 ("4000", "C", amount, "Revenue recognised"),
             ],
             ct,

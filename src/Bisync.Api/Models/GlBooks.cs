@@ -165,6 +165,7 @@ public class GlBankMatchGroup
     public string Notes { get; set; } = "";
     /// <summary>active | void</summary>
     public string Status { get; set; } = "active";
+    public int? JournalId { get; set; }
 }
 
 /// <summary>Links a match group to open items (N:M bank ↔ ledger).</summary>

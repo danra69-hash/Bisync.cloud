@@ -48,6 +48,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoContentType", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoBase64", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "BusinessHoursJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "FunctionalCurrency", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
@@ -3160,6 +3161,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "ApprovedAt", "timestamp with time zone");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "RejectionReason", "TEXT");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankMatchGroups", "Status", "TEXT NOT NULL DEFAULT 'active'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankMatchGroups", "JournalId", "INTEGER");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "GlBankMatchLinks" (

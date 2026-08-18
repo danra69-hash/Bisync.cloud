@@ -13,7 +13,11 @@ function money(n: number) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function MalaysiaPackPanel({
@@ -221,8 +225,6 @@ export function OpenItemsPanel({
   const [issueDate, setIssueDate] = useState(todayIso());
   const [dueDate, setDueDate] = useState(todayIso());
   const [kind, setKind] = useState(subledger === 'ar' ? 'invoice' : 'bill');
-  const [actor, setActor] = useState(subledger === 'ap' ? 'clerk' : 'accounting-ui');
-  const [approver, setApprover] = useState('approver');
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [applyAmt, setApplyAmt] = useState('');
@@ -272,7 +274,6 @@ export function OpenItemsPanel({
         taxAmount: t,
         narration: `${subledger.toUpperCase()} ${name.trim()}`,
         postJournal: true,
-        createdBy: actor,
         requireApApproval: subledger === 'ap',
       });
       setName('');
@@ -314,8 +315,8 @@ export function OpenItemsPanel({
   return (
     <div className="space-y-4 max-w-5xl border-t border-border pt-3 text-xs">
       <p className="text-muted-foreground">
-        {subledger === 'ar' ? 'Accounts receivable' : 'Accounts payable (draft → submit → approve with SoD)'}.
-        Create payments then apply to invoices/bills. Un-apply writes a reversing application row.
+        {subledger === 'ar' ? 'Accounts receivable' : 'Accounts payable (draft → submit → a different signed-in user must approve)'}.
+        Create payments then apply to invoices/bills. Un-apply writes a reversing application row. Approver identity is the signed-in user, not a typed name.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <label className="space-y-1">
@@ -368,12 +369,6 @@ export function OpenItemsPanel({
           <span className="text-muted-foreground">Due</span>
           <input type="date" className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={dueDate} onChange={e => setDueDate(e.target.value)} />
         </label>
-        {subledger === 'ap' && (
-          <label className="space-y-1">
-            <span className="text-muted-foreground">Created by</span>
-            <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={actor} onChange={e => setActor(e.target.value)} />
-          </label>
-        )}
         <div className="flex items-end">
           <button type="button" disabled={busy} onClick={() => void create()} className="text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50">
             Create {kind}
@@ -432,13 +427,6 @@ export function OpenItemsPanel({
         </p>
       )}
 
-      {subledger === 'ap' && (
-        <label className="flex items-center gap-2">
-          <span className="text-muted-foreground">Approver identity</span>
-          <input className="border border-border rounded-md px-2 py-1 bg-background font-sans" value={approver} onChange={e => setApprover(e.target.value)} />
-        </label>
-      )}
-
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-left text-muted-foreground border-b border-border">
@@ -458,13 +446,16 @@ export function OpenItemsPanel({
               <td className="py-1 pr-2 font-sans">{i.approvalStatus ?? 'approved'}</td>
               <td className="py-1 space-x-2">
                 {subledger === 'ap' && i.approvalStatus === 'draft' && (
-                  <button type="button" className="underline" onClick={() => void api.accountingSubmitOpenItem(companyId, i.id, i.createdBy || actor).then(load).catch(e => onError(e instanceof Error ? e.message : 'Submit failed'))}>Submit</button>
+                  <button type="button" className="underline" onClick={() => void api.accountingSubmitOpenItem(companyId, i.id).then(load).catch(e => onError(e instanceof Error ? e.message : 'Submit failed'))}>Submit</button>
                 )}
                 {subledger === 'ap' && i.approvalStatus === 'pending_approval' && (
                   <>
-                    <button type="button" className="underline" onClick={() => void api.accountingApproveOpenItem(companyId, i.id, approver).then(() => { void load(); onPosted(); }).catch(e => onError(e instanceof Error ? e.message : 'Approve failed'))}>Approve</button>
-                    <button type="button" className="underline" onClick={() => void api.accountingRejectOpenItem(companyId, i.id, approver, 'Rejected').then(load).catch(e => onError(e instanceof Error ? e.message : 'Reject failed'))}>Reject</button>
+                    <button type="button" className="underline" onClick={() => void api.accountingApproveOpenItem(companyId, i.id).then(() => { void load(); onPosted(); }).catch(e => onError(e instanceof Error ? e.message : 'Approve failed'))}>Approve</button>
+                    <button type="button" className="underline" onClick={() => void api.accountingRejectOpenItem(companyId, i.id, undefined, 'Rejected').then(load).catch(e => onError(e instanceof Error ? e.message : 'Reject failed'))}>Reject</button>
                   </>
+                )}
+                {i.status !== 'void' && i.open === i.gross && (
+                  <button type="button" className="underline" onClick={() => void api.accountingVoidOpenItem(companyId, i.id).then(() => { void load(); onPosted(); }).catch(e => onError(e instanceof Error ? e.message : 'Void failed'))}>Void</button>
                 )}
               </td>
             </tr>
@@ -490,6 +481,7 @@ export function BankPanel({
   const [amount, setAmount] = useState('');
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [selectedItem, setSelectedItem] = useState<number | null>(null);
+  const [suggestions, setSuggestions] = useState<Array<{ openItemId: number; internalDocumentNo: string; counterpartyName: string; score: number; rule: string; open: number }>>([]);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -561,7 +553,7 @@ export function BankPanel({
   return (
     <div className="space-y-4 max-w-5xl border-t border-border pt-3 text-xs">
       <p className="text-muted-foreground">
-        Capture statement lines, then match 1:1 / N:M to open items. Auto-match uses exact amount. No external bank feed yet.
+        Capture statement lines, then match 1:1 / N:M to open items. Match posts cash and reduces the invoice open balance. Auto-match uses exact amount once. No external bank feed yet.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <label className="space-y-1 sm:col-span-2">
@@ -588,12 +580,24 @@ export function BankPanel({
           <ul className="space-y-1 max-h-56 overflow-auto">
             {(queue?.unmatched ?? []).map(l => (
               <li key={l.id}>
-                <button type="button" className={`w-full text-left font-sans border-b border-border/40 py-1 ${selectedLine === l.id ? 'text-primary font-semibold' : ''}`} onClick={() => setSelectedLine(l.id)}>
+                <button type="button" className={`w-full text-left font-sans border-b border-border/40 py-1 ${selectedLine === l.id ? 'text-primary font-semibold' : ''}`} onClick={() => {
+                  setSelectedLine(l.id);
+                  void api.accountingBankSuggest(companyId, l.id).then(s => {
+                    setSuggestions(s.candidates ?? []);
+                    const top = s.candidates?.[0];
+                    if (top) setSelectedItem(top.openItemId);
+                  }).catch(() => setSuggestions([]));
+                }}>
                   #{l.id} {l.valueDate} · {money(l.amount)} · {l.narrative || '—'}
                 </button>
               </li>
             ))}
           </ul>
+          {suggestions.length > 0 && (
+            <p className="text-muted-foreground mt-2">
+              Suggested: {suggestions.slice(0, 3).map(s => `#${s.openItemId} ${s.internalDocumentNo} (${s.score})`).join(' · ')}
+            </p>
+          )}
         </div>
         <div>
           <p className="font-semibold mb-1">Open items</p>

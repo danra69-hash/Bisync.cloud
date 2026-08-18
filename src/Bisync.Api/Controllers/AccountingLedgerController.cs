@@ -15,19 +15,29 @@ public class AccountingLedgerController(
     ITenantContext tenant,
     LedgerPostingService ledger) : ControllerBase
 {
-    int? ResolveCompany(int? companyId) => TenantQuery.ResolveCompanyId(tenant, companyId);
+    bool TryGate(int? companyId, out int cid, out string actor, out ActionResult error)
+    {
+        if (AccountingAccess.TryResolve(tenant, companyId, out cid, out actor, out var failed))
+        {
+            error = null!;
+            return true;
+        }
+
+        cid = 0;
+        actor = "";
+        error = failed!;
+        return false;
+    }
 
     [HttpGet("status")]
     public async Task<ActionResult<object>> Status([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0)
-            return BadRequest(new { message = "Company context required (X-Bisync-Company-Id or companyId)." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
 
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         if (company is null) return NotFound(new { message = "Company not found." });
 
-        await ledger.EnsureChartAndOpenPeriodsAsync(cid.Value, company.CountryCode);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company.CountryCode);
 
         var journalCount = await db.GlJournals.CountAsync(j => j.CompanyId == cid && j.PostedAt != null);
         var accountCount = await db.GlAccounts.CountAsync(a => a.CompanyId == cid);
@@ -37,11 +47,11 @@ public class AccountingLedgerController(
         return Ok(new
         {
             companyId = cid,
-            currency = LedgerPostingService.CurrencyForCountry(company.CountryCode),
-            functionalCurrency = LedgerPostingService.CurrencyForCountry(company.CountryCode),
+            currency = await ledger.ResolveFunctionalCurrencyAsync(cid, company.CountryCode),
+            functionalCurrency = await ledger.ResolveFunctionalCurrencyAsync(cid, company.CountryCode),
             currencies = LedgerPostingService.CommonCurrencies,
-            phase = "C1",
-            phaseLabel = "Malaysia Books + bank match, AP approval, FA/RevRec, SST-02 draft (no external links)",
+            phase = "B",
+            phaseLabel = "Ledger foundations: sealed journals, opening-balance TB/BS, tenant-scoped Books. Bank rec / AR-AP feed still partial.",
             accounts = accountCount,
             postedJournals = journalCount,
             pendingOutbox = outboxPending,
@@ -57,10 +67,9 @@ public class AccountingLedgerController(
     [HttpGet("accounts")]
     public async Task<ActionResult<IEnumerable<object>>> Accounts([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await ledger.EnsureChartAndOpenPeriodsAsync(cid.Value, company?.CountryCode);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
 
         var rows = await db.GlAccounts.AsNoTracking()
             .Where(a => a.CompanyId == cid)
@@ -75,8 +84,7 @@ public class AccountingLedgerController(
         [FromQuery] int? companyId,
         [FromQuery] int take = 50)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         take = Math.Clamp(take, 1, 200);
 
         var journals = await db.GlJournals.AsNoTracking()
@@ -103,8 +111,7 @@ public class AccountingLedgerController(
     [HttpGet("journals/{id:int}")]
     public async Task<ActionResult<object>> JournalDetail(int id, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
 
         var journal = await db.GlJournals.AsNoTracking()
             .Include(j => j.Lines)
@@ -157,8 +164,7 @@ public class AccountingLedgerController(
         [FromQuery] int? companyId,
         [FromQuery] int? periodId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
 
         GlFiscalPeriod? period;
         if (periodId is > 0)
@@ -176,8 +182,7 @@ public class AccountingLedgerController(
                 return BadRequest(new { message = "No open period for today. Call /api/accounting/status first." });
         }
 
-        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        var functional = LedgerPostingService.CurrencyForCountry(company?.CountryCode);
+        var functional = await ledger.ResolveFunctionalCurrencyAsync(cid, null);
 
         var balances = await db.GlPeriodBalances.AsNoTracking()
             .Where(b => b.CompanyId == cid && b.PeriodId == period.Id && b.Currency == functional)
@@ -194,30 +199,41 @@ public class AccountingLedgerController(
                 var opening = b.OpeningDrMinor - b.OpeningCrMinor;
                 var movement = b.PeriodDrMinor - b.PeriodCrMinor;
                 var closing = opening + movement;
+                var closingDr = closing >= 0 ? closing : 0;
+                var closingCr = closing < 0 ? -closing : 0;
                 return new
                 {
                     accountCode = acct?.Code ?? "?",
                     accountName = acct?.Name ?? "?",
                     accountType = acct?.AccountType,
                     currency = b.Currency,
+                    openingDr = LedgerPostingService.FromMinor(b.OpeningDrMinor, b.Currency),
+                    openingCr = LedgerPostingService.FromMinor(b.OpeningCrMinor, b.Currency),
                     periodDr = LedgerPostingService.FromMinor(b.PeriodDrMinor, b.Currency),
                     periodCr = LedgerPostingService.FromMinor(b.PeriodCrMinor, b.Currency),
+                    closingDr = LedgerPostingService.FromMinor(closingDr, b.Currency),
+                    closingCr = LedgerPostingService.FromMinor(closingCr, b.Currency),
                     closing = LedgerPostingService.FromMinor(closing, b.Currency),
                 };
             })
             .OrderBy(r => r.accountCode)
             .ToList();
 
-        var totalDr = rows.Sum(r => r.periodDr);
-        var totalCr = rows.Sum(r => r.periodCr);
+        var totalDr = rows.Sum(r => r.closingDr);
+        var totalCr = rows.Sum(r => r.closingCr);
+        var periodDr = rows.Sum(r => r.periodDr);
+        var periodCr = rows.Sum(r => r.periodCr);
 
         return Ok(new
         {
             period = new { period.Id, period.Year, period.PeriodNo, period.Status, period.StartDate, period.EndDate },
             currency = functional,
+            basis = "closing-balance",
             balanced = totalDr == totalCr,
             totalDr,
             totalCr,
+            periodDr,
+            periodCr,
             rows,
         });
     }
@@ -225,10 +241,9 @@ public class AccountingLedgerController(
     [HttpGet("periods")]
     public async Task<ActionResult<IEnumerable<object>>> Periods([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await ledger.EnsureChartAndOpenPeriodsAsync(cid.Value, company?.CountryCode);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
 
         var rows = await db.GlFiscalPeriods.AsNoTracking()
             .Where(p => p.CompanyId == cid)
@@ -241,11 +256,10 @@ public class AccountingLedgerController(
     [HttpPost("periods/{id:int}/soft-close")]
     public async Task<ActionResult> SoftClose(int id, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            await ledger.SoftClosePeriodAsync(cid.Value, id);
+            await ledger.SoftClosePeriodAsync(cid, id);
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -257,11 +271,10 @@ public class AccountingLedgerController(
     [HttpPost("journals/{id:int}/reverse")]
     public async Task<ActionResult<object>> Reverse(int id, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            var reversal = await ledger.ReverseAsync(cid.Value, id, createdBy: "api");
+            var reversal = await ledger.ReverseAsync(cid, id, createdBy: actor);
             return Ok(new { reversal.Id, reversal.DocNumber, reversal.ReversesJournalId });
         }
         catch (InvalidOperationException ex)
@@ -275,8 +288,7 @@ public class AccountingLedgerController(
         [FromQuery] int? companyId,
         [FromQuery] int take = 50)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         take = Math.Clamp(take, 1, 200);
 
         var rows = await db.GlOutboxMessages.AsNoTracking()
@@ -315,13 +327,12 @@ public class AccountingLedgerController(
         [FromQuery] int? companyId,
         [FromBody] CreateAccountRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await ledger.EnsureChartAndOpenPeriodsAsync(cid.Value, company?.CountryCode);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
         try
         {
-            var row = await ledger.CreateAccountAsync(cid.Value, body.Code, body.Name, body.AccountType, body.NormalBalance);
+            var row = await ledger.CreateAccountAsync(cid, body.Code, body.Name, body.AccountType, body.NormalBalance);
             return Ok(new { row.Id, row.Code, row.Name, row.AccountType, row.NormalBalance, row.Active });
         }
         catch (InvalidOperationException ex)
@@ -336,11 +347,10 @@ public class AccountingLedgerController(
         [FromQuery] int? companyId,
         [FromBody] UpdateAccountRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            var row = await ledger.UpdateAccountAsync(cid.Value, id, body.Name, body.Active);
+            var row = await ledger.UpdateAccountAsync(cid, id, body.Name, body.Active);
             return Ok(new { row.Id, row.Code, row.Name, row.AccountType, row.NormalBalance, row.Active });
         }
         catch (InvalidOperationException ex)
@@ -354,8 +364,7 @@ public class AccountingLedgerController(
         [FromQuery] int? companyId,
         [FromBody] PostJournalRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         if (body.Lines is null || body.Lines.Count < 2)
             return BadRequest(new { message = "At least two journal lines are required." });
 
@@ -371,7 +380,7 @@ public class AccountingLedgerController(
         try
         {
             var journal = await ledger.PostAsync(
-                cid.Value,
+                cid,
                 company.CountryCode,
                 journalType: string.IsNullOrWhiteSpace(body.JournalType) ? "GEN" : body.JournalType.Trim().ToUpperInvariant(),
                 docSeries: string.IsNullOrWhiteSpace(body.DocSeries) ? "GEN" : body.DocSeries.Trim().ToUpperInvariant(),
@@ -380,7 +389,7 @@ public class AccountingLedgerController(
                 sourceModule: "MANUAL",
                 sourceDocKey: null,
                 narration: body.Narration?.Trim() ?? "",
-                createdBy: "accounting-ui",
+                createdBy: actor,
                 idempotencyKey: null,
                 lines,
                 CancellationToken.None,
@@ -412,10 +421,9 @@ public class AccountingLedgerController(
         [FromQuery] int? companyId,
         [FromQuery] int? periodId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await ledger.EnsureChartAndOpenPeriodsAsync(cid.Value, company?.CountryCode);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
 
         int resolvedPeriodId;
         if (periodId is > 0)
@@ -433,7 +441,7 @@ public class AccountingLedgerController(
 
         try
         {
-            return Ok(await ledger.BuildFinancialStatementsAsync(cid.Value, resolvedPeriodId));
+            return Ok(await ledger.BuildFinancialStatementsAsync(cid, resolvedPeriodId));
         }
         catch (InvalidOperationException ex)
         {
@@ -444,11 +452,10 @@ public class AccountingLedgerController(
     [HttpPost("periods/{id:int}/reopen")]
     public async Task<ActionResult> Reopen(int id, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            await ledger.ReopenPeriodAsync(cid.Value, id);
+            await ledger.ReopenPeriodAsync(cid, id);
             return NoContent();
         }
         catch (InvalidOperationException ex)

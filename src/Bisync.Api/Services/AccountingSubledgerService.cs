@@ -13,12 +13,12 @@ public sealed class AccountingSubledgerService(
     public async Task EnsureReadyAsync(int companyId, string? countryCode, CancellationToken ct = default)
     {
         await ledger.EnsureChartAndOpenPeriodsAsync(companyId, countryCode, ct);
-        var pack = string.IsNullOrWhiteSpace(countryCode) || countryCode.Equals("MY", StringComparison.OrdinalIgnoreCase)
-            ? MalaysiaAccountingPackService.PackId
-            : countryCode.Trim().ToLowerInvariant();
-        // Always ensure MY pack tables + seed; non-MY companies still get reference pack rows.
-        await malaysiaPack.EnsureMalaysiaPackAsync(companyId, ct);
-        _ = pack;
+        await malaysiaPack.EnsureCoreRolesAndSlaAsync(companyId, ct);
+        if (!string.IsNullOrWhiteSpace(countryCode)
+            && countryCode.Equals("MY", StringComparison.OrdinalIgnoreCase))
+        {
+            await malaysiaPack.EnsureMalaysiaPackAsync(companyId, ct);
+        }
     }
 
     public async Task<GlFxRate> UpsertFxRateAsync(
@@ -111,29 +111,21 @@ public sealed class AccountingSubledgerService(
         if (subledger is not ("ar" or "ap"))
             throw new InvalidOperationException("subledger must be ar or ap.");
         kind = kind.Trim().ToLowerInvariant();
-        var func = LedgerPostingService.CurrencyForCountry(countryCode);
+        var func = await ledger.ResolveFunctionalCurrencyAsync(companyId, countryCode, persist: true, ct);
         var cur = string.IsNullOrWhiteSpace(currency)
             ? func
             : LedgerPostingService.NormalizeCurrency(currency);
         var actor = string.IsNullOrWhiteSpace(createdBy) ? "accounting-ui" : createdBy.Trim();
 
         var approval = "approved";
-        if (subledger == "ap" && requireApApproval && kind is "bill" or "payment")
+        if (subledger == "ap" && requireApApproval && kind is "bill" or "payment" or "credit_note")
             approval = "draft";
 
         var series = subledger == "ar" ? "AR" : "AP";
+        var journalSeries = subledger == "ar" ? "ARJ" : "APJ";
         var year = issueDate.Year;
-        var counter = await db.GlDocCounters
-            .FirstOrDefaultAsync(c => c.CompanyId == companyId && c.Series == series && c.FiscalYear == year, ct);
-        if (counter is null)
-        {
-            counter = new GlDocCounter { CompanyId = companyId, Series = series, FiscalYear = year, NextValue = 1 };
-            db.GlDocCounters.Add(counter);
-            await db.SaveChangesAsync(ct);
-        }
-        var n = counter.NextValue;
-        counter.NextValue = n + 1;
-        var docNo = $"{series}/{year}/{n.ToString().PadLeft(6, '0')}";
+        await ledger.EnsurePeriodsForYearAsync(companyId, year, ct);
+        var docNo = await ledger.AllocateDocNumberAsync(companyId, series, year, ct);
 
         var grossMinor = LedgerPostingService.ToMinor(gross, cur);
         var taxMinor = LedgerPostingService.ToMinor(taxAmount, cur);
@@ -163,15 +155,13 @@ public sealed class AccountingSubledgerService(
         {
             var net = gross - taxAmount;
             if (net < 0) throw new InvalidOperationException("Tax cannot exceed gross.");
-            var eventType = kind == "payment"
-                ? (subledger == "ar" ? "bank.receipt.posted" : "bank.payment.posted")
-                : (subledger == "ar" ? "ar.invoice.posted" : "ap.bill.posted");
+            var eventType = ResolveSlaEvent(subledger, kind);
             var lines = await BuildSlaLinesAsync(companyId, eventType, net, taxAmount, gross, ct);
             var journal = await ledger.PostAsync(
                 companyId,
                 countryCode,
                 journalType: series,
-                docSeries: series,
+                docSeries: journalSeries,
                 effectiveDate: issueDate,
                 documentDate: issueDate,
                 sourceModule: "SUBLEDGER",
@@ -199,20 +189,19 @@ public sealed class AccountingSubledgerService(
         if (item.JournalId is not null || item.ApprovalStatus != "approved") return;
         if (item.Kind is not ("bill" or "invoice" or "payment")) return;
 
-        var func = LedgerPostingService.CurrencyForCountry(countryCode);
+        var func = await ledger.ResolveFunctionalCurrencyAsync(companyId, countryCode, persist: false, ct);
         var gross = LedgerPostingService.FromMinor(item.GrossMinor, item.Currency);
         var tax = LedgerPostingService.FromMinor(item.TaxMinor, item.Currency);
         var net = gross - tax;
-        var eventType = item.Kind == "payment"
-            ? (item.Subledger == "ar" ? "bank.receipt.posted" : "bank.payment.posted")
-            : (item.Subledger == "ar" ? "ar.invoice.posted" : "ap.bill.posted");
+        var eventType = ResolveSlaEvent(item.Subledger, item.Kind);
         var lines = await BuildSlaLinesAsync(companyId, eventType, net, tax, gross, ct);
         var series = item.Subledger == "ar" ? "AR" : "AP";
+        var journalSeries = item.Subledger == "ar" ? "ARJ" : "APJ";
         var journal = await ledger.PostAsync(
             companyId,
             countryCode,
             journalType: series,
-            docSeries: series,
+            docSeries: journalSeries,
             effectiveDate: item.IssueDate,
             documentDate: item.IssueDate,
             sourceModule: "SUBLEDGER",
@@ -297,6 +286,8 @@ public sealed class AccountingSubledgerService(
         if (from.Subledger == "ap"
             && (from.ApprovalStatus != "approved" || to.ApprovalStatus != "approved"))
             throw new InvalidOperationException("AP items must be approved before application.");
+        if (!AreComplementaryKinds(from.Kind, to.Kind))
+            throw new InvalidOperationException("Apply requires a payment/credit against an invoice or bill — not two invoices.");
 
         var minor = LedgerPostingService.ToMinor(amount, from.Currency);
         if (minor > from.OpenMinor || minor > to.OpenMinor)
@@ -324,17 +315,17 @@ public sealed class AccountingSubledgerService(
     {
         subledger = subledger.Trim().ToLowerInvariant();
         var items = await db.GlOpenItems.AsNoTracking()
-            .Where(i => i.CompanyId == companyId && i.Subledger == subledger && i.Status != "void" && i.OpenMinor > 0)
+            .Where(i => i.CompanyId == companyId
+                && i.Subledger == subledger
+                && i.Status != "void"
+                && i.Status != "rejected"
+                && i.OpenMinor > 0
+                && i.JournalId != null
+                && (i.Kind == "invoice" || i.Kind == "bill")
+                && (i.Subledger != "ap" || i.ApprovalStatus == "approved"))
             .ToListAsync(ct);
 
-        var buckets = new Dictionary<string, decimal>
-        {
-            ["current"] = 0,
-            ["1-30"] = 0,
-            ["31-60"] = 0,
-            ["61-90"] = 0,
-            ["90+"] = 0,
-        };
+        var byCurrency = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.OrdinalIgnoreCase);
         var rows = new List<object>();
         foreach (var i in items)
         {
@@ -345,6 +336,18 @@ public sealed class AccountingSubledgerService(
                 : days <= 60 ? "31-60"
                 : days <= 90 ? "61-90"
                 : "90+";
+            if (!byCurrency.TryGetValue(i.Currency, out var buckets))
+            {
+                buckets = new Dictionary<string, decimal>
+                {
+                    ["current"] = 0,
+                    ["1-30"] = 0,
+                    ["31-60"] = 0,
+                    ["61-90"] = 0,
+                    ["90+"] = 0,
+                };
+                byCurrency[i.Currency] = buckets;
+            }
             buckets[bucket] += open;
             rows.Add(new
             {
@@ -352,6 +355,7 @@ public sealed class AccountingSubledgerService(
                 i.InternalDocumentNo,
                 i.CounterpartyName,
                 i.Currency,
+                i.Kind,
                 open,
                 i.DueDate,
                 daysPastDue = Math.Max(0, days),
@@ -359,6 +363,59 @@ public sealed class AccountingSubledgerService(
             });
         }
 
-        return new { asOf, subledger, buckets, rows };
+        var primary = byCurrency.Count == 1
+            ? byCurrency.Values.First()
+            : new Dictionary<string, decimal>
+            {
+                ["current"] = 0,
+                ["1-30"] = 0,
+                ["31-60"] = 0,
+                ["61-90"] = 0,
+                ["90+"] = 0,
+            };
+
+        return new
+        {
+            asOf,
+            subledger,
+            buckets = primary,
+            byCurrency = byCurrency.Select(kv => new { currency = kv.Key, buckets = kv.Value }),
+            mixedCurrencies = byCurrency.Count > 1,
+            rows,
+        };
+    }
+
+    public async Task VoidOpenItemAsync(int companyId, int openItemId, string actor, CancellationToken ct = default)
+    {
+        var item = await db.GlOpenItems.FirstOrDefaultAsync(i => i.Id == openItemId && i.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException("Open item not found.");
+        if (item.Status == "void") return;
+        if (item.OpenMinor != item.GrossMinor)
+            throw new InvalidOperationException("Cannot void an item that has been applied or matched. Un-apply first.");
+
+        if (item.JournalId is int journalId)
+            await ledger.ReverseAsync(companyId, journalId, actor, ct);
+
+        item.Status = "void";
+        item.OpenMinor = 0;
+        item.ApprovalStatus = item.ApprovalStatus == "draft" || item.ApprovalStatus == "pending_approval"
+            ? "rejected"
+            : item.ApprovalStatus;
+        await db.SaveChangesAsync(ct);
+    }
+
+    static string ResolveSlaEvent(string subledger, string kind)
+        => kind switch
+        {
+            "payment" => subledger == "ar" ? "bank.receipt.posted" : "bank.payment.posted",
+            "credit_note" => subledger == "ar" ? "ar.credit_note.posted" : "ap.credit_note.posted",
+            _ => subledger == "ar" ? "ar.invoice.posted" : "ap.bill.posted",
+        };
+
+    static bool AreComplementaryKinds(string fromKind, string toKind)
+    {
+        static bool IsSource(string k) => k is "payment" or "credit_note" or "debit_note";
+        static bool IsTarget(string k) => k is "invoice" or "bill";
+        return (IsSource(fromKind) && IsTarget(toKind)) || (IsSource(toKind) && IsTarget(fromKind));
     }
 }

@@ -12,6 +12,7 @@ namespace Bisync.Api.Services;
 public sealed class AccountingBridgeService(
     BisyncDbContext db,
     LedgerPostingService ledger,
+    MalaysiaAccountingPackService malaysiaPack,
     ILogger<AccountingBridgeService> logger)
 {
     public async Task OnPayrollProcessedAsync(PayrollRun run, CancellationToken ct = default)
@@ -160,6 +161,9 @@ public sealed class AccountingBridgeService(
             var company = await db.Companies.AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == companyId, ct);
             var effective = DateOnly.FromDateTime(order.ReconciledAt ?? DateTime.UtcNow);
+            await malaysiaPack.EnsureCoreRolesAndSlaAsync(companyId, ct);
+            var inventoryCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "inventory_default", "1400", ct);
+            var apCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "ap_control", "2010", ct);
 
             await ledger.PostAsync(
                 companyId,
@@ -175,8 +179,8 @@ public sealed class AccountingBridgeService(
                 idempotencyKey: idempotency,
                 lines:
                 [
-                    ("1400", "D", inventoryAmount, $"Inventory from PO {order.PoNumber}"),
-                    ("2000", "C", inventoryAmount, $"AP from PO {order.PoNumber}"),
+                    (inventoryCode, "D", inventoryAmount, $"Inventory from PO {order.PoNumber}"),
+                    (apCode, "C", inventoryAmount, $"AP from PO {order.PoNumber}"),
                 ],
                 ct);
 

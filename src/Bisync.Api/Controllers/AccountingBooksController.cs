@@ -17,25 +17,35 @@ public class AccountingBooksController(
     AccountingInternalBooksService internalBooks,
     MalaysiaAccountingPackService malaysiaPack) : ControllerBase
 {
-    int? ResolveCompany(int? companyId) => TenantQuery.ResolveCompanyId(tenant, companyId);
+    bool TryGate(int? companyId, out int cid, out string actor, out ActionResult error)
+    {
+        if (AccountingAccess.TryResolve(tenant, companyId, out cid, out actor, out var failed))
+        {
+            error = null!;
+            return true;
+        }
+
+        cid = 0;
+        actor = "";
+        error = failed!;
+        return false;
+    }
 
     [HttpGet("pack")]
     public async Task<ActionResult<object>> PackStatus([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await books.EnsureReadyAsync(cid.Value, company?.CountryCode);
-        return Ok(await malaysiaPack.GetPackStatusAsync(cid.Value));
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
+        return Ok(await malaysiaPack.GetPackStatusAsync(cid, company?.CountryCode));
     }
 
     [HttpGet("fx-rates")]
     public async Task<ActionResult<object>> ListFxRates([FromQuery] int? companyId, [FromQuery] int take = 50)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await books.EnsureReadyAsync(cid.Value, company?.CountryCode);
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
         take = Math.Clamp(take, 1, 200);
         var rows = await db.GlFxRates.AsNoTracking()
             .Where(r => r.CompanyId == cid)
@@ -70,12 +80,11 @@ public class AccountingBooksController(
         [FromQuery] int? companyId,
         [FromBody] UpsertFxRateRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
             var row = await books.UpsertFxRateAsync(
-                cid.Value,
+                cid,
                 body.FromCurrency,
                 body.ToCurrency,
                 body.RateDate,
@@ -105,10 +114,9 @@ public class AccountingBooksController(
         [FromQuery] string? subledger,
         [FromQuery] int take = 80)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await books.EnsureReadyAsync(cid.Value, company?.CountryCode);
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
         take = Math.Clamp(take, 1, 200);
         var q = db.GlOpenItems.AsNoTracking().Where(i => i.CompanyId == cid);
         if (!string.IsNullOrWhiteSpace(subledger))
@@ -163,14 +171,13 @@ public class AccountingBooksController(
         [FromQuery] int? companyId,
         [FromBody] CreateOpenItemRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         if (company is null) return NotFound(new { message = "Company not found." });
         try
         {
             var item = await books.CreateOpenItemAsync(
-                cid.Value,
+                cid,
                 company.CountryCode,
                 body.Subledger,
                 body.Kind,
@@ -183,7 +190,7 @@ public class AccountingBooksController(
                 body.TaxAmount ?? 0,
                 body.Narration ?? "",
                 body.PostJournal ?? true,
-                body.CreatedBy,
+                actor,
                 body.RequireApApproval ?? true);
             return Ok(new
             {
@@ -213,17 +220,16 @@ public class AccountingBooksController(
         [FromQuery] int? companyId,
         [FromBody] ApplyRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
             await books.ApplyAsync(
-                cid.Value,
+                cid,
                 body.FromId,
                 body.ToId,
                 body.Amount,
                 body.EffectiveDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
-                createdBy: "accounting-ui");
+                createdBy: actor);
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -238,12 +244,11 @@ public class AccountingBooksController(
         [FromQuery] string subledger = "ar",
         [FromQuery] DateOnly? asOf = null)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await books.EnsureReadyAsync(cid.Value, company?.CountryCode);
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
         return Ok(await books.AgingAsync(
-            cid.Value,
+            cid,
             subledger,
             asOf ?? DateOnly.FromDateTime(DateTime.UtcNow)));
     }
@@ -251,10 +256,9 @@ public class AccountingBooksController(
     [HttpGet("bank-statements")]
     public async Task<ActionResult<object>> BankStatements([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await books.EnsureReadyAsync(cid.Value, company?.CountryCode);
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
         var rows = await db.GlBankStatements.AsNoTracking()
             .Where(s => s.CompanyId == cid)
             .OrderByDescending(s => s.StatementDate)
@@ -287,16 +291,15 @@ public class AccountingBooksController(
         [FromQuery] int? companyId,
         [FromBody] CreateBankStatementRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await books.EnsureReadyAsync(cid.Value, company?.CountryCode);
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
         var cur = string.IsNullOrWhiteSpace(body.Currency)
             ? LedgerPostingService.CurrencyForCountry(company?.CountryCode)
             : LedgerPostingService.NormalizeCurrency(body.Currency);
         var stmt = new GlBankStatement
         {
-            CompanyId = cid.Value,
+            CompanyId = cid,
             AccountLabel = string.IsNullOrWhiteSpace(body.AccountLabel) ? "Operating account" : body.AccountLabel.Trim(),
             Currency = cur,
             StatementDate = body.StatementDate,
@@ -309,7 +312,7 @@ public class AccountingBooksController(
         {
             stmt.Lines.Add(new GlBankStatementLine
             {
-                CompanyId = cid.Value,
+                CompanyId = cid,
                 LineNo = n++,
                 ValueDate = line.ValueDate,
                 Narrative = line.Narrative?.Trim() ?? "",
@@ -325,8 +328,7 @@ public class AccountingBooksController(
     [HttpGet("applications")]
     public async Task<ActionResult<object>> Applications([FromQuery] int? companyId, [FromQuery] int take = 50)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         take = Math.Clamp(take, 1, 200);
         var rows = await db.GlItemApplications.AsNoTracking()
             .Where(a => a.CompanyId == cid)
@@ -347,54 +349,62 @@ public class AccountingBooksController(
     }
 
     [HttpPost("open-items/unapply/{applicationId:int}")]
-    public async Task<ActionResult> Unapply(int applicationId, [FromQuery] int? companyId, [FromQuery] string? actor)
+    public async Task<ActionResult> Unapply(int applicationId, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            await internalBooks.UnapplyAsync(cid.Value, applicationId, actor ?? "accounting-ui");
+            await internalBooks.UnapplyAsync(cid, applicationId, actor);
             return NoContent();
         }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     [HttpPost("open-items/{id:int}/submit")]
-    public async Task<ActionResult> Submit(int id, [FromQuery] int? companyId, [FromQuery] string? actor)
+    public async Task<ActionResult> Submit(int id, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            await internalBooks.SubmitForApprovalAsync(cid.Value, id, actor ?? "clerk");
+            await internalBooks.SubmitForApprovalAsync(cid, id, actor);
             return NoContent();
         }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     [HttpPost("open-items/{id:int}/approve")]
-    public async Task<ActionResult> Approve(int id, [FromQuery] int? companyId, [FromQuery] string? actor)
+    public async Task<ActionResult> Approve(int id, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try
         {
-            await internalBooks.ApproveAsync(cid.Value, id, actor ?? "approver");
-            await books.PostDeferredJournalIfNeededAsync(cid.Value, company?.CountryCode, id);
+            await internalBooks.ApproveAsync(cid, id, actor);
+            await books.PostDeferredJournalIfNeededAsync(cid, company?.CountryCode, id);
             return NoContent();
         }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     [HttpPost("open-items/{id:int}/reject")]
-    public async Task<ActionResult> Reject(int id, [FromQuery] int? companyId, [FromQuery] string? actor, [FromBody] RejectBody? body)
+    public async Task<ActionResult> Reject(int id, [FromQuery] int? companyId, [FromBody] RejectBody? body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            await internalBooks.RejectAsync(cid.Value, id, actor ?? "approver", body?.Reason);
+            await internalBooks.RejectAsync(cid, id, actor, body?.Reason);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpPost("open-items/{id:int}/void")]
+    public async Task<ActionResult> VoidOpenItem(int id, [FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        try
+        {
+            await books.VoidOpenItemAsync(cid, id, actor);
             return NoContent();
         }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
@@ -405,19 +415,17 @@ public class AccountingBooksController(
     [HttpGet("bank/queue")]
     public async Task<ActionResult<object>> BankQueue([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await books.EnsureReadyAsync(cid.Value, company?.CountryCode);
-        return Ok(await internalBooks.BankQueueAsync(cid.Value));
+        await books.EnsureReadyAsync(cid, company?.CountryCode);
+        return Ok(await internalBooks.BankQueueAsync(cid));
     }
 
     [HttpGet("bank/suggest/{lineId:int}")]
     public async Task<ActionResult<object>> BankSuggest(int lineId, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
-        try { return Ok(await internalBooks.SuggestMatchesAsync(cid.Value, lineId)); }
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        try { return Ok(await internalBooks.SuggestMatchesAsync(cid, lineId)); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
@@ -427,15 +435,14 @@ public class AccountingBooksController(
     [HttpPost("bank/match")]
     public async Task<ActionResult<object>> BankMatch([FromQuery] int? companyId, [FromBody] MatchRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
             var group = await internalBooks.MatchAsync(
-                cid.Value,
+                cid,
                 body.StatementLineIds ?? [],
                 (body.OpenItems ?? []).Select(x => (x.OpenItemId, x.Amount)).ToList(),
-                body.CreatedBy ?? "accounting-ui",
+                actor,
                 body.Notes);
             return Ok(new { group.Id, group.Cardinality, group.MatchedAt, group.Status });
         }
@@ -445,22 +452,20 @@ public class AccountingBooksController(
     [HttpPost("bank/unmatch/{matchGroupId:int}")]
     public async Task<ActionResult> BankUnmatch(int matchGroupId, [FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try
         {
-            await internalBooks.UnmatchAsync(cid.Value, matchGroupId);
+            await internalBooks.UnmatchAsync(cid, matchGroupId);
             return NoContent();
         }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     [HttpPost("bank/auto-match")]
-    public async Task<ActionResult> BankAutoMatch([FromQuery] int? companyId, [FromQuery] string? actor)
+    public async Task<ActionResult> BankAutoMatch([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
-        await internalBooks.AutoMatchAsync(cid.Value, actor ?? "auto");
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        await internalBooks.AutoMatchAsync(cid, actor);
         return NoContent();
     }
 
@@ -469,8 +474,7 @@ public class AccountingBooksController(
     [HttpGet("fixed-assets")]
     public async Task<ActionResult<object>> FixedAssets([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         await SchemaPatcher.EnsureGlBooksTablesAsync(db);
         var rows = await db.GlFixedAssets.AsNoTracking().Include(a => a.Books)
             .Where(a => a.CompanyId == cid).OrderByDescending(a => a.Id).Take(80).ToListAsync();
@@ -485,13 +489,12 @@ public class AccountingBooksController(
     [HttpPost("fixed-assets")]
     public async Task<ActionResult<object>> CreateFixedAsset([FromQuery] int? companyId, [FromBody] FixedAssetRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try
         {
             var asset = await internalBooks.CreateFixedAssetAsync(
-                cid.Value, body.AssetTag, body.Name, body.AssetClass ?? "equipment", body.AcquiredOn,
+                cid, body.AssetTag, body.Name, body.AssetClass ?? "equipment", body.AcquiredOn,
                 body.Cost, body.Currency ?? LedgerPostingService.CurrencyForCountry(company?.CountryCode),
                 body.LifeMonths ?? 60);
             return Ok(new { asset.Id, asset.AssetTag, asset.Name, bookCount = asset.Books.Count });
@@ -502,12 +505,11 @@ public class AccountingBooksController(
     [HttpPost("fixed-assets/depreciate")]
     public async Task<ActionResult<object>> Depreciate([FromQuery] int? companyId, [FromQuery] int year, [FromQuery] int periodNo, [FromQuery] string? bookId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try
         {
-            return Ok(await internalBooks.RunDepreciationAsync(cid.Value, company?.CountryCode, year, periodNo, bookId ?? "ifrs"));
+            return Ok(await internalBooks.RunDepreciationAsync(cid, company?.CountryCode, year, periodNo, bookId ?? "ifrs"));
         }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
@@ -517,8 +519,7 @@ public class AccountingBooksController(
     [HttpGet("revrec")]
     public async Task<ActionResult<object>> RevRec([FromQuery] int? companyId)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         await SchemaPatcher.EnsureGlBooksTablesAsync(db);
         var rows = await db.GlRevRecContracts.AsNoTracking().Include(c => c.Obligations)
             .Where(c => c.CompanyId == cid).OrderByDescending(c => c.Id).Take(40).ToListAsync();
@@ -538,13 +539,12 @@ public class AccountingBooksController(
     [HttpPost("revrec")]
     public async Task<ActionResult<object>> CreateRevRec([FromQuery] int? companyId, [FromBody] RevRecRequest body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try
         {
             var c = await internalBooks.CreateRevRecContractAsync(
-                cid.Value, body.ContractNo, body.CustomerName, body.StartDate, body.EndDate,
+                cid, body.ContractNo, body.CustomerName, body.StartDate, body.EndDate,
                 body.TransactionPrice, body.Currency ?? LedgerPostingService.CurrencyForCountry(company?.CountryCode),
                 body.ObligationDescription ?? "");
             return Ok(new { c.Id, c.ContractNo, obligationId = c.Obligations.FirstOrDefault()?.Id });
@@ -555,10 +555,9 @@ public class AccountingBooksController(
     [HttpPost("revrec/obligations/{id:int}/recognise")]
     public async Task<ActionResult<object>> Recognise(int id, [FromQuery] int? companyId, [FromBody] RecogniseBody body)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        try { return Ok(await internalBooks.RecogniseRevRecAsync(cid.Value, company?.CountryCode, id, body.Amount)); }
+        try { return Ok(await internalBooks.RecogniseRevRecAsync(cid, company?.CountryCode, id, body.Amount)); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
@@ -567,9 +566,8 @@ public class AccountingBooksController(
     [HttpPost("returns/sst-02")]
     public async Task<ActionResult<object>> Sst02([FromQuery] int? companyId, [FromQuery] DateOnly periodStart, [FromQuery] DateOnly periodEnd)
     {
-        var cid = ResolveCompany(companyId);
-        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
-        try { return Ok(await internalBooks.ComputeSst02Async(cid.Value, periodStart, periodEnd)); }
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        try { return Ok(await internalBooks.ComputeSst02Async(cid, periodStart, periodEnd)); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 }

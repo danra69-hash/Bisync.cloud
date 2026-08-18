@@ -78,33 +78,59 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
 
         await SchemaPatcher.EnsureGlLedgerTablesAsync(db);
         await SchemaPatcher.EnsureGlBooksTablesAsync(db);
-        _ = CurrencyForCountry(countryCode);
+        await ResolveFunctionalCurrencyAsync(companyId, countryCode, persist: true, ct);
         await EnsureSeedAccountsAsync(companyId, ct);
-        if (string.IsNullOrWhiteSpace(countryCode)
-            || countryCode.Equals("MY", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(countryCode)
+            && countryCode.Equals("MY", StringComparison.OrdinalIgnoreCase))
         {
             await malaysiaPack.EnsureMalaysiaPackAsync(companyId, ct);
         }
 
-        var year = DateTime.UtcNow.Year;
-        if (!await db.GlFiscalPeriods.AnyAsync(p => p.CompanyId == companyId && p.Year == year, ct))
+        await EnsurePeriodsForYearAsync(companyId, DateTime.UtcNow.Year, ct);
+    }
+
+    public async Task EnsurePeriodsForYearAsync(int companyId, int year, CancellationToken ct = default)
+    {
+        if (year is < 2000 or > 2100)
+            throw new InvalidOperationException($"Fiscal year {year} is out of range.");
+        if (await db.GlFiscalPeriods.AnyAsync(p => p.CompanyId == companyId && p.Year == year, ct))
+            return;
+
+        for (var m = 1; m <= 12; m++)
         {
-            for (var m = 1; m <= 12; m++)
+            var start = new DateOnly(year, m, 1);
+            var end = start.AddMonths(1).AddDays(-1);
+            db.GlFiscalPeriods.Add(new GlFiscalPeriod
             {
-                var start = new DateOnly(year, m, 1);
-                var end = start.AddMonths(1).AddDays(-1);
-                db.GlFiscalPeriods.Add(new GlFiscalPeriod
-                {
-                    CompanyId = companyId,
-                    Year = year,
-                    PeriodNo = m,
-                    StartDate = start,
-                    EndDate = end,
-                    Status = "open",
-                });
-            }
+                CompanyId = companyId,
+                Year = year,
+                PeriodNo = m,
+                StartDate = start,
+                EndDate = end,
+                Status = "open",
+            });
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<string> ResolveFunctionalCurrencyAsync(
+        int companyId,
+        string? countryCode,
+        bool persist = false,
+        CancellationToken ct = default)
+    {
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
+        var stored = (company?.FunctionalCurrency ?? "").Trim().ToUpperInvariant();
+        if (stored.Length == 3 && stored.All(ch => ch is >= 'A' and <= 'Z'))
+            return stored;
+
+        var derived = CurrencyForCountry(company?.CountryCode ?? countryCode);
+        if (persist && company is not null && string.IsNullOrWhiteSpace(company.FunctionalCurrency))
+        {
+            company.FunctionalCurrency = derived;
             await db.SaveChangesAsync(ct);
         }
+        return derived;
     }
 
     /// <summary>Hospitality-oriented default COA. Idempotent — adds any missing seed codes.</summary>
@@ -117,7 +143,10 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             ("1200", "Deposits and prepayments", "asset", "D"),
             ("1400", "Inventory", "asset", "D"),
             ("1500", "Fixed assets", "asset", "D"),
+            ("1510", "Accumulated depreciation", "asset", "C"),
             ("2000", "Accounts payable", "liability", "C"),
+            ("2010", "Trade payables control", "liability", "C"),
+            ("2400", "Deferred revenue", "liability", "C"),
             ("2100", "Net pay payable", "liability", "C"),
             ("2110", "EPF payable", "liability", "C"),
             ("2120", "SOCSO payable", "liability", "C"),
@@ -136,6 +165,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             ("5600", "Repairs and maintenance", "expense", "D"),
             ("5700", "Bank charges and FX", "expense", "D"),
             ("5800", "Other operating expenses", "expense", "D"),
+            ("5810", "Depreciation expense", "expense", "D"),
             ("5900", "Rounding / suspense", "expense", "D"),
         };
 
@@ -238,8 +268,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             .FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId, ct)
             ?? throw new InvalidOperationException("Period not found.");
 
-        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
-        var functional = CurrencyForCountry(company?.CountryCode);
+        var functional = await ResolveFunctionalCurrencyAsync(companyId, null, persist: false, ct);
 
         var balances = await db.GlPeriodBalances.AsNoTracking()
             .Where(b => b.CompanyId == companyId && b.PeriodId == periodId && b.Currency == functional)
@@ -317,13 +346,15 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
                 rows = bsRows.OrderBy(r => r.Code)
                     .Select(r => new { code = r.Code, name = r.Name, accountType = r.AccountType, amount = r.Amount })
                     .ToList(),
-                note = "Equity includes current-period net income.",
+                note = "Closing balances include prior-period openings rolled on soft-close. Equity includes current-period net income. Not a statutory book of record until Phase 0 exit criteria are met.",
+                basis = "closing-balance",
             },
         };
     }
 
     public async Task<GlFiscalPeriod> RequireOpenPeriodAsync(int companyId, DateOnly effectiveDate, CancellationToken ct = default)
     {
+        await EnsurePeriodsForYearAsync(companyId, effectiveDate.Year, ct);
         var period = await db.GlFiscalPeriods
             .FirstOrDefaultAsync(p =>
                 p.CompanyId == companyId
@@ -400,7 +431,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             if (existing is not null) return existing;
         }
 
-        var funcCurrency = CurrencyForCountry(countryCode);
+        var funcCurrency = await ResolveFunctionalCurrencyAsync(companyId, countryCode, persist: true, ct);
         var txn = string.IsNullOrWhiteSpace(txnCurrency)
             ? funcCurrency
             : NormalizeCurrency(txnCurrency);
@@ -483,25 +514,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             CreatedAt = DateTime.UtcNow,
         };
 
-        var counter = await db.GlDocCounters
-            .FirstOrDefaultAsync(c =>
-                c.CompanyId == companyId && c.Series == docSeries && c.FiscalYear == period.Year, ct);
-        if (counter is null)
-        {
-            counter = new GlDocCounter
-            {
-                CompanyId = companyId,
-                Series = docSeries,
-                FiscalYear = period.Year,
-                NextValue = 1,
-            };
-            db.GlDocCounters.Add(counter);
-            await db.SaveChangesAsync(ct);
-        }
-
-        var n = counter.NextValue;
-        counter.NextValue = n + 1;
-        journal.DocNumber = $"{docSeries}/{period.Year}/{n.ToString().PadLeft(6, '0')}";
+        journal.DocNumber = await AllocateDocNumberAsync(companyId, docSeries, period.Year, ct);
         journal.PostedAt = DateTime.UtcNow;
 
         var lineNo = 1;
@@ -545,6 +558,23 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         return journal;
     }
 
+    public async Task<string> AllocateDocNumberAsync(int companyId, string series, int fiscalYear, CancellationToken ct = default)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "GlDocCounters" ("CompanyId", "Series", "FiscalYear", "NextValue")
+            VALUES ({companyId}, {series}, {fiscalYear}, 2)
+            ON CONFLICT ("CompanyId", "Series", "FiscalYear")
+            DO UPDATE SET "NextValue" = "GlDocCounters"."NextValue" + 1
+            """, ct);
+
+        var next = await db.GlDocCounters.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Series == series && c.FiscalYear == fiscalYear)
+            .Select(c => c.NextValue)
+            .FirstAsync(ct);
+        var n = next - 1;
+        return $"{series}/{fiscalYear}/{n.ToString().PadLeft(6, '0')}";
+    }
+
     async Task ApplyPeriodBalanceAsync(
         int companyId,
         int accountId,
@@ -554,26 +584,73 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         long minor,
         CancellationToken ct)
     {
-        var bal = await db.GlPeriodBalances
-            .FirstOrDefaultAsync(b =>
-                b.CompanyId == companyId
-                && b.AccountId == accountId
-                && b.PeriodId == periodId
-                && b.Currency == currency, ct);
-        if (bal is null)
+        var existing = await db.GlPeriodBalances
+            .FromSqlInterpolated($"""
+                SELECT * FROM "GlPeriodBalances"
+                WHERE "CompanyId" = {companyId}
+                  AND "AccountId" = {accountId}
+                  AND "PeriodId" = {periodId}
+                  AND "Currency" = {currency}
+                FOR UPDATE
+                """)
+            .AsTracking()
+            .FirstOrDefaultAsync(ct);
+
+        if (existing is null)
         {
-            bal = new GlPeriodBalance
+            var (openDr, openCr) = await PriorClosingAsync(companyId, accountId, periodId, currency, ct);
+            existing = new GlPeriodBalance
             {
                 CompanyId = companyId,
                 AccountId = accountId,
                 PeriodId = periodId,
                 Currency = currency,
+                OpeningDrMinor = openDr,
+                OpeningCrMinor = openCr,
             };
-            db.GlPeriodBalances.Add(bal);
+            db.GlPeriodBalances.Add(existing);
         }
 
-        if (direction == "D") bal.PeriodDrMinor += minor;
-        else bal.PeriodCrMinor += minor;
+        if (direction == "D") existing.PeriodDrMinor += minor;
+        else existing.PeriodCrMinor += minor;
+    }
+
+    async Task<(long OpeningDr, long OpeningCr)> PriorClosingAsync(
+        int companyId,
+        int accountId,
+        int periodId,
+        string currency,
+        CancellationToken ct)
+    {
+        var period = await db.GlFiscalPeriods.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId, ct);
+        if (period is null) return (0, 0);
+
+        var prior = await db.GlFiscalPeriods.AsNoTracking()
+            .Where(p => p.CompanyId == companyId
+                && (p.Year < period.Year || (p.Year == period.Year && p.PeriodNo < period.PeriodNo)))
+            .OrderByDescending(p => p.Year).ThenByDescending(p => p.PeriodNo)
+            .FirstOrDefaultAsync(ct);
+        if (prior is null) return (0, 0);
+
+        var bal = await db.GlPeriodBalances.AsNoTracking()
+            .FirstOrDefaultAsync(b =>
+                b.CompanyId == companyId
+                && b.AccountId == accountId
+                && b.PeriodId == prior.Id
+                && b.Currency == currency, ct);
+        if (bal is null) return (0, 0);
+
+        var account = await db.GlAccounts.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == accountId && a.CompanyId == companyId, ct);
+        if (account is not null
+            && prior.Year != period.Year
+            && account.AccountType is "income" or "expense")
+        {
+            return (0, 0);
+        }
+
+        return (bal.OpeningDrMinor + bal.PeriodDrMinor, bal.OpeningCrMinor + bal.PeriodCrMinor);
     }
 
     public async Task<GlJournal> ReverseAsync(
@@ -641,6 +718,58 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         if (period.Status == "hard_closed")
             throw new InvalidOperationException("Hard-closed periods cannot be changed.");
         period.Status = "closed";
+        await RollForwardOpeningsAsync(companyId, period, ct);
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task RollForwardOpeningsAsync(int companyId, GlFiscalPeriod period, CancellationToken ct = default)
+    {
+        var nextStart = period.EndDate.AddDays(1);
+        await EnsurePeriodsForYearAsync(companyId, nextStart.Year, ct);
+        var next = await db.GlFiscalPeriods
+            .FirstOrDefaultAsync(p =>
+                p.CompanyId == companyId && p.StartDate <= nextStart && p.EndDate >= nextStart, ct);
+        if (next is null) return;
+
+        var accounts = await db.GlAccounts.AsNoTracking()
+            .Where(a => a.CompanyId == companyId)
+            .ToDictionaryAsync(a => a.Id, ct);
+        var current = await db.GlPeriodBalances
+            .Where(b => b.CompanyId == companyId && b.PeriodId == period.Id)
+            .ToListAsync(ct);
+
+        foreach (var bal in current)
+        {
+            accounts.TryGetValue(bal.AccountId, out var acct);
+            var closeDr = bal.OpeningDrMinor + bal.PeriodDrMinor;
+            var closeCr = bal.OpeningCrMinor + bal.PeriodCrMinor;
+            if (acct is not null
+                && next.Year != period.Year
+                && acct.AccountType is "income" or "expense")
+            {
+                closeDr = 0;
+                closeCr = 0;
+            }
+
+            var dest = await db.GlPeriodBalances
+                .FirstOrDefaultAsync(b =>
+                    b.CompanyId == companyId
+                    && b.AccountId == bal.AccountId
+                    && b.PeriodId == next.Id
+                    && b.Currency == bal.Currency, ct);
+            if (dest is null)
+            {
+                dest = new GlPeriodBalance
+                {
+                    CompanyId = companyId,
+                    AccountId = bal.AccountId,
+                    PeriodId = next.Id,
+                    Currency = bal.Currency,
+                };
+                db.GlPeriodBalances.Add(dest);
+            }
+            dest.OpeningDrMinor = closeDr;
+            dest.OpeningCrMinor = closeCr;
+        }
     }
 }

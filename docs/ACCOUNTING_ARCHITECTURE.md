@@ -15,7 +15,7 @@ This document defines how statutory accounting lands **inside Bisync.cloud**. It
 | **Accounting module** | Company-scoped only (`CompanyModuleRules`). Route `/accounting` hosts **Payroll**, **Ops→Finance**, and **Books** (Phase 0). |
 | **Payroll** | Live. Process posts a sealed PAYROLL journal + `hrm.payroll_posted` outbox (best-effort). |
 | **Ops cost truth** | Purchase receive → consolidate, stock-card / FIFO, COGS audit, credit notes. Consolidate posts Inventory/AP journal + `ops.purchase_affirmed`. |
-| **Chart of accounts / journals / trial balance** | **Phase 0 live** via `/api/accounting/*` (seed COA, sealed journals, TB). Full AP/AR / bank rec still roadmap. |
+| **Chart of accounts / journals / trial balance** | **Phase B live** via `/api/accounting/*` (seed COA, sealed journals, opening-balance TB/BS). Full AP/AR feed and statutory bank rec still roadmap. |
 | **API stack** | ASP.NET Core + EF Core + PostgreSQL. Identity and tenant routing use the shared control plane (`TenantConnections`). |
 | **Isolation** | App-layer `companyId` scoping + optional dedicated company DB. **Postgres RLS is not used** on operational tables today. |
 
@@ -138,35 +138,39 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - Copy and glossary match live capability.
 - Architecture doc binding; AC GL/AP/AR rows reserved until richer APIs exist.
 
-### Phase B — Ledger foundations ✅ (initial)
+### Phase B — Ledger foundations ✅ (honest)
 
 - `GlJournal` / lines / periods / balances / counters / outbox on company operational DB.
-- Post, reverse, soft-close period, trial balance API (`/api/accounting/*`).
-- Bridges: payroll process + PO reconcile → sealed journals (best-effort; never fails ops).
+- Post, reverse, soft-close with **opening-balance roll-forward**, trial balance / BS on **closing balances**.
+- Books API requires a signed-in user; company is taken from the verified tenant (not a client-supplied `companyId`).
+- Bridges: payroll process + PO reconcile → sealed journals (best-effort; never fails ops). Purchase AP uses `ap_control` (2010).
 
-### Phase C — Core books ✅ (usable module)
+### Phase C — Core books 🟡 (usable, not a book of record)
 
-- Expanded hospitality COA (seed + create/update in UI).
+- Expanded hospitality COA (seed + create/update in UI), including deferred revenue and accumulated depreciation.
 - Manual journal entry UI (balanced post + reverse + detail).
 - **Multi-currency journals:** select txn currency; when ≠ functional, enter conversion rate (functional units per 1 txn unit). Lines store txn + functional amounts + manual FX rate/date.
-- Trial balance / P&amp;L / BS report in **functional currency** only (foreign txn sub-balances kept for audit, excluded from statements).
-- Fiscal period soft-close/reopen.
+- Trial balance / P&amp;L / BS report in **persisted functional currency**.
+- Fiscal period soft-close/reopen; periods created for the posting year (back-dated years allowed).
 - Accounting hub defaults to **Books** (not payroll-only).
 
-### Phase C1 — Malaysia-first full Books surface ✅ (initial)
+### Phase C1 — Malaysia-first full Books surface 🟡 (partial)
 
 - Upstream Accounting package imported under `docs/accounting/upstream/`.
-- **Malaysia pack active:** SST tax codes (`recoverability=none`), account roles, SLA rule sets, MY COA extras.
-- FX rate store UI + API; AR/AP open items with SLA-posted journals + aging; bank statement shells.
+- **Malaysia pack** seeds SST tax codes / roles / SLA only for MY companies (GET no longer seeds MY codes into other countries).
+- FX rate store UI + API; AR/AP open items with SLA-posted journals + aging (posted invoices/bills only); void.
+- Credit notes reverse AR/AP. Bank match **posts cash** and reduces `OpenMinor`.
 - SG / AU / ID / TH / US packs + framework + backlog live in **Dev Console → Ref & Library** (reference only until wired).
+- **Not done:** POS / PO / SO automatic subledger feed; AR/AP–GL reconciliation report.
 
-### Phase C2 — Internal depth (no external connections) ✅
+### Phase C2 — Internal depth (no external connections) 🟡 (partial)
 
-- Bank matching (manual + exact-amount auto-match, suggest scores, unmatch).
-- AP approval workflow with segregation of duties; deferred journal until approve.
-- Payment applications UI (apply / un-apply).
-- Fixed assets multi-book + depreciation run; RevRec contracts/recognise.
-- SST-02 **draft** return computation (boxes only — MyInvois / Customs transmission deferred).
+- Bank matching posts GL + reduces open items (manual + exact-amount auto-match, suggest scores, unmatch/reverse).
+- AP approval workflow with SoD against the **signed-in user** (not a typed clerk/approver box).
+- Payment applications UI (apply complementary kinds only / un-apply).
+- Fixed assets: IFRS book posts Dr dep expense / Cr accum dep; tax book is schedule-only.
+- RevRec recognition Dr deferred revenue / Cr sales.
+- SST-02 **draft** return computation (boxes only — still hand-keyed open items; MyInvois deferred).
 
 ### Phase D — Compliance surface (external)
 

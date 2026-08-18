@@ -37,6 +37,9 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
         ("retained_earnings", "3000", "Equity"),
         ("rounding_difference", "5900", "Suspense / rounding"),
         ("inventory_default", "1400", "Inventory"),
+        ("deferred_revenue", "2400", "Contract liability"),
+        ("accum_depreciation", "1510", "Accumulated depreciation"),
+        ("dep_expense", "5810", "Depreciation expense"),
     ];
 
     public static readonly (string Code, string Name, decimal Rate, string Recoverability)[] MalaysiaTaxCodes =
@@ -48,6 +51,14 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
         ("SST-10", "Sales tax 10%", 10m, "none"),
         ("EXEMPT", "Out of scope / exempt", 0m, "none"),
     ];
+
+    public async Task EnsureCoreRolesAndSlaAsync(int companyId, CancellationToken ct = default)
+    {
+        await SchemaPatcher.EnsureGlBooksTablesAsync(db);
+        await EnsureAccountRolesAsync(companyId, ct);
+        await EnsureRolesAndSlaAsync(companyId, ct);
+        await db.SaveChangesAsync(ct);
+    }
 
     public async Task EnsureMalaysiaPackAsync(int companyId, CancellationToken ct = default)
     {
@@ -104,6 +115,30 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
         }
         await db.SaveChangesAsync(ct);
 
+        await EnsureAccountRolesAsync(companyId, ct);
+
+        foreach (var tax in MalaysiaTaxCodes)
+        {
+            if (await db.GlTaxCodes.AnyAsync(t => t.CompanyId == companyId && t.Code == tax.Code, ct))
+                continue;
+            db.GlTaxCodes.Add(new GlTaxCode
+            {
+                CompanyId = companyId,
+                Code = tax.Code,
+                Name = tax.Name,
+                RatePercent = tax.Rate,
+                Recoverability = tax.Recoverability,
+                PackId = PackId,
+                Active = true,
+            });
+        }
+
+        await EnsureRolesAndSlaAsync(companyId, ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    async Task EnsureAccountRolesAsync(int companyId, CancellationToken ct)
+    {
         var accounts = await db.GlAccounts.AsNoTracking()
             .Where(a => a.CompanyId == companyId)
             .ToDictionaryAsync(a => a.Code, a => a.Id, StringComparer.OrdinalIgnoreCase, ct);
@@ -129,28 +164,24 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
                 existing.Notes ??= role.Notes;
             }
         }
-
-        foreach (var tax in MalaysiaTaxCodes)
-        {
-            if (await db.GlTaxCodes.AnyAsync(t => t.CompanyId == companyId && t.Code == tax.Code, ct))
-                continue;
-            db.GlTaxCodes.Add(new GlTaxCode
-            {
-                CompanyId = companyId,
-                Code = tax.Code,
-                Name = tax.Name,
-                RatePercent = tax.Rate,
-                Recoverability = tax.Recoverability,
-                PackId = PackId,
-                Active = true,
-            });
-        }
-
-        await EnsureDefaultSlaAsync(companyId, ct);
-        await db.SaveChangesAsync(ct);
     }
 
-    async Task EnsureDefaultSlaAsync(int companyId, CancellationToken ct)
+    public async Task<string> ResolveRoleAccountCodeAsync(int companyId, string roleCode, string fallbackCode, CancellationToken ct = default)
+    {
+        var role = await db.GlAccountRoles.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.CompanyId == companyId && r.RoleCode == roleCode, ct);
+        if (role?.AccountId is > 0)
+        {
+            var code = await db.GlAccounts.AsNoTracking()
+                .Where(a => a.Id == role.AccountId && a.CompanyId == companyId)
+                .Select(a => a.Code)
+                .FirstOrDefaultAsync(ct);
+            if (!string.IsNullOrWhiteSpace(code)) return code;
+        }
+        return fallbackCode;
+    }
+
+    async Task EnsureRolesAndSlaAsync(int companyId, CancellationToken ct)
     {
         async Task Seed(string eventType, string name, (string Role, string Dir, string Amt)[] lines)
         {
@@ -216,11 +247,29 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
             ("bank_default", "D", "net"),
             ("ar_control", "C", "net"),
         ]);
+
+        await Seed("ar.credit_note.posted", "MY AR credit note (reverse invoice)",
+        [
+            ("revenue_default", "D", "net"),
+            ("tax_output_payable", "D", "tax"),
+            ("ar_control", "C", "gross"),
+        ]);
+
+        await Seed("ap.credit_note.posted", "MY AP credit note (reverse bill)",
+        [
+            ("ap_control", "D", "gross"),
+            ("cogs_default", "C", "net"),
+            ("tax_expense_nonrecoverable", "C", "tax"),
+        ]);
     }
 
-    public async Task<object> GetPackStatusAsync(int companyId, CancellationToken ct = default)
+    public async Task<object> GetPackStatusAsync(int companyId, string? countryCode = null, CancellationToken ct = default)
     {
-        await EnsureMalaysiaPackAsync(companyId, ct);
+        if (!string.IsNullOrWhiteSpace(countryCode)
+            && countryCode.Equals("MY", StringComparison.OrdinalIgnoreCase))
+        {
+            await EnsureMalaysiaPackAsync(companyId, ct);
+        }
         var packs = await db.GlLocalisationPacks.AsNoTracking()
             .Where(p => p.CompanyId == companyId)
             .OrderBy(p => p.PackId)

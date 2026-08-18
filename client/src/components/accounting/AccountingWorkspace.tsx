@@ -42,7 +42,11 @@ function money(n: number) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function AccountingWorkspace({ companyId }: { companyId: number | null }) {
@@ -763,7 +767,7 @@ function ReportsPanel({
           Trial balance
           {tb ? (
             <span className="font-normal text-muted-foreground">
-              {' '}· {tb.currency ?? ''} · {tb.balanced ? 'balanced' : 'out of balance'} · Dr {money(tb.totalDr)} / Cr {money(tb.totalCr)}
+              {' '}· {tb.currency ?? ''} · {tb.basis === 'closing-balance' ? 'closing balances' : 'period'} · {tb.balanced ? 'balanced' : 'out of balance'} · Dr {money(tb.totalDr)} / Cr {money(tb.totalCr)}
             </span>
           ) : null}
         </p>
@@ -773,8 +777,12 @@ function ReportsPanel({
               <tr className="text-left text-muted-foreground border-b border-border">
                 <th className="py-1 pr-2 font-sans">Code</th>
                 <th className="py-1 pr-2">Account</th>
-                <th className="py-1 pr-2 text-right font-sans">Dr</th>
-                <th className="py-1 text-right font-sans">Cr</th>
+                <th className="py-1 pr-2 text-right font-sans">Opening Dr</th>
+                <th className="py-1 pr-2 text-right font-sans">Opening Cr</th>
+                <th className="py-1 pr-2 text-right font-sans">Period Dr</th>
+                <th className="py-1 pr-2 text-right font-sans">Period Cr</th>
+                <th className="py-1 pr-2 text-right font-sans">Closing Dr</th>
+                <th className="py-1 text-right font-sans">Closing Cr</th>
               </tr>
             </thead>
             <tbody>
@@ -782,8 +790,12 @@ function ReportsPanel({
                 <tr key={r.accountCode} className="border-b border-border/60">
                   <td className="py-1 pr-2 font-sans">{r.accountCode}</td>
                   <td className="py-1 pr-2">{r.accountName}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.openingDr ?? 0)}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.openingCr ?? 0)}</td>
                   <td className="py-1 pr-2 text-right font-sans">{money(r.periodDr)}</td>
-                  <td className="py-1 text-right font-sans">{money(r.periodCr)}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.periodCr)}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.closingDr ?? (r.closing > 0 ? r.closing : 0))}</td>
+                  <td className="py-1 text-right font-sans">{money(r.closingCr ?? (r.closing < 0 ? -r.closing : 0))}</td>
                 </tr>
               ))}
             </tbody>

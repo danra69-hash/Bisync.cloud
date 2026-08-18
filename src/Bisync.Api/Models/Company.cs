@@ -9,6 +9,8 @@ public class Company
     public string Brn { get; set; } = string.Empty;
     public string GstTin { get; set; } = string.Empty;
     public string CountryCode { get; set; } = "MY";
+    /// <summary>ISO functional currency persisted for the ledger. Empty means derive-from-country until first Books open.</summary>
+    public string FunctionalCurrency { get; set; } = string.Empty;
     public string AddressLine1 { get; set; } = string.Empty;
     public string AddressLine2 { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
