@@ -1,5 +1,6 @@
 /**
- * Home + RMS landing host Team chat on the far left; header bell opens chat popup.
+ * Home hosts Team chat on the far left; header bell opens chat popup.
+ * RMS landing is dashboard-only (no chat rail / Chat reopen button).
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -56,8 +57,9 @@ assert.match(
   'desktop launcher data points at version.json',
 );
 
-assert.match(rms, /PlatformTeamChatPanel/, 'RMS landing must host Team chat panel');
-assert.match(rms, /lg:flex-row/, 'RMS landing chat on far left');
+assert.doesNotMatch(rms, /PlatformTeamChatPanel/, 'RMS landing must not host Team chat panel');
+assert.doesNotMatch(rms, /PlatformTeamChatReopenFab/, 'RMS landing must not show Chat reopen button');
+assert.match(rms, /OverviewDashboard/, 'RMS landing shows overview dashboard');
 
 assert.match(bell, /PlatformTeamChatPopup/, 'notification bell must open chat popup');
 assert.match(bell, /setChatOpen\(true\)/, 'bell click opens chat');
