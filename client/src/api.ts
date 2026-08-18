@@ -5481,10 +5481,23 @@ export const api = {
       narration?: string;
       journalType?: string;
       docSeries?: string;
+      currency?: string;
+      fxRate?: number;
+      fxRateDate?: string;
       lines: Array<{ accountCode: string; direction: string; amount: number; narration?: string }>;
     },
   ) =>
-    fetchJsonWithMethod<{ id: number; docNumber: string; journalType: string; postedAt: string; narration: string; lineCount: number }>(
+    fetchJsonWithMethod<{
+      id: number;
+      docNumber: string;
+      journalType: string;
+      postedAt: string;
+      narration: string;
+      lineCount: number;
+      currency?: string;
+      functionalCurrency?: string;
+      fxRate?: number | null;
+    }>(
       `/api/accounting/journals?companyId=${companyId}`,
       'POST',
       body,
@@ -5519,6 +5532,8 @@ export const api = {
 export type AccountingLedgerStatus = {
   companyId: number;
   currency: string;
+  functionalCurrency?: string;
+  currencies?: string[];
   phase: string;
   phaseLabel: string;
   accounts: number;
@@ -5570,6 +5585,11 @@ export type AccountingJournalDetail = {
     direction: string;
     amount: number;
     currency: string;
+    funcAmount?: number;
+    funcCurrency?: string;
+    fxRate?: number | null;
+    fxRateDate?: string | null;
+    fxRateType?: string | null;
     narration: string;
   }>;
 };
@@ -5583,6 +5603,7 @@ export type AccountingTrialBalance = {
     startDate: string;
     endDate: string;
   };
+  currency?: string;
   balanced: boolean;
   totalDr: number;
   totalCr: number;

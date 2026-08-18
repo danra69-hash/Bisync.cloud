@@ -2927,6 +2927,9 @@ public static class SchemaPatcher
             """);
         await TryCreateUniqueIndexAsync(db, "IX_GlJournalLines_CompanyId_JournalId_LineNo", "GlJournalLines", "\"CompanyId\", \"JournalId\", \"LineNo\"");
         await TryCreateIndexAsync(db, "IX_GlJournalLines_CompanyId_AccountId_EffectiveDate", "GlJournalLines", "\"CompanyId\", \"AccountId\", \"EffectiveDate\"");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRate", "NUMERIC(20,10)");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRateDate", "date");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRateType", "TEXT");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "GlPeriodBalances" (

@@ -129,7 +129,7 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
           <h2 className="text-sm font-semibold">Books</h2>
           <p className="text-xs text-muted-foreground mt-1">
             Chart of accounts, sealed journals, trial balance, P&amp;L and balance sheet.
-            {status ? ` · ${status.currency}` : ''}
+            {status ? ` · Functional ${status.functionalCurrency ?? status.currency}` : ''}
           </p>
         </div>
         <button
@@ -194,6 +194,8 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
           accounts={accounts.filter(a => a.active)}
           journals={journals}
           detail={detail}
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
+          currencies={status?.currencies ?? [status?.currency ?? 'MYR']}
           onSelect={async id => {
             try {
               setDetail(await api.accountingJournal(companyId, id));
@@ -398,6 +400,8 @@ function JournalsPanel({
   accounts,
   journals,
   detail,
+  functionalCurrency,
+  currencies,
   onSelect,
   onChanged,
   onError,
@@ -406,10 +410,17 @@ function JournalsPanel({
   accounts: AccountingAccount[];
   journals: AccountingJournalSummary[];
   detail: AccountingJournalDetail | null;
+  functionalCurrency: string;
+  currencies: string[];
   onSelect: (id: number) => void;
   onChanged: () => void;
   onError: (msg: string | null) => void;
 }) {
+  const currencyOptions = currencies.includes(functionalCurrency)
+    ? currencies
+    : [functionalCurrency, ...currencies];
+  const [currency, setCurrency] = useState(functionalCurrency);
+  const [fxRate, setFxRate] = useState('');
   const [narration, setNarration] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(todayIso());
   const [lines, setLines] = useState<DraftLine[]>([
@@ -418,13 +429,27 @@ function JournalsPanel({
   ]);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    setCurrency(functionalCurrency);
+    setFxRate('');
+  }, [functionalCurrency]);
+
+  const foreign = currency !== functionalCurrency;
+  const rateNum = Number(fxRate);
+  const rateOk = !foreign || (Number.isFinite(rateNum) && rateNum > 0);
   const debit = lines.filter(l => l.direction === 'D').reduce((s, l) => s + (Number(l.amount) || 0), 0);
   const credit = lines.filter(l => l.direction === 'C').reduce((s, l) => s + (Number(l.amount) || 0), 0);
   const balanced = Math.abs(debit - credit) < 0.005 && debit > 0;
+  const funcDebit = foreign && rateOk ? debit * rateNum : debit;
+  const funcCredit = foreign && rateOk ? credit * rateNum : credit;
 
   const post = async () => {
     if (!balanced) {
       onError('Journal must balance (debits = credits) with amounts > 0.');
+      return;
+    }
+    if (foreign && !rateOk) {
+      onError(`Enter a conversion rate (${functionalCurrency} per 1 ${currency}).`);
       return;
     }
     setBusy(true);
@@ -436,6 +461,9 @@ function JournalsPanel({
         narration,
         journalType: 'GEN',
         docSeries: 'GEN',
+        currency,
+        fxRate: foreign ? rateNum : undefined,
+        fxRateDate: foreign ? effectiveDate : undefined,
         lines: lines
           .filter(l => Number(l.amount) > 0)
           .map(l => ({
@@ -446,6 +474,8 @@ function JournalsPanel({
           })),
       });
       setNarration('');
+      setFxRate('');
+      setCurrency(functionalCurrency);
       setLines(lines.map(l => ({ ...l, amount: '', narration: '' })));
       onChanged();
     } catch (e) {
@@ -468,16 +498,57 @@ function JournalsPanel({
     <div className="space-y-5 max-w-5xl">
       <div className="border-t border-border pt-3 space-y-3">
         <p className="text-xs font-semibold">New journal entry</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
           <label className="space-y-1">
             <span className="text-muted-foreground">Effective date</span>
             <input type="date" className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} />
           </label>
           <label className="space-y-1">
+            <span className="text-muted-foreground">Currency</span>
+            <select
+              className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans"
+              value={currency}
+              onChange={e => {
+                const next = e.target.value;
+                setCurrency(next);
+                if (next === functionalCurrency) setFxRate('');
+              }}
+            >
+              {currencyOptions.map(c => (
+                <option key={c} value={c}>
+                  {c}{c === functionalCurrency ? ' (functional)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          {foreign ? (
+            <label className="space-y-1">
+              <span className="text-muted-foreground">Conversion rate ({functionalCurrency} / 1 {currency})</span>
+              <input
+                className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans"
+                inputMode="decimal"
+                placeholder="e.g. 4.70"
+                value={fxRate}
+                onChange={e => setFxRate(e.target.value)}
+              />
+            </label>
+          ) : (
+            <div className="space-y-1">
+              <span className="text-muted-foreground">Conversion rate</span>
+              <p className="text-[11px] text-muted-foreground pt-1.5">Not needed — same as functional.</p>
+            </div>
+          )}
+          <label className="space-y-1 sm:col-span-2 lg:col-span-1">
             <span className="text-muted-foreground">Narration</span>
             <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background" value={narration} onChange={e => setNarration(e.target.value)} placeholder="Journal description" />
           </label>
         </div>
+        {foreign && (
+          <p className="text-[11px] text-muted-foreground">
+            Line amounts are in {currency}. Books will store functional amounts in {functionalCurrency}
+            {rateOk ? ` at rate ${rateNum}` : ''}.
+          </p>
+        )}
         <div className="space-y-2">
           {lines.map((line, idx) => (
             <div key={idx} className="grid grid-cols-12 gap-1.5 text-xs items-center">
@@ -509,7 +580,7 @@ function JournalsPanel({
               <input
                 className="col-span-2 border border-border rounded-md px-1.5 py-1 bg-background font-sans text-right"
                 inputMode="decimal"
-                placeholder="0.00"
+                placeholder={`0.00 ${currency}`}
                 value={line.amount}
                 onChange={e => {
                   const next = [...lines];
@@ -543,11 +614,12 @@ function JournalsPanel({
             + Line
           </button>
           <span className="font-sans text-muted-foreground">
-            Dr {money(debit)} · Cr {money(credit)} · {balanced ? 'balanced' : 'unbalanced'}
+            Dr {money(debit)} {currency} · Cr {money(credit)} {currency} · {balanced ? 'balanced' : 'unbalanced'}
+            {foreign && rateOk ? ` → ${money(funcDebit)} / ${money(funcCredit)} ${functionalCurrency}` : ''}
           </span>
           <button
             type="button"
-            disabled={busy || !balanced}
+            disabled={busy || !balanced || !rateOk}
             onClick={() => void post()}
             className="ml-auto text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50"
           >
@@ -578,12 +650,20 @@ function JournalsPanel({
       {detail && (
         <div className="border-t border-border pt-3 space-y-2 text-xs">
           <p className="font-semibold font-sans">{detail.docNumber} detail</p>
+          {detail.lines[0]?.fxRate != null && (
+            <p className="text-muted-foreground">
+              FX {detail.lines[0].fxRate} {detail.lines[0].funcCurrency} / 1 {detail.lines[0].currency}
+              {detail.lines[0].fxRateDate ? ` · ${detail.lines[0].fxRateDate}` : ''}
+              {detail.lines[0].fxRateType ? ` · ${detail.lines[0].fxRateType}` : ''}
+            </p>
+          )}
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-muted-foreground border-b border-border text-left">
                 <th className="py-1 pr-2">Account</th>
                 <th className="py-1 pr-2">Dir</th>
-                <th className="py-1 text-right">Amount</th>
+                <th className="py-1 pr-2 text-right">Txn</th>
+                <th className="py-1 text-right">Functional</th>
               </tr>
             </thead>
             <tbody>
@@ -591,7 +671,10 @@ function JournalsPanel({
                 <tr key={l.lineNo} className="border-b border-border/60">
                   <td className="py-1 pr-2">{l.accountCode} · {l.accountName}</td>
                   <td className="py-1 pr-2 font-sans">{l.direction}</td>
-                  <td className="py-1 text-right font-sans">{money(l.amount)}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(l.amount)} {l.currency}</td>
+                  <td className="py-1 text-right font-sans">
+                    {money(l.funcAmount ?? l.amount)} {l.funcCurrency ?? l.currency}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -616,7 +699,7 @@ function ReportsPanel({
           Trial balance
           {tb ? (
             <span className="font-normal text-muted-foreground">
-              {' '}· {tb.balanced ? 'balanced' : 'out of balance'} · Dr {money(tb.totalDr)} / Cr {money(tb.totalCr)}
+              {' '}· {tb.currency ?? ''} · {tb.balanced ? 'balanced' : 'out of balance'} · Dr {money(tb.totalDr)} / Cr {money(tb.totalCr)}
             </span>
           ) : null}
         </p>

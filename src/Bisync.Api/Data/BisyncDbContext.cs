@@ -964,6 +964,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Direction).HasMaxLength(1);
             e.Property(x => x.Currency).HasMaxLength(3);
             e.Property(x => x.FuncCurrency).HasMaxLength(3);
+            e.Property(x => x.FxRate).HasPrecision(20, 10);
+            e.Property(x => x.FxRateType).HasMaxLength(24);
             e.HasOne(x => x.Account)
                 .WithMany()
                 .HasForeignKey(x => x.AccountId)

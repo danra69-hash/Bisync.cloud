@@ -66,10 +66,17 @@ public class GlJournalLine
     public GlAccount? Account { get; set; }
     /// <summary>D or C</summary>
     public string Direction { get; set; } = "D";
+    /// <summary>Transaction (document) currency ISO 4217.</summary>
     public string Currency { get; set; } = "MYR";
     public long AmountMinor { get; set; }
+    /// <summary>Company functional currency.</summary>
     public string FuncCurrency { get; set; } = "MYR";
     public long FuncAmountMinor { get; set; }
+    /// <summary>Functional units per 1 transaction-currency unit (e.g. MYR per 1 USD).</summary>
+    public decimal? FxRate { get; set; }
+    public DateOnly? FxRateDate { get; set; }
+    /// <summary>spot | manual | average | closing | historical</summary>
+    public string? FxRateType { get; set; }
     public string Narration { get; set; } = "";
     public DateOnly EffectiveDate { get; set; }
     public int PeriodId { get; set; }

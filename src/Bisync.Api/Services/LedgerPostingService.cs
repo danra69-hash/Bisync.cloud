@@ -33,7 +33,43 @@ public sealed class LedgerPostingService(BisyncDbContext db)
     public static long ToMinor(decimal amount) =>
         (long)decimal.Round(amount * 100m, 0, MidpointRounding.AwayFromZero);
 
+    public static long ToMinor(decimal amount, string currency)
+    {
+        var decimals = MinorDecimals(currency);
+        var scale = decimals == 0 ? 1m : (decimal)Math.Pow(10, decimals);
+        return (long)decimal.Round(amount * scale, 0, MidpointRounding.AwayFromZero);
+    }
+
     public static decimal FromMinor(long minor) => minor / 100m;
+
+    public static decimal FromMinor(long minor, string currency)
+    {
+        var decimals = MinorDecimals(currency);
+        var scale = decimals == 0 ? 1m : (decimal)Math.Pow(10, decimals);
+        return minor / scale;
+    }
+
+    public static int MinorDecimals(string currency) =>
+        currency.Trim().ToUpperInvariant() switch
+        {
+            "JPY" or "KRW" or "VND" or "XAF" or "XOF" => 0,
+            "BHD" or "KWD" or "OMR" or "TND" => 3,
+            _ => 2,
+        };
+
+    public static string NormalizeCurrency(string? code)
+    {
+        var c = (code ?? "").Trim().ToUpperInvariant();
+        if (c.Length != 3 || c.Any(ch => ch is < 'A' or > 'Z'))
+            throw new InvalidOperationException("Currency must be a 3-letter ISO code (e.g. USD).");
+        return c;
+    }
+
+    public static readonly string[] CommonCurrencies =
+    [
+        "MYR", "SGD", "USD", "EUR", "GBP", "AUD", "NZD", "THB", "IDR", "JPY",
+        "CNY", "HKD", "TWD", "KRW", "INR", "PHP", "VND", "AED", "SAR", "CHF",
+    ];
 
     public async Task EnsureChartAndOpenPeriodsAsync(int companyId, string? countryCode, CancellationToken ct = default)
     {
@@ -196,25 +232,28 @@ public sealed class LedgerPostingService(BisyncDbContext db)
             .FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId, ct)
             ?? throw new InvalidOperationException("Period not found.");
 
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
+        var functional = CurrencyForCountry(company?.CountryCode);
+
         var balances = await db.GlPeriodBalances.AsNoTracking()
-            .Where(b => b.CompanyId == companyId && b.PeriodId == periodId)
+            .Where(b => b.CompanyId == companyId && b.PeriodId == periodId && b.Currency == functional)
             .ToListAsync(ct);
         var accountIds = balances.Select(b => b.AccountId).Distinct().ToList();
         var accounts = await db.GlAccounts.AsNoTracking()
             .Where(a => a.CompanyId == companyId && accountIds.Contains(a.Id))
             .ToDictionaryAsync(a => a.Id, ct);
 
-        static decimal SignedMovement(GlPeriodBalance b, GlAccount a)
+        decimal SignedMovement(GlPeriodBalance b, GlAccount a)
         {
-            var dr = FromMinor(b.PeriodDrMinor);
-            var cr = FromMinor(b.PeriodCrMinor);
+            var dr = FromMinor(b.PeriodDrMinor, b.Currency);
+            var cr = FromMinor(b.PeriodCrMinor, b.Currency);
             return a.NormalBalance == "D" ? dr - cr : cr - dr;
         }
 
-        static decimal SignedClosing(GlPeriodBalance b, GlAccount a)
+        decimal SignedClosing(GlPeriodBalance b, GlAccount a)
         {
-            var opening = FromMinor(b.OpeningDrMinor - b.OpeningCrMinor);
-            var movement = FromMinor(b.PeriodDrMinor - b.PeriodCrMinor);
+            var opening = FromMinor(b.OpeningDrMinor - b.OpeningCrMinor, b.Currency);
+            var movement = FromMinor(b.PeriodDrMinor - b.PeriodCrMinor, b.Currency);
             var closing = opening + movement;
             return a.NormalBalance == "D" ? closing : -closing;
         }
@@ -320,7 +359,8 @@ public sealed class LedgerPostingService(BisyncDbContext db)
     }
 
     /// <summary>
-    /// Posts a balanced journal. Amounts are decimal major units; stored as integer minor units.
+    /// Posts a balanced journal. Line amounts are in <paramref name="txnCurrency"/> major units.
+    /// When txn ≠ functional, <paramref name="fxRate"/> is functional units per 1 txn unit.
     /// Idempotent when <paramref name="idempotencyKey"/> is set.
     /// </summary>
     public async Task<GlJournal> PostAsync(
@@ -336,7 +376,10 @@ public sealed class LedgerPostingService(BisyncDbContext db)
         string createdBy,
         string? idempotencyKey,
         IReadOnlyList<(string AccountCode, string Direction, decimal Amount, string LineNarration)> lines,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? txnCurrency = null,
+        decimal? fxRate = null,
+        DateOnly? fxRateDate = null)
     {
         if (companyId <= 0)
             throw new InvalidOperationException("Company context is required for posting.");
@@ -351,10 +394,30 @@ public sealed class LedgerPostingService(BisyncDbContext db)
             if (existing is not null) return existing;
         }
 
-        var currency = CurrencyForCountry(countryCode);
+        var funcCurrency = CurrencyForCountry(countryCode);
+        var txn = string.IsNullOrWhiteSpace(txnCurrency)
+            ? funcCurrency
+            : NormalizeCurrency(txnCurrency);
+        decimal rate;
+        string? rateType;
+        if (string.Equals(txn, funcCurrency, StringComparison.Ordinal))
+        {
+            rate = 1m;
+            rateType = null;
+        }
+        else
+        {
+            if (fxRate is null or <= 0)
+                throw new InvalidOperationException(
+                    $"Conversion rate is required when posting in {txn} (functional currency is {funcCurrency}). Rate = {funcCurrency} per 1 {txn}.");
+            rate = fxRate.Value;
+            rateType = "manual";
+        }
+
+        var rateDate = fxRateDate ?? effectiveDate;
         var period = await RequireOpenPeriodAsync(companyId, effectiveDate, ct);
 
-        var draftLines = new List<(GlAccount Account, string Direction, long Minor, string Narration)>();
+        var draftLines = new List<(GlAccount Account, string Direction, long TxnMinor, long FuncMinor, string Narration)>();
         foreach (var line in lines)
         {
             if (line.Amount <= 0) continue;
@@ -364,16 +427,37 @@ public sealed class LedgerPostingService(BisyncDbContext db)
             var account = await db.GlAccounts
                 .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.Code == line.AccountCode && a.Active, ct)
                 ?? throw new InvalidOperationException($"Unknown account code {line.AccountCode}.");
-            draftLines.Add((account, dir, ToMinor(line.Amount), line.LineNarration));
+            var txnMinor = ToMinor(line.Amount, txn);
+            var funcMajor = decimal.Round(line.Amount * rate, MinorDecimals(funcCurrency), MidpointRounding.AwayFromZero);
+            var funcMinor = ToMinor(funcMajor, funcCurrency);
+            draftLines.Add((account, dir, txnMinor, funcMinor, line.LineNarration));
         }
 
         if (draftLines.Count < 2)
             throw new InvalidOperationException("A journal needs at least two lines.");
 
-        long debit = draftLines.Where(l => l.Direction == "D").Sum(l => l.Minor);
-        long credit = draftLines.Where(l => l.Direction == "C").Sum(l => l.Minor);
-        if (debit != credit)
-            throw new InvalidOperationException($"Journal unbalanced: debit {debit} vs credit {credit} minor units.");
+        long txnDebit = draftLines.Where(l => l.Direction == "D").Sum(l => l.TxnMinor);
+        long txnCredit = draftLines.Where(l => l.Direction == "C").Sum(l => l.TxnMinor);
+        if (txnDebit != txnCredit)
+            throw new InvalidOperationException(
+                $"Journal unbalanced in {txn}: debit {FromMinor(txnDebit, txn)} vs credit {FromMinor(txnCredit, txn)}.");
+
+        long funcDebit = draftLines.Where(l => l.Direction == "D").Sum(l => l.FuncMinor);
+        long funcCredit = draftLines.Where(l => l.Direction == "C").Sum(l => l.FuncMinor);
+        if (funcDebit != funcCredit)
+        {
+            var diff = funcDebit - funcCredit;
+            if (Math.Abs(diff) > 1)
+                throw new InvalidOperationException(
+                    $"Journal unbalanced in functional {funcCurrency} after FX: debit {FromMinor(funcDebit, funcCurrency)} vs credit {FromMinor(funcCredit, funcCurrency)}.");
+            for (var i = draftLines.Count - 1; i >= 0; i--)
+            {
+                if (draftLines[i].Direction != "C") continue;
+                var row = draftLines[i];
+                draftLines[i] = (row.Account, row.Direction, row.TxnMinor, row.FuncMinor + diff, row.Narration);
+                break;
+            }
+        }
 
         var journal = new GlJournal
         {
@@ -393,7 +477,6 @@ public sealed class LedgerPostingService(BisyncDbContext db)
             CreatedAt = DateTime.UtcNow,
         };
 
-        // Number last — lock counter in this transaction.
         var counter = await db.GlDocCounters
             .FirstOrDefaultAsync(c =>
                 c.CompanyId == companyId && c.Series == docSeries && c.FiscalYear == period.Year, ct);
@@ -424,24 +507,32 @@ public sealed class LedgerPostingService(BisyncDbContext db)
                 LineNo = lineNo++,
                 AccountId = line.Account.Id,
                 Direction = line.Direction,
-                Currency = currency,
-                AmountMinor = line.Minor,
-                FuncCurrency = currency,
-                FuncAmountMinor = line.Minor,
+                Currency = txn,
+                AmountMinor = line.TxnMinor,
+                FuncCurrency = funcCurrency,
+                FuncAmountMinor = line.FuncMinor,
+                FxRate = rateType is null ? null : rate,
+                FxRateDate = rateType is null ? null : rateDate,
+                FxRateType = rateType,
                 Narration = line.Narration,
                 EffectiveDate = effectiveDate,
                 PeriodId = period.Id,
             });
 
             await ApplyPeriodBalanceAsync(
-                companyId, line.Account.Id, period.Id, currency, line.Direction, line.Minor, ct);
+                companyId, line.Account.Id, period.Id, funcCurrency, line.Direction, line.FuncMinor, ct);
+            if (!string.Equals(txn, funcCurrency, StringComparison.Ordinal))
+            {
+                await ApplyPeriodBalanceAsync(
+                    companyId, line.Account.Id, period.Id, txn, line.Direction, line.TxnMinor, ct);
+            }
         }
 
         db.GlJournals.Add(journal);
         await EnqueueOutboxAsync(
             companyId,
             "ledger.journal_posted",
-            new { journal.DocNumber, journal.JournalType, journal.SourceModule, sourceDocKey },
+            new { journal.DocNumber, journal.JournalType, journal.SourceModule, sourceDocKey, txn, funcCurrency, rate },
             idempotencyKey: idempotencyKey is null ? null : $"outbox:{idempotencyKey}",
             ct);
         await db.SaveChangesAsync(ct);
@@ -503,12 +594,13 @@ public sealed class LedgerPostingService(BisyncDbContext db)
             .Where(a => a.CompanyId == companyId)
             .ToDictionaryAsync(a => a.Id, a => a.Code, ct);
 
+        var first = original.Lines.OrderBy(l => l.LineNo).First();
         var lines = original.Lines
             .OrderBy(l => l.LineNo)
             .Select(l => (
                 AccountCode: accounts[l.AccountId],
                 Direction: l.Direction == "D" ? "C" : "D",
-                Amount: FromMinor(l.AmountMinor),
+                Amount: FromMinor(l.AmountMinor, l.Currency),
                 LineNarration: $"Reversal of {original.DocNumber}: {l.Narration}"))
             .ToList();
 
@@ -525,7 +617,10 @@ public sealed class LedgerPostingService(BisyncDbContext db)
             createdBy,
             reverseKey,
             lines,
-            ct);
+            ct,
+            txnCurrency: first.Currency,
+            fxRate: first.FxRate,
+            fxRateDate: first.FxRateDate);
 
         reversal.ReversesJournalId = original.Id;
         await db.SaveChangesAsync(ct);

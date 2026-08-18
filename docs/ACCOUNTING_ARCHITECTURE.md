@@ -148,7 +148,9 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 
 - Expanded hospitality COA (seed + create/update in UI).
 - Manual journal entry UI (balanced post + reverse + detail).
-- Trial balance, P&amp;L, balance sheet, fiscal period soft-close/reopen.
+- **Multi-currency journals:** select txn currency; when ≠ functional, enter conversion rate (functional units per 1 txn unit). Lines store txn + functional amounts + manual FX rate/date.
+- Trial balance / P&amp;L / BS report in **functional currency** only (foreign txn sub-balances kept for audit, excluded from statements).
+- Fiscal period soft-close/reopen.
 - Accounting hub defaults to **Books** (not payroll-only).
 
 ### Phase D — Compliance surface

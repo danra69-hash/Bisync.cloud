@@ -38,8 +38,10 @@ public class AccountingLedgerController(
         {
             companyId = cid,
             currency = LedgerPostingService.CurrencyForCountry(company.CountryCode),
+            functionalCurrency = LedgerPostingService.CurrencyForCountry(company.CountryCode),
+            currencies = LedgerPostingService.CommonCurrencies,
             phase = "C",
-            phaseLabel = "Core books (COA, journals, TB, P&L, BS)",
+            phaseLabel = "Core books (COA, journals, TB, P&L, BS, multi-currency)",
             accounts = accountCount,
             postedJournals = journalCount,
             pendingOutbox = outboxPending,
@@ -137,8 +139,13 @@ public class AccountingLedgerController(
                     accountCode = acct?.Code,
                     accountName = acct?.Name,
                     l.Direction,
-                    amount = LedgerPostingService.FromMinor(l.AmountMinor),
-                    l.Currency,
+                    amount = LedgerPostingService.FromMinor(l.AmountMinor, l.Currency),
+                    currency = l.Currency,
+                    funcAmount = LedgerPostingService.FromMinor(l.FuncAmountMinor, l.FuncCurrency),
+                    funcCurrency = l.FuncCurrency,
+                    fxRate = l.FxRate,
+                    fxRateDate = l.FxRateDate,
+                    fxRateType = l.FxRateType,
                     l.Narration,
                 };
             }),
@@ -169,8 +176,11 @@ public class AccountingLedgerController(
                 return BadRequest(new { message = "No open period for today. Call /api/accounting/status first." });
         }
 
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        var functional = LedgerPostingService.CurrencyForCountry(company?.CountryCode);
+
         var balances = await db.GlPeriodBalances.AsNoTracking()
-            .Where(b => b.CompanyId == cid && b.PeriodId == period.Id)
+            .Where(b => b.CompanyId == cid && b.PeriodId == period.Id && b.Currency == functional)
             .ToListAsync();
         var accountIds = balances.Select(b => b.AccountId).Distinct().ToList();
         var accounts = await db.GlAccounts.AsNoTracking()
@@ -190,9 +200,9 @@ public class AccountingLedgerController(
                     accountName = acct?.Name ?? "?",
                     accountType = acct?.AccountType,
                     currency = b.Currency,
-                    periodDr = LedgerPostingService.FromMinor(b.PeriodDrMinor),
-                    periodCr = LedgerPostingService.FromMinor(b.PeriodCrMinor),
-                    closing = LedgerPostingService.FromMinor(closing),
+                    periodDr = LedgerPostingService.FromMinor(b.PeriodDrMinor, b.Currency),
+                    periodCr = LedgerPostingService.FromMinor(b.PeriodCrMinor, b.Currency),
+                    closing = LedgerPostingService.FromMinor(closing, b.Currency),
                 };
             })
             .OrderBy(r => r.accountCode)
@@ -204,6 +214,7 @@ public class AccountingLedgerController(
         return Ok(new
         {
             period = new { period.Id, period.Year, period.PeriodNo, period.Status, period.StartDate, period.EndDate },
+            currency = functional,
             balanced = totalDr == totalCr,
             totalDr,
             totalCr,
@@ -294,6 +305,9 @@ public class AccountingLedgerController(
         string? Narration,
         string? JournalType,
         string? DocSeries,
+        string? Currency,
+        decimal? FxRate,
+        DateOnly? FxRateDate,
         List<JournalLineRequest> Lines);
 
     [HttpPost("accounts")]
@@ -369,7 +383,10 @@ public class AccountingLedgerController(
                 createdBy: "accounting-ui",
                 idempotencyKey: null,
                 lines,
-                CancellationToken.None);
+                CancellationToken.None,
+                txnCurrency: body.Currency,
+                fxRate: body.FxRate,
+                fxRateDate: body.FxRateDate);
 
             return Ok(new
             {
@@ -379,6 +396,9 @@ public class AccountingLedgerController(
                 journal.PostedAt,
                 journal.Narration,
                 lineCount = journal.Lines.Count,
+                currency = journal.Lines.FirstOrDefault()?.Currency,
+                functionalCurrency = journal.Lines.FirstOrDefault()?.FuncCurrency,
+                fxRate = journal.Lines.FirstOrDefault()?.FxRate,
             });
         }
         catch (InvalidOperationException ex)
