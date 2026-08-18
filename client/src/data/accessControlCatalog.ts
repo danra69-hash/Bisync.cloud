@@ -244,11 +244,14 @@ function accountingRows(): AccessControlRow[] {
       'Bank Reconciliation',
       'Financial Reports',
       'Account Mapping',
+      'Soft Close Periods',
+      'Hard Close Periods',
     ]),
     labelTasks('Accounts Payable', [
       'View AP',
       'Manage Vendor Bills',
       'Pay Bills',
+      'Approve Vendor Bills',
     ]),
     labelTasks('Accounts Receivable', [
       'View AR',

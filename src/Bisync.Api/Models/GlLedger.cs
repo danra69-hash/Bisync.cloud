@@ -80,6 +80,12 @@ public class GlJournalLine
     public string Narration { get; set; } = "";
     public DateOnly EffectiveDate { get; set; }
     public int PeriodId { get; set; }
+    /// <summary>Ops location external id (hospitality dimension).</summary>
+    public string? LocationExternalId { get; set; }
+    /// <summary>HR department id (optional cost centre dimension).</summary>
+    public int? DepartmentId { get; set; }
+    /// <summary>Intercompany partner company id (consolidation).</summary>
+    public int? PartnerCompanyId { get; set; }
 }
 
 public class GlPeriodBalance

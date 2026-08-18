@@ -143,6 +143,12 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<GlRevRecContract> GlRevRecContracts => Set<GlRevRecContract>();
     public DbSet<GlRevRecObligation> GlRevRecObligations => Set<GlRevRecObligation>();
     public DbSet<GlStatutoryReturn> GlStatutoryReturns => Set<GlStatutoryReturn>();
+    public DbSet<GlBudget> GlBudgets => Set<GlBudget>();
+    public DbSet<GlBudgetLine> GlBudgetLines => Set<GlBudgetLine>();
+    public DbSet<GlSavedReport> GlSavedReports => Set<GlSavedReport>();
+    public DbSet<GlConsolidationGroup> GlConsolidationGroups => Set<GlConsolidationGroup>();
+    public DbSet<GlConsolidationMember> GlConsolidationMembers => Set<GlConsolidationMember>();
+    public DbSet<GlEinvoiceTransmission> GlEinvoiceTransmissions => Set<GlEinvoiceTransmission>();
     public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
@@ -985,10 +991,41 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.FuncCurrency).HasMaxLength(3);
             e.Property(x => x.FxRate).HasPrecision(20, 10);
             e.Property(x => x.FxRateType).HasMaxLength(24);
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId });
             e.HasOne(x => x.Account)
                 .WithMany()
                 .HasForeignKey(x => x.AccountId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<GlBudget>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.FiscalYear, x.Name });
+            e.HasMany(x => x.Lines).WithOne(x => x.Budget).HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlBudgetLine>(e =>
+        {
+            e.HasIndex(x => new { x.BudgetId, x.AccountId, x.PeriodNo });
+        });
+        modelBuilder.Entity<GlSavedReport>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Kind });
+            e.Property(x => x.Kind).HasMaxLength(40);
+        });
+        modelBuilder.Entity<GlConsolidationGroup>(e =>
+        {
+            e.HasMany(x => x.Members).WithOne(x => x.Group).HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlConsolidationMember>(e =>
+        {
+            e.HasIndex(x => new { x.GroupId, x.MemberCompanyId }).IsUnique();
+            e.Property(x => x.OwnershipPercent).HasPrecision(8, 4);
+        });
+        modelBuilder.Entity<GlEinvoiceTransmission>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Status });
+            e.Property(x => x.Provider).HasMaxLength(64);
+            e.Property(x => x.SourceDocKey).HasMaxLength(160);
         });
         modelBuilder.Entity<GlPeriodBalance>(e =>
         {

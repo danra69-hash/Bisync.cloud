@@ -15,18 +15,23 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
     public static readonly (string Code, string Name, string Type, string Normal)[] MalaysiaExtraAccounts =
     [
         ("1110", "Trade receivables control", "asset", "D"),
+        ("1120", "Unapplied AR cash", "asset", "D"),
         ("2010", "Trade payables control", "liability", "C"),
+        ("2020", "Unapplied AP payments", "liability", "C"),
         ("2210", "SST output payable", "liability", "C"),
         ("5210", "SST expense (non-recoverable)", "expense", "D"),
         ("5710", "Realised FX gain/loss", "expense", "D"),
         ("5720", "Unrealised FX gain/loss", "expense", "D"),
         ("4010", "SST-inclusive sales clearing", "income", "C"),
+        ("1500", "Property plant and equipment", "asset", "D"),
     ];
 
     public static readonly (string Role, string AccountCode, string Notes)[] DefaultRoles =
     [
         ("ar_control", "1110", "Trade AR"),
+        ("ar_unapplied", "1120", "Unapplied customer receipts"),
         ("ap_control", "2010", "Trade AP"),
+        ("ap_unapplied", "2020", "Unapplied supplier payments"),
         ("revenue_default", "4000", "F&B sales"),
         ("cogs_default", "5200", "Inventory COGS"),
         ("tax_output_payable", "2210", "SST output"),
@@ -37,6 +42,7 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
         ("retained_earnings", "3000", "Equity"),
         ("rounding_difference", "5900", "Suspense / rounding"),
         ("inventory_default", "1400", "Inventory"),
+        ("fixed_asset_default", "1500", "PPE / fixed assets"),
         ("deferred_revenue", "2400", "Contract liability"),
         ("accum_depreciation", "1510", "Accumulated depreciation"),
         ("dep_expense", "5810", "Depreciation expense"),
@@ -59,6 +65,22 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
     public async Task EnsureCoreRolesAndSlaAsync(int companyId, CancellationToken ct = default)
     {
         await SchemaPatcher.EnsureGlBooksTablesAsync(db);
+        foreach (var a in MalaysiaExtraAccounts)
+        {
+            if (await db.GlAccounts.AnyAsync(x => x.CompanyId == companyId && x.Code == a.Code, ct))
+                continue;
+            db.GlAccounts.Add(new GlAccount
+            {
+                CompanyId = companyId,
+                Code = a.Code,
+                Name = a.Name,
+                AccountType = a.Type,
+                NormalBalance = a.Normal,
+                Active = true,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+        await db.SaveChangesAsync(ct);
         await EnsureAccountRolesAsync(companyId, ct);
         await EnsureRolesAndSlaAsync(companyId, ct);
         await db.SaveChangesAsync(ct);
@@ -187,18 +209,25 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
 
     async Task EnsureRolesAndSlaAsync(int companyId, CancellationToken ct)
     {
-        async Task Seed(string eventType, string name, (string Role, string Dir, string Amt)[] lines)
+        async Task Seed(string eventType, string name, int version, (string Role, string Dir, string Amt)[] lines)
         {
             if (await db.GlSlaRuleSets.AnyAsync(r =>
-                    r.CompanyId == companyId && r.EventType == eventType && r.Status == "active", ct))
+                    r.CompanyId == companyId && r.EventType == eventType && r.Status == "active" && r.Version >= version, ct))
                 return;
+
+            // Supersede older active sets for this event so apply-clearing / unapplied cash can take effect.
+            var prior = await db.GlSlaRuleSets
+                .Where(r => r.CompanyId == companyId && r.EventType == eventType && r.Status == "active")
+                .ToListAsync(ct);
+            foreach (var p in prior)
+                p.Status = "superseded";
 
             var set = new GlSlaRuleSet
             {
                 CompanyId = companyId,
                 EventType = eventType,
                 PackId = PackId,
-                Version = 1,
+                Version = version,
                 EffectiveFrom = new DateOnly(2026, 1, 1),
                 Status = "active",
                 Name = name,
@@ -219,58 +248,71 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
             db.GlSlaRuleSets.Add(set);
         }
 
-        await Seed("ops.purchase_affirmed", "MY purchase affirm (Inventory / AP)",
+        await Seed("ops.purchase_affirmed", "MY purchase affirm (Inventory / AP)", 1,
         [
             ("inventory_default", "D", "net"),
             ("tax_expense_nonrecoverable", "D", "tax"),
             ("ap_control", "C", "gross"),
         ]);
 
-        await Seed("ar.invoice.posted", "MY AR invoice (AR / Revenue / SST)",
+        await Seed("ar.invoice.posted", "MY AR invoice (AR / Revenue / SST)", 1,
         [
             ("ar_control", "D", "gross"),
             ("revenue_default", "C", "net"),
             ("tax_output_payable", "C", "tax"),
         ]);
 
-        await Seed("ap.bill.posted", "MY AP bill (Expense or Inventory / AP / SST expense)",
+        await Seed("ap.bill.posted", "MY AP bill (Expense or Inventory / AP / SST expense)", 1,
         [
             ("cogs_default", "D", "net"),
             ("tax_expense_nonrecoverable", "D", "tax"),
             ("ap_control", "C", "gross"),
         ]);
 
-        await Seed("bank.payment.posted", "MY bank payment clearing",
+        // v2: receipts/payments land in unapplied; apply clears to control.
+        await Seed("bank.payment.posted", "MY bank payment → unapplied AP", 2,
         [
-            ("ap_control", "D", "net"),
+            ("ap_unapplied", "D", "net"),
             ("bank_default", "C", "net"),
         ]);
 
-        await Seed("bank.receipt.posted", "MY bank receipt clearing",
+        await Seed("bank.receipt.posted", "MY bank receipt → unapplied AR", 2,
         [
             ("bank_default", "D", "net"),
-            ("ar_control", "C", "net"),
+            ("ar_unapplied", "C", "net"),
         ]);
 
-        await Seed("ar.credit_note.posted", "MY AR credit note (reverse invoice)",
+        await Seed("ar.credit_note.posted", "MY AR credit note (reverse invoice)", 1,
         [
             ("revenue_default", "D", "net"),
             ("tax_output_payable", "D", "tax"),
             ("ar_control", "C", "gross"),
         ]);
 
-        await Seed("ap.credit_note.posted", "MY AP credit note (reverse bill)",
+        await Seed("ap.credit_note.posted", "MY AP credit note (reverse bill)", 1,
         [
             ("ap_control", "D", "gross"),
             ("cogs_default", "C", "net"),
             ("tax_expense_nonrecoverable", "C", "tax"),
         ]);
 
-        await Seed("pos.settlement.posted", "MY POS day settlement (tenders / sales / SST)",
+        await Seed("pos.settlement.posted", "MY POS day settlement (tenders / sales / SST)", 1,
         [
             ("pos_cash", "D", "gross"),
             ("revenue_default", "C", "net"),
             ("tax_output_payable", "C", "tax"),
+        ]);
+
+        await Seed("ops.fifo_issue", "MY FIFO issue (COGS / Inventory)", 1,
+        [
+            ("cogs_default", "D", "net"),
+            ("inventory_default", "C", "net"),
+        ]);
+
+        await Seed("ops.vendor_credit_note", "MY vendor credit note (AP / Inventory)", 1,
+        [
+            ("ap_control", "D", "net"),
+            ("inventory_default", "C", "net"),
         ]);
     }
 

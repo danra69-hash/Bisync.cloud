@@ -16,6 +16,8 @@ public class AccountingBooksController(
     AccountingSubledgerService books,
     AccountingInternalBooksService internalBooks,
     AccountingBridgeService accountingBridge,
+    AccountingScaleService scale,
+    EinvoiceDispatchService einvoice,
     MalaysiaAccountingPackService malaysiaPack) : ControllerBase
 {
     bool TryGate(int? companyId, out int cid, out string actor, out ActionResult error)
@@ -132,6 +134,7 @@ public class AccountingBooksController(
                 i.Subledger,
                 i.Kind,
                 i.CounterpartyName,
+                i.CounterpartyRef,
                 i.Currency,
                 i.IssueDate,
                 i.DueDate,
@@ -180,6 +183,7 @@ public class AccountingBooksController(
         string? CreatedBy,
         bool? RequireApApproval,
         List<CreateOpenItemLineRequest>? Lines,
+        string? CounterpartyRef,
         decimal? FxRate,
         DateOnly? FxRateDate);
 
@@ -189,6 +193,10 @@ public class AccountingBooksController(
         [FromBody] CreateOpenItemRequest body)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var acKey = body.Subledger?.Trim().Equals("ap", StringComparison.OrdinalIgnoreCase) == true
+            ? AccountingAccessControl.ApManage
+            : AccountingAccessControl.ArManage;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, acKey) is { } denied) return denied;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         if (company is null) return NotFound(new { message = "Company not found." });
         try
@@ -224,6 +232,7 @@ public class AccountingBooksController(
                 string.IsNullOrWhiteSpace(body.CreatedBy) ? actor : body.CreatedBy,
                 body.RequireApApproval ?? true,
                 lineInputs,
+                body.CounterpartyRef,
                 body.FxRate,
                 body.FxRateDate);
             return Ok(new
@@ -236,6 +245,8 @@ public class AccountingBooksController(
                 item.Status,
                 item.ApprovalStatus,
                 item.CreatedBy,
+                item.CounterpartyName,
+                item.CounterpartyRef,
                 currency = item.Currency,
                 gross = LedgerPostingService.FromMinor(item.GrossMinor, item.Currency),
                 open = LedgerPostingService.FromMinor(item.OpenMinor, item.Currency),
@@ -262,6 +273,9 @@ public class AccountingBooksController(
         [FromBody] ApplyRequest body)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var arDenied = await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.ArReceive);
+        var apDenied = await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.ApPay);
+        if (arDenied is not null && apDenied is not null) return arDenied;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try
         {
@@ -420,6 +434,38 @@ public class AccountingBooksController(
         });
     }
 
+    public sealed record ImportBankCsvRequest(
+        string CsvText,
+        string? AccountLabel,
+        string? BankAccountCode,
+        string? Currency,
+        DateOnly? StatementDate,
+        decimal? Opening,
+        decimal? Closing);
+
+    [HttpPost("bank-statements/import-csv")]
+    public async Task<ActionResult<object>> ImportBankCsv(
+        [FromQuery] int? companyId,
+        [FromBody] ImportBankCsvRequest body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.BankRec) is { } denied)
+            return denied;
+        try
+        {
+            return Ok(await books.ImportBankCsvAsync(
+                cid,
+                body.CsvText,
+                body.AccountLabel,
+                body.BankAccountCode,
+                body.Currency,
+                body.StatementDate,
+                body.Opening,
+                body.Closing));
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
     [HttpPost("bank-statements/{id:int}/finalise")]
     public async Task<ActionResult<object>> FinaliseBankStatement(int id, [FromQuery] int? companyId)
     {
@@ -490,6 +536,8 @@ public class AccountingBooksController(
         {
             await internalBooks.ApproveAsync(cid, id, actor);
             await books.PostDeferredJournalIfNeededAsync(cid, company?.CountryCode, id);
+            // Best-effort e-invoice queue (stub MyInvois in non-prod). Failure must not block approve.
+            _ = await einvoice.QueueOpenItemAsync(cid, id);
             return NoContent();
         }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
@@ -611,6 +659,24 @@ public class AccountingBooksController(
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
+    public sealed record DisposeFixedAssetRequest(DateOnly DisposedOn, decimal? Proceeds);
+
+    [HttpPost("fixed-assets/{id:int}/dispose")]
+    public async Task<ActionResult<object>> DisposeFixedAsset(
+        int id,
+        [FromQuery] int? companyId,
+        [FromBody] DisposeFixedAssetRequest body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        try
+        {
+            return Ok(await internalBooks.DisposeFixedAssetAsync(
+                cid, company?.CountryCode, id, body.DisposedOn, body.Proceeds ?? 0m));
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
     [HttpPost("fixed-assets/depreciate")]
     public async Task<ActionResult<object>> Depreciate([FromQuery] int? companyId, [FromQuery] int year, [FromQuery] int periodNo, [FromQuery] string? bookId)
     {
@@ -670,6 +736,21 @@ public class AccountingBooksController(
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
+    [HttpPost("revrec/run-schedule")]
+    public async Task<ActionResult<object>> RunRevRecSchedule(
+        [FromQuery] int? companyId,
+        [FromQuery] DateOnly? asOf)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        try
+        {
+            return Ok(await internalBooks.RunRevRecScheduleAsync(
+                cid, company?.CountryCode, asOf ?? DateOnly.FromDateTime(DateTime.UtcNow)));
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
     public sealed record RecogniseBody(decimal Amount);
 
     [HttpPost("returns/sst-02")]
@@ -678,6 +759,255 @@ public class AccountingBooksController(
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try { return Ok(await internalBooks.ComputeSst02Async(cid, periodStart, periodEnd)); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpGet("returns")]
+    public async Task<ActionResult<object>> ListReturns([FromQuery] int? companyId, [FromQuery] int take = 40)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        take = Math.Clamp(take, 1, 200);
+        var rows = await db.GlStatutoryReturns.AsNoTracking()
+            .Where(r => r.CompanyId == cid)
+            .OrderByDescending(r => r.ComputedAt)
+            .Take(take)
+            .Select(r => new
+            {
+                r.Id,
+                r.ReturnType,
+                r.PeriodStart,
+                r.PeriodEnd,
+                r.Status,
+                r.TransmissionStatus,
+                r.TransmissionRef,
+                r.ComputedAt,
+            })
+            .ToListAsync();
+        return Ok(rows);
+    }
+
+    [HttpGet("returns/{id:int}/export")]
+    public async Task<IActionResult> ExportReturn(int id, [FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        try
+        {
+            var csv = await internalBooks.ExportSst02CsvAsync(cid, id);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+            return File(bytes, "text/csv", $"sst-02-{id}.csv");
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    // ── Wave D: budgets / saved reports / consolidation / take-on / e-invoice ──
+
+    [HttpGet("budgets")]
+    public async Task<ActionResult<object>> ListBudgets([FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        await scale.EnsureScaleTablesAsync();
+        var rows = await db.GlBudgets.AsNoTracking()
+            .Where(b => b.CompanyId == cid)
+            .OrderByDescending(b => b.FiscalYear)
+            .ThenBy(b => b.Name)
+            .Select(b => new { b.Id, b.Name, b.FiscalYear, b.Currency, b.Status, lineCount = b.Lines.Count, b.CreatedAt })
+            .ToListAsync();
+        return Ok(rows);
+    }
+
+    public sealed record BudgetLineBody(string AccountCode, int PeriodNo, decimal Amount, string? LocationExternalId);
+    public sealed record UpsertBudgetBody(string Name, int FiscalYear, string? Currency, List<BudgetLineBody> Lines);
+
+    [HttpPost("budgets")]
+    public async Task<ActionResult<object>> UpsertBudget([FromQuery] int? companyId, [FromBody] UpsertBudgetBody body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.JournalManage) is { } denied)
+            return denied;
+        if (string.IsNullOrWhiteSpace(body.Name) || body.Lines is null || body.Lines.Count == 0)
+            return BadRequest(new { message = "Name and at least one budget line are required." });
+        try
+        {
+            var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+            var budget = await scale.UpsertBudgetAsync(
+                cid,
+                body.Name,
+                body.FiscalYear,
+                body.Currency ?? company?.FunctionalCurrency ?? "MYR",
+                body.Lines.Select(l => (l.AccountCode, l.PeriodNo, l.Amount, l.LocationExternalId)).ToList());
+            return Ok(new { budget.Id, budget.Name, budget.FiscalYear, budget.Currency, budget.Status, lineCount = budget.Lines.Count });
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpGet("budgets/{id:int}/vs-actual")]
+    public async Task<ActionResult<object>> BudgetVsActual(int id, [FromQuery] int? companyId, [FromQuery] int? periodNo)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        try { return Ok(await scale.BudgetVsActualAsync(cid, id, periodNo)); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpGet("saved-reports")]
+    public async Task<ActionResult<object>> ListSavedReports([FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        await scale.EnsureScaleTablesAsync();
+        var rows = await db.GlSavedReports.AsNoTracking()
+            .Where(r => r.CompanyId == cid)
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new { r.Id, r.Name, r.Kind, r.FiltersJson, r.CreatedBy, r.CreatedAt })
+            .ToListAsync();
+        return Ok(rows);
+    }
+
+    public sealed record SaveReportBody(string Name, string Kind, string? FiltersJson);
+
+    [HttpPost("saved-reports")]
+    public async Task<ActionResult<object>> SaveReport([FromQuery] int? companyId, [FromBody] SaveReportBody body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (string.IsNullOrWhiteSpace(body.Name)) return BadRequest(new { message = "Name is required." });
+        var row = await scale.SaveReportAsync(cid, body.Name, body.Kind ?? "trial_balance", body.FiltersJson ?? "{}", actor);
+        return Ok(new { row.Id, row.Name, row.Kind, row.FiltersJson, row.CreatedBy, row.CreatedAt });
+    }
+
+    [HttpGet("consolidation-groups")]
+    public async Task<ActionResult<object>> ListConsolGroups([FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        await scale.EnsureScaleTablesAsync();
+        var rows = await db.GlConsolidationGroups.AsNoTracking()
+            .Include(g => g.Members)
+            .Where(g => g.ParentCompanyId == cid)
+            .OrderBy(g => g.Name)
+            .Select(g => new
+            {
+                g.Id,
+                g.Name,
+                g.Status,
+                g.ParentCompanyId,
+                members = g.Members.Select(m => new { m.MemberCompanyId, m.OwnershipPercent }),
+            })
+            .ToListAsync();
+        return Ok(rows);
+    }
+
+    public sealed record ConsolMemberBody(int MemberCompanyId, decimal OwnershipPercent);
+    public sealed record UpsertConsolBody(string Name, List<ConsolMemberBody> Members);
+
+    [HttpPost("consolidation-groups")]
+    public async Task<ActionResult<object>> UpsertConsol([FromQuery] int? companyId, [FromBody] UpsertConsolBody body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.HardClose) is { } denied)
+            return denied;
+        if (string.IsNullOrWhiteSpace(body.Name)) return BadRequest(new { message = "Name is required." });
+        var group = await scale.UpsertConsolidationGroupAsync(
+            cid,
+            body.Name,
+            (body.Members ?? []).Select(m => (m.MemberCompanyId, m.OwnershipPercent)).ToList());
+        return Ok(new
+        {
+            group.Id,
+            group.Name,
+            group.Status,
+            members = group.Members.Select(m => new { m.MemberCompanyId, m.OwnershipPercent }),
+        });
+    }
+
+    public sealed record ElimLineBody(string AccountCode, string Direction, decimal Amount, string? LineNarration);
+    public sealed record PostElimBody(int PartnerCompanyId, DateOnly EffectiveDate, string Narration, List<ElimLineBody> Lines);
+
+    [HttpPost("consolidation/elim")]
+    public async Task<ActionResult<object>> PostElim([FromQuery] int? companyId, [FromBody] PostElimBody body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.JournalManage) is { } denied)
+            return denied;
+        if (body.Lines is null || body.Lines.Count < 2)
+            return BadRequest(new { message = "At least two elimination lines are required." });
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        try
+        {
+            return Ok(await scale.PostEliminationAsync(
+                cid,
+                company?.CountryCode,
+                body.PartnerCompanyId,
+                body.EffectiveDate,
+                body.Narration ?? "Elimination",
+                body.Lines.Select(l => (l.AccountCode, l.Direction, l.Amount, l.LineNarration ?? "")).ToList(),
+                actor));
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpGet("pnl-by-location")]
+    public async Task<ActionResult<object>> PnlByLocation([FromQuery] int? companyId, [FromQuery] int periodId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        try { return Ok(await scale.PnlByLocationAsync(cid, periodId)); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    public sealed record TakeOnBody(string CsvText);
+
+    [HttpPost("take-on/coa")]
+    public async Task<ActionResult<object>> TakeOnCoa([FromQuery] int? companyId, [FromBody] TakeOnBody body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.JournalManage) is { } denied)
+            return denied;
+        try { return Ok(await scale.ImportCoaCsvAsync(cid, body.CsvText ?? "")); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpPost("take-on/journals")]
+    public async Task<ActionResult<object>> TakeOnJournals([FromQuery] int? companyId, [FromBody] TakeOnBody body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.JournalManage) is { } denied)
+            return denied;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        try { return Ok(await scale.ImportJournalsCsvAsync(cid, company?.CountryCode, body.CsvText ?? "", actor)); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpGet("einvoice")]
+    public async Task<ActionResult<object>> ListEinvoice([FromQuery] int? companyId, [FromQuery] int take = 40)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        take = Math.Clamp(take, 1, 200);
+        await SchemaPatcher.EnsureGlBooksTablesAsync(db);
+        var rows = await db.GlEinvoiceTransmissions.AsNoTracking()
+            .Where(t => t.CompanyId == cid)
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(take)
+            .Select(t => new
+            {
+                t.Id,
+                t.Provider,
+                t.DocumentType,
+                t.SourceDocKey,
+                t.OpenItemId,
+                t.JournalId,
+                t.Status,
+                t.ExternalUin,
+                t.CreatedAt,
+                t.SubmittedAt,
+            })
+            .ToListAsync();
+        return Ok(rows);
+    }
+
+    [HttpPost("einvoice/{openItemId:int}/queue")]
+    public async Task<ActionResult<object>> QueueEinvoice(int openItemId, [FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.ArManage) is { } denied)
+            return denied;
+        var result = await einvoice.QueueOpenItemAsync(cid, openItemId);
+        if (result is null) return NotFound(new { message = "Open item not found." });
+        return Ok(result);
     }
 
     public sealed record PosSettlementRequest(string LocationExternalId, DateOnly BusinessDate);

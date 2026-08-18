@@ -73,7 +73,7 @@ export function MalaysiaPackPanel({
           <p>Model: {pack.sst.model}</p>
           <p>Input credit: {pack.sst.inputCredit ? 'yes' : 'no'} · recoverability={pack.sst.recoverability}</p>
           <p>Filing: {pack.sst.filing}</p>
-          <p>E-invoice: {pack.sst.eInvoicing} (transmission later)</p>
+          <p>E-invoice: {pack.sst.eInvoicing} (stub queue on AR approve; live MyInvois later)</p>
           <button type="button" className="underline text-muted-foreground" onClick={() => void computeSst()}>
             Compute SST-02 draft (this month)
           </button>
@@ -123,7 +123,14 @@ export function OpenItemsPanel({
 }) {
   const [items, setItems] = useState<AccountingOpenItem[]>([]);
   const [aging, setAging] = useState<AccountingAging | null>(null);
-  const [recon, setRecon] = useState<{ glControl: number; subledgerOpen: number; drift: number; reconciled: boolean; controlAccount: string } | null>(null);
+  const [recon, setRecon] = useState<{
+    glControl: number;
+    subledgerOpen: number;
+    drift: number;
+    reconciled: boolean;
+    controlAccount: string;
+    note?: string;
+  } | null>(null);
   const [apps, setApps] = useState<Array<{ id: number; appliedFromId: number; appliedToId: number; amount: number; reversalOfId: number | null }>>([]);
   const [name, setName] = useState('');
   const [gross, setGross] = useState('');
@@ -471,15 +478,56 @@ export function OpenItemsPanel({
       </div>
 
       {aging && (
-        <p className="font-sans text-muted-foreground">
-          Aging: current {money(aging.buckets.current ?? 0)} · 1–30 {money(aging.buckets['1-30'] ?? 0)} · 31–60 {money(aging.buckets['31-60'] ?? 0)} · 61–90 {money(aging.buckets['61-90'] ?? 0)} · 90+ {money(aging.buckets['90+'] ?? 0)}
-        </p>
+        <div className="border-t border-border pt-3 space-y-2">
+          <p className="font-semibold">Aging detail</p>
+          <p className="font-sans text-muted-foreground">
+            Buckets: current {money(aging.buckets.current ?? 0)} · 1–30 {money(aging.buckets['1-30'] ?? 0)} · 31–60 {money(aging.buckets['31-60'] ?? 0)} · 61–90 {money(aging.buckets['61-90'] ?? 0)} · 90+ {money(aging.buckets['90+'] ?? 0)}
+          </p>
+          {aging.rows && aging.rows.length > 0 && (
+            <table className="w-full border-collapse text-[11px]">
+              <thead>
+                <tr className="text-muted-foreground border-b border-border text-left">
+                  <th className="py-1 pr-2">Doc</th>
+                  <th className="py-1 pr-2">Party</th>
+                  <th className="py-1 pr-2">Due</th>
+                  <th className="py-1 pr-2 text-right">Open</th>
+                  <th className="py-1 pr-2">Bucket</th>
+                  <th className="py-1">Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aging.rows.slice(0, 40).map(r => (
+                  <tr key={r.id} className="border-b border-border/60">
+                    <td className="py-1 pr-2 font-sans">#{r.id} {r.internalDocumentNo}</td>
+                    <td className="py-1 pr-2">{r.counterpartyName}</td>
+                    <td className="py-1 pr-2 font-sans">{r.dueDate}</td>
+                    <td className="py-1 pr-2 text-right font-sans">{money(r.open)}</td>
+                    <td className="py-1 pr-2 font-sans">{r.bucket}</td>
+                    <td className="py-1 font-sans">{r.daysPastDue}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
       {recon && (
-        <p className="font-sans text-muted-foreground">
-          Control {recon.controlAccount}: GL {money(recon.glControl)} · subledger {money(recon.subledgerOpen)} · drift {money(recon.drift)}
-          {recon.reconciled ? ' · tied' : ' · out of balance'}
-        </p>
+        <div className="border-t border-border pt-3 space-y-2 text-[11px]">
+          <p className="font-semibold">Control reconciliation worksheet</p>
+          <p className="font-sans text-muted-foreground">
+            Control {recon.controlAccount}: GL {money(recon.glControl)} · subledger {money(recon.subledgerOpen)} · drift {money(recon.drift)}
+            {recon.reconciled ? ' · tied' : ' · out of balance'}
+          </p>
+          <p className="text-muted-foreground">{recon.note}</p>
+          <ul className="space-y-0.5 max-h-40 overflow-auto">
+            {items.filter(i => i.open > 0 && (i.kind === 'invoice' || i.kind === 'bill')).map(i => (
+              <li key={i.id} className="font-sans flex justify-between gap-2 border-b border-border/40 py-0.5">
+                <span>#{i.id} {i.internalDocumentNo} · {i.counterpartyName}</span>
+                <span>{money(i.open)} {i.currency}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <table className="w-full border-collapse">
@@ -534,6 +582,7 @@ export function BankPanel({
   const [queue, setQueue] = useState<Awaited<ReturnType<typeof api.accountingBankQueue>> | null>(null);
   const [narrative, setNarrative] = useState('');
   const [amount, setAmount] = useState('');
+  const [csvText, setCsvText] = useState('');
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [selectedItem, setSelectedItem] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<Array<{ openItemId: number; internalDocumentNo: string; counterpartyName: string; score: number; rule: string; open: number }>>([]);
@@ -610,7 +659,7 @@ export function BankPanel({
   return (
     <div className="space-y-4 max-w-5xl border-t border-border pt-3 text-xs">
       <p className="text-muted-foreground">
-        Capture statement lines, then match 1:1 / N:M to open items. Match posts cash and reduces the invoice open balance. Auto-match uses exact amount once. No external bank feed yet.
+        Capture statement lines, then match 1:1 / N:M to open items. Match posts cash and reduces the invoice open balance. Auto-match uses exact amount once. CSV import: date,narrative,amount.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <label className="space-y-1 sm:col-span-2">
@@ -622,7 +671,42 @@ export function BankPanel({
           <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} />
         </label>
       </div>
+      <label className="block space-y-1">
+        <span className="text-muted-foreground">Import CSV (date,narrative,amount)</span>
+        <textarea
+          className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans min-h-[72px]"
+          placeholder={"2026-08-01,DuitNow vendor pay,-1200.00\n2026-08-02,Customer receipt,850.50"}
+          value={csvText}
+          onChange={e => setCsvText(e.target.value)}
+        />
+      </label>
       <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy || !csvText.trim()}
+          className="text-xs font-bold border border-border px-3 py-1.5 rounded-md disabled:opacity-50"
+          onClick={() => {
+            void (async () => {
+              setBusy(true);
+              onError(null);
+              try {
+                await api.accountingImportBankCsv(companyId, {
+                  csvText,
+                  currency: functionalCurrency,
+                  opening: 0,
+                });
+                setCsvText('');
+                await load();
+              } catch (e) {
+                onError(e instanceof Error ? e.message : 'CSV import failed');
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+        >
+          Import CSV statement
+        </button>
         <button type="button" disabled={busy} onClick={() => void create()} className="text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50">
           Add statement line
         </button>
@@ -841,6 +925,375 @@ export function RevRecPanel({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+export function BudgetsPanel({
+  companyId,
+  accounts,
+  functionalCurrency,
+  onError,
+}: {
+  companyId: number;
+  accounts: Array<{ code: string; name: string }>;
+  functionalCurrency: string;
+  onError: (msg: string | null) => void;
+}) {
+  const [rows, setRows] = useState<Array<{
+    id: number;
+    name: string;
+    fiscalYear: number;
+    currency: string;
+    status: string;
+    lineCount: number;
+  }>>([]);
+  const [name, setName] = useState('Annual budget');
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [accountCode, setAccountCode] = useState('');
+  const [periodNo, setPeriodNo] = useState(1);
+  const [amount, setAmount] = useState('');
+  const [vs, setVs] = useState<{
+    name: string;
+    rows: Array<{ accountCode: string; accountName: string; budget: number; actual: number; variance: number }>;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    try {
+      setRows(await api.accountingBudgets(companyId));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to load budgets');
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  const save = async () => {
+    const n = Number(amount);
+    if (!accountCode.trim() || !(n > 0)) {
+      onError('Account code and amount required');
+      return;
+    }
+    setBusy(true);
+    onError(null);
+    try {
+      await api.accountingUpsertBudget(companyId, {
+        name,
+        fiscalYear: year,
+        currency: functionalCurrency,
+        lines: [{ accountCode: accountCode.trim(), periodNo, amount: n }],
+      });
+      setAmount('');
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Budget save failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openVs = async (id: number) => {
+    try {
+      const r = await api.accountingBudgetVsActual(companyId, id);
+      setVs({ name: r.name, rows: r.rows });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Budget vs actual failed');
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-4xl border-t border-border pt-3 text-xs">
+      <p className="font-semibold">Budgets</p>
+      <p className="text-muted-foreground">Upsert a named fiscal-year budget; compare to period actuals.</p>
+      <div className="flex flex-wrap gap-2 items-end">
+        <label className="space-y-1">
+          <span className="text-muted-foreground">Name</span>
+          <input className="block border border-border rounded-md bg-background px-2 py-1" value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <label className="space-y-1">
+          <span className="text-muted-foreground">Year</span>
+          <input type="number" className="block border border-border rounded-md bg-background px-2 py-1 w-24 font-sans" value={year} onChange={e => setYear(Number(e.target.value))} />
+        </label>
+        <label className="space-y-1">
+          <span className="text-muted-foreground">Account</span>
+          <select className="block border border-border rounded-md bg-background px-2 py-1 font-sans" value={accountCode} onChange={e => setAccountCode(e.target.value)}>
+            <option value="">Select…</option>
+            {accounts.map(a => (
+              <option key={a.code} value={a.code}>{a.code} · {a.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-muted-foreground">Period</span>
+          <input type="number" min={1} max={12} className="block border border-border rounded-md bg-background px-2 py-1 w-16 font-sans" value={periodNo} onChange={e => setPeriodNo(Number(e.target.value))} />
+        </label>
+        <label className="space-y-1">
+          <span className="text-muted-foreground">Amount</span>
+          <input className="block border border-border rounded-md bg-background px-2 py-1 w-28 font-sans" value={amount} onChange={e => setAmount(e.target.value)} />
+        </label>
+        <button type="button" disabled={busy} onClick={() => void save()} className="text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50">
+          Save budget line
+        </button>
+      </div>
+      <ul className="space-y-2">
+        {rows.map(r => (
+          <li key={r.id} className="flex flex-wrap gap-2 justify-between border-b border-border/60 pb-2">
+            <span className="font-sans">{r.name} · FY{r.fiscalYear} · {r.currency} · {r.lineCount} lines · {r.status}</span>
+            <button type="button" className="underline text-muted-foreground" onClick={() => void openVs(r.id)}>Vs actual</button>
+          </li>
+        ))}
+      </ul>
+      {vs && (
+        <div className="space-y-2">
+          <p className="font-semibold">{vs.name} — budget vs actual</p>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border text-left">
+                <th className="py-1 pr-2">Account</th>
+                <th className="py-1 pr-2 text-right">Budget</th>
+                <th className="py-1 pr-2 text-right">Actual</th>
+                <th className="py-1 text-right">Variance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vs.rows.map(r => (
+                <tr key={r.accountCode} className="border-b border-border/60">
+                  <td className="py-1 pr-2">{r.accountCode} · {r.accountName}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.budget)}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.actual)}</td>
+                  <td className="py-1 text-right font-sans">{money(r.variance)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ScalePanel({
+  companyId,
+  periodId,
+  onError,
+}: {
+  companyId: number;
+  periodId?: number;
+  onError: (msg: string | null) => void;
+}) {
+  const [groups, setGroups] = useState<Array<{
+    id: number;
+    name: string;
+    status: string;
+    members: Array<{ memberCompanyId: number; ownershipPercent: number }>;
+  }>>([]);
+  const [pnl, setPnl] = useState<Array<{ locationExternalId: string; income: number; expense: number; net: number }> | null>(null);
+  const [groupName, setGroupName] = useState('Group');
+  const [memberId, setMemberId] = useState('');
+  const [coaCsv, setCoaCsv] = useState('code,name,type,normal\n1500,Take-on Asset,asset,D\n3000,Take-on Equity,equity,C');
+  const [journalCsv, setJournalCsv] = useState('effectiveDate,accountCode,direction,amount,narration,locationExternalId\n');
+  const [einvoice, setEinvoice] = useState<Array<{
+    id: number;
+    provider: string;
+    documentType: string;
+    sourceDocKey: string;
+    status: string;
+    externalUin: string | null;
+  }>>([]);
+  const [returns, setReturns] = useState<Array<{
+    id: number;
+    returnType: string;
+    periodStart: string;
+    periodEnd: string;
+    status: string;
+    transmissionStatus: string;
+  }>>([]);
+  const [msg, setMsg] = useState('');
+
+  const load = async () => {
+    try {
+      const [g, e, r] = await Promise.all([
+        api.accountingConsolGroups(companyId),
+        api.accountingEinvoiceList(companyId),
+        api.accountingListReturns(companyId),
+      ]);
+      setGroups(g);
+      setEinvoice(e);
+      setReturns(r);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Failed to load scale data');
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  const saveGroup = async () => {
+    const mid = Number(memberId);
+    if (!(mid > 0)) {
+      onError('Member company id required');
+      return;
+    }
+    try {
+      await api.accountingUpsertConsolGroup(companyId, {
+        name: groupName,
+        members: [{ memberCompanyId: mid, ownershipPercent: 100 }],
+      });
+      setMsg('Consolidation group saved');
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Consol group failed');
+    }
+  };
+
+  const loadPnl = async () => {
+    if (!periodId) {
+      onError('Select a period on Overview/Reports first');
+      return;
+    }
+    try {
+      const r = await api.accountingPnlByLocation(companyId, periodId);
+      setPnl(r.rows);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'P&L by location failed');
+    }
+  };
+
+  const importCoa = async () => {
+    try {
+      const r = await api.accountingTakeOnCoa(companyId, coaCsv);
+      setMsg(`COA take-on: created ${r.created}, skipped ${r.skipped}`);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'COA import failed');
+    }
+  };
+
+  const importJournals = async () => {
+    try {
+      const r = await api.accountingTakeOnJournals(companyId, journalCsv);
+      setMsg(`Journal take-on: posted ${r.journalsPosted}`);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Journal import failed');
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl border-t border-border pt-3 text-xs">
+      <div>
+        <p className="font-semibold">Scale &amp; compliance</p>
+        <p className="text-muted-foreground mt-1">
+          Consolidation groups, location P&amp;L, QBO/Xero CSV take-on, MyInvois stub queue, SST export.
+          Stub e-invoice is not live LHDN transmission.
+        </p>
+        {msg && <p className="text-muted-foreground mt-1 font-sans">{msg}</p>}
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-semibold">Consolidation group</p>
+        <div className="flex flex-wrap gap-2 items-end">
+          <input className="border border-border rounded-md bg-background px-2 py-1" value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Group name" />
+          <input className="border border-border rounded-md bg-background px-2 py-1 w-32 font-sans" value={memberId} onChange={e => setMemberId(e.target.value)} placeholder="Member company id" />
+          <button type="button" onClick={() => void saveGroup()} className="font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md">Save group</button>
+        </div>
+        <ul className="space-y-1">
+          {groups.map(g => (
+            <li key={g.id} className="font-sans">
+              {g.name} · {g.status} · members: {g.members.map(m => `${m.memberCompanyId}@${m.ownershipPercent}%`).join(', ') || 'none'}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-semibold">P&amp;L by location</p>
+        <button type="button" className="underline text-muted-foreground" onClick={() => void loadPnl()}>Load for selected period</button>
+        {pnl && (
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border text-left">
+                <th className="py-1 pr-2">Location</th>
+                <th className="py-1 pr-2 text-right">Income</th>
+                <th className="py-1 pr-2 text-right">Expense</th>
+                <th className="py-1 text-right">Net</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pnl.map(r => (
+                <tr key={r.locationExternalId} className="border-b border-border/60">
+                  <td className="py-1 pr-2 font-sans">{r.locationExternalId}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.income)}</td>
+                  <td className="py-1 pr-2 text-right font-sans">{money(r.expense)}</td>
+                  <td className="py-1 text-right font-sans">{money(r.net)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-semibold">Take-on (COA CSV)</p>
+        <textarea className="w-full min-h-[80px] border border-border rounded-md bg-background px-2 py-1 font-sans text-[11px]" value={coaCsv} onChange={e => setCoaCsv(e.target.value)} />
+        <button type="button" className="underline text-muted-foreground" onClick={() => void importCoa()}>Import COA</button>
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-semibold">Take-on (journals CSV)</p>
+        <textarea className="w-full min-h-[80px] border border-border rounded-md bg-background px-2 py-1 font-sans text-[11px]" value={journalCsv} onChange={e => setJournalCsv(e.target.value)} />
+        <button type="button" className="underline text-muted-foreground" onClick={() => void importJournals()}>Import journals</button>
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-semibold">E-invoice transmissions (MyInvois stub)</p>
+        <ul className="space-y-1">
+          {einvoice.length === 0 && <li className="text-muted-foreground">None yet — approve an AR invoice to queue stub transmission.</li>}
+          {einvoice.map(t => (
+            <li key={t.id} className="font-sans">
+              #{t.id} · {t.provider} · {t.documentType} · {t.sourceDocKey} · {t.status}
+              {t.externalUin ? ` · UIN ${t.externalUin}` : ''}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-semibold">Statutory returns / SST-02 export</p>
+        <ul className="space-y-1">
+          {returns.length === 0 && <li className="text-muted-foreground">Compute SST-02 from Malaysia tab first.</li>}
+          {returns.map(r => (
+            <li key={r.id} className="flex flex-wrap gap-2 justify-between border-b border-border/40 py-1">
+              <span className="font-sans">
+                #{r.id} · {r.returnType} · {r.periodStart}→{r.periodEnd} · {r.status} · {r.transmissionStatus}
+              </span>
+              <button
+                type="button"
+                className="underline text-muted-foreground"
+                onClick={() => {
+                  void api.accountingExportReturnCsv(companyId, r.id)
+                    .then(csv => {
+                      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `sst-02-${r.id}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    })
+                    .catch(e => onError(e instanceof Error ? e.message : 'Export failed'));
+                }}
+              >
+                Download CSV
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
