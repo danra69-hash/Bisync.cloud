@@ -40,6 +40,10 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
         ("deferred_revenue", "2400", "Contract liability"),
         ("accum_depreciation", "1510", "Accumulated depreciation"),
         ("dep_expense", "5810", "Depreciation expense"),
+        ("sales_discount", "4100", "Discounts / other income"),
+        ("pos_cash", "1000", "POS cash tender"),
+        ("pos_card", "1000", "POS card/QR tender"),
+        ("pos_non_revenue", "5800", "POS non-revenue settlement"),
     ];
 
     public static readonly (string Code, string Name, decimal Rate, string Recoverability)[] MalaysiaTaxCodes =
@@ -260,6 +264,13 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
             ("ap_control", "D", "gross"),
             ("cogs_default", "C", "net"),
             ("tax_expense_nonrecoverable", "C", "tax"),
+        ]);
+
+        await Seed("pos.settlement.posted", "MY POS day settlement (tenders / sales / SST)",
+        [
+            ("pos_cash", "D", "gross"),
+            ("revenue_default", "C", "net"),
+            ("tax_output_payable", "C", "tax"),
         ]);
     }
 

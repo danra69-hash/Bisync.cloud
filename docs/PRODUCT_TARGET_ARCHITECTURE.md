@@ -2,7 +2,7 @@
 
 **Status:** Binding product rules for Bisync.cloud.  
 **Related:** Component UOM is already unified (principal + up to 5 alts). Product UOM must follow the same clarity.  
-**Accounting / GL:** See [`ACCOUNTING_ARCHITECTURE.md`](./ACCOUNTING_ARCHITECTURE.md) — payroll and ops bridges are live; statutory books are phased.
+**Accounting / GL:** See [`ACCOUNTING_ARCHITECTURE.md`](./ACCOUNTING_ARCHITECTURE.md) and the NetSuite-class hospitality finance map in [`HOSPITALITY_ERP_FINANCE_PARITY.md`](./HOSPITALITY_ERP_FINANCE_PARITY.md). Payroll and ops bridges are live; statutory books are phased.
 
 This document defines how **B2C Products**, **B2B Principal Products** (with aliases), and **Sub-Products** must behave — including production, bi-products, holdout, DO, and stock-card FIFO.
 

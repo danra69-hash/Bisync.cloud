@@ -3,6 +3,8 @@ import { RefreshCw } from 'lucide-react';
 import {
   api,
   type AccountingAccount,
+  type AccountingCashFlow,
+  type AccountingGeneralLedger,
   type AccountingJournalDetail,
   type AccountingJournalSummary,
   type AccountingLedgerStatus,
@@ -57,6 +59,8 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
   const [periods, setPeriods] = useState<AccountingPeriod[]>([]);
   const [tb, setTb] = useState<AccountingTrialBalance | null>(null);
   const [statements, setStatements] = useState<AccountingStatements | null>(null);
+  const [cashFlow, setCashFlow] = useState<AccountingCashFlow | null>(null);
+  const [gl, setGl] = useState<AccountingGeneralLedger | null>(null);
   const [periodId, setPeriodId] = useState<number | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -70,6 +74,8 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
       setPeriods([]);
       setTb(null);
       setStatements(null);
+      setCashFlow(null);
+      setGl(null);
       setError('Select a company in the header to use Accounting Books.');
       return;
     }
@@ -95,12 +101,16 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
         ?? p[0]?.id;
       if (current) {
         setPeriodId(current);
-        const [trial, stmt] = await Promise.all([
+        const [trial, stmt, cf, ledger] = await Promise.all([
           api.accountingTrialBalance(companyId, current),
           api.accountingStatements(companyId, current),
+          api.accountingCashFlow(companyId, current),
+          api.accountingGeneralLedger(companyId, { periodId: current, take: 200 }),
         ]);
         setTb(trial);
         setStatements(stmt);
+        setCashFlow(cf);
+        setGl(ledger);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load Accounting');
@@ -120,12 +130,16 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
     setPeriodId(id);
     setLoading(true);
     try {
-      const [trial, stmt] = await Promise.all([
+      const [trial, stmt, cf, ledger] = await Promise.all([
         api.accountingTrialBalance(companyId, id),
         api.accountingStatements(companyId, id),
+        api.accountingCashFlow(companyId, id),
+        api.accountingGeneralLedger(companyId, { periodId: id, take: 200 }),
       ]);
       setTb(trial);
       setStatements(stmt);
+      setCashFlow(cf);
+      setGl(ledger);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load period reports');
     } finally {
@@ -278,7 +292,7 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
           onError={setError}
         />
       )}
-      {tab === 'reports' && <ReportsPanel tb={tb} statements={statements} />}
+      {tab === 'reports' && <ReportsPanel tb={tb} statements={statements} cashFlow={cashFlow} gl={gl} />}
       {tab === 'periods' && (
         <PeriodsPanel
           companyId={companyId}
@@ -756,9 +770,13 @@ function JournalsPanel({
 function ReportsPanel({
   tb,
   statements,
+  cashFlow,
+  gl,
 }: {
   tb: AccountingTrialBalance | null;
   statements: AccountingStatements | null;
+  cashFlow: AccountingCashFlow | null;
+  gl: AccountingGeneralLedger | null;
 }) {
   return (
     <div className="space-y-6 max-w-5xl">
@@ -844,6 +862,92 @@ function ReportsPanel({
             <p className="text-[11px] text-muted-foreground">{statements.balanceSheet.note}</p>
           </div>
         </>
+      )}
+
+      {cashFlow && (
+        <div className="border-t border-border pt-3 space-y-2">
+          <p className="text-xs font-semibold">
+            Cash flow (indirect)
+            <span className="font-normal text-muted-foreground">
+              {' '}· {cashFlow.currency} · net change {money(cashFlow.netChangeInCash)}
+            </span>
+          </p>
+          <ul className="text-xs space-y-1">
+            <li className="flex justify-between gap-4 border-b border-border/40 py-1">
+              <span>Net income</span>
+              <span className="font-sans">{money(cashFlow.operating.netIncome)}</span>
+            </li>
+            <li className="flex justify-between gap-4 border-b border-border/40 py-1">
+              <span>+ Depreciation</span>
+              <span className="font-sans">{money(cashFlow.operating.depreciationAddBack)}</span>
+            </li>
+            <li className="flex justify-between gap-4 border-b border-border/40 py-1">
+              <span>Δ Receivables / inventory / payables / tax</span>
+              <span className="font-sans">
+                {money(
+                  cashFlow.operating.changeInReceivables
+                  + cashFlow.operating.changeInInventory
+                  + cashFlow.operating.changeInPayables
+                  + cashFlow.operating.changeInTaxPayable,
+                )}
+              </span>
+            </li>
+            <li className="flex justify-between gap-4 border-b border-border/40 py-1 font-medium">
+              <span>Operating</span>
+              <span className="font-sans">{money(cashFlow.operating.netCashFromOperating)}</span>
+            </li>
+            <li className="flex justify-between gap-4 border-b border-border/40 py-1">
+              <span>Investing</span>
+              <span className="font-sans">{money(cashFlow.investing.netCashFromInvesting)}</span>
+            </li>
+            <li className="flex justify-between gap-4 border-b border-border/40 py-1">
+              <span>Financing</span>
+              <span className="font-sans">{money(cashFlow.financing.netCashFromFinancing)}</span>
+            </li>
+          </ul>
+          <p className="text-[11px] text-muted-foreground">{cashFlow.note}</p>
+        </div>
+      )}
+
+      {gl && (
+        <div className="border-t border-border pt-3 space-y-2">
+          <p className="text-xs font-semibold">
+            General ledger
+            <span className="font-normal text-muted-foreground">
+              {' '}· {gl.from} → {gl.to} · {gl.count} line{gl.count === 1 ? '' : 's'}
+            </span>
+          </p>
+          {gl.rows.length > 0 ? (
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border">
+                  <th className="py-1 pr-2">Date</th>
+                  <th className="py-1 pr-2 font-sans">Doc</th>
+                  <th className="py-1 pr-2 font-sans">Acct</th>
+                  <th className="py-1 pr-2">Narration</th>
+                  <th className="py-1 pr-2 text-right font-sans">Dr/Cr</th>
+                  <th className="py-1 text-right font-sans">Running</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gl.rows.map(r => (
+                  <tr key={r.id} className="border-b border-border/60">
+                    <td className="py-1 pr-2 font-sans">{r.effectiveDate}</td>
+                    <td className="py-1 pr-2 font-sans">{r.docNumber ?? r.journalId}</td>
+                    <td className="py-1 pr-2 font-sans">{r.accountCode}</td>
+                    <td className="py-1 pr-2 truncate max-w-[14rem]">{r.narration || r.accountName}</td>
+                    <td className="py-1 pr-2 text-right font-sans">
+                      {r.direction} {money(r.funcAmount)}
+                    </td>
+                    <td className="py-1 text-right font-sans">{money(r.runningBalance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-xs text-muted-foreground">No posted lines in this period.</p>
+          )}
+        </div>
       )}
     </div>
   );

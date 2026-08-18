@@ -110,6 +110,26 @@ public class GlOpenItem
     public string? ApprovedBy { get; set; }
     public DateTime? ApprovedAt { get; set; }
     public string? RejectionReason { get; set; }
+    public List<GlOpenItemLine> Lines { get; set; } = [];
+}
+
+/// <summary>Invoice/bill line — NetSuite-class document structure (hospitality-shaped).</summary>
+public class GlOpenItemLine
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public int OpenItemId { get; set; }
+    public GlOpenItem? OpenItem { get; set; }
+    public int LineNo { get; set; }
+    public string Description { get; set; } = "";
+    /// <summary>Optional override account; empty = SLA default for the document kind.</summary>
+    public string AccountCode { get; set; } = "";
+    public decimal Quantity { get; set; } = 1m;
+    public long UnitPriceMinor { get; set; }
+    public long NetMinor { get; set; }
+    public long TaxMinor { get; set; }
+    public string? TaxCode { get; set; }
+    public string? ProductRef { get; set; }
 }
 
 /// <summary>Bi-temporal application between open items — never deleted; reverse via new row.</summary>

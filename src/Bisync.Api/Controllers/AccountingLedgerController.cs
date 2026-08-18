@@ -61,6 +61,7 @@ public class AccountingLedgerController(
             {
                 new { eventType = "hrm.payroll_posted", module = "Payroll", status = "wired" },
                 new { eventType = "ops.purchase_affirmed", module = "RMS consolidate", status = "wired" },
+                new { eventType = "pos.settlement.posted", module = "POS EOD close", status = "wired" },
             },
         });
     }
@@ -528,6 +529,58 @@ public class AccountingLedgerController(
         try
         {
             return Ok(await ledger.BuildFinancialStatementsAsync(cid, resolvedPeriodId));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("cash-flow")]
+    public async Task<ActionResult<object>> CashFlow(
+        [FromQuery] int? companyId,
+        [FromQuery] int? periodId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
+
+        int resolvedPeriodId;
+        if (periodId is > 0) resolvedPeriodId = periodId.Value;
+        else
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var period = await db.GlFiscalPeriods.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.CompanyId == cid && p.StartDate <= today && p.EndDate >= today);
+            if (period is null) return BadRequest(new { message = "No fiscal period for today." });
+            resolvedPeriodId = period.Id;
+        }
+
+        try
+        {
+            return Ok(await ledger.BuildCashFlowIndirectAsync(cid, resolvedPeriodId));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("general-ledger")]
+    public async Task<ActionResult<object>> GeneralLedger(
+        [FromQuery] int? companyId,
+        [FromQuery] int? periodId,
+        [FromQuery] string? accountCode,
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromQuery] int take = 500)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
+        try
+        {
+            return Ok(await ledger.GeneralLedgerEnquiryAsync(cid, periodId, accountCode, from, to, take));
         }
         catch (InvalidOperationException ex)
         {

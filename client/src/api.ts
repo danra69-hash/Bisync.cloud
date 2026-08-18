@@ -5540,6 +5540,32 @@ export const api = {
     if (periodId) params.set('periodId', String(periodId));
     return fetchJson<AccountingStatements>(`/api/accounting/statements?${params}`);
   },
+  accountingCashFlow: (companyId: number, periodId?: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (periodId) params.set('periodId', String(periodId));
+    return fetchJson<AccountingCashFlow>(`/api/accounting/cash-flow?${params}`);
+  },
+  accountingGeneralLedger: (
+    companyId: number,
+    opts?: { periodId?: number; accountCode?: string; from?: string; to?: string; take?: number },
+  ) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.periodId) params.set('periodId', String(opts.periodId));
+    if (opts?.accountCode) params.set('accountCode', opts.accountCode);
+    if (opts?.from) params.set('from', opts.from);
+    if (opts?.to) params.set('to', opts.to);
+    if (opts?.take) params.set('take', String(opts.take));
+    return fetchJson<AccountingGeneralLedger>(`/api/accounting/general-ledger?${params}`);
+  },
+  accountingPosSettlement: (
+    companyId: number,
+    body: { locationExternalId: string; businessDate: string },
+  ) =>
+    fetchJsonWithMethod<object>(
+      `/api/accounting/books/pos-settlement?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
   accountingPeriods: (companyId: number) =>
     fetchJson<AccountingPeriod[]>(`/api/accounting/periods?companyId=${companyId}`),
   accountingSoftClosePeriod: (companyId: number, id: number) =>
@@ -5591,6 +5617,16 @@ export const api = {
       postJournal?: boolean;
       createdBy?: string;
       requireApApproval?: boolean;
+      lines?: Array<{
+        description?: string;
+        quantity?: number;
+        unitPrice?: number;
+        net: number;
+        taxAmount?: number;
+        taxCode?: string;
+        accountCode?: string;
+        productRef?: string;
+      }>;
     },
   ) =>
     fetchJsonWithMethod<AccountingOpenItem>(
@@ -5875,6 +5911,52 @@ export type AccountingStatements = {
   };
 };
 
+export type AccountingCashFlow = {
+  period: { id: number; year: number; periodNo: number; startDate: string; endDate: string };
+  currency: string;
+  method: string;
+  operating: {
+    netIncome: number;
+    depreciationAddBack: number;
+    changeInReceivables: number;
+    changeInInventory: number;
+    changeInPayables: number;
+    changeInTaxPayable: number;
+    netCashFromOperating: number;
+  };
+  investing: { netCashFromInvesting: number };
+  financing: { netCashFromFinancing: number };
+  netChangeInCash: number;
+  note: string;
+};
+
+export type AccountingGeneralLedger = {
+  companyId: number;
+  accountCode?: string | null;
+  from: string;
+  to: string;
+  currency: string;
+  count: number;
+  rows: Array<{
+    id: number;
+    journalId: number;
+    docNumber: string | null;
+    journalType: string;
+    effectiveDate: string;
+    accountCode: string;
+    accountName: string;
+    direction: string;
+    currency: string;
+    amount: number;
+    funcCurrency: string;
+    funcAmount: number;
+    narration: string;
+    sourceModule: string;
+    sourceDocKey: string | null;
+    runningBalance: number;
+  }>;
+};
+
 export type AccountingOutboxRow = {
   id: number;
   eventType: string;
@@ -5941,6 +6023,7 @@ export type AccountingOpenItem = {
   approvedBy?: string | null;
   approvedAt?: string | null;
   rejectionReason?: string | null;
+  lineCount?: number;
 };
 
 export type AccountingAging = {

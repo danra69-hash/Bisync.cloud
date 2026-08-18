@@ -2,7 +2,7 @@
 
 **Status:** Binding for the Accounting module · **Date:** 17 August 2026  
 **Source:** Multi-tenant SaaS accounting blueprint (adapted to Bisync.cloud’s current build)  
-**Related:** [`SAAS_DB_TENANCY.md`](./SAAS_DB_TENANCY.md), [`PRODUCT_TARGET_ARCHITECTURE.md`](./PRODUCT_TARGET_ARCHITECTURE.md)
+**Related:** [`SAAS_DB_TENANCY.md`](./SAAS_DB_TENANCY.md), [`PRODUCT_TARGET_ARCHITECTURE.md`](./PRODUCT_TARGET_ARCHITECTURE.md), [`HOSPITALITY_ERP_FINANCE_PARITY.md`](./HOSPITALITY_ERP_FINANCE_PARITY.md)
 
 This document defines how statutory accounting lands **inside Bisync.cloud**. It is not a greenfield Django rewrite. Stack, tenancy, and ops bridges already in production stay authoritative; ledger design follows the blueprint’s invariants where they matter.
 
@@ -163,8 +163,12 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - **Malaysia pack** seeds SST tax codes / roles / SLA only for MY companies (GET no longer seeds MY codes into other countries).
 - FX rate store UI + API; AR/AP open items with SLA-posted journals + aging (posted invoices/bills only); void.
 - Credit notes reverse AR/AP. Bank match **posts cash** and reduces `OpenMinor`. AR/AP–GL **control reconciliation** endpoint + UI drift line.
+- **Invoice/bill line items** on open items (optional `lines[]`; per-line account override posts document GL).
+- **POS EOD close → day settlement journal** (`pos.settlement.posted`) — best-effort, never blocks EOD.
+- Books Reports: TB, P&amp;L, BS, **cash flow (indirect)**, **GL enquiry**.
 - SG / AU / ID / TH / US packs + framework + backlog live in **Dev Console → Ref & Library** (reference only until wired).
-- **Not done:** POS / PO / SO automatic subledger feed; invoice/bill line items.
+- **Not done:** vendor/customer master binding; bank CSV/OFX import; Access Control task enforcement; MyInvois.
+- Suite claim map: [`HOSPITALITY_ERP_FINANCE_PARITY.md`](./HOSPITALITY_ERP_FINANCE_PARITY.md).
 
 ### Phase C2 — Internal depth (no external connections) 🟡 (partial)
 

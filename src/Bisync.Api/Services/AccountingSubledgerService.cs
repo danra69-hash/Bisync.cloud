@@ -88,6 +88,16 @@ public sealed class AccountingSubledgerService(
         return row?.Rate;
     }
 
+    public sealed record OpenItemLineInput(
+        string Description,
+        decimal Quantity,
+        decimal UnitPrice,
+        decimal Net,
+        decimal TaxAmount,
+        string? TaxCode,
+        string? AccountCode,
+        string? ProductRef);
+
     public async Task<GlOpenItem> CreateOpenItemAsync(
         int companyId,
         string? countryCode,
@@ -104,6 +114,7 @@ public sealed class AccountingSubledgerService(
         bool postJournal,
         string? createdBy = null,
         bool requireApApproval = true,
+        IReadOnlyList<OpenItemLineInput>? lines = null,
         CancellationToken ct = default)
     {
         await EnsureReadyAsync(companyId, countryCode, ct);
@@ -126,6 +137,14 @@ public sealed class AccountingSubledgerService(
         var year = issueDate.Year;
         await ledger.EnsurePeriodsForYearAsync(companyId, year, ct);
         var docNo = await ledger.AllocateDocNumberAsync(companyId, series, year, ct);
+
+        if (lines is { Count: > 0 })
+        {
+            gross = lines.Sum(l => l.Net + l.TaxAmount);
+            taxAmount = lines.Sum(l => l.TaxAmount);
+            if (string.IsNullOrWhiteSpace(taxCode))
+                taxCode = lines.Select(l => l.TaxCode).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+        }
 
         var grossMinor = LedgerPostingService.ToMinor(gross, cur);
         var taxMinor = LedgerPostingService.ToMinor(taxAmount, cur);
@@ -150,13 +169,45 @@ public sealed class AccountingSubledgerService(
             CreatedBy = actor,
         };
 
+        if (lines is { Count: > 0 })
+        {
+            var lineNo = 1;
+            foreach (var l in lines)
+            {
+                if (l.Net < 0 || l.TaxAmount < 0)
+                    throw new InvalidOperationException("Line net/tax cannot be negative.");
+                var qty = l.Quantity <= 0 ? 1m : l.Quantity;
+                item.Lines.Add(new GlOpenItemLine
+                {
+                    CompanyId = companyId,
+                    LineNo = lineNo++,
+                    Description = (l.Description ?? "").Trim(),
+                    AccountCode = (l.AccountCode ?? "").Trim(),
+                    Quantity = qty,
+                    UnitPriceMinor = LedgerPostingService.ToMinor(l.UnitPrice, cur),
+                    NetMinor = LedgerPostingService.ToMinor(l.Net, cur),
+                    TaxMinor = LedgerPostingService.ToMinor(l.TaxAmount, cur),
+                    TaxCode = l.TaxCode,
+                    ProductRef = l.ProductRef,
+                });
+            }
+        }
+
         var shouldPost = postJournal && approval == "approved";
         if (shouldPost)
         {
             var net = gross - taxAmount;
             if (net < 0) throw new InvalidOperationException("Tax cannot exceed gross.");
             var eventType = ResolveSlaEvent(subledger, kind);
-            var lines = await BuildSlaLinesAsync(companyId, eventType, net, taxAmount, gross, ct);
+            List<(string AccountCode, string Direction, decimal Amount, string LineNarration)> journalLines;
+            if (lines is { Count: > 0 } && lines.Any(l => !string.IsNullOrWhiteSpace(l.AccountCode)))
+            {
+                journalLines = await BuildLinesFromDocumentAsync(companyId, subledger, kind, lines, gross, taxAmount, ct);
+            }
+            else
+            {
+                journalLines = await BuildSlaLinesAsync(companyId, eventType, net, taxAmount, gross, ct);
+            }
             var journal = await ledger.PostAsync(
                 companyId,
                 countryCode,
@@ -169,7 +220,7 @@ public sealed class AccountingSubledgerService(
                 narration: $"{kind} {docNo} · {counterpartyName}",
                 createdBy: actor,
                 idempotencyKey: $"open:{companyId}:{docNo}",
-                lines,
+                journalLines,
                 ct,
                 txnCurrency: cur,
                 fxRate: cur == func ? null : await FindFxRateAsync(companyId, cur, func, issueDate, ct),
@@ -180,6 +231,64 @@ public sealed class AccountingSubledgerService(
         db.GlOpenItems.Add(item);
         await db.SaveChangesAsync(ct);
         return item;
+    }
+
+    async Task<List<(string AccountCode, string Direction, decimal Amount, string LineNarration)>> BuildLinesFromDocumentAsync(
+        int companyId,
+        string subledger,
+        string kind,
+        IReadOnlyList<OpenItemLineInput> lines,
+        decimal gross,
+        decimal taxAmount,
+        CancellationToken ct)
+    {
+        var controlRole = subledger == "ar" ? "ar_control" : "ap_control";
+        var controlFallback = subledger == "ar" ? "1110" : "2010";
+        var control = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, controlRole, controlFallback, ct);
+        var taxRole = subledger == "ar" ? "tax_output_payable" : "tax_expense_nonrecoverable";
+        var taxFallback = subledger == "ar" ? "2210" : "5210";
+        var taxAcct = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, taxRole, taxFallback, ct);
+        var defaultIncome = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "revenue_default", "4000", ct);
+        var defaultExpense = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "cogs_default", "5200", ct);
+        var isCreditNote = kind == "credit_note";
+
+        var result = new List<(string AccountCode, string Direction, decimal Amount, string LineNarration)>();
+        if (subledger == "ar")
+        {
+            if (!isCreditNote)
+                result.Add((control, "D", gross, "AR control"));
+            else
+                result.Add((control, "C", gross, "AR control"));
+        }
+        else
+        {
+            if (!isCreditNote)
+                result.Add((control, "C", gross, "AP control"));
+            else
+                result.Add((control, "D", gross, "AP control"));
+        }
+
+        foreach (var l in lines)
+        {
+            if (l.Net <= 0) continue;
+            var acct = string.IsNullOrWhiteSpace(l.AccountCode)
+                ? (subledger == "ar" ? defaultIncome : defaultExpense)
+                : l.AccountCode.Trim();
+            var dir = subledger == "ar"
+                ? (isCreditNote ? "D" : "C")
+                : (isCreditNote ? "C" : "D");
+            result.Add((acct, dir, l.Net, string.IsNullOrWhiteSpace(l.Description) ? acct : l.Description));
+        }
+
+        if (taxAmount > 0)
+        {
+            var taxDir = subledger == "ar"
+                ? (isCreditNote ? "D" : "C")
+                : (isCreditNote ? "C" : "D");
+            result.Add((taxAcct, taxDir, taxAmount, "Tax"));
+        }
+
+        return result;
     }
 
     public async Task PostDeferredJournalIfNeededAsync(int companyId, string? countryCode, int openItemId, CancellationToken ct = default)

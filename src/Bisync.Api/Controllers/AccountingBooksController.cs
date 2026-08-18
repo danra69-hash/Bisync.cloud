@@ -15,6 +15,7 @@ public class AccountingBooksController(
     ITenantContext tenant,
     AccountingSubledgerService books,
     AccountingInternalBooksService internalBooks,
+    AccountingBridgeService accountingBridge,
     MalaysiaAccountingPackService malaysiaPack) : ControllerBase
 {
     bool TryGate(int? companyId, out int cid, out string actor, out ActionResult error)
@@ -124,32 +125,45 @@ public class AccountingBooksController(
             var s = subledger.Trim().ToLowerInvariant();
             q = q.Where(i => i.Subledger == s);
         }
-        var rows = await q.OrderByDescending(i => i.Id).Take(take).ToListAsync();
-        return Ok(rows.Select(i => new
-        {
-            i.Id,
-            i.Subledger,
-            i.Kind,
-            i.CounterpartyName,
-            i.Currency,
-            i.IssueDate,
-            i.DueDate,
-            gross = LedgerPostingService.FromMinor(i.GrossMinor, i.Currency),
-            open = LedgerPostingService.FromMinor(i.OpenMinor, i.Currency),
-            tax = LedgerPostingService.FromMinor(i.TaxMinor, i.Currency),
-            i.TaxCode,
-            i.InternalDocumentNo,
-            i.StatutoryDocumentNo,
-            i.JournalId,
-            i.Status,
-            i.Narration,
-            i.ApprovalStatus,
-            i.CreatedBy,
-            i.ApprovedBy,
-            i.ApprovedAt,
-            i.RejectionReason,
-        }));
+        var rows = await q.OrderByDescending(i => i.Id).Take(take)
+            .Select(i => new
+            {
+                i.Id,
+                i.Subledger,
+                i.Kind,
+                i.CounterpartyName,
+                i.Currency,
+                i.IssueDate,
+                i.DueDate,
+                gross = LedgerPostingService.FromMinor(i.GrossMinor, i.Currency),
+                open = LedgerPostingService.FromMinor(i.OpenMinor, i.Currency),
+                tax = LedgerPostingService.FromMinor(i.TaxMinor, i.Currency),
+                i.TaxCode,
+                i.InternalDocumentNo,
+                i.StatutoryDocumentNo,
+                i.JournalId,
+                i.Status,
+                i.Narration,
+                i.ApprovalStatus,
+                i.CreatedBy,
+                i.ApprovedBy,
+                i.ApprovedAt,
+                i.RejectionReason,
+                lineCount = i.Lines.Count,
+            })
+            .ToListAsync();
+        return Ok(rows);
     }
+
+    public sealed record CreateOpenItemLineRequest(
+        string? Description,
+        decimal? Quantity,
+        decimal? UnitPrice,
+        decimal Net,
+        decimal? TaxAmount,
+        string? TaxCode,
+        string? AccountCode,
+        string? ProductRef);
 
     public sealed record CreateOpenItemRequest(
         string Subledger,
@@ -164,7 +178,8 @@ public class AccountingBooksController(
         string? Narration,
         bool? PostJournal,
         string? CreatedBy,
-        bool? RequireApApproval);
+        bool? RequireApApproval,
+        List<CreateOpenItemLineRequest>? Lines);
 
     [HttpPost("open-items")]
     public async Task<ActionResult<object>> CreateOpenItem(
@@ -176,6 +191,20 @@ public class AccountingBooksController(
         if (company is null) return NotFound(new { message = "Company not found." });
         try
         {
+            IReadOnlyList<AccountingSubledgerService.OpenItemLineInput>? lineInputs = null;
+            if (body.Lines is { Count: > 0 })
+            {
+                lineInputs = body.Lines.Select(l => new AccountingSubledgerService.OpenItemLineInput(
+                    l.Description ?? "",
+                    l.Quantity ?? 1m,
+                    l.UnitPrice ?? l.Net,
+                    l.Net,
+                    l.TaxAmount ?? 0m,
+                    l.TaxCode,
+                    l.AccountCode,
+                    l.ProductRef)).ToList();
+            }
+
             var item = await books.CreateOpenItemAsync(
                 cid,
                 company.CountryCode,
@@ -187,11 +216,12 @@ public class AccountingBooksController(
                 body.Gross,
                 body.Currency,
                 body.TaxCode,
-                body.TaxAmount ?? 0,
+                body.TaxAmount ?? 0m,
                 body.Narration ?? "",
                 body.PostJournal ?? true,
-                actor,
-                body.RequireApApproval ?? true);
+                string.IsNullOrWhiteSpace(body.CreatedBy) ? actor : body.CreatedBy,
+                body.RequireApApproval ?? true,
+                lineInputs);
             return Ok(new
             {
                 item.Id,
@@ -205,6 +235,7 @@ public class AccountingBooksController(
                 currency = item.Currency,
                 gross = LedgerPostingService.FromMinor(item.GrossMinor, item.Currency),
                 open = LedgerPostingService.FromMinor(item.OpenMinor, item.Currency),
+                lineCount = item.Lines.Count,
             });
         }
         catch (InvalidOperationException ex)
@@ -633,5 +664,22 @@ public class AccountingBooksController(
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         try { return Ok(await internalBooks.ComputeSst02Async(cid, periodStart, periodEnd)); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    public sealed record PosSettlementRequest(string LocationExternalId, DateOnly BusinessDate);
+
+    /// <summary>Manual / replay POS day settlement into Books (also runs automatically on EOD close).</summary>
+    [HttpPost("pos-settlement")]
+    public async Task<ActionResult<object>> PosSettlement(
+        [FromQuery] int? companyId,
+        [FromBody] PosSettlementRequest body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (string.IsNullOrWhiteSpace(body.LocationExternalId))
+            return BadRequest(new { message = "locationExternalId is required." });
+        var result = await accountingBridge.OnPosDaySettlementAsync(cid, body.LocationExternalId.Trim(), body.BusinessDate);
+        if (result is null)
+            return Conflict(new { message = "POS settlement failed — see bridge_error outbox." });
+        return Ok(result);
     }
 }

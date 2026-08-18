@@ -371,6 +371,187 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         };
     }
 
+    /// <summary>Indirect cash flow from period P&amp;L + balance-sheet movements (hospitality-shaped).</summary>
+    public async Task<object> BuildCashFlowIndirectAsync(int companyId, int periodId, CancellationToken ct = default)
+    {
+        var period = await db.GlFiscalPeriods.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException("Period not found.");
+        var functional = await ResolveFunctionalCurrencyAsync(companyId, null, persist: false, ct);
+
+        var balances = await db.GlPeriodBalances.AsNoTracking()
+            .Where(b => b.CompanyId == companyId && b.PeriodId == periodId && b.Currency == functional)
+            .ToListAsync(ct);
+        var accounts = await db.GlAccounts.AsNoTracking()
+            .Where(a => a.CompanyId == companyId)
+            .ToDictionaryAsync(a => a.Id, ct);
+
+        decimal PeriodMove(string code)
+        {
+            var acct = accounts.Values.FirstOrDefault(a =>
+                string.Equals(a.Code, code, StringComparison.OrdinalIgnoreCase));
+            if (acct is null) return 0;
+            var bal = balances.FirstOrDefault(b => b.AccountId == acct.Id);
+            if (bal is null) return 0;
+            return FromMinor(bal.PeriodDrMinor - bal.PeriodCrMinor, functional);
+        }
+
+        decimal netIncome = 0;
+        foreach (var b in balances)
+        {
+            if (!accounts.TryGetValue(b.AccountId, out var a)) continue;
+            if (a.AccountType is not ("income" or "expense")) continue;
+            var dr = FromMinor(b.PeriodDrMinor, functional);
+            var cr = FromMinor(b.PeriodCrMinor, functional);
+            var signed = a.NormalBalance == "D" ? dr - cr : cr - dr;
+            if (a.AccountType == "income") netIncome += signed;
+            else netIncome -= signed;
+        }
+
+        var depreciation = Math.Abs(PeriodMove("5810"));
+        var arMove = PeriodMove("1100") + PeriodMove("1110");
+        var invMove = PeriodMove("1400");
+        var apMove = PeriodMove("2000") + PeriodMove("2010");
+        var taxPayMove = PeriodMove("2200") + PeriodMove("2210");
+
+        var changeInReceivables = -arMove;
+        var changeInInventory = -invMove;
+        var changeInPayables = -apMove;
+        var changeInTaxPayable = -taxPayMove;
+
+        var ops = netIncome + depreciation + changeInReceivables + changeInInventory + changeInPayables + changeInTaxPayable;
+        var investing = -Math.Max(0, PeriodMove("1500"));
+        var financing = -PeriodMove("3000");
+        var netChange = ops + investing + financing;
+
+        return new
+        {
+            period = new { period.Id, period.Year, period.PeriodNo, period.StartDate, period.EndDate },
+            currency = functional,
+            method = "indirect",
+            operating = new
+            {
+                netIncome,
+                depreciationAddBack = depreciation,
+                changeInReceivables,
+                changeInInventory,
+                changeInPayables,
+                changeInTaxPayable,
+                netCashFromOperating = ops,
+            },
+            investing = new { netCashFromInvesting = investing },
+            financing = new { netCashFromFinancing = financing },
+            netChangeInCash = netChange,
+            note = "Indirect cash flow from period movement. Hospitality approximation — refine after POS settlement tenders are live.",
+        };
+    }
+
+    /// <summary>Account ledger / GL enquiry for a period (or date range).</summary>
+    public async Task<object> GeneralLedgerEnquiryAsync(
+        int companyId,
+        int? periodId,
+        string? accountCode,
+        DateOnly? from,
+        DateOnly? to,
+        int take,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 2000);
+        var functional = await ResolveFunctionalCurrencyAsync(companyId, null, persist: false, ct);
+        DateOnly fromDate;
+        DateOnly toDate;
+        if (periodId is > 0)
+        {
+            var period = await db.GlFiscalPeriods.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId, ct)
+                ?? throw new InvalidOperationException("Period not found.");
+            fromDate = period.StartDate;
+            toDate = period.EndDate;
+        }
+        else
+        {
+            fromDate = from ?? DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-1);
+            toDate = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+
+        var q = db.GlJournalLines.AsNoTracking()
+            .Include(l => l.Journal)
+            .Include(l => l.Account)
+            .Where(l => l.CompanyId == companyId
+                && l.Journal!.PostedAt != null
+                && l.EffectiveDate >= fromDate
+                && l.EffectiveDate <= toDate);
+
+        if (!string.IsNullOrWhiteSpace(accountCode))
+        {
+            var code = accountCode.Trim();
+            q = q.Where(l => l.Account!.Code == code);
+        }
+
+        var lines = await q
+            .OrderBy(l => l.EffectiveDate).ThenBy(l => l.JournalId).ThenBy(l => l.LineNo)
+            .Take(take)
+            .Select(l => new
+            {
+                l.Id,
+                l.JournalId,
+                docNumber = l.Journal!.DocNumber,
+                journalType = l.Journal.JournalType,
+                l.EffectiveDate,
+                accountCode = l.Account!.Code,
+                accountName = l.Account.Name,
+                l.Direction,
+                currency = l.Currency,
+                amount = FromMinor(l.AmountMinor, l.Currency),
+                funcCurrency = l.FuncCurrency,
+                funcAmount = FromMinor(l.FuncAmountMinor, l.FuncCurrency),
+                l.Narration,
+                sourceModule = l.Journal.SourceModule,
+                sourceDocKey = l.Journal.SourceDocKey,
+            })
+            .ToListAsync(ct);
+
+        decimal running = 0;
+        var rows = new List<object>();
+        foreach (var l in lines)
+        {
+            var signed = string.Equals(l.Direction, "D", StringComparison.OrdinalIgnoreCase)
+                ? l.funcAmount
+                : -l.funcAmount;
+            running += signed;
+            rows.Add(new
+            {
+                l.Id,
+                l.JournalId,
+                l.docNumber,
+                l.journalType,
+                l.EffectiveDate,
+                l.accountCode,
+                l.accountName,
+                l.Direction,
+                l.currency,
+                l.amount,
+                l.funcCurrency,
+                l.funcAmount,
+                l.Narration,
+                l.sourceModule,
+                l.sourceDocKey,
+                runningBalance = running,
+            });
+        }
+
+        return new
+        {
+            companyId,
+            accountCode = accountCode?.Trim(),
+            from = fromDate,
+            to = toDate,
+            currency = functional,
+            count = rows.Count,
+            rows,
+        };
+    }
+
     public async Task<GlFiscalPeriod> RequireOpenPeriodAsync(int companyId, DateOnly effectiveDate, CancellationToken ct = default)
     {
         var fy = ResolveFiscalYear(await FiscalYearStartMonthAsync(companyId, ct), effectiveDate);

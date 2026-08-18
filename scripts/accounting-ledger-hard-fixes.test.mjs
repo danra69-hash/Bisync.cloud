@@ -120,4 +120,22 @@ assert.match(arch, /Phase C2 — Internal depth \(no external connections\) 🟡
 assert.match(arch, /opening-balance roll-forward/, 'architecture documents opening roll-forward');
 assert.match(arch, /balanced-journal/, 'architecture documents DB balance trigger');
 
+// Wave A — hospitality ERP / NetSuite-class finance parity slice
+assert.match(ledger, /BuildCashFlowIndirectAsync/, 'indirect cash flow report');
+assert.match(ledger, /GeneralLedgerEnquiryAsync/, 'GL enquiry');
+assert.match(ledgerCtrl, /cash-flow/, 'cash-flow endpoint');
+assert.match(ledgerCtrl, /general-ledger/, 'general-ledger endpoint');
+assert.match(read('src/Bisync.Api/Models/GlBooks.cs'), /class GlOpenItemLine/, 'open-item line items model');
+assert.match(read('src/Bisync.Api/Data/SchemaPatcher.cs'), /GlOpenItemLines/, 'open-item lines table');
+assert.match(subledger, /OpenItemLineInput/, 'create open item accepts lines');
+assert.match(subledger, /BuildLinesFromDocumentAsync/, 'per-line account posting path');
+assert.match(bridge, /OnPosDaySettlementAsync/, 'POS day settlement bridge');
+assert.match(bridge, /pos\.settlement:/, 'POS settlement idempotency key');
+assert.match(booksCtrl, /pos-settlement/, 'POS settlement Books endpoint');
+assert.match(pack, /pos\.settlement\.posted/, 'POS settlement SLA seeded');
+assert.match(read('src/Bisync.Api/Controllers/PosEodController.cs'), /OnPosDaySettlementAsync/, 'EOD close posts Books settlement');
+assert.match(read('docs/HOSPITALITY_ERP_FINANCE_PARITY.md'), /NetSuite-class Finance Parity/, 'suite parity roadmap exists');
+assert.match(workspace, /accountingCashFlow/, 'Books UI loads cash flow');
+assert.match(workspace, /accountingGeneralLedger/, 'Books UI loads GL enquiry');
+
 console.log('accounting-ledger-hard-fixes.test.mjs: ok');

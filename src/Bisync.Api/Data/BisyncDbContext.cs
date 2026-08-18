@@ -131,6 +131,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<GlSlaRuleSet> GlSlaRuleSets => Set<GlSlaRuleSet>();
     public DbSet<GlSlaRuleLine> GlSlaRuleLines => Set<GlSlaRuleLine>();
     public DbSet<GlOpenItem> GlOpenItems => Set<GlOpenItem>();
+    public DbSet<GlOpenItemLine> GlOpenItemLines => Set<GlOpenItemLine>();
     public DbSet<GlItemApplication> GlItemApplications => Set<GlItemApplication>();
     public DbSet<GlBankStatement> GlBankStatements => Set<GlBankStatement>();
     public DbSet<GlBankStatementLine> GlBankStatementLines => Set<GlBankStatementLine>();
@@ -1047,6 +1048,14 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => new { x.CompanyId, x.Subledger, x.Status });
             e.Property(x => x.Currency).HasMaxLength(3);
             e.Property(x => x.ApprovalStatus).HasMaxLength(32);
+            e.HasMany(x => x.Lines).WithOne(x => x.OpenItem).HasForeignKey(x => x.OpenItemId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlOpenItemLine>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.OpenItemId, x.LineNo }).IsUnique();
+            e.Property(x => x.AccountCode).HasMaxLength(32);
+            e.Property(x => x.TaxCode).HasMaxLength(32);
+            e.Property(x => x.Quantity).HasPrecision(18, 6);
         });
         modelBuilder.Entity<GlItemApplication>(e =>
         {

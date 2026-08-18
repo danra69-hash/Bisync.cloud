@@ -205,4 +205,179 @@ public sealed class AccountingBridgeService(
             }
         }
     }
+
+    /// <summary>
+    /// Posts a balanced POS day-settlement journal for one location + business date.
+    /// Idempotent on pos.settlement:{company}:{location}:{date}.
+    /// </summary>
+    public async Task<object?> OnPosDaySettlementAsync(
+        int companyId,
+        string locationExternalId,
+        DateOnly businessDate,
+        CancellationToken ct = default)
+    {
+        if (companyId <= 0) return null;
+        locationExternalId = (locationExternalId ?? "").Trim();
+        if (locationExternalId.Length == 0) return null;
+
+        var idempotency = $"pos.settlement:{companyId}:{locationExternalId}:{businessDate:yyyy-MM-dd}";
+        try
+        {
+            var start = new DateTimeOffset(businessDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            var end = start.AddDays(1);
+
+            var closed = await db.PosClosedChecks.AsNoTracking()
+                .Where(x => x.CompanyId == companyId
+                    && x.LocationExternalId == locationExternalId
+                    && x.PaidAt >= start
+                    && x.PaidAt < end)
+                .ToListAsync(ct);
+            var payments = await db.PosPayments.AsNoTracking()
+                .Where(x => x.CompanyId == companyId
+                    && x.LocationExternalId == locationExternalId
+                    && x.PaidAt >= start
+                    && x.PaidAt < end)
+                .ToListAsync(ct);
+
+            if (closed.Count == 0 && payments.Count == 0)
+            {
+                await ledger.EnqueueOutboxAsync(
+                    companyId,
+                    "pos.settlement.posted",
+                    new { companyId, locationExternalId, businessDate, empty = true },
+                    idempotency,
+                    ct);
+                await ledger.MarkOutboxProcessedAsync(companyId, idempotency, ct);
+                await db.SaveChangesAsync(ct);
+                return new { skipped = true, reason = "No closed checks for the day." };
+            }
+
+            await ledger.EnqueueOutboxAsync(
+                companyId,
+                "pos.settlement.posted",
+                new
+                {
+                    companyId,
+                    locationExternalId,
+                    businessDate,
+                    closedChecks = closed.Count,
+                    grossCents = closed.Sum(c => c.GrossCents),
+                    taxCents = closed.Sum(c => c.TaxCents),
+                    discountCents = closed.Sum(c => c.DiscountCents),
+                },
+                idempotency,
+                ct);
+
+            var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
+            await malaysiaPack.EnsureCoreRolesAndSlaAsync(companyId, ct);
+
+            var cashCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "pos_cash", "1000", ct);
+            var cardCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "pos_card", "1000", ct);
+            var nonRevCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "pos_non_revenue", "5800", ct);
+            var revenueCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "revenue_default", "4000", ct);
+            var taxCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "tax_output_payable", "2210", ct);
+            var discountCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "sales_discount", "4100", ct);
+
+            static bool IsCash(string m) => string.Equals(m, "cash", StringComparison.OrdinalIgnoreCase);
+            static bool IsNonRev(string m) =>
+                m.Equals("entertainment", StringComparison.OrdinalIgnoreCase)
+                || m.Equals("duty-meals", StringComparison.OrdinalIgnoreCase)
+                || m.Equals("compliment", StringComparison.OrdinalIgnoreCase)
+                || m.Equals("duty_meals", StringComparison.OrdinalIgnoreCase);
+
+            long cashCents = 0, cardCents = 0, nonRevCents = 0;
+            foreach (var p in payments)
+            {
+                if (IsCash(p.Method)) cashCents += p.AmountCents;
+                else if (IsNonRev(p.Method)) nonRevCents += p.AmountCents;
+                else cardCents += p.AmountCents;
+            }
+
+            var grossCents = closed.Sum(c => c.GrossCents);
+            var taxCents = closed.Sum(c => c.TaxCents);
+            var discountCents = closed.Sum(c => c.DiscountCents);
+            // Net sales credited to revenue = gross - discount - tax (hospitality EOD convention).
+            var revenueCents = Math.Max(0, grossCents - discountCents - taxCents);
+
+            decimal Maj(long cents) => Math.Round(cents / 100m, 2, MidpointRounding.AwayFromZero);
+
+            var lines = new List<(string, string, decimal, string)>();
+            if (cashCents > 0) lines.Add((cashCode, "D", Maj(cashCents), "POS cash tenders"));
+            if (cardCents > 0) lines.Add((cardCode, "D", Maj(cardCents), "POS card/QR tenders"));
+            if (nonRevCents > 0) lines.Add((nonRevCode, "D", Maj(nonRevCents), "POS non-revenue"));
+            if (revenueCents > 0) lines.Add((revenueCode, "C", Maj(revenueCents), "POS net sales"));
+            if (taxCents > 0) lines.Add((taxCode, "C", Maj(taxCents), "POS output tax"));
+            if (discountCents > 0) lines.Add((discountCode, "D", Maj(discountCents), "POS discounts"));
+
+            // Plug residual into rounding so the day always posts.
+            var debit = lines.Where(l => l.Item2 == "D").Sum(l => l.Item3);
+            var credit = lines.Where(l => l.Item2 == "C").Sum(l => l.Item3);
+            var residual = debit - credit;
+            if (Math.Abs(residual) >= 0.01m)
+            {
+                var roundCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "rounding_difference", "5900", ct);
+                if (residual > 0) lines.Add((roundCode, "C", residual, "POS settlement rounding"));
+                else lines.Add((roundCode, "D", -residual, "POS settlement rounding"));
+            }
+
+            if (lines.Count < 2)
+            {
+                await ledger.MarkOutboxProcessedAsync(companyId, idempotency, ct);
+                await db.SaveChangesAsync(ct);
+                return new { skipped = true, reason = "Settlement amounts too small to post." };
+            }
+
+            var journal = await ledger.PostAsync(
+                companyId,
+                company?.CountryCode,
+                journalType: "POS",
+                docSeries: "POS",
+                effectiveDate: businessDate,
+                documentDate: businessDate,
+                sourceModule: "POS",
+                sourceDocKey: $"pos-day:{locationExternalId}:{businessDate:yyyy-MM-dd}",
+                narration: $"POS settlement {locationExternalId} {businessDate:yyyy-MM-dd}",
+                createdBy: "pos-eod",
+                idempotencyKey: idempotency,
+                lines,
+                ct);
+
+            await db.SaveChangesAsync(ct);
+            return new
+            {
+                journalId = journal.Id,
+                journal.DocNumber,
+                locationExternalId,
+                businessDate,
+                closedChecks = closed.Count,
+                cash = Maj(cashCents),
+                card = Maj(cardCents),
+                nonRevenue = Maj(nonRevCents),
+                revenue = Maj(revenueCents),
+                tax = Maj(taxCents),
+                discount = Maj(discountCents),
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Accounting bridge failed for POS settlement company {CompanyId} location {Location} date {Date}",
+                companyId, locationExternalId, businessDate);
+            try
+            {
+                await ledger.EnqueueOutboxAsync(
+                    companyId,
+                    "pos.settlement.posted.bridge_error",
+                    new { locationExternalId, businessDate, error = ex.Message },
+                    $"{idempotency}:error:{DateTime.UtcNow:yyyyMMddHHmmss}",
+                    ct);
+                await db.SaveChangesAsync(ct);
+            }
+            catch (Exception enqueueEx)
+            {
+                logger.LogError(enqueueEx, "Failed to enqueue POS bridge error outbox");
+            }
+            return null;
+        }
+    }
 }

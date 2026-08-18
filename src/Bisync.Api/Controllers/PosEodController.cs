@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ namespace Bisync.Api.Controllers;
 /// <summary>End-of-day session, summary, and close-day for POS Test.</summary>
 [ApiController]
 [Route("api/pos/eod")]
-public class PosEodController(BisyncDbContext db, ITenantContext tenant) : ControllerBase
+public class PosEodController(BisyncDbContext db, ITenantContext tenant, AccountingBridgeService accountingBridge) : ControllerBase
 {
     static readonly HashSet<string> CreditQrMethods = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -144,11 +145,22 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
         session.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
 
+        object? booksSettlement = null;
+        try
+        {
+            booksSettlement = await accountingBridge.OnPosDaySettlementAsync(cid.Value, loc, date);
+        }
+        catch
+        {
+            // Never block EOD close if Books posting fails — outbox/bridge_error records the miss.
+        }
+
         return Ok(new
         {
             session = MapSession(session),
             summary,
             closed = true,
+            booksSettlement,
         });
     }
 
