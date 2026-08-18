@@ -201,6 +201,19 @@ a:hover {
   cursor: not-allowed;
 }
 
+.training-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.training-subnav .chip[aria-selected='true'],
+.training-subnav .chip.is-active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: none;
+}
+
 /* App shell */
 .app-shell {
   min-height: 100dvh;
