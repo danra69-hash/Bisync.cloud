@@ -14,8 +14,9 @@ const domainSrc = readFileSync(join(root, 'api/src/domain.mjs'), 'utf8');
 test('Invoices nav is merged into Payments', () => {
   assert.doesNotMatch(appSrc, /label: 'Invoices'/);
   assert.match(appSrc, /Navigate to="\/app\/payments"/);
-  assert.match(paySrc, /Issue invoice/);
-  assert.match(paySrc, /Record payment/);
+  assert.match(paySrc, /Capture payment &(?:amp;)? invoice/);
+  assert.doesNotMatch(paySrc, /Issue invoice<\/h2>/);
+  assert.doesNotMatch(paySrc, /submitInvoice/);
 });
 
 test('Ledger shows Invoice actions next to Method after payment', () => {

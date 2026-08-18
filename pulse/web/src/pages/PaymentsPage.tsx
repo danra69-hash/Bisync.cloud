@@ -9,6 +9,24 @@ import {
   openInvoiceReceipt,
 } from '../lib/invoiceShare';
 
+type FormState = {
+  memberId: string;
+  invoiceId: string;
+  description: string;
+  amount: string;
+  promoCode: string;
+  method: string;
+};
+
+const EMPTY_FORM: FormState = {
+  memberId: '',
+  invoiceId: '',
+  description: 'Membership fee',
+  amount: '',
+  promoCode: '',
+  method: 'card',
+};
+
 export function PaymentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -16,13 +34,8 @@ export function PaymentsPage() {
   const [openInvoices, setOpenInvoices] = useState<Invoice[]>([]);
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ memberId: '', invoiceId: '', amount: '', method: 'card' });
-  const [issue, setIssue] = useState({
-    memberId: '',
-    description: 'Membership fee',
-    unitPrice: '59',
-    promoCode: '',
-  });
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(
     searchParams.get('invoice'),
   );
@@ -57,46 +70,56 @@ export function PaymentsPage() {
     return map;
   }, [allInvoices, payments]);
 
-  async function submitPayment(e: FormEvent) {
+  const payingExisting = Boolean(form.invoiceId);
+
+  async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setBusy(true);
     try {
+      let invoiceId = form.invoiceId || undefined;
+      let amount = Number(form.amount);
+
+      if (!invoiceId) {
+        if (!form.description.trim()) throw new Error('Description required');
+        if (!(amount > 0)) throw new Error('Amount required');
+        const issued = await api<Invoice>('/api/invoices', {
+          method: 'POST',
+          body: JSON.stringify({
+            memberId: form.memberId,
+            promoCode: form.promoCode || undefined,
+            lines: [{ description: form.description.trim(), qty: 1, unitPrice: amount }],
+          }),
+        });
+        invoiceId = issued.id;
+        amount = issued.total;
+      } else {
+        const inv = openInvoices.find((i) => i.id === invoiceId);
+        if (inv) amount = inv.total;
+      }
+
       const created = await api<Payment>('/api/payments', {
         method: 'POST',
         body: JSON.stringify({
           memberId: form.memberId,
-          invoiceId: form.invoiceId || undefined,
-          amount: Number(form.amount),
+          invoiceId,
+          amount,
           method: form.method,
+          description: form.description.trim() || undefined,
         }),
       });
-      setForm({ memberId: '', invoiceId: '', amount: '', method: 'card' });
+
+      setForm(EMPTY_FORM);
       await load();
-      if (created.invoiceId) {
-        setExpandedInvoiceId(created.invoiceId);
-        setSearchParams({ invoice: created.invoiceId });
+      const openId = created.invoiceId || invoiceId;
+      if (openId) {
+        setExpandedInvoiceId(openId);
+        setSearchParams({ invoice: openId });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
-    }
-  }
-
-  async function submitInvoice(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api('/api/invoices', {
-        method: 'POST',
-        body: JSON.stringify({
-          memberId: issue.memberId,
-          promoCode: issue.promoCode || undefined,
-          lines: [{ description: issue.description, qty: 1, unitPrice: Number(issue.unitPrice) }],
-        }),
-      });
-      setIssue({ ...issue, promoCode: '' });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -112,7 +135,7 @@ export function PaymentsPage() {
         <div>
           <p className="eyebrow">CRM · Billing</p>
           <h1>Payments</h1>
-          <p>Record payments, issue invoices, and share or print receipts from the ledger.</p>
+          <p>Capture payment and issue the invoice in one step — then share or print from the ledger.</p>
         </div>
       </div>
       {error ? <div className="error-banner">{error}</div> : null}
@@ -212,132 +235,106 @@ export function PaymentsPage() {
           </div>
         </section>
 
-        <div className="stack">
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Record payment</h2>
-            </div>
-            <form className="panel-body form-grid" onSubmit={submitPayment}>
-              <label className="field">
-                <span>Member</span>
-                <select
-                  required
-                  value={form.memberId}
-                  onChange={(e) => setForm({ ...form, memberId: e.target.value })}
-                >
-                  <option value="">Select…</option>
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.firstName} {m.lastName} ({m.memberCode})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Open invoice (optional)</span>
-                <select
-                  value={form.invoiceId}
-                  onChange={(e) => {
-                    const inv = openInvoices.find((i) => i.id === e.target.value);
-                    setForm({
-                      ...form,
-                      invoiceId: e.target.value,
-                      amount: inv ? String(inv.total) : form.amount,
-                      memberId: inv?.memberId || form.memberId,
-                    });
-                  }}
-                >
-                  <option value="">None — create receipt invoice</option>
-                  {openInvoices.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.number} — {money(i.total)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="form-grid two">
-                <label className="field">
-                  <span>Amount</span>
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  />
-                </label>
-                <label className="field">
-                  <span>Method</span>
-                  <select
-                    value={form.method}
-                    onChange={(e) => setForm({ ...form, method: e.target.value })}
-                  >
-                    <option value="card">Card</option>
-                    <option value="cash">Cash</option>
-                    <option value="transfer">Transfer</option>
-                  </select>
-                </label>
-              </div>
-              <button type="submit" className="btn btn-primary">
-                Capture payment
-              </button>
-            </form>
-          </section>
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Capture payment &amp; invoice</h2>
+          </div>
+          <form className="panel-body form-grid" onSubmit={(e) => void submit(e)}>
+            <label className="field">
+              <span>Member</span>
+              <select
+                required
+                value={form.memberId}
+                onChange={(e) => setForm({ ...form, memberId: e.target.value })}
+              >
+                <option value="">Select…</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.firstName} {m.lastName} ({m.memberCode})
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Issue invoice</h2>
-            </div>
-            <form className="panel-body form-grid" onSubmit={submitInvoice}>
-              <label className="field">
-                <span>Member</span>
-                <select
-                  required
-                  value={issue.memberId}
-                  onChange={(e) => setIssue({ ...issue, memberId: e.target.value })}
-                >
-                  <option value="">Select…</option>
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.firstName} {m.lastName} — {m.plan}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Description</span>
-                <input
-                  required
-                  value={issue.description}
-                  onChange={(e) => setIssue({ ...issue, description: e.target.value })}
-                />
-              </label>
-              <div className="form-grid two">
+            <label className="field">
+              <span>Pay existing open invoice (optional)</span>
+              <select
+                value={form.invoiceId}
+                onChange={(e) => {
+                  const inv = openInvoices.find((i) => i.id === e.target.value);
+                  setForm({
+                    ...form,
+                    invoiceId: e.target.value,
+                    amount: inv ? String(inv.total) : form.amount,
+                    memberId: inv?.memberId || form.memberId,
+                    description: inv?.lines?.[0]?.description || form.description,
+                  });
+                }}
+              >
+                <option value="">New invoice from this payment</option>
+                {openInvoices.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.number} — {money(i.total)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {!payingExisting ? (
+              <>
                 <label className="field">
-                  <span>Unit price</span>
+                  <span>Description</span>
                   <input
                     required
-                    type="number"
-                    step="0.01"
-                    value={issue.unitPrice}
-                    onChange={(e) => setIssue({ ...issue, unitPrice: e.target.value })}
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
                   />
                 </label>
-                <label className="field">
-                  <span>Promo code</span>
-                  <input
-                    value={issue.promoCode}
-                    onChange={(e) => setIssue({ ...issue, promoCode: e.target.value })}
-                    placeholder="SUMMER26"
-                  />
-                </label>
-              </div>
-              <button type="submit" className="btn btn-primary">
-                Issue invoice
-              </button>
-            </form>
-          </section>
-        </div>
+                <div className="form-grid two">
+                  <label className="field">
+                    <span>Amount</span>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      value={form.amount}
+                      onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Promo code</span>
+                    <input
+                      value={form.promoCode}
+                      onChange={(e) => setForm({ ...form, promoCode: e.target.value })}
+                      placeholder="SUMMER26"
+                    />
+                  </label>
+                </div>
+              </>
+            ) : (
+              <label className="field">
+                <span>Amount</span>
+                <input required type="number" step="0.01" value={form.amount} readOnly />
+              </label>
+            )}
+
+            <label className="field">
+              <span>Method</span>
+              <select
+                value={form.method}
+                onChange={(e) => setForm({ ...form, method: e.target.value })}
+              >
+                <option value="card">Card</option>
+                <option value="cash">Cash</option>
+                <option value="transfer">Transfer</option>
+              </select>
+            </label>
+
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? 'Saving…' : 'Capture payment & invoice'}
+            </button>
+          </form>
+        </section>
       </div>
     </div>
   );
