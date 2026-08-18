@@ -141,10 +141,12 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 ### Phase B — Ledger foundations ✅ (honest)
 
 - `GlJournal` / lines / periods / balances / counters / outbox on company operational DB.
-- Soft-close with **opening-balance roll-forward** (year-end NI folds into retained earnings); platform-admin **rebuild** and **hard-close**.
+- Soft-close with **opening-balance roll-forward** (year-end NI folds into retained earnings); platform-admin **rebuild**, **hard-close**, and **period-balance drift** check.
 - Posting runs in a DB transaction so period-balance `FOR UPDATE` holds.
+- DB invariants: journal-line FK is **ON DELETE RESTRICT**; deferred **balanced-journal** trigger; posted journals cannot be deleted.
+- Fiscal year start month is persisted on the company (admin-settable before first post).
 - Books API requires a signed-in user; company is taken from the verified tenant (not a client-supplied `companyId`).
-- Bridges: payroll process + PO reconcile → sealed journals (best-effort; never fails ops). Purchase AP uses `ap_control` (2010).
+- Bridges: payroll process + PO reconcile → sealed journals (best-effort; never fails ops). Successful posts **ack outbox**; bridge errors remain pending until admin ack. Purchase AP uses `ap_control` (2010).
 
 ### Phase C — Core books 🟡 (usable, not a book of record)
 
@@ -160,9 +162,9 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - Upstream Accounting package imported under `docs/accounting/upstream/`.
 - **Malaysia pack** seeds SST tax codes / roles / SLA only for MY companies (GET no longer seeds MY codes into other countries).
 - FX rate store UI + API; AR/AP open items with SLA-posted journals + aging (posted invoices/bills only); void.
-- Credit notes reverse AR/AP. Bank match **posts cash** and reduces `OpenMinor`.
+- Credit notes reverse AR/AP. Bank match **posts cash** and reduces `OpenMinor`. AR/AP–GL **control reconciliation** endpoint + UI drift line.
 - SG / AU / ID / TH / US packs + framework + backlog live in **Dev Console → Ref & Library** (reference only until wired).
-- **Not done:** POS / PO / SO automatic subledger feed; AR/AP–GL reconciliation report.
+- **Not done:** POS / PO / SO automatic subledger feed; invoice/bill line items.
 
 ### Phase C2 — Internal depth (no external connections) 🟡 (partial)
 

@@ -49,6 +49,7 @@ public class AccountingLedgerController(
             companyId = cid,
             currency = await ledger.ResolveFunctionalCurrencyAsync(cid, company.CountryCode),
             functionalCurrency = await ledger.ResolveFunctionalCurrencyAsync(cid, company.CountryCode),
+            fiscalYearStartMonth = company.FiscalYearStartMonth is >= 1 and <= 12 ? company.FiscalYearStartMonth : 1,
             currencies = LedgerPostingService.CommonCurrencies,
             phase = "B",
             phaseLabel = "Ledger foundations: sealed journals, opening-balance TB/BS, tenant-scoped Books. Bank rec / AR-AP feed still partial.",
@@ -301,6 +302,49 @@ public class AccountingLedgerController(
         }
     }
 
+    [HttpGet("period-balances/drift")]
+    public async Task<ActionResult<object>> PeriodBalanceDrift([FromQuery] int? companyId)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        return Ok(await ledger.PeriodBalanceDriftAsync(cid));
+    }
+
+    [HttpPut("fiscal-year-start")]
+    public async Task<ActionResult<object>> SetFiscalYearStart(
+        [FromQuery] int? companyId,
+        [FromBody] FiscalYearStartRequest body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (!tenant.IsPlatformAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Fiscal year start requires a platform admin." });
+        var month = body?.Month ?? 0;
+        if (month is < 1 or > 12)
+            return BadRequest(new { message = "Month must be 1–12." });
+
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == cid);
+        if (company is null) return NotFound(new { message = "Company not found." });
+
+        var hasJournals = await db.GlJournals.AnyAsync(j => j.CompanyId == cid && j.PostedAt != null);
+        if (hasJournals && company.FiscalYearStartMonth != month)
+            return Conflict(new { message = "Cannot change fiscal year start after journals have been posted." });
+
+        company.FiscalYearStartMonth = month;
+        // Drop unposted period shells so the next ensure rebuilds on the new calendar.
+        if (!hasJournals)
+        {
+            var emptyPeriods = await db.GlFiscalPeriods.Where(p => p.CompanyId == cid).ToListAsync();
+            db.GlFiscalPeriods.RemoveRange(emptyPeriods);
+        }
+        await db.SaveChangesAsync();
+        await ledger.EnsurePeriodsForYearAsync(cid, LedgerPostingService.ResolveFiscalYear(month, DateOnly.FromDateTime(DateTime.UtcNow)));
+        return Ok(new { companyId = cid, fiscalYearStartMonth = month });
+    }
+
+    public sealed class FiscalYearStartRequest
+    {
+        public int Month { get; set; }
+    }
+
     [HttpPost("journals/{id:int}/reverse")]
     public async Task<ActionResult<object>> Reverse(int id, [FromQuery] int? companyId)
     {
@@ -339,6 +383,15 @@ public class AccountingLedgerController(
             })
             .ToListAsync();
         return Ok(rows);
+    }
+
+    [HttpPost("outbox/ack")]
+    public async Task<ActionResult<object>> AckOutbox([FromQuery] int? companyId, [FromQuery] int take = 100)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (!tenant.IsPlatformAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "Outbox ack requires a platform admin." });
+        return Ok(await ledger.AckPendingOutboxAsync(cid, take));
     }
 
     public sealed record CreateAccountRequest(string Code, string Name, string AccountType, string NormalBalance);

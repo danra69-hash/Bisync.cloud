@@ -49,6 +49,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoBase64", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "BusinessHoursJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "FunctionalCurrency", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "FiscalYearStartMonth", "INTEGER NOT NULL DEFAULT 1");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
@@ -2924,7 +2925,7 @@ public static class SchemaPatcher
                 "EffectiveDate" date NOT NULL,
                 "PeriodId" INTEGER NOT NULL,
                 CONSTRAINT "FK_GlJournalLines_GlJournals_JournalId"
-                    FOREIGN KEY ("JournalId") REFERENCES "GlJournals" ("Id") ON DELETE CASCADE
+                    FOREIGN KEY ("JournalId") REFERENCES "GlJournals" ("Id") ON DELETE RESTRICT
             );
             """);
         await TryCreateUniqueIndexAsync(db, "IX_GlJournalLines_CompanyId_JournalId_LineNo", "GlJournalLines", "\"CompanyId\", \"JournalId\", \"LineNo\"");
@@ -2932,6 +2933,8 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRate", "NUMERIC(20,10)");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRateDate", "date");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRateType", "TEXT");
+        await EnsureGlJournalLineDeleteRestrictAsync(db);
+        await EnsureGlJournalBalanceTriggerAsync(db);
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "GlPeriodBalances" (
@@ -3271,6 +3274,119 @@ public static class SchemaPatcher
             );
             """);
         await TryCreateIndexAsync(db, "IX_GlStatutoryReturns_Company_Type", "GlStatutoryReturns", "\"CompanyId\", \"ReturnType\", \"PeriodStart\"");
+    }
+
+    /// <summary>
+    /// Posted journal lines must not vanish via CASCADE when a journal header is deleted.
+    /// Existing databases may still have ON DELETE CASCADE from earlier patches — rewrite to RESTRICT.
+    /// </summary>
+    static async Task EnsureGlJournalLineDeleteRestrictAsync(BisyncDbContext db)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                DO $$
+                DECLARE
+                    conname text;
+                BEGIN
+                    SELECT c.conname INTO conname
+                    FROM pg_constraint c
+                    JOIN pg_class rel ON rel.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = rel.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND rel.relname = 'GlJournalLines'
+                      AND c.contype = 'f'
+                      AND pg_get_constraintdef(c.oid) LIKE '%GlJournals%';
+                    IF conname IS NOT NULL THEN
+                        EXECUTE format('ALTER TABLE "GlJournalLines" DROP CONSTRAINT %I', conname);
+                    END IF;
+                    ALTER TABLE "GlJournalLines"
+                        ADD CONSTRAINT "FK_GlJournalLines_GlJournals_JournalId"
+                        FOREIGN KEY ("JournalId") REFERENCES "GlJournals" ("Id") ON DELETE RESTRICT;
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$;
+                """);
+        }
+        catch
+        {
+            // Non-Postgres or locked — app-layer Restrict in EF still applies on EnsureCreated paths.
+        }
+    }
+
+    /// <summary>
+    /// Deferred constraint trigger: every posted journal's functional lines must sum to zero.
+    /// Also blocks DELETE of posted journal headers.
+    /// </summary>
+    static async Task EnsureGlJournalBalanceTriggerAsync(BisyncDbContext db)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE OR REPLACE FUNCTION bisync_gl_journal_lines_balanced()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                DECLARE
+                    jid integer;
+                    posted timestamptz;
+                    bal bigint;
+                BEGIN
+                    jid := COALESCE(NEW."JournalId", OLD."JournalId");
+                    SELECT "PostedAt" INTO posted FROM "GlJournals" WHERE "Id" = jid;
+                    IF posted IS NULL THEN
+                        RETURN NULL;
+                    END IF;
+                    SELECT COALESCE(SUM(
+                        CASE WHEN "Direction" = 'D' THEN "FuncAmountMinor" ELSE -"FuncAmountMinor" END
+                    ), 0)
+                    INTO bal
+                    FROM "GlJournalLines"
+                    WHERE "JournalId" = jid;
+                    IF bal <> 0 THEN
+                        RAISE EXCEPTION 'Posted journal % is unbalanced by % functional minor units', jid, bal;
+                    END IF;
+                    RETURN NULL;
+                END;
+                $$;
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                DROP TRIGGER IF EXISTS trg_gl_journal_lines_balanced ON "GlJournalLines";
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE CONSTRAINT TRIGGER trg_gl_journal_lines_balanced
+                AFTER INSERT OR UPDATE OR DELETE ON "GlJournalLines"
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE PROCEDURE bisync_gl_journal_lines_balanced();
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE OR REPLACE FUNCTION bisync_gl_prevent_posted_journal_delete()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    IF OLD."PostedAt" IS NOT NULL THEN
+                        RAISE EXCEPTION 'Cannot delete posted journal % (%); reverse it instead', OLD."Id", OLD."DocNumber";
+                    END IF;
+                    RETURN OLD;
+                END;
+                $$;
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                DROP TRIGGER IF EXISTS trg_gl_prevent_posted_journal_delete ON "GlJournals";
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TRIGGER trg_gl_prevent_posted_journal_delete
+                BEFORE DELETE ON "GlJournals"
+                FOR EACH ROW
+                EXECUTE PROCEDURE bisync_gl_prevent_posted_journal_delete();
+                """);
+        }
+        catch
+        {
+            // Trigger DDL is best-effort on non-Postgres.
+        }
     }
 
     static async Task TryCreateUniqueIndexAsync(BisyncDbContext db, string indexName, string table, string column)

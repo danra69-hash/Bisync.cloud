@@ -86,7 +86,22 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             await malaysiaPack.EnsureMalaysiaPackAsync(companyId, ct);
         }
 
-        await EnsurePeriodsForYearAsync(companyId, DateTime.UtcNow.Year, ct);
+        await EnsurePeriodsForYearAsync(companyId, ResolveFiscalYear(await FiscalYearStartMonthAsync(companyId, ct), DateOnly.FromDateTime(DateTime.UtcNow)), ct);
+    }
+
+    public static int ResolveFiscalYear(int startMonth, DateOnly date)
+    {
+        startMonth = Math.Clamp(startMonth, 1, 12);
+        return date.Month >= startMonth ? date.Year : date.Year - 1;
+    }
+
+    public async Task<int> FiscalYearStartMonthAsync(int companyId, CancellationToken ct = default)
+    {
+        var month = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == companyId)
+            .Select(c => c.FiscalYearStartMonth)
+            .FirstOrDefaultAsync(ct);
+        return month is >= 1 and <= 12 ? month : 1;
     }
 
     public async Task EnsurePeriodsForYearAsync(int companyId, int year, CancellationToken ct = default)
@@ -96,15 +111,19 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         if (await db.GlFiscalPeriods.AnyAsync(p => p.CompanyId == companyId && p.Year == year, ct))
             return;
 
-        for (var m = 1; m <= 12; m++)
+        var startMonth = await FiscalYearStartMonthAsync(companyId, ct);
+        for (var i = 0; i < 12; i++)
         {
-            var start = new DateOnly(year, m, 1);
+            var offset = startMonth - 1 + i;
+            var calYear = year + (offset / 12);
+            var month = (offset % 12) + 1;
+            var start = new DateOnly(calYear, month, 1);
             var end = start.AddMonths(1).AddDays(-1);
             db.GlFiscalPeriods.Add(new GlFiscalPeriod
             {
                 CompanyId = companyId,
                 Year = year,
-                PeriodNo = m,
+                PeriodNo = i + 1,
                 StartDate = start,
                 EndDate = end,
                 Status = "open",
@@ -354,7 +373,10 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
 
     public async Task<GlFiscalPeriod> RequireOpenPeriodAsync(int companyId, DateOnly effectiveDate, CancellationToken ct = default)
     {
-        await EnsurePeriodsForYearAsync(companyId, effectiveDate.Year, ct);
+        var fy = ResolveFiscalYear(await FiscalYearStartMonthAsync(companyId, ct), effectiveDate);
+        await EnsurePeriodsForYearAsync(companyId, fy, ct);
+        if (fy - 1 >= 2000) await EnsurePeriodsForYearAsync(companyId, fy - 1, ct);
+        if (fy + 1 <= 2100) await EnsurePeriodsForYearAsync(companyId, fy + 1, ct);
         var period = await db.GlFiscalPeriods
             .FirstOrDefaultAsync(p =>
                 p.CompanyId == companyId
@@ -393,6 +415,134 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             IdempotencyKey = idempotencyKey,
             CreatedAt = DateTime.UtcNow,
         });
+    }
+
+    /// <summary>Mark matching outbox rows processed (ack after successful bridge / journal side-effect).</summary>
+    public async Task MarkOutboxProcessedAsync(int companyId, string? idempotencyKey, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey)) return;
+        var keys = new HashSet<string>(StringComparer.Ordinal) { idempotencyKey };
+        if (idempotencyKey.StartsWith("outbox:", StringComparison.Ordinal))
+            keys.Add(idempotencyKey["outbox:".Length..]);
+        else
+            keys.Add($"outbox:{idempotencyKey}");
+
+        var now = DateTime.UtcNow;
+        foreach (var entry in db.ChangeTracker.Entries<GlOutboxMessage>())
+        {
+            var m = entry.Entity;
+            if (m.CompanyId != companyId || m.ProcessedAt != null) continue;
+            if (m.IdempotencyKey is null || !keys.Contains(m.IdempotencyKey)) continue;
+            m.ProcessedAt = now;
+        }
+
+        var rows = await db.GlOutboxMessages
+            .Where(m => m.CompanyId == companyId
+                && m.ProcessedAt == null
+                && m.IdempotencyKey != null
+                && keys.Contains(m.IdempotencyKey))
+            .ToListAsync(ct);
+        foreach (var row in rows)
+            row.ProcessedAt = now;
+    }
+
+    /// <summary>Admin: acknowledge pending outbox rows (no re-dispatch).</summary>
+    public async Task<object> AckPendingOutboxAsync(int companyId, int? take, CancellationToken ct = default)
+    {
+        var limit = Math.Clamp(take ?? 100, 1, 500);
+        var pending = await db.GlOutboxMessages
+            .Where(m => m.CompanyId == companyId && m.ProcessedAt == null)
+            .OrderBy(m => m.CreatedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        foreach (var m in pending)
+            m.ProcessedAt = now;
+        await db.SaveChangesAsync(ct);
+        return new { acknowledged = pending.Count, remaining = await db.GlOutboxMessages.CountAsync(m => m.CompanyId == companyId && m.ProcessedAt == null, ct) };
+    }
+
+    /// <summary>
+    /// Compare stored period movement to sealed journals. Returns drift rows when cube ≠ journals.
+    /// </summary>
+    public async Task<object> PeriodBalanceDriftAsync(int companyId, CancellationToken ct = default)
+    {
+        var stored = await db.GlPeriodBalances.AsNoTracking()
+            .Where(b => b.CompanyId == companyId)
+            .ToListAsync(ct);
+        var journalAgg = await db.GlJournalLines.AsNoTracking()
+            .Where(l => l.CompanyId == companyId && l.Journal!.PostedAt != null)
+            .GroupBy(l => new { l.AccountId, l.PeriodId, l.FuncCurrency })
+            .Select(g => new
+            {
+                g.Key.AccountId,
+                g.Key.PeriodId,
+                Currency = g.Key.FuncCurrency,
+                PeriodDr = g.Where(x => x.Direction == "D").Sum(x => x.FuncAmountMinor),
+                PeriodCr = g.Where(x => x.Direction == "C").Sum(x => x.FuncAmountMinor),
+            })
+            .ToListAsync(ct);
+
+        var byKey = stored.ToDictionary(
+            b => (b.AccountId, b.PeriodId, b.Currency),
+            b => b);
+        var drift = new List<object>();
+        foreach (var j in journalAgg)
+        {
+            byKey.TryGetValue((j.AccountId, j.PeriodId, j.Currency), out var bal);
+            var storedDr = bal?.PeriodDrMinor ?? 0L;
+            var storedCr = bal?.PeriodCrMinor ?? 0L;
+            if (storedDr == j.PeriodDr && storedCr == j.PeriodCr) continue;
+            drift.Add(new
+            {
+                j.AccountId,
+                j.PeriodId,
+                currency = j.Currency,
+                journalDr = j.PeriodDr,
+                journalCr = j.PeriodCr,
+                storedDr,
+                storedCr,
+                deltaDr = storedDr - j.PeriodDr,
+                deltaCr = storedCr - j.PeriodCr,
+            });
+            if (bal is not null)
+            {
+                var tracked = await db.GlPeriodBalances.FirstAsync(b => b.Id == bal.Id, ct);
+                tracked.RecomputeAfter = DateTime.UtcNow;
+            }
+        }
+
+        foreach (var bal in stored)
+        {
+            if (journalAgg.Any(j => j.AccountId == bal.AccountId && j.PeriodId == bal.PeriodId
+                && string.Equals(j.Currency, bal.Currency, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (bal.PeriodDrMinor == 0 && bal.PeriodCrMinor == 0) continue;
+            drift.Add(new
+            {
+                bal.AccountId,
+                bal.PeriodId,
+                currency = bal.Currency,
+                journalDr = 0L,
+                journalCr = 0L,
+                storedDr = bal.PeriodDrMinor,
+                storedCr = bal.PeriodCrMinor,
+                deltaDr = bal.PeriodDrMinor,
+                deltaCr = bal.PeriodCrMinor,
+                orphanCube = true,
+            });
+        }
+
+        if (drift.Count > 0)
+            await db.SaveChangesAsync(ct);
+
+        return new
+        {
+            companyId,
+            driftCount = drift.Count,
+            ok = drift.Count == 0,
+            drift,
+        };
     }
 
     /// <summary>
@@ -597,6 +747,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             new { journal.DocNumber, journal.JournalType, journal.SourceModule, sourceDocKey, txn, funcCurrency, rate },
             idempotencyKey: idempotencyKey is null ? null : $"outbox:{idempotencyKey}",
             ct);
+        await MarkOutboxProcessedAsync(companyId, idempotencyKey, ct);
         await db.SaveChangesAsync(ct);
         return journal;
     }

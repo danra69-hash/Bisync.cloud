@@ -969,7 +969,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasMany(x => x.Lines)
                 .WithOne(x => x.Journal)
                 .HasForeignKey(x => x.JournalId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Period)
                 .WithMany()
                 .HasForeignKey(x => x.PeriodId)

@@ -91,18 +91,33 @@ assert.match(ledger, /RebuildPeriodBalancesAsync/, 'period-balance rebuild from 
 assert.match(ledger, /HardClosePeriodAsync/, 'hard-close is reachable');
 assert.match(ledger, /PriorYearNetIncomeMinorAsync/, 'year-boundary NI folds into RE openings');
 assert.match(ledger, /OpeningCrMinor \+= ni/, 'soft-close year-end credits RE with NI');
+assert.match(ledger, /ResolveFiscalYear/, 'fiscal year resolves from start month');
+assert.match(ledger, /FiscalYearStartMonth/, 'fiscal year start month is read from company');
+assert.match(ledger, /PeriodBalanceDriftAsync/, 'period-balance drift check exists');
+assert.match(ledger, /MarkOutboxProcessedAsync/, 'successful posts ack outbox');
+assert.match(ledger, /AckPendingOutboxAsync/, 'admin can ack pending outbox');
 
 assert.match(booksCtrl, /control-reconciliation/, 'control recon endpoint exposed');
 assert.match(booksCtrl, /bank-statements\/\{id:int\}\/finalise/, 'bank finalise endpoint');
 assert.match(ledgerCtrl, /period-balances\/rebuild/, 'rebuild endpoint');
+assert.match(ledgerCtrl, /period-balances\/drift/, 'drift endpoint');
+assert.match(ledgerCtrl, /fiscal-year-start/, 'fiscal year start endpoint');
+assert.match(ledgerCtrl, /outbox\/ack/, 'outbox ack endpoint');
 assert.match(ledgerCtrl, /hard-close/, 'hard-close endpoint');
 assert.match(ledgerCtrl, /Reopen requires a platform admin/, 'reopen is admin-gated');
 
 assert.match(read('src/Bisync.Api/Models/GlBooks.cs'), /OpeningMinor/, 'bank statement has opening balance');
 assert.match(read('src/Bisync.Api/Models/GlBooks.cs'), /BankAccountCode/, 'bank statement ties to a GL account');
+assert.match(read('src/Bisync.Api/Models/Company.cs'), /FiscalYearStartMonth/, 'company stores FY start month');
+
+assert.match(read('src/Bisync.Api/Data/SchemaPatcher.cs'), /ON DELETE RESTRICT/, 'journal lines FK is RESTRICT');
+assert.match(read('src/Bisync.Api/Data/SchemaPatcher.cs'), /bisync_gl_journal_lines_balanced/, 'balanced-journal trigger function');
+assert.match(read('src/Bisync.Api/Data/SchemaPatcher.cs'), /trg_gl_prevent_posted_journal_delete/, 'posted journals cannot be deleted');
+assert.match(read('src/Bisync.Api/Data/BisyncDbContext.cs'), /HasForeignKey\(x => x\.JournalId\)\s*\n\s*\.OnDelete\(DeleteBehavior\.Restrict\)/, 'EF Restrict on journal→lines');
 
 assert.match(arch, /Phase C1 — Malaysia-first full Books surface 🟡/, 'architecture must not mark C1 complete');
 assert.match(arch, /Phase C2 — Internal depth \(no external connections\) 🟡/, 'architecture must not mark C2 complete');
 assert.match(arch, /opening-balance roll-forward/, 'architecture documents opening roll-forward');
+assert.match(arch, /balanced-journal/, 'architecture documents DB balance trigger');
 
 console.log('accounting-ledger-hard-fixes.test.mjs: ok');
