@@ -71,7 +71,16 @@ public class AccountingLedgerController(
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
-        await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
+        try
+        {
+            await ledger.EnsureChartAndOpenPeriodsAsync(cid, company?.CountryCode);
+        }
+        catch (Exception)
+        {
+            // Still return any accounts that already exist so the COA list is not blank.
+            try { await ledger.EnsureSeedAccountsAsync(cid); }
+            catch { /* best-effort */ }
+        }
 
         var rows = await db.GlAccounts.AsNoTracking()
             .Where(a => a.CompanyId == cid)

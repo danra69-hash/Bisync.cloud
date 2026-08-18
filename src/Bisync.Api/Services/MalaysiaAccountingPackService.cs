@@ -165,9 +165,16 @@ public sealed class MalaysiaAccountingPackService(BisyncDbContext db)
 
     async Task EnsureAccountRolesAsync(int companyId, CancellationToken ct)
     {
-        var accounts = await db.GlAccounts.AsNoTracking()
+        var accountRows = await db.GlAccounts.AsNoTracking()
             .Where(a => a.CompanyId == companyId)
-            .ToDictionaryAsync(a => a.Code, a => a.Id, StringComparer.OrdinalIgnoreCase, ct);
+            .Select(a => new { a.Code, a.Id })
+            .ToListAsync(ct);
+        var accounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in accountRows)
+        {
+            if (string.IsNullOrWhiteSpace(a.Code)) continue;
+            accounts.TryAdd(a.Code.Trim(), a.Id);
+        }
 
         foreach (var role in DefaultRoles)
         {
