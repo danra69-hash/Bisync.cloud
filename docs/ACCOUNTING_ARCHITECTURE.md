@@ -157,34 +157,33 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - Fiscal period soft-close/reopen; periods created for the posting year (back-dated years allowed).
 - Accounting hub defaults to **Books** (not payroll-only).
 
-### Phase C1 — Malaysia-first full Books surface 🟡 (partial)
+### Phase C1 — Malaysia-first full Books surface ✅ (Wave A+B)
 
 - Upstream Accounting package imported under `docs/accounting/upstream/`.
-- **Malaysia pack** seeds SST tax codes / roles / SLA only for MY companies (GET no longer seeds MY codes into other countries).
-- FX rate store UI + API; AR/AP open items with SLA-posted journals + aging (posted invoices/bills only); void.
-- Credit notes reverse AR/AP. Bank match **posts cash** and reduces `OpenMinor`. AR/AP–GL **control reconciliation** endpoint + UI drift line.
-- **Invoice/bill line items** on open items (optional `lines[]`; per-line account override posts document GL).
-- **POS EOD close → day settlement journal** (`pos.settlement.posted`) — best-effort, never blocks EOD.
-- Books Reports: TB, P&amp;L, BS, **cash flow (indirect)**, **GL enquiry**.
-- SG / AU / ID / TH / US packs + framework + backlog live in **Dev Console → Ref & Library** (reference only until wired).
-- **Not done:** vendor/customer master binding; bank CSV/OFX import; Access Control task enforcement; MyInvois.
+- **Malaysia pack** seeds SST tax codes / roles / SLA (incl. unapplied cash v2).
+- AR/AP open items with line items, vendor/customer `CounterpartyRef`, apply clearing journals, aging table, control-recon worksheet.
+- Bank CSV import + match/finalise; FA acquire/dispose; RevRec liability seed + schedule.
+- **POS EOD → day settlement journal**; FIFO issue + vendor CN → GL bridges.
+- Books Reports: TB, P&amp;L, BS, cash flow (indirect), GL enquiry.
+- Access Control catalog keys enforced on journal / bank / AP / AR mutations.
+- SST-02 draft from GL tax-role lines (MyInvois still Phase D).
 - Suite claim map: [`HOSPITALITY_ERP_FINANCE_PARITY.md`](./HOSPITALITY_ERP_FINANCE_PARITY.md).
 
 ### Phase C2 — Internal depth (no external connections) 🟡 (partial)
 
-- Bank matching posts GL + reduces open items (manual + exact-amount auto-match, suggest scores, unmatch/reverse).
-- AP approval workflow with SoD against the **signed-in user** (not a typed clerk/approver box).
-- Payment applications UI (apply complementary kinds only / un-apply).
-- Fixed assets: IFRS book posts Dr dep expense / Cr accum dep; tax book is schedule-only.
-- RevRec recognition Dr deferred revenue / Cr sales.
-- SST-02 **draft** return computation (boxes only — still hand-keyed open items; MyInvois deferred).
+- Bank matching posts GL + reduces open items; CSV import live; OFX still later.
+- AP approval workflow with SoD against the **signed-in user**.
+- Payment applications post clearing journals; un-apply reverses.
+- Fixed assets: acquire + IFRS dep + dispose.
+- RevRec: liability seed + over-time schedule runner + recognise.
+- SST-02 from GL tax lines (draft; MyInvois deferred).
 
 ### Phase D — Compliance surface (external)
 
-- First localisation pack (likely Malaysia / Singapore Peppol path for hospitality).
-- E-invoicing via aggregator behind an internal port; Temporal-like workflow only when submission durability demands it.
+- First localisation pack transmission (Malaysia MyInvois / Singapore Peppol path).
+- E-invoicing via aggregator behind an internal port.
+- QBO/Xero take-on migration.
 - Statutory export as required by pack.
-- Full AP/AR open-item aging and bank reconciliation remain next.
 
 ---
 

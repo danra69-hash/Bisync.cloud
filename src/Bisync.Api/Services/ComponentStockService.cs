@@ -7,7 +7,8 @@ namespace Bisync.Api.Services;
 
 public class ComponentStockService(
     BisyncDbContext db,
-    FifoBatchIssueService fifoBatches)
+    FifoBatchIssueService fifoBatches,
+    AccountingBridgeService accountingBridge)
 {
     public async Task<decimal> GetOnHandAsync(
         string componentId,
@@ -117,6 +118,21 @@ public class ComponentStockService(
             {
                 await db.SaveChangesAsync(cancellationToken);
                 await tx!.CommitAsync(cancellationToken);
+            }
+
+            if (companyId is > 0)
+            {
+                await accountingBridge.OnFifoIssueAsync(
+                    companyId.Value,
+                    locationExternalId,
+                    componentId,
+                    componentName,
+                    quantity,
+                    uom,
+                    unitPrice,
+                    referenceType,
+                    referenceId,
+                    cancellationToken);
             }
         }
         catch

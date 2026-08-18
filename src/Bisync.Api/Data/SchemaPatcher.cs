@@ -3131,9 +3131,11 @@ public static class SchemaPatcher
                 "AppliedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "EffectiveDate" date NOT NULL,
                 "ReversalOfId" INTEGER,
-                "CreatedBy" TEXT NOT NULL DEFAULT ''
+                "CreatedBy" TEXT NOT NULL DEFAULT '',
+                "JournalId" INTEGER
             );
             """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlItemApplications", "JournalId", "INTEGER");
         await TryCreateIndexAsync(db, "IX_GlItemApplications_Company_From", "GlItemApplications", "\"CompanyId\", \"AppliedFromId\"");
 
         await db.Database.ExecuteSqlRawAsync("""

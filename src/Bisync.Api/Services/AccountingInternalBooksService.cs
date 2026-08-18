@@ -47,7 +47,7 @@ public sealed class AccountingInternalBooksService(
         };
     }
 
-    public async Task UnapplyAsync(int companyId, int applicationId, string createdBy, CancellationToken ct = default)
+    public async Task UnapplyAsync(int companyId, int applicationId, string createdBy, string? countryCode = null, CancellationToken ct = default)
     {
         var app = await db.GlItemApplications
             .FirstOrDefaultAsync(a => a.Id == applicationId && a.CompanyId == companyId, ct)
@@ -66,6 +66,20 @@ public sealed class AccountingInternalBooksService(
         from.Status = from.OpenMinor >= from.GrossMinor ? "open" : "partial";
         to.Status = to.OpenMinor >= to.GrossMinor ? "open" : "partial";
 
+        int? reverseJournalId = null;
+        if (app.JournalId is > 0)
+        {
+            try
+            {
+                var rev = await ledger.ReverseAsync(companyId, app.JournalId.Value, createdBy, ct);
+                reverseJournalId = rev.Id;
+            }
+            catch (InvalidOperationException)
+            {
+                // If reverse fails (already reversed), still record unapply on subledger.
+            }
+        }
+
         db.GlItemApplications.Add(new GlItemApplication
         {
             CompanyId = companyId,
@@ -76,6 +90,7 @@ public sealed class AccountingInternalBooksService(
             EffectiveDate = DateOnly.FromDateTime(DateTime.UtcNow),
             ReversalOfId = applicationId,
             CreatedBy = createdBy,
+            JournalId = reverseJournalId,
         });
         await db.SaveChangesAsync(ct);
     }
@@ -480,7 +495,125 @@ public sealed class AccountingInternalBooksService(
         });
         db.GlFixedAssets.Add(asset);
         await db.SaveChangesAsync(ct);
+
+        // Acquisition journal: Dr FA / Cr AP (or bank if cash purchase — AP control default).
+        try
+        {
+            await subledger.EnsureReadyAsync(companyId, null, ct);
+            var faCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "fixed_asset_default", "1500", ct);
+            var apCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "ap_control", "2010", ct);
+            await ledger.PostAsync(
+                companyId,
+                null,
+                "FA",
+                "FA",
+                acquiredOn,
+                acquiredOn,
+                "FIXED_ASSETS",
+                $"fa-acq:{companyId}:{asset.Id}",
+                $"Acquire {asset.AssetTag} · {asset.Name}",
+                "fa-acquire",
+                $"fa-acq:{companyId}:{asset.AssetTag}",
+                [
+                    (faCode, "D", cost, "Fixed asset acquisition"),
+                    (apCode, "C", cost, "AP / funding for acquisition"),
+                ],
+                ct,
+                txnCurrency: cur);
+            await db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // Asset register row remains even if acquisition journal fails (ops first).
+        }
+
         return asset;
+    }
+
+    public async Task<object> DisposeFixedAssetAsync(
+        int companyId,
+        string? countryCode,
+        int assetId,
+        DateOnly disposedOn,
+        decimal proceeds,
+        CancellationToken ct = default)
+    {
+        await subledger.EnsureReadyAsync(companyId, countryCode, ct);
+        var asset = await db.GlFixedAssets
+            .Include(a => a.Books)
+            .FirstOrDefaultAsync(a => a.Id == assetId && a.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException("Fixed asset not found.");
+        if (asset.Status == "disposed")
+            throw new InvalidOperationException("Asset already disposed.");
+
+        var accum = await db.GlDepreciationRuns
+            .Where(r => r.CompanyId == companyId && r.AssetId == asset.Id && r.BookId == "ifrs")
+            .SumAsync(r => (long?)r.AmountMinor, ct) ?? 0;
+        var nbvMinor = asset.CostMinor - accum;
+        if (nbvMinor < 0) nbvMinor = 0;
+        var cur = asset.Currency;
+        var nbv = LedgerPostingService.FromMinor(nbvMinor, cur);
+        var accumMajor = LedgerPostingService.FromMinor(accum, cur);
+        var costMajor = LedgerPostingService.FromMinor(asset.CostMinor, cur);
+        var proceedsClamped = Math.Max(0m, proceeds);
+        var gainLoss = proceedsClamped - nbv;
+
+        var faCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "fixed_asset_default", "1500", ct);
+        var accumCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "accum_depreciation", "1510", ct);
+        var bankCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "bank_default", "1000", ct);
+        var pnlCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "rounding_difference", "5900", ct);
+
+        var lines = new List<(string, string, decimal, string)>
+        {
+            (accumCode, "D", accumMajor, "Clear accumulated depreciation"),
+            (faCode, "C", costMajor, "Remove asset cost"),
+        };
+        if (proceedsClamped > 0)
+            lines.Add((bankCode, "D", proceedsClamped, "Disposal proceeds"));
+        if (gainLoss > 0.004m)
+            lines.Add((pnlCode, "C", gainLoss, "Gain on disposal"));
+        else if (gainLoss < -0.004m)
+            lines.Add((pnlCode, "D", -gainLoss, "Loss on disposal"));
+
+        // Balance plug if needed
+        var debit = lines.Where(l => l.Item2 == "D").Sum(l => l.Item3);
+        var credit = lines.Where(l => l.Item2 == "C").Sum(l => l.Item3);
+        var residual = debit - credit;
+        if (Math.Abs(residual) >= 0.01m)
+        {
+            if (residual > 0) lines.Add((pnlCode, "C", residual, "Disposal rounding"));
+            else lines.Add((pnlCode, "D", -residual, "Disposal rounding"));
+        }
+
+        var journal = await ledger.PostAsync(
+            companyId,
+            countryCode,
+            "FA",
+            "FA",
+            disposedOn,
+            disposedOn,
+            "FIXED_ASSETS",
+            $"fa-disp:{companyId}:{asset.Id}",
+            $"Dispose {asset.AssetTag}",
+            "fa-dispose",
+            $"fa-disp:{companyId}:{asset.AssetTag}:{disposedOn:yyyyMMdd}",
+            lines,
+            ct,
+            txnCurrency: cur);
+
+        asset.Status = "disposed";
+        foreach (var b in asset.Books) b.Status = "disposed";
+        await db.SaveChangesAsync(ct);
+        return new
+        {
+            asset.Id,
+            asset.AssetTag,
+            asset.Status,
+            nbv,
+            proceeds = proceedsClamped,
+            gainLoss,
+            journalId = journal.Id,
+        };
     }
 
     public async Task<object> RunDepreciationAsync(
@@ -607,7 +740,72 @@ public sealed class AccountingInternalBooksService(
         });
         db.GlRevRecContracts.Add(contract);
         await db.SaveChangesAsync(ct);
+
+        // Seed contract liability: Dr unapplied AR / cash clearing vs Cr deferred revenue.
+        try
+        {
+            await subledger.EnsureReadyAsync(companyId, null, ct);
+            var deferred = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "deferred_revenue", "2400", ct);
+            var arUnapplied = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "ar_unapplied", "1120", ct);
+            var priceMajor = LedgerPostingService.FromMinor(price, cur);
+            await ledger.PostAsync(
+                companyId,
+                null,
+                "REV",
+                "REV",
+                start,
+                start,
+                "REVREC",
+                $"revrec-seed:{companyId}:{contract.Id}",
+                $"RevRec liability seed {contract.ContractNo}",
+                "revrec-seed",
+                $"revrec-seed:{companyId}:{contract.ContractNo}",
+                [
+                    (arUnapplied, "D", priceMajor, "Contract consideration / unapplied"),
+                    (deferred, "C", priceMajor, "Deferred revenue liability"),
+                ],
+                ct,
+                txnCurrency: cur);
+            await db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // Contract row remains; recognition can still run once liability is funded.
+        }
+
         return contract;
+    }
+
+    public async Task<object> RunRevRecScheduleAsync(
+        int companyId,
+        string? countryCode,
+        DateOnly asOf,
+        CancellationToken ct = default)
+    {
+        await subledger.EnsureReadyAsync(companyId, countryCode, ct);
+        var contracts = await db.GlRevRecContracts
+            .Include(c => c.Obligations)
+            .Where(c => c.CompanyId == companyId && c.Status == "active")
+            .ToListAsync(ct);
+        var posted = new List<object>();
+        foreach (var c in contracts)
+        {
+            var end = c.EndDate ?? c.StartDate.AddMonths(12);
+            if (asOf < c.StartDate) continue;
+            var totalDays = Math.Max(1, end.DayNumber - c.StartDate.DayNumber + 1);
+            var elapsed = Math.Clamp(asOf.DayNumber - c.StartDate.DayNumber + 1, 0, totalDays);
+            foreach (var obl in c.Obligations)
+            {
+                if (obl.Pattern != "over_time") continue;
+                var target = (long)Math.Round(obl.AllocatedMinor * ((decimal)elapsed / totalDays), MidpointRounding.AwayFromZero);
+                var delta = target - obl.RecognisedMinor;
+                if (delta <= 0) continue;
+                var amount = LedgerPostingService.FromMinor(delta, c.Currency);
+                var result = await RecogniseRevRecAsync(companyId, countryCode, obl.Id, amount, ct);
+                posted.Add(new { obl.Id, c.ContractNo, amount, result });
+            }
+        }
+        return new { asOf, postedCount = posted.Count, posted };
     }
 
     public async Task<object> RecogniseRevRecAsync(
@@ -667,7 +865,44 @@ public sealed class AccountingInternalBooksService(
         CancellationToken ct = default)
     {
         await SchemaPatcher.EnsureGlBooksTablesAsync(db);
-        // Internal draft only — no MyInvois / Customs transmission.
+        await malaysiaPack.EnsureCoreRolesAndSlaAsync(companyId, ct);
+
+        var outputCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "tax_output_payable", "2210", ct);
+        var expenseCode = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "tax_expense_nonrecoverable", "5210", ct);
+        var outputAcct = await db.GlAccounts.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.Code == outputCode, ct);
+        var expenseAcct = await db.GlAccounts.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.CompanyId == companyId && a.Code == expenseCode, ct);
+
+        long outputTaxMinor = 0;
+        long purchaseTaxMinor = 0;
+        if (outputAcct is not null)
+        {
+            var lines = await db.GlJournalLines.AsNoTracking()
+                .Where(l => l.CompanyId == companyId
+                    && l.AccountId == outputAcct.Id
+                    && l.EffectiveDate >= periodStart
+                    && l.EffectiveDate <= periodEnd)
+                .ToListAsync(ct);
+            // Output tax liability increases on Credit.
+            outputTaxMinor = lines.Where(l => l.Direction == "C").Sum(l => l.FuncAmountMinor)
+                - lines.Where(l => l.Direction == "D").Sum(l => l.FuncAmountMinor);
+            if (outputTaxMinor < 0) outputTaxMinor = 0;
+        }
+        if (expenseAcct is not null)
+        {
+            var lines = await db.GlJournalLines.AsNoTracking()
+                .Where(l => l.CompanyId == companyId
+                    && l.AccountId == expenseAcct.Id
+                    && l.EffectiveDate >= periodStart
+                    && l.EffectiveDate <= periodEnd)
+                .ToListAsync(ct);
+            purchaseTaxMinor = lines.Where(l => l.Direction == "D").Sum(l => l.FuncAmountMinor)
+                - lines.Where(l => l.Direction == "C").Sum(l => l.FuncAmountMinor);
+            if (purchaseTaxMinor < 0) purchaseTaxMinor = 0;
+        }
+
+        // Fallback disclosure from open-item headers when GL tax lines are empty.
         var arTax = await db.GlOpenItems.AsNoTracking()
             .Where(i => i.CompanyId == companyId && i.Subledger == "ar"
                 && i.IssueDate >= periodStart && i.IssueDate <= periodEnd
@@ -675,7 +910,6 @@ public sealed class AccountingInternalBooksService(
             .GroupBy(i => i.TaxCode ?? "EXEMPT")
             .Select(g => new { taxCode = g.Key, tax = g.Sum(x => x.TaxMinor), gross = g.Sum(x => x.GrossMinor) })
             .ToListAsync(ct);
-
         var apTax = await db.GlOpenItems.AsNoTracking()
             .Where(i => i.CompanyId == companyId && i.Subledger == "ap"
                 && i.IssueDate >= periodStart && i.IssueDate <= periodEnd
@@ -685,15 +919,20 @@ public sealed class AccountingInternalBooksService(
             .Select(g => new { taxCode = g.Key, tax = g.Sum(x => x.TaxMinor), gross = g.Sum(x => x.GrossMinor) })
             .ToListAsync(ct);
 
-        var outputTax = arTax.Sum(x => x.tax);
-        // MY SST: no input credit — purchase tax is expense, shown for disclosure only.
-        var nonRecoverablePurchaseTax = apTax.Sum(x => x.tax);
+        if (outputTaxMinor == 0 && arTax.Count > 0)
+            outputTaxMinor = arTax.Sum(x => x.tax);
+        if (purchaseTaxMinor == 0 && apTax.Count > 0)
+            purchaseTaxMinor = apTax.Sum(x => x.tax);
+
         var boxes = new Dictionary<string, object>
         {
-            ["A_output_tax_minor"] = outputTax,
+            ["A_output_tax_minor"] = outputTaxMinor,
             ["B_taxable_sales_gross_minor"] = arTax.Sum(x => x.gross),
-            ["C_purchase_tax_expense_minor"] = nonRecoverablePurchaseTax,
-            ["D_note"] = "Malaysia SST has no input tax credit. Box C is disclosure only; do not offset output.",
+            ["C_purchase_tax_expense_minor"] = purchaseTaxMinor,
+            ["D_note"] = "Malaysia SST has no input tax credit. Box C is disclosure only; do not offset output. Prefer GL tax-role lines; open-item headers used as fallback.",
+            ["source"] = outputAcct is not null ? "gl_tax_role_lines" : "open_item_headers",
+            ["output_account"] = outputCode,
+            ["expense_account"] = expenseCode,
             ["by_tax_code_ar"] = arTax.Select(x => new
             {
                 x.taxCode,
@@ -706,7 +945,7 @@ public sealed class AccountingInternalBooksService(
                 tax = LedgerPostingService.FromMinor(x.tax),
                 gross = LedgerPostingService.FromMinor(x.gross),
             }),
-            ["filing"] = "SST-02 bimonthly (draft computation — transmission external)",
+            ["filing"] = "SST-02 bimonthly (draft computation — MyInvois transmission external / Phase D)",
         };
 
         var row = new GlStatutoryReturn

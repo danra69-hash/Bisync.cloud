@@ -259,6 +259,8 @@ public class AccountingLedgerController(
     public async Task<ActionResult> SoftClose(int id, [FromQuery] int? companyId)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.SoftClose) is { } denied)
+            return denied;
         try
         {
             await ledger.SoftClosePeriodAsync(cid, id);
@@ -274,6 +276,8 @@ public class AccountingLedgerController(
     public async Task<ActionResult> HardClose(int id, [FromQuery] int? companyId)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.HardClose) is { } denied)
+            return denied;
         if (!tenant.IsPlatformAdmin)
             return StatusCode(StatusCodes.Status403Forbidden, new { message = "Hard-close requires a platform admin." });
         try
@@ -350,6 +354,8 @@ public class AccountingLedgerController(
     public async Task<ActionResult<object>> Reverse(int id, [FromQuery] int? companyId)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.JournalManage) is { } denied)
+            return denied;
         try
         {
             var reversal = await ledger.ReverseAsync(cid, id, createdBy: actor);
@@ -452,6 +458,8 @@ public class AccountingLedgerController(
         [FromBody] PostJournalRequest body)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.JournalManage) is { } denied)
+            return denied;
         if (body.Lines is null || body.Lines.Count < 2)
             return BadRequest(new { message = "At least two journal lines are required." });
 

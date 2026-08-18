@@ -8,7 +8,8 @@ namespace Bisync.Api.Services;
 public class CreditNoteService(
     BisyncDbContext db,
     ComponentStockService componentStock,
-    FifoBatchIssueService fifoBatches)
+    FifoBatchIssueService fifoBatches,
+    AccountingBridgeService accountingBridge)
 {
     public const string ReferenceType = "credit_note";
     public const string StatusConfirmed = "confirmed";
@@ -291,6 +292,7 @@ public class CreditNoteService(
             throw;
         }
 
+        await accountingBridge.OnVendorCreditNoteAsync(entry, cancellationToken);
         return entry;
     }
 

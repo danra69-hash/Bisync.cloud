@@ -5607,6 +5607,7 @@ export const api = {
       subledger: string;
       kind: string;
       counterpartyName: string;
+      counterpartyRef?: string;
       issueDate: string;
       dueDate: string;
       gross: number;
@@ -5617,6 +5618,8 @@ export const api = {
       postJournal?: boolean;
       createdBy?: string;
       requireApApproval?: boolean;
+      fxRate?: number;
+      fxRateDate?: string;
       lines?: Array<{
         description?: string;
         quantity?: number;
@@ -5636,7 +5639,14 @@ export const api = {
     ),
   accountingApplyOpenItems: (
     companyId: number,
-    body: { fromId: number; toId: number; amount: number; effectiveDate?: string },
+    body: {
+      fromId: number;
+      toId: number;
+      amount: number;
+      effectiveDate?: string;
+      settlementFxRate?: number;
+      settlementFxRateDate?: string;
+    },
   ) =>
     fetchJsonWithMethod<void>(`/api/accounting/books/open-items/apply?companyId=${companyId}`, 'POST', body),
   accountingAging: (companyId: number, subledger: string, asOf?: string) => {
@@ -5687,11 +5697,54 @@ export const api = {
       'POST',
       body,
     ),
+  accountingImportBankCsv: (
+    companyId: number,
+    body: {
+      csvText: string;
+      accountLabel?: string;
+      bankAccountCode?: string;
+      currency?: string;
+      statementDate?: string;
+      opening?: number;
+      closing?: number;
+    },
+  ) =>
+    fetchJsonWithMethod<{
+      id: number;
+      statementDate: string;
+      source: string;
+      lineCount: number;
+      opening: number;
+      closing: number;
+      currency: string;
+    }>(
+      `/api/accounting/books/bank-statements/import-csv?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
   accountingFinaliseBankStatement: (companyId: number, id: number) =>
     fetchJsonWithMethod<{ id: number; status: string; difference?: number }>(
       `/api/accounting/books/bank-statements/${id}/finalise?companyId=${companyId}`,
       'POST',
     ),
+  accountingDisposeFixedAsset: (
+    companyId: number,
+    id: number,
+    body: { disposedOn: string; proceeds?: number },
+  ) =>
+    fetchJsonWithMethod<object>(
+      `/api/accounting/books/fixed-assets/${id}/dispose?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingRunRevRecSchedule: (companyId: number, asOf?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (asOf) params.set('asOf', asOf);
+    return fetchJsonWithMethod<object>(
+      `/api/accounting/books/revrec/run-schedule?${params}`,
+      'POST',
+    );
+  },
   accountingApplications: (companyId: number, take = 50) =>
     fetchJson<Array<{ id: number; appliedFromId: number; appliedToId: number; amount: number; effectiveDate: string; reversalOfId: number | null; createdBy: string }>>(
       `/api/accounting/books/applications?companyId=${companyId}&take=${take}`,
@@ -6006,6 +6059,7 @@ export type AccountingOpenItem = {
   subledger: string;
   kind: string;
   counterpartyName: string;
+  counterpartyRef?: string | null;
   currency: string;
   issueDate: string;
   dueDate: string;

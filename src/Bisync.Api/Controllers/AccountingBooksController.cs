@@ -132,6 +132,7 @@ public class AccountingBooksController(
                 i.Subledger,
                 i.Kind,
                 i.CounterpartyName,
+                i.CounterpartyRef,
                 i.Currency,
                 i.IssueDate,
                 i.DueDate,
@@ -179,7 +180,10 @@ public class AccountingBooksController(
         bool? PostJournal,
         string? CreatedBy,
         bool? RequireApApproval,
-        List<CreateOpenItemLineRequest>? Lines);
+        List<CreateOpenItemLineRequest>? Lines,
+        string? CounterpartyRef,
+        decimal? FxRate,
+        DateOnly? FxRateDate);
 
     [HttpPost("open-items")]
     public async Task<ActionResult<object>> CreateOpenItem(
@@ -187,6 +191,10 @@ public class AccountingBooksController(
         [FromBody] CreateOpenItemRequest body)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var acKey = body.Subledger?.Trim().Equals("ap", StringComparison.OrdinalIgnoreCase) == true
+            ? AccountingAccessControl.ApManage
+            : AccountingAccessControl.ArManage;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, acKey) is { } denied) return denied;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         if (company is null) return NotFound(new { message = "Company not found." });
         try
@@ -221,7 +229,10 @@ public class AccountingBooksController(
                 body.PostJournal ?? true,
                 string.IsNullOrWhiteSpace(body.CreatedBy) ? actor : body.CreatedBy,
                 body.RequireApApproval ?? true,
-                lineInputs);
+                lineInputs,
+                body.CounterpartyRef,
+                body.FxRate,
+                body.FxRateDate);
             return Ok(new
             {
                 item.Id,
@@ -232,6 +243,8 @@ public class AccountingBooksController(
                 item.Status,
                 item.ApprovalStatus,
                 item.CreatedBy,
+                item.CounterpartyName,
+                item.CounterpartyRef,
                 currency = item.Currency,
                 gross = LedgerPostingService.FromMinor(item.GrossMinor, item.Currency),
                 open = LedgerPostingService.FromMinor(item.OpenMinor, item.Currency),
@@ -244,7 +257,13 @@ public class AccountingBooksController(
         }
     }
 
-    public sealed record ApplyRequest(int FromId, int ToId, decimal Amount, DateOnly? EffectiveDate);
+    public sealed record ApplyRequest(
+        int FromId,
+        int ToId,
+        decimal Amount,
+        DateOnly? EffectiveDate,
+        decimal? SettlementFxRate,
+        DateOnly? SettlementFxRateDate);
 
     [HttpPost("open-items/apply")]
     public async Task<ActionResult> Apply(
@@ -252,6 +271,10 @@ public class AccountingBooksController(
         [FromBody] ApplyRequest body)
     {
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var arDenied = await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.ArReceive);
+        var apDenied = await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.ApPay);
+        if (arDenied is not null && apDenied is not null) return arDenied;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try
         {
             await books.ApplyAsync(
@@ -260,7 +283,10 @@ public class AccountingBooksController(
                 body.ToId,
                 body.Amount,
                 body.EffectiveDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
-                createdBy: actor);
+                createdBy: actor,
+                countryCode: company?.CountryCode,
+                settlementFxRate: body.SettlementFxRate,
+                settlementFxRateDate: body.SettlementFxRateDate);
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -404,6 +430,38 @@ public class AccountingBooksController(
             closing = LedgerPostingService.FromMinor(stmt.ClosingMinor, cur),
             lineCount = stmt.Lines.Count,
         });
+    }
+
+    public sealed record ImportBankCsvRequest(
+        string CsvText,
+        string? AccountLabel,
+        string? BankAccountCode,
+        string? Currency,
+        DateOnly? StatementDate,
+        decimal? Opening,
+        decimal? Closing);
+
+    [HttpPost("bank-statements/import-csv")]
+    public async Task<ActionResult<object>> ImportBankCsv(
+        [FromQuery] int? companyId,
+        [FromBody] ImportBankCsvRequest body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        if (await AccountingAccessControl.RequireAsync(db, tenant, AccountingAccessControl.BankRec) is { } denied)
+            return denied;
+        try
+        {
+            return Ok(await books.ImportBankCsvAsync(
+                cid,
+                body.CsvText,
+                body.AccountLabel,
+                body.BankAccountCode,
+                body.Currency,
+                body.StatementDate,
+                body.Opening,
+                body.Closing));
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
     [HttpPost("bank-statements/{id:int}/finalise")]
@@ -597,6 +655,24 @@ public class AccountingBooksController(
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 
+    public sealed record DisposeFixedAssetRequest(DateOnly DisposedOn, decimal? Proceeds);
+
+    [HttpPost("fixed-assets/{id:int}/dispose")]
+    public async Task<ActionResult<object>> DisposeFixedAsset(
+        int id,
+        [FromQuery] int? companyId,
+        [FromBody] DisposeFixedAssetRequest body)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        try
+        {
+            return Ok(await internalBooks.DisposeFixedAssetAsync(
+                cid, company?.CountryCode, id, body.DisposedOn, body.Proceeds ?? 0m));
+        }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
     [HttpPost("fixed-assets/depreciate")]
     public async Task<ActionResult<object>> Depreciate([FromQuery] int? companyId, [FromQuery] int year, [FromQuery] int periodNo, [FromQuery] string? bookId)
     {
@@ -653,6 +729,21 @@ public class AccountingBooksController(
         if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
         try { return Ok(await internalBooks.RecogniseRevRecAsync(cid, company?.CountryCode, id, body.Amount)); }
+        catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+    }
+
+    [HttpPost("revrec/run-schedule")]
+    public async Task<ActionResult<object>> RunRevRecSchedule(
+        [FromQuery] int? companyId,
+        [FromQuery] DateOnly? asOf)
+    {
+        if (!TryGate(companyId, out var cid, out var actor, out var gateError)) return gateError;
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        try
+        {
+            return Ok(await internalBooks.RunRevRecScheduleAsync(
+                cid, company?.CountryCode, asOf ?? DateOnly.FromDateTime(DateTime.UtcNow)));
+        }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
     }
 

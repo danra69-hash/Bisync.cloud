@@ -380,4 +380,118 @@ public sealed class AccountingBridgeService(
             return null;
         }
     }
+
+    /// <summary>FIFO issue summary → Dr COGS / Cr Inventory (best-effort; never fails ops).</summary>
+    public async Task OnFifoIssueAsync(
+        int companyId,
+        string locationExternalId,
+        string componentId,
+        string componentName,
+        decimal quantity,
+        string uom,
+        decimal unitPrice,
+        string referenceType,
+        int referenceId,
+        CancellationToken ct = default)
+    {
+        if (companyId <= 0 || quantity <= 0 || unitPrice < 0) return;
+        if (string.Equals(referenceType, "credit_note", StringComparison.OrdinalIgnoreCase))
+            return; // vendor CN has its own bridge
+
+        var amount = Math.Round(quantity * unitPrice, 2, MidpointRounding.AwayFromZero);
+        if (amount < 0.01m) return;
+
+        var idempotency = $"ops.fifo_issue:{companyId}:{referenceType}:{referenceId}:{componentId}:{quantity:0.####}";
+        try
+        {
+            await ledger.EnqueueOutboxAsync(
+                companyId,
+                "ops.fifo_issue",
+                new { companyId, locationExternalId, componentId, componentName, quantity, uom, unitPrice, amount, referenceType, referenceId },
+                idempotency,
+                ct);
+
+            var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
+            await malaysiaPack.EnsureCoreRolesAndSlaAsync(companyId, ct);
+            var cogs = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "cogs_default", "5200", ct);
+            var inv = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "inventory_default", "1400", ct);
+            var effective = DateOnly.FromDateTime(DateTime.UtcNow);
+            await ledger.PostAsync(
+                companyId,
+                company?.CountryCode,
+                "INV",
+                "COGS",
+                effective,
+                effective,
+                "RMS",
+                $"fifo:{referenceType}:{referenceId}:{componentId}",
+                $"FIFO issue {componentName} @ {locationExternalId}",
+                "fifo-issue",
+                idempotency,
+                [
+                    (cogs, "D", amount, $"COGS {componentName}"),
+                    (inv, "C", amount, $"Inventory relief {componentName}"),
+                ],
+                ct);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "FIFO COGS bridge failed company {CompanyId} ref {Type}:{Id}", companyId, referenceType, referenceId);
+        }
+    }
+
+    /// <summary>Vendor credit note confirmed → Dr AP / Cr Inventory (best-effort).</summary>
+    public async Task OnVendorCreditNoteAsync(CreditNote note, CancellationToken ct = default)
+    {
+        var companyId = note.CompanyId ?? 0;
+        if (companyId <= 0 || note.Amount < 0.01m) return;
+
+        var idempotency = $"ops.vendor_credit_note:{companyId}:{note.Id}";
+        try
+        {
+            await ledger.EnqueueOutboxAsync(
+                companyId,
+                "ops.vendor_credit_note",
+                new
+                {
+                    creditNoteId = note.Id,
+                    companyId,
+                    note.PoNumber,
+                    note.CreditNoteNumber,
+                    note.Amount,
+                    note.VendorExternalId,
+                },
+                idempotency,
+                ct);
+
+            var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId, ct);
+            await malaysiaPack.EnsureCoreRolesAndSlaAsync(companyId, ct);
+            var ap = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "ap_control", "2010", ct);
+            var inv = await malaysiaPack.ResolveRoleAccountCodeAsync(companyId, "inventory_default", "1400", ct);
+            var effective = note.CreditNoteDate;
+            await ledger.PostAsync(
+                companyId,
+                company?.CountryCode,
+                "AP",
+                "APJ",
+                effective,
+                effective,
+                "RMS",
+                $"vendor-cn:{note.Id}",
+                $"Vendor CN {note.CreditNoteNumber} · PO {note.PoNumber}",
+                "vendor-cn",
+                idempotency,
+                [
+                    (ap, "D", note.Amount, $"AP relief CN {note.CreditNoteNumber}"),
+                    (inv, "C", note.Amount, $"Inventory return {note.ProductName}"),
+                ],
+                ct);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Vendor CN bridge failed for CN {Id} company {CompanyId}", note.Id, companyId);
+        }
+    }
 }

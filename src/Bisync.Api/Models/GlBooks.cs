@@ -144,6 +144,8 @@ public class GlItemApplication
     public DateOnly EffectiveDate { get; set; }
     public int? ReversalOfId { get; set; }
     public string CreatedBy { get; set; } = "";
+    /// <summary>Clearing journal posted on apply (reversed on un-apply).</summary>
+    public int? JournalId { get; set; }
 }
 
 /// <summary>Bank statement header for reconciliation (MY: DuitNow / FPX / file import).</summary>

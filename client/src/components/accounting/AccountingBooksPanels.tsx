@@ -216,7 +216,14 @@ export function OpenItemsPanel({
 }) {
   const [items, setItems] = useState<AccountingOpenItem[]>([]);
   const [aging, setAging] = useState<AccountingAging | null>(null);
-  const [recon, setRecon] = useState<{ glControl: number; subledgerOpen: number; drift: number; reconciled: boolean; controlAccount: string } | null>(null);
+  const [recon, setRecon] = useState<{
+    glControl: number;
+    subledgerOpen: number;
+    drift: number;
+    reconciled: boolean;
+    controlAccount: string;
+    note?: string;
+  } | null>(null);
   const [apps, setApps] = useState<Array<{ id: number; appliedFromId: number; appliedToId: number; amount: number; reversalOfId: number | null }>>([]);
   const [name, setName] = useState('');
   const [gross, setGross] = useState('');
@@ -425,15 +432,56 @@ export function OpenItemsPanel({
       </div>
 
       {aging && (
-        <p className="font-sans text-muted-foreground">
-          Aging: current {money(aging.buckets.current ?? 0)} · 1–30 {money(aging.buckets['1-30'] ?? 0)} · 31–60 {money(aging.buckets['31-60'] ?? 0)} · 61–90 {money(aging.buckets['61-90'] ?? 0)} · 90+ {money(aging.buckets['90+'] ?? 0)}
-        </p>
+        <div className="border-t border-border pt-3 space-y-2">
+          <p className="font-semibold">Aging detail</p>
+          <p className="font-sans text-muted-foreground">
+            Buckets: current {money(aging.buckets.current ?? 0)} · 1–30 {money(aging.buckets['1-30'] ?? 0)} · 31–60 {money(aging.buckets['31-60'] ?? 0)} · 61–90 {money(aging.buckets['61-90'] ?? 0)} · 90+ {money(aging.buckets['90+'] ?? 0)}
+          </p>
+          {aging.rows && aging.rows.length > 0 && (
+            <table className="w-full border-collapse text-[11px]">
+              <thead>
+                <tr className="text-muted-foreground border-b border-border text-left">
+                  <th className="py-1 pr-2">Doc</th>
+                  <th className="py-1 pr-2">Party</th>
+                  <th className="py-1 pr-2">Due</th>
+                  <th className="py-1 pr-2 text-right">Open</th>
+                  <th className="py-1 pr-2">Bucket</th>
+                  <th className="py-1">Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aging.rows.slice(0, 40).map(r => (
+                  <tr key={r.id} className="border-b border-border/60">
+                    <td className="py-1 pr-2 font-sans">#{r.id} {r.internalDocumentNo}</td>
+                    <td className="py-1 pr-2">{r.counterpartyName}</td>
+                    <td className="py-1 pr-2 font-sans">{r.dueDate}</td>
+                    <td className="py-1 pr-2 text-right font-sans">{money(r.open)}</td>
+                    <td className="py-1 pr-2 font-sans">{r.bucket}</td>
+                    <td className="py-1 font-sans">{r.daysPastDue}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
       {recon && (
-        <p className="font-sans text-muted-foreground">
-          Control {recon.controlAccount}: GL {money(recon.glControl)} · subledger {money(recon.subledgerOpen)} · drift {money(recon.drift)}
-          {recon.reconciled ? ' · tied' : ' · out of balance'}
-        </p>
+        <div className="border-t border-border pt-3 space-y-2 text-[11px]">
+          <p className="font-semibold">Control reconciliation worksheet</p>
+          <p className="font-sans text-muted-foreground">
+            Control {recon.controlAccount}: GL {money(recon.glControl)} · subledger {money(recon.subledgerOpen)} · drift {money(recon.drift)}
+            {recon.reconciled ? ' · tied' : ' · out of balance'}
+          </p>
+          <p className="text-muted-foreground">{recon.note}</p>
+          <ul className="space-y-0.5 max-h-40 overflow-auto">
+            {items.filter(i => i.open > 0 && (i.kind === 'invoice' || i.kind === 'bill')).map(i => (
+              <li key={i.id} className="font-sans flex justify-between gap-2 border-b border-border/40 py-0.5">
+                <span>#{i.id} {i.internalDocumentNo} · {i.counterpartyName}</span>
+                <span>{money(i.open)} {i.currency}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <table className="w-full border-collapse">
@@ -488,6 +536,7 @@ export function BankPanel({
   const [queue, setQueue] = useState<Awaited<ReturnType<typeof api.accountingBankQueue>> | null>(null);
   const [narrative, setNarrative] = useState('');
   const [amount, setAmount] = useState('');
+  const [csvText, setCsvText] = useState('');
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [selectedItem, setSelectedItem] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<Array<{ openItemId: number; internalDocumentNo: string; counterpartyName: string; score: number; rule: string; open: number }>>([]);
@@ -564,7 +613,7 @@ export function BankPanel({
   return (
     <div className="space-y-4 max-w-5xl border-t border-border pt-3 text-xs">
       <p className="text-muted-foreground">
-        Capture statement lines, then match 1:1 / N:M to open items. Match posts cash and reduces the invoice open balance. Auto-match uses exact amount once. No external bank feed yet.
+        Capture statement lines, then match 1:1 / N:M to open items. Match posts cash and reduces the invoice open balance. Auto-match uses exact amount once. CSV import: date,narrative,amount.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <label className="space-y-1 sm:col-span-2">
@@ -576,7 +625,42 @@ export function BankPanel({
           <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} />
         </label>
       </div>
+      <label className="block space-y-1">
+        <span className="text-muted-foreground">Import CSV (date,narrative,amount)</span>
+        <textarea
+          className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans min-h-[72px]"
+          placeholder={"2026-08-01,DuitNow vendor pay,-1200.00\n2026-08-02,Customer receipt,850.50"}
+          value={csvText}
+          onChange={e => setCsvText(e.target.value)}
+        />
+      </label>
       <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy || !csvText.trim()}
+          className="text-xs font-bold border border-border px-3 py-1.5 rounded-md disabled:opacity-50"
+          onClick={() => {
+            void (async () => {
+              setBusy(true);
+              onError(null);
+              try {
+                await api.accountingImportBankCsv(companyId, {
+                  csvText,
+                  currency: functionalCurrency,
+                  opening: 0,
+                });
+                setCsvText('');
+                await load();
+              } catch (e) {
+                onError(e instanceof Error ? e.message : 'CSV import failed');
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+        >
+          Import CSV statement
+        </button>
         <button type="button" disabled={busy} onClick={() => void create()} className="text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md disabled:opacity-50">
           Add statement line
         </button>
