@@ -153,6 +153,13 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - Fiscal period soft-close/reopen.
 - Accounting hub defaults to **Books** (not payroll-only).
 
+### Phase C1 — Malaysia-first full Books surface ✅ (initial)
+
+- Upstream Accounting package imported under `docs/accounting/upstream/`.
+- **Malaysia pack active:** SST tax codes (`recoverability=none`), account roles, SLA rule sets, MY COA extras.
+- FX rate store UI + API; AR/AP open items with SLA-posted journals + aging; bank statement shells.
+- SG / AU / ID / TH / US packs + framework + backlog live in **Dev Console → Ref & Library** (reference only until wired).
+
 ### Phase D — Compliance surface
 
 - First localisation pack (likely Malaysia / Singapore Peppol path for hospitality).

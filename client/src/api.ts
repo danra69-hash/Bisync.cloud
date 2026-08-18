@@ -5527,6 +5527,79 @@ export const api = {
     fetchJson<AccountingOutboxRow[]>(
       `/api/accounting/outbox?companyId=${companyId}&take=${take}`,
     ),
+  accountingPack: (companyId: number) =>
+    fetchJson<AccountingPackStatus>(`/api/accounting/books/pack?companyId=${companyId}`),
+  accountingFxRates: (companyId: number, take = 50) =>
+    fetchJson<AccountingFxRate[]>(`/api/accounting/books/fx-rates?companyId=${companyId}&take=${take}`),
+  accountingUpsertFxRate: (
+    companyId: number,
+    body: {
+      fromCurrency: string;
+      toCurrency: string;
+      rateDate: string;
+      rate: number;
+      rateType?: string;
+      source?: string;
+    },
+  ) =>
+    fetchJsonWithMethod<AccountingFxRate>(
+      `/api/accounting/books/fx-rates?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingOpenItems: (companyId: number, subledger?: string, take = 80) => {
+    const params = new URLSearchParams({ companyId: String(companyId), take: String(take) });
+    if (subledger) params.set('subledger', subledger);
+    return fetchJson<AccountingOpenItem[]>(`/api/accounting/books/open-items?${params}`);
+  },
+  accountingCreateOpenItem: (
+    companyId: number,
+    body: {
+      subledger: string;
+      kind: string;
+      counterpartyName: string;
+      issueDate: string;
+      dueDate: string;
+      gross: number;
+      currency?: string;
+      taxCode?: string;
+      taxAmount?: number;
+      narration?: string;
+      postJournal?: boolean;
+    },
+  ) =>
+    fetchJsonWithMethod<AccountingOpenItem>(
+      `/api/accounting/books/open-items?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingApplyOpenItems: (
+    companyId: number,
+    body: { fromId: number; toId: number; amount: number; effectiveDate?: string },
+  ) =>
+    fetchJsonWithMethod<void>(`/api/accounting/books/open-items/apply?companyId=${companyId}`, 'POST', body),
+  accountingAging: (companyId: number, subledger: string, asOf?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId), subledger });
+    if (asOf) params.set('asOf', asOf);
+    return fetchJson<AccountingAging>(`/api/accounting/books/aging?${params}`);
+  },
+  accountingBankStatements: (companyId: number) =>
+    fetchJson<AccountingBankStatement[]>(`/api/accounting/books/bank-statements?companyId=${companyId}`),
+  accountingCreateBankStatement: (
+    companyId: number,
+    body: {
+      accountLabel?: string;
+      statementDate: string;
+      currency?: string;
+      source?: string;
+      lines?: Array<{ valueDate: string; narrative: string; amount: number }>;
+    },
+  ) =>
+    fetchJsonWithMethod<{ id: number; accountLabel: string; statementDate: string; lineCount: number }>(
+      `/api/accounting/books/bank-statements?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
 };
 
 export type AccountingLedgerStatus = {
@@ -5652,4 +5725,84 @@ export type AccountingOutboxRow = {
   createdAt: string;
   processedAt: string | null;
   payloadJson: string;
+};
+
+export type AccountingPackStatus = {
+  activePack: string;
+  note: string;
+  sst: {
+    model: string;
+    inputCredit: boolean;
+    recoverability: string;
+    filing: string;
+    eInvoicing: string;
+  };
+  packs: Array<{ packId: string; status: string; version: string; activatedAt: string }>;
+  accountRoles: Array<{ roleCode: string; accountId: number | null; notes: string | null; mapped: boolean }>;
+  taxCodes: Array<{ code: string; name: string; ratePercent: number; recoverability: string; packId: string }>;
+  slaRuleSets: Array<{
+    id: number;
+    eventType: string;
+    name: string;
+    version: number;
+    status: string;
+    packId: string;
+    lineCount: number;
+  }>;
+};
+
+export type AccountingFxRate = {
+  id: number;
+  fromCurrency: string;
+  toCurrency: string;
+  rateDate: string;
+  rate: number;
+  rateType: string;
+  source: string;
+  createdAt?: string;
+};
+
+export type AccountingOpenItem = {
+  id: number;
+  subledger: string;
+  kind: string;
+  counterpartyName: string;
+  currency: string;
+  issueDate: string;
+  dueDate: string;
+  gross: number;
+  open: number;
+  tax?: number;
+  taxCode?: string | null;
+  internalDocumentNo: string;
+  statutoryDocumentNo?: string | null;
+  journalId?: number | null;
+  status: string;
+  narration?: string;
+};
+
+export type AccountingAging = {
+  asOf: string;
+  subledger: string;
+  buckets: Record<string, number>;
+  rows: Array<{
+    id: number;
+    internalDocumentNo: string;
+    counterpartyName: string;
+    currency: string;
+    open: number;
+    dueDate: string;
+    daysPastDue: number;
+    bucket: string;
+  }>;
+};
+
+export type AccountingBankStatement = {
+  id: number;
+  accountLabel: string;
+  currency: string;
+  statementDate: string;
+  source: string;
+  status: string;
+  lineCount: number;
 };

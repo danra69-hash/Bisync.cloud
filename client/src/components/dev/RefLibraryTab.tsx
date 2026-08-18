@@ -49,6 +49,11 @@ import {
   PLATFORM_GLOSSARY_TITLE,
   type GlossaryModule,
 } from '../../data/platformGlossary';
+import {
+  ACCOUNTING_PACKS_LIBRARY_TITLE,
+  ACCOUNTING_PACKS_REVISED_DATE,
+  ACCOUNTING_PACK_REFS,
+} from '../../data/accountingPackLibrary';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type LibraryEntryId =
@@ -59,7 +64,8 @@ type LibraryEntryId =
   | 'fifo'
   | 'nutrition'
   | 'dantsu-printer'
-  | 'windows-escpos';
+  | 'windows-escpos'
+  | 'accounting-packs';
 
 type LibraryEntry = {
   id: LibraryEntryId;
@@ -164,6 +170,47 @@ function FifoDetails({
           {FIFO_ISSUE_STOCK_SQL}
         </pre>
       </div>
+    </div>
+  );
+}
+
+function AccountingPacksLibraryDetails() {
+  const [openId, setOpenId] = useState<string | null>('acc-my');
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Upstream Accounting package localisation packs. <strong>Malaysia is active in Books</strong>;
+        SG / AU / ID / TH / US remain reference here until wired.
+      </p>
+      <ul className="space-y-2">
+        {ACCOUNTING_PACK_REFS.map(pack => {
+          const open = openId === pack.id;
+          return (
+            <li key={pack.id} className="border border-border/60 rounded-md overflow-hidden">
+              <button
+                type="button"
+                className="w-full flex items-start justify-between gap-2 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setOpenId(open ? null : pack.id)}
+              >
+                <span className="min-w-0">
+                  <span className="text-xs font-semibold block">{pack.title}</span>
+                  <span className="text-[11px] text-muted-foreground">{pack.summary}</span>
+                </span>
+                <span className={`shrink-0 text-[10px] uppercase tracking-wide font-semibold ${
+                  pack.status === 'active' ? 'text-primary' : 'text-muted-foreground'
+                }`}>
+                  {pack.status}
+                </span>
+              </button>
+              {open && (
+                <pre className="max-h-96 overflow-auto border-t border-border/60 bg-background/80 p-3 text-[10px] leading-relaxed font-mono whitespace-pre-wrap">
+                  {pack.markdown}
+                </pre>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -578,6 +625,11 @@ export function RefLibraryTab() {
         revisedLabel: WINDOWS_ESCPOS_SDK_REVISED_DATE,
       },
       {
+        id: 'accounting-packs',
+        title: ACCOUNTING_PACKS_LIBRARY_TITLE,
+        revisedLabel: ACCOUNTING_PACKS_REVISED_DATE,
+      },
+      {
         id: 'nutrition',
         title: status?.sourceLabel || 'USDA FoodData Central (Foundation Foods + SR Legacy)',
         revisedLabel: formatDisplayDate(nutritionRevised),
@@ -638,6 +690,8 @@ export function RefLibraryTab() {
             onDownload={() => void handleDownloadWindowsSdk()}
           />
         );
+      case 'accounting-packs':
+        return <AccountingPacksLibraryDetails />;
       case 'nutrition':
         return (
           <NutritionDetails status={status} loading={loading} portalUrl={portalUrl} />

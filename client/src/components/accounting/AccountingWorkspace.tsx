@@ -11,13 +11,24 @@ import {
   type AccountingTrialBalance,
 } from '../../api';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import {
+  BankPanel,
+  FxRatesPanel,
+  MalaysiaPackPanel,
+  OpenItemsPanel,
+} from './AccountingBooksPanels';
 
-type BooksTab = 'overview' | 'coa' | 'journals' | 'reports' | 'periods';
+type BooksTab = 'overview' | 'coa' | 'journals' | 'malaysia' | 'fx' | 'ar' | 'ap' | 'bank' | 'reports' | 'periods';
 
 const BOOKS_TABS: { id: BooksTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'malaysia', label: 'Malaysia' },
   { id: 'coa', label: 'Chart of Accounts' },
   { id: 'journals', label: 'Journals' },
+  { id: 'fx', label: 'FX rates' },
+  { id: 'ar', label: 'AR' },
+  { id: 'ap', label: 'AP' },
+  { id: 'bank', label: 'Bank' },
   { id: 'reports', label: 'Reports' },
   { id: 'periods', label: 'Periods' },
 ];
@@ -128,7 +139,7 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
         <div>
           <h2 className="text-sm font-semibold">Books</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Chart of accounts, sealed journals, trial balance, P&amp;L and balance sheet.
+            Chart of accounts, journals, FX, AR/AP, bank shells — Malaysia pack first.
             {status ? ` · Functional ${status.functionalCurrency ?? status.currency}` : ''}
           </p>
         </div>
@@ -180,6 +191,9 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
       {tab === 'overview' && (
         <OverviewPanel status={status} tb={tb} statements={statements} journals={journals} />
       )}
+      {tab === 'malaysia' && (
+        <MalaysiaPackPanel companyId={companyId} onError={setError} />
+      )}
       {tab === 'coa' && (
         <ChartOfAccountsPanel
           companyId={companyId}
@@ -207,6 +221,38 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
             setDetail(null);
             void load();
           }}
+          onError={setError}
+        />
+      )}
+      {tab === 'fx' && (
+        <FxRatesPanel
+          companyId={companyId}
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
+          onError={setError}
+        />
+      )}
+      {tab === 'ar' && (
+        <OpenItemsPanel
+          companyId={companyId}
+          subledger="ar"
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
+          onError={setError}
+          onPosted={() => void load()}
+        />
+      )}
+      {tab === 'ap' && (
+        <OpenItemsPanel
+          companyId={companyId}
+          subledger="ap"
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
+          onError={setError}
+          onPosted={() => void load()}
+        />
+      )}
+      {tab === 'bank' && (
+        <BankPanel
+          companyId={companyId}
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
           onError={setError}
         />
       )}

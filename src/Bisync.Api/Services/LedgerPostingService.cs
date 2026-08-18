@@ -9,7 +9,7 @@ namespace Bisync.Api.Services;
 /// Phase 0 ledger posting — immutable sealed journals, gapless numbers at post,
 /// period balances updated in the same transaction. See docs/ACCOUNTING_ARCHITECTURE.md.
 /// </summary>
-public sealed class LedgerPostingService(BisyncDbContext db)
+public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingPackService malaysiaPack)
 {
     static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -77,8 +77,14 @@ public sealed class LedgerPostingService(BisyncDbContext db)
             throw new InvalidOperationException("Company context is required for ledger operations.");
 
         await SchemaPatcher.EnsureGlLedgerTablesAsync(db);
+        await SchemaPatcher.EnsureGlBooksTablesAsync(db);
         _ = CurrencyForCountry(countryCode);
         await EnsureSeedAccountsAsync(companyId, ct);
+        if (string.IsNullOrWhiteSpace(countryCode)
+            || countryCode.Equals("MY", StringComparison.OrdinalIgnoreCase))
+        {
+            await malaysiaPack.EnsureMalaysiaPackAsync(companyId, ct);
+        }
 
         var year = DateTime.UtcNow.Year;
         if (!await db.GlFiscalPeriods.AnyAsync(p => p.CompanyId == companyId && p.Year == year, ct))

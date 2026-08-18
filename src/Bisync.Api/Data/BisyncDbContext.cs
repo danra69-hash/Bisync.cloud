@@ -124,6 +124,17 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<GlPeriodBalance> GlPeriodBalances => Set<GlPeriodBalance>();
     public DbSet<GlDocCounter> GlDocCounters => Set<GlDocCounter>();
     public DbSet<GlOutboxMessage> GlOutboxMessages => Set<GlOutboxMessage>();
+    public DbSet<GlLocalisationPack> GlLocalisationPacks => Set<GlLocalisationPack>();
+    public DbSet<GlFxRate> GlFxRates => Set<GlFxRate>();
+    public DbSet<GlAccountRole> GlAccountRoles => Set<GlAccountRole>();
+    public DbSet<GlTaxCode> GlTaxCodes => Set<GlTaxCode>();
+    public DbSet<GlSlaRuleSet> GlSlaRuleSets => Set<GlSlaRuleSet>();
+    public DbSet<GlSlaRuleLine> GlSlaRuleLines => Set<GlSlaRuleLine>();
+    public DbSet<GlOpenItem> GlOpenItems => Set<GlOpenItem>();
+    public DbSet<GlItemApplication> GlItemApplications => Set<GlItemApplication>();
+    public DbSet<GlBankStatement> GlBankStatements => Set<GlBankStatement>();
+    public DbSet<GlBankStatementLine> GlBankStatementLines => Set<GlBankStatementLine>();
+    public DbSet<GlBankMatchGroup> GlBankMatchGroups => Set<GlBankMatchGroup>();
     public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
@@ -989,6 +1000,57 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => new { x.CompanyId, x.CreatedAt });
             e.Property(x => x.EventType).HasMaxLength(80);
             e.Property(x => x.IdempotencyKey).HasMaxLength(160);
+        });
+        modelBuilder.Entity<GlLocalisationPack>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.PackId }).IsUnique();
+            e.Property(x => x.PackId).HasMaxLength(8);
+            e.Property(x => x.Status).HasMaxLength(24);
+        });
+        modelBuilder.Entity<GlFxRate>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.FromCurrency, x.ToCurrency, x.RateDate, x.RateType }).IsUnique();
+            e.Property(x => x.Rate).HasPrecision(20, 10);
+            e.Property(x => x.FromCurrency).HasMaxLength(3);
+            e.Property(x => x.ToCurrency).HasMaxLength(3);
+        });
+        modelBuilder.Entity<GlAccountRole>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.RoleCode }).IsUnique();
+            e.Property(x => x.RoleCode).HasMaxLength(64);
+        });
+        modelBuilder.Entity<GlTaxCode>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Code }).IsUnique();
+            e.Property(x => x.RatePercent).HasPrecision(10, 4);
+            e.Property(x => x.Code).HasMaxLength(32);
+        });
+        modelBuilder.Entity<GlSlaRuleSet>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.EventType, x.Status });
+            e.HasMany(x => x.Lines).WithOne(x => x.RuleSet).HasForeignKey(x => x.RuleSetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlSlaRuleLine>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.RuleSetId, x.Seq }).IsUnique();
+        });
+        modelBuilder.Entity<GlOpenItem>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.InternalDocumentNo }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.Subledger, x.Status });
+            e.Property(x => x.Currency).HasMaxLength(3);
+        });
+        modelBuilder.Entity<GlItemApplication>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AppliedFromId });
+        });
+        modelBuilder.Entity<GlBankStatement>(e =>
+        {
+            e.HasMany(x => x.Lines).WithOne(x => x.Statement).HasForeignKey(x => x.StatementId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlBankStatementLine>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.StatementId, x.LineNo }).IsUnique();
         });
     }
 
