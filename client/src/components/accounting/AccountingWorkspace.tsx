@@ -16,20 +16,19 @@ import { MillstoneLoader } from '../shared/MillstoneLoader';
 import {
   BankPanel,
   FixedAssetsPanel,
-  FxRatesPanel,
   MalaysiaPackPanel,
   OpenItemsPanel,
   RevRecPanel,
 } from './AccountingBooksPanels';
+import { FxRateEntryModal } from './FxRateEntryModal';
 
-type BooksTab = 'overview' | 'coa' | 'journals' | 'malaysia' | 'fx' | 'ar' | 'ap' | 'bank' | 'assets' | 'revrec' | 'reports' | 'periods';
+type BooksTab = 'overview' | 'coa' | 'journals' | 'malaysia' | 'ar' | 'ap' | 'bank' | 'assets' | 'revrec' | 'reports' | 'periods';
 
 const BOOKS_TABS: { id: BooksTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'malaysia', label: 'Malaysia' },
   { id: 'coa', label: 'Chart of Accounts' },
   { id: 'journals', label: 'Journals' },
-  { id: 'fx', label: 'FX rates' },
   { id: 'ar', label: 'AR' },
   { id: 'ap', label: 'AP' },
   { id: 'bank', label: 'Bank' },
@@ -243,13 +242,6 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
             setDetail(null);
             void load();
           }}
-          onError={setError}
-        />
-      )}
-      {tab === 'fx' && (
-        <FxRatesPanel
-          companyId={companyId}
-          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
           onError={setError}
         />
       )}
@@ -503,6 +495,8 @@ function JournalsPanel({
     : [functionalCurrency, ...currencies];
   const [currency, setCurrency] = useState(functionalCurrency);
   const [fxRate, setFxRate] = useState('');
+  const [fxRateDate, setFxRateDate] = useState(todayIso());
+  const [fxModalOpen, setFxModalOpen] = useState(false);
   const [narration, setNarration] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(todayIso());
   const [lines, setLines] = useState<DraftLine[]>([
@@ -514,6 +508,8 @@ function JournalsPanel({
   useEffect(() => {
     setCurrency(functionalCurrency);
     setFxRate('');
+    setFxRateDate(todayIso());
+    setFxModalOpen(false);
   }, [functionalCurrency]);
 
   const foreign = currency !== functionalCurrency;
@@ -545,7 +541,7 @@ function JournalsPanel({
         docSeries: 'GEN',
         currency,
         fxRate: foreign ? rateNum : undefined,
-        fxRateDate: foreign ? effectiveDate : undefined,
+        fxRateDate: foreign ? fxRateDate || effectiveDate : undefined,
         lines: lines
           .filter(l => Number(l.amount) > 0)
           .map(l => ({
@@ -557,6 +553,7 @@ function JournalsPanel({
       });
       setNarration('');
       setFxRate('');
+      setFxRateDate(effectiveDate);
       setCurrency(functionalCurrency);
       setLines(lines.map(l => ({ ...l, amount: '', narration: '' })));
       onChanged();
@@ -593,33 +590,46 @@ function JournalsPanel({
               onChange={e => {
                 const next = e.target.value;
                 setCurrency(next);
-                if (next === functionalCurrency) setFxRate('');
+                if (next === functionalCurrency) {
+                  setFxRate('');
+                  setFxModalOpen(false);
+                } else {
+                  setFxRateDate(effectiveDate);
+                  setFxModalOpen(true);
+                }
               }}
             >
               {currencyOptions.map(c => (
                 <option key={c} value={c}>
-                  {c}{c === functionalCurrency ? ' (functional)' : ''}
+                  {c}{c === functionalCurrency ? ' (home)' : ''}
                 </option>
               ))}
             </select>
           </label>
-          {foreign ? (
-            <label className="space-y-1">
-              <span className="text-muted-foreground">Conversion rate ({functionalCurrency} / 1 {currency})</span>
-              <input
-                className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans"
-                inputMode="decimal"
-                placeholder="e.g. 4.70"
-                value={fxRate}
-                onChange={e => setFxRate(e.target.value)}
-              />
-            </label>
-          ) : (
-            <div className="space-y-1">
-              <span className="text-muted-foreground">Conversion rate</span>
-              <p className="text-[11px] text-muted-foreground pt-1.5">Not needed — same as functional.</p>
-            </div>
-          )}
+          <div className="space-y-1">
+            <span className="text-muted-foreground">Conversion rate</span>
+            {foreign ? (
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                {rateOk ? (
+                  <span className="font-sans text-[11px]">
+                    {rateNum} {functionalCurrency} / 1 {currency}
+                    <span className="text-muted-foreground"> · {fxRateDate}</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-destructive">Rate required</span>
+                )}
+                <button
+                  type="button"
+                  className="text-[11px] font-semibold underline text-muted-foreground hover:text-foreground"
+                  onClick={() => setFxModalOpen(true)}
+                >
+                  {rateOk ? 'Adjust rate' : 'Enter rate'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground pt-1.5">Not needed — home currency.</p>
+            )}
+          </div>
           <label className="space-y-1 sm:col-span-2 lg:col-span-1">
             <span className="text-muted-foreground">Narration</span>
             <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background" value={narration} onChange={e => setNarration(e.target.value)} placeholder="Journal description" />
@@ -627,10 +637,31 @@ function JournalsPanel({
         </div>
         {foreign && (
           <p className="text-[11px] text-muted-foreground">
-            Line amounts are in {currency}. Books will store functional amounts in {functionalCurrency}
-            {rateOk ? ` at rate ${rateNum}` : ''}.
+            Line amounts are in {currency}. Books store functional amounts in {functionalCurrency}
+            {rateOk ? ` at ${rateNum} (${fxRateDate})` : ''}. Remittance later can use a different rate.
           </p>
         )}
+        <FxRateEntryModal
+          open={fxModalOpen && foreign}
+          foreignCurrency={currency}
+          functionalCurrency={functionalCurrency}
+          defaultRateDate={fxRateDate || effectiveDate}
+          initialRate={fxRate}
+          title={`FX rate for journal · ${currency}`}
+          confirmLabel="Use rate"
+          onConfirm={({ rate, rateDate }) => {
+            setFxRate(String(rate));
+            setFxRateDate(rateDate);
+            setFxModalOpen(false);
+          }}
+          onCancel={() => {
+            setFxModalOpen(false);
+            if (!rateOk) {
+              setCurrency(functionalCurrency);
+              setFxRate('');
+            }
+          }}
+        />
         <div className="space-y-2">
           {lines.map((line, idx) => (
             <div key={idx} className="grid grid-cols-12 gap-1.5 text-xs items-center">

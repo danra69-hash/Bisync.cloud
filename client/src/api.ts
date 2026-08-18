@@ -5617,6 +5617,8 @@ export const api = {
       postJournal?: boolean;
       createdBy?: string;
       requireApApproval?: boolean;
+      fxRate?: number;
+      fxRateDate?: string;
       lines?: Array<{
         description?: string;
         quantity?: number;
@@ -5636,7 +5638,14 @@ export const api = {
     ),
   accountingApplyOpenItems: (
     companyId: number,
-    body: { fromId: number; toId: number; amount: number; effectiveDate?: string },
+    body: {
+      fromId: number;
+      toId: number;
+      amount: number;
+      effectiveDate?: string;
+      settlementFxRate?: number;
+      settlementFxRateDate?: string;
+    },
   ) =>
     fetchJsonWithMethod<void>(`/api/accounting/books/open-items/apply?companyId=${companyId}`, 'POST', body),
   accountingAging: (companyId: number, subledger: string, asOf?: string) => {
