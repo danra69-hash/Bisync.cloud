@@ -115,10 +115,12 @@ assert.match(read('src/Bisync.Api/Data/SchemaPatcher.cs'), /bisync_gl_journal_li
 assert.match(read('src/Bisync.Api/Data/SchemaPatcher.cs'), /trg_gl_prevent_posted_journal_delete/, 'posted journals cannot be deleted');
 assert.match(read('src/Bisync.Api/Data/BisyncDbContext.cs'), /HasForeignKey\(x => x\.JournalId\)\s*\n\s*\.OnDelete\(DeleteBehavior\.Restrict\)/, 'EF Restrict on journal→lines');
 
-assert.match(arch, /Phase C1 — Malaysia-first full Books surface 🟡/, 'architecture must not mark C1 complete');
+assert.match(arch, /Phase C1 — Malaysia-first full Books surface ✅/, 'architecture marks C1 complete after Wave B');
 assert.match(arch, /Phase C2 — Internal depth \(no external connections\) 🟡/, 'architecture must not mark C2 complete');
+assert.match(arch, /Phase D — Compliance surface \(external\) 🟡/, 'architecture must not mark Phase D complete');
 assert.match(arch, /opening-balance roll-forward/, 'architecture documents opening roll-forward');
 assert.match(arch, /balanced-journal/, 'architecture documents DB balance trigger');
+assert.match(arch, /StubMyInvoisTransmissionPort|IEInvoiceTransmissionPort/, 'architecture documents e-invoice port scaffold');
 
 // Wave A — hospitality ERP / NetSuite-class finance parity slice
 assert.match(ledger, /BuildCashFlowIndirectAsync/, 'indirect cash flow report');
