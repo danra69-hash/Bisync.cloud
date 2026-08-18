@@ -141,6 +141,40 @@
   color: var(--team-fg, #2c1a0a);
 }
 
+.platform-team-chat-float {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.15rem;
+}
+
+.platform-team-chat-float--quiet {
+  gap: 0;
+}
+
+.platform-team-chat-float-open {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid rgba(44, 26, 10, 0.14);
+  background: #fff;
+  color: var(--team-muted-fg, #5c4634);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(44, 26, 10, 0.08);
+}
+
+.platform-team-chat-float-open:hover {
+  background: #fff8f1;
+  border-color: rgba(243, 112, 33, 0.45);
+  color: var(--team-fg, #2c1a0a);
+}
+
 .platform-team-chat-dock {
   display: flex;
   align-items: center;

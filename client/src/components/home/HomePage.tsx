@@ -14,6 +14,8 @@ import { isNavItemPlatformLive, type ModulesGoLiveMap } from '../../data/platfor
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 import type { DropdownLocation } from '../../utils/orgFilters';
 import { PlatformTeamChatPanel } from '../chat/PlatformTeamChatPanel';
+import { PlatformTeamChatReopenFab } from '../chat/PlatformTeamChatReopenFab';
+import { usePlatformTeamChatHidden } from '../chat/platformTeamChatVisibility';
 import { LocationDropdown } from '../overview/LocationDropdown';
 import { DesktopUpdateNotice } from './DesktopUpdateNotice';
 import { HomeDesktopDownloadCard } from './HomeDesktopDownloadCard';
@@ -145,19 +147,34 @@ export function HomePage({
 }: Props) {
   const { t, navLabel } = useAppTranslation();
   const showLocationsButton = locations.length >= MANY_LOCATIONS_THRESHOLD;
+  const { hidden: chatHidden } = usePlatformTeamChatHidden();
+
+  const secondaryCards = (
+    <>
+      <DesktopUpdateNotice downloadAnchorId="desktop-download" />
+      <HomeDeviceUnlockCard />
+      <div id="desktop-download">
+        <HomeDesktopDownloadCard compact />
+      </div>
+    </>
+  );
 
   return (
-    <div className="w-full min-w-0 flex flex-col lg:flex-row gap-3 items-stretch">
-      <div className="w-full lg:w-[min(20rem,32%)] shrink-0 flex flex-col gap-3">
-        <PlatformTeamChatPanel compact collapsible />
-        <DesktopUpdateNotice downloadAnchorId="desktop-download" />
-        <HomeDeviceUnlockCard />
-        <div id="desktop-download">
-          <HomeDesktopDownloadCard compact />
+    <div
+      className={`w-full min-w-0 flex flex-col gap-3 items-stretch ${
+        chatHidden ? '' : 'lg:flex-row'
+      }`}
+    >
+      {!chatHidden ? (
+        <div className="w-full lg:w-[min(20rem,32%)] shrink-0 flex flex-col gap-3">
+          <PlatformTeamChatPanel compact collapsible />
+          {secondaryCards}
         </div>
-      </div>
+      ) : null}
 
       <div className="flex-1 min-w-0 space-y-3">
+        {chatHidden ? <PlatformTeamChatReopenFab /> : null}
+
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold text-foreground leading-tight">{t('nav.home')}</h1>
@@ -255,6 +272,12 @@ export function HomePage({
             </p>
           </div>
         </section>
+
+        {chatHidden ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {secondaryCards}
+          </div>
+        ) : null}
       </div>
     </div>
   );
