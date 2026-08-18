@@ -237,6 +237,7 @@ export const ja = {
     locations: '店舗',
     accessControl: 'アクセス制御',
     priceDisplay: '価格表示',
+    malaysia: 'マレーシア',
     auditTrail: 'Audit Trail',
     priceDisplayHeading: '価格表示の小数桁',
     priceDisplayBody: 'プラットフォーム全体でのコンポーネントUOM価格とベンダー納品価格の表示方法を制御します。保存精度は変わりません。',

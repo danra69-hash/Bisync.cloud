@@ -17,16 +17,14 @@ import {
   BankPanel,
   FixedAssetsPanel,
   FxRatesPanel,
-  MalaysiaPackPanel,
   OpenItemsPanel,
   RevRecPanel,
 } from './AccountingBooksPanels';
 
-type BooksTab = 'overview' | 'coa' | 'journals' | 'malaysia' | 'fx' | 'ar' | 'ap' | 'bank' | 'assets' | 'revrec' | 'reports' | 'periods';
+type BooksTab = 'overview' | 'coa' | 'journals' | 'fx' | 'ar' | 'ap' | 'bank' | 'assets' | 'revrec' | 'reports' | 'periods';
 
 const BOOKS_TABS: { id: BooksTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'malaysia', label: 'Malaysia' },
   { id: 'coa', label: 'Chart of Accounts' },
   { id: 'journals', label: 'Journals' },
   { id: 'fx', label: 'FX rates' },
@@ -161,7 +159,7 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
         <div>
           <h2 className="text-sm font-semibold">Books</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Chart of accounts, journals, FX, AR/AP, bank shells — Malaysia pack first.
+            Chart of accounts, journals, FX, AR/AP, bank, reports, and periods.
             {status ? ` · Functional ${status.functionalCurrency ?? status.currency}` : ''}
           </p>
         </div>
@@ -212,9 +210,6 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
 
       {tab === 'overview' && (
         <OverviewPanel status={status} tb={tb} statements={statements} journals={journals} />
-      )}
-      {tab === 'malaysia' && (
-        <MalaysiaPackPanel companyId={companyId} onError={setError} />
       )}
       {tab === 'coa' && (
         <ChartOfAccountsPanel

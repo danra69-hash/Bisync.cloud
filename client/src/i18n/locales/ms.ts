@@ -237,6 +237,7 @@ export const ms = {
     locations: 'Lokasi',
     accessControl: 'Kawalan Akses',
     priceDisplay: 'Paparan Harga',
+    malaysia: 'Malaysia',
     auditTrail: 'Audit Trail',
     priceDisplayHeading: 'Titik perpuluhan paparan harga',
     priceDisplayBody: 'Mengawal cara harga UOM Komponen dan Harga Penghantaran Vendor dipaparkan di seluruh platform. Ketepatan storan tidak berubah.',

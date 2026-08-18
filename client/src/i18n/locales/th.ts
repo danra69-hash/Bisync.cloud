@@ -237,6 +237,7 @@ export const th = {
     locations: 'สาขา',
     accessControl: 'การควบคุมการเข้าถึง',
     priceDisplay: 'การแสดงราคา',
+    malaysia: 'มาเลเซีย',
     auditTrail: 'Audit Trail',
     priceDisplayHeading: 'ทศนิยมการแสดงราคา',
     priceDisplayBody: 'ควบคุมการแสดงราคา UOM ของส่วนประกอบและราคาจัดส่งของผู้ขายทั้งระบบ ความละเอียดในการจัดเก็บไม่เปลี่ยน',

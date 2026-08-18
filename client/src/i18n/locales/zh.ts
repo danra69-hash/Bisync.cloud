@@ -237,6 +237,7 @@ export const zh = {
     locations: '门店',
     accessControl: '访问控制',
     priceDisplay: '价格显示',
+    malaysia: '马来西亚',
     auditTrail: 'Audit Trail',
     priceDisplayHeading: '价格显示小数位',
     priceDisplayBody: '控制系统中组件计量单位与供应商交货价格的显示方式。存储精度不变。',

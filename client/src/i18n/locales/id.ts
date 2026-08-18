@@ -237,6 +237,7 @@ export const id = {
     locations: 'Lokasi',
     accessControl: 'Kontrol Akses',
     priceDisplay: 'Tampilan Harga',
+    malaysia: 'Malaysia',
     auditTrail: 'Audit Trail',
     priceDisplayHeading: 'Desimal tampilan harga',
     priceDisplayBody: 'Mengontrol cara harga UOM Komponen dan Harga Pengiriman Vendor ditampilkan di seluruh platform. Presisi penyimpanan tidak berubah.',
