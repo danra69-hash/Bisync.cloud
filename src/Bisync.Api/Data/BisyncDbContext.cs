@@ -135,6 +135,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<GlBankStatement> GlBankStatements => Set<GlBankStatement>();
     public DbSet<GlBankStatementLine> GlBankStatementLines => Set<GlBankStatementLine>();
     public DbSet<GlBankMatchGroup> GlBankMatchGroups => Set<GlBankMatchGroup>();
+    public DbSet<GlBankMatchLink> GlBankMatchLinks => Set<GlBankMatchLink>();
+    public DbSet<GlFixedAsset> GlFixedAssets => Set<GlFixedAsset>();
+    public DbSet<GlFixedAssetBook> GlFixedAssetBooks => Set<GlFixedAssetBook>();
+    public DbSet<GlDepreciationRun> GlDepreciationRuns => Set<GlDepreciationRun>();
+    public DbSet<GlRevRecContract> GlRevRecContracts => Set<GlRevRecContract>();
+    public DbSet<GlRevRecObligation> GlRevRecObligations => Set<GlRevRecObligation>();
+    public DbSet<GlStatutoryReturn> GlStatutoryReturns => Set<GlStatutoryReturn>();
     public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
@@ -1039,6 +1046,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => new { x.CompanyId, x.InternalDocumentNo }).IsUnique();
             e.HasIndex(x => new { x.CompanyId, x.Subledger, x.Status });
             e.Property(x => x.Currency).HasMaxLength(3);
+            e.Property(x => x.ApprovalStatus).HasMaxLength(32);
         });
         modelBuilder.Entity<GlItemApplication>(e =>
         {
@@ -1051,6 +1059,36 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         modelBuilder.Entity<GlBankStatementLine>(e =>
         {
             e.HasIndex(x => new { x.CompanyId, x.StatementId, x.LineNo }).IsUnique();
+        });
+        modelBuilder.Entity<GlBankMatchGroup>(e =>
+        {
+            e.Property(x => x.Status).HasMaxLength(16);
+        });
+        modelBuilder.Entity<GlBankMatchLink>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.MatchGroupId });
+        });
+        modelBuilder.Entity<GlFixedAsset>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AssetTag }).IsUnique();
+            e.HasMany(x => x.Books).WithOne(x => x.Asset).HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlFixedAssetBook>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AssetId, x.BookId }).IsUnique();
+        });
+        modelBuilder.Entity<GlDepreciationRun>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AssetId, x.BookId, x.Year, x.PeriodNo }).IsUnique();
+        });
+        modelBuilder.Entity<GlRevRecContract>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.ContractNo }).IsUnique();
+            e.HasMany(x => x.Obligations).WithOne(x => x.Contract).HasForeignKey(x => x.ContractId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlStatutoryReturn>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.ReturnType, x.PeriodStart });
         });
     }
 

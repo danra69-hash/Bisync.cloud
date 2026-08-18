@@ -13,12 +13,14 @@ import {
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import {
   BankPanel,
+  FixedAssetsPanel,
   FxRatesPanel,
   MalaysiaPackPanel,
   OpenItemsPanel,
+  RevRecPanel,
 } from './AccountingBooksPanels';
 
-type BooksTab = 'overview' | 'coa' | 'journals' | 'malaysia' | 'fx' | 'ar' | 'ap' | 'bank' | 'reports' | 'periods';
+type BooksTab = 'overview' | 'coa' | 'journals' | 'malaysia' | 'fx' | 'ar' | 'ap' | 'bank' | 'assets' | 'revrec' | 'reports' | 'periods';
 
 const BOOKS_TABS: { id: BooksTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -29,6 +31,8 @@ const BOOKS_TABS: { id: BooksTab; label: string }[] = [
   { id: 'ar', label: 'AR' },
   { id: 'ap', label: 'AP' },
   { id: 'bank', label: 'Bank' },
+  { id: 'assets', label: 'Assets' },
+  { id: 'revrec', label: 'RevRec' },
   { id: 'reports', label: 'Reports' },
   { id: 'periods', label: 'Periods' },
 ];
@@ -251,6 +255,20 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
       )}
       {tab === 'bank' && (
         <BankPanel
+          companyId={companyId}
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
+          onError={setError}
+        />
+      )}
+      {tab === 'assets' && (
+        <FixedAssetsPanel
+          companyId={companyId}
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
+          onError={setError}
+        />
+      )}
+      {tab === 'revrec' && (
+        <RevRecPanel
           companyId={companyId}
           functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
           onError={setError}

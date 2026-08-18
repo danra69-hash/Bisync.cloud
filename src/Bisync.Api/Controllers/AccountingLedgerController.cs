@@ -41,7 +41,7 @@ public class AccountingLedgerController(
             functionalCurrency = LedgerPostingService.CurrencyForCountry(company.CountryCode),
             currencies = LedgerPostingService.CommonCurrencies,
             phase = "C1",
-            phaseLabel = "Malaysia Books (GL, FX, SLA, AR/AP, bank shells; other packs in Dev Console)",
+            phaseLabel = "Malaysia Books + bank match, AP approval, FA/RevRec, SST-02 draft (no external links)",
             accounts = accountCount,
             postedJournals = journalCount,
             pendingOutbox = outboxPending,

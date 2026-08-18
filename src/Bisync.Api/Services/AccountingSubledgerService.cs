@@ -102,6 +102,8 @@ public sealed class AccountingSubledgerService(
         decimal taxAmount,
         string narration,
         bool postJournal,
+        string? createdBy = null,
+        bool requireApApproval = true,
         CancellationToken ct = default)
     {
         await EnsureReadyAsync(companyId, countryCode, ct);
@@ -113,6 +115,11 @@ public sealed class AccountingSubledgerService(
         var cur = string.IsNullOrWhiteSpace(currency)
             ? func
             : LedgerPostingService.NormalizeCurrency(currency);
+        var actor = string.IsNullOrWhiteSpace(createdBy) ? "accounting-ui" : createdBy.Trim();
+
+        var approval = "approved";
+        if (subledger == "ap" && requireApApproval && kind is "bill" or "payment")
+            approval = "draft";
 
         var series = subledger == "ar" ? "AR" : "AP";
         var year = issueDate.Year;
@@ -147,13 +154,18 @@ public sealed class AccountingSubledgerService(
             TaxMinor = taxMinor,
             Narration = narration?.Trim() ?? "",
             CreatedAt = DateTime.UtcNow,
+            ApprovalStatus = approval,
+            CreatedBy = actor,
         };
 
-        if (postJournal)
+        var shouldPost = postJournal && approval == "approved";
+        if (shouldPost)
         {
             var net = gross - taxAmount;
             if (net < 0) throw new InvalidOperationException("Tax cannot exceed gross.");
-            var eventType = subledger == "ar" ? "ar.invoice.posted" : "ap.bill.posted";
+            var eventType = kind == "payment"
+                ? (subledger == "ar" ? "bank.receipt.posted" : "bank.payment.posted")
+                : (subledger == "ar" ? "ar.invoice.posted" : "ap.bill.posted");
             var lines = await BuildSlaLinesAsync(companyId, eventType, net, taxAmount, gross, ct);
             var journal = await ledger.PostAsync(
                 companyId,
@@ -165,7 +177,7 @@ public sealed class AccountingSubledgerService(
                 sourceModule: "SUBLEDGER",
                 sourceDocKey: docNo,
                 narration: $"{kind} {docNo} · {counterpartyName}",
-                createdBy: "subledger",
+                createdBy: actor,
                 idempotencyKey: $"open:{companyId}:{docNo}",
                 lines,
                 ct,
@@ -178,6 +190,43 @@ public sealed class AccountingSubledgerService(
         db.GlOpenItems.Add(item);
         await db.SaveChangesAsync(ct);
         return item;
+    }
+
+    public async Task PostDeferredJournalIfNeededAsync(int companyId, string? countryCode, int openItemId, CancellationToken ct = default)
+    {
+        var item = await db.GlOpenItems.FirstOrDefaultAsync(i => i.Id == openItemId && i.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException("Open item not found.");
+        if (item.JournalId is not null || item.ApprovalStatus != "approved") return;
+        if (item.Kind is not ("bill" or "invoice" or "payment")) return;
+
+        var func = LedgerPostingService.CurrencyForCountry(countryCode);
+        var gross = LedgerPostingService.FromMinor(item.GrossMinor, item.Currency);
+        var tax = LedgerPostingService.FromMinor(item.TaxMinor, item.Currency);
+        var net = gross - tax;
+        var eventType = item.Kind == "payment"
+            ? (item.Subledger == "ar" ? "bank.receipt.posted" : "bank.payment.posted")
+            : (item.Subledger == "ar" ? "ar.invoice.posted" : "ap.bill.posted");
+        var lines = await BuildSlaLinesAsync(companyId, eventType, net, tax, gross, ct);
+        var series = item.Subledger == "ar" ? "AR" : "AP";
+        var journal = await ledger.PostAsync(
+            companyId,
+            countryCode,
+            journalType: series,
+            docSeries: series,
+            effectiveDate: item.IssueDate,
+            documentDate: item.IssueDate,
+            sourceModule: "SUBLEDGER",
+            sourceDocKey: item.InternalDocumentNo,
+            narration: $"{item.Kind} {item.InternalDocumentNo} · {item.CounterpartyName}",
+            createdBy: item.ApprovedBy ?? item.CreatedBy,
+            idempotencyKey: $"open:{companyId}:{item.InternalDocumentNo}",
+            lines,
+            ct,
+            txnCurrency: item.Currency,
+            fxRate: item.Currency == func ? null : await FindFxRateAsync(companyId, item.Currency, func, item.IssueDate, ct),
+            fxRateDate: item.IssueDate);
+        item.JournalId = journal.Id;
+        await db.SaveChangesAsync(ct);
     }
 
     async Task<List<(string AccountCode, string Direction, decimal Amount, string LineNarration)>> BuildSlaLinesAsync(
@@ -245,6 +294,9 @@ public sealed class AccountingSubledgerService(
             throw new InvalidOperationException("Cross-currency apply requires FX settlement (not yet). Use same currency.");
         if (from.Subledger != to.Subledger)
             throw new InvalidOperationException("Cannot apply across AR and AP.");
+        if (from.Subledger == "ap"
+            && (from.ApprovalStatus != "approved" || to.ApprovalStatus != "approved"))
+            throw new InvalidOperationException("AP items must be approved before application.");
 
         var minor = LedgerPostingService.ToMinor(amount, from.Currency);
         if (minor > from.OpenMinor || minor > to.OpenMinor)

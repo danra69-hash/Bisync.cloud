@@ -160,7 +160,15 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - FX rate store UI + API; AR/AP open items with SLA-posted journals + aging; bank statement shells.
 - SG / AU / ID / TH / US packs + framework + backlog live in **Dev Console → Ref & Library** (reference only until wired).
 
-### Phase D — Compliance surface
+### Phase C2 — Internal depth (no external connections) ✅
+
+- Bank matching (manual + exact-amount auto-match, suggest scores, unmatch).
+- AP approval workflow with segregation of duties; deferred journal until approve.
+- Payment applications UI (apply / un-apply).
+- Fixed assets multi-book + depreciation run; RevRec contracts/recognise.
+- SST-02 **draft** return computation (boxes only — MyInvois / Customs transmission deferred).
+
+### Phase D — Compliance surface (external)
 
 - First localisation pack (likely Malaysia / Singapore Peppol path for hospitality).
 - E-invoicing via aggregator behind an internal port; Temporal-like workflow only when submission durability demands it.

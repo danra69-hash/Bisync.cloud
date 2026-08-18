@@ -104,6 +104,12 @@ public class GlOpenItem
     public long TaxMinor { get; set; }
     public string Narration { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>draft | pending_approval | approved | rejected — AP bills/payments.</summary>
+    public string ApprovalStatus { get; set; } = "approved";
+    public string CreatedBy { get; set; } = "";
+    public string? ApprovedBy { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+    public string? RejectionReason { get; set; }
 }
 
 /// <summary>Bi-temporal application between open items — never deleted; reverse via new row.</summary>
@@ -157,4 +163,104 @@ public class GlBankMatchGroup
     public string Cardinality { get; set; } = "1:1";
     public string CreatedBy { get; set; } = "";
     public string Notes { get; set; } = "";
+    /// <summary>active | void</summary>
+    public string Status { get; set; } = "active";
+}
+
+/// <summary>Links a match group to open items (N:M bank ↔ ledger).</summary>
+public class GlBankMatchLink
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public int MatchGroupId { get; set; }
+    public int OpenItemId { get; set; }
+    public long AmountMinor { get; set; }
+}
+
+public class GlFixedAsset
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string AssetTag { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string AssetClass { get; set; } = "equipment";
+    public DateOnly AcquiredOn { get; set; }
+    public long CostMinor { get; set; }
+    public string Currency { get; set; } = "MYR";
+    /// <summary>active | disposed</summary>
+    public string Status { get; set; } = "active";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<GlFixedAssetBook> Books { get; set; } = [];
+}
+
+public class GlFixedAssetBook
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public int AssetId { get; set; }
+    public GlFixedAsset? Asset { get; set; }
+    /// <summary>ifrs | local_gaap | tax</summary>
+    public string BookId { get; set; } = "ifrs";
+    /// <summary>straight_line | declining | none</summary>
+    public string Method { get; set; } = "straight_line";
+    public int LifeMonths { get; set; } = 60;
+    public long SalvageMinor { get; set; }
+    public DateOnly StartDate { get; set; }
+    public string Status { get; set; } = "active";
+}
+
+public class GlDepreciationRun
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public int AssetId { get; set; }
+    public string BookId { get; set; } = "ifrs";
+    public int Year { get; set; }
+    public int PeriodNo { get; set; }
+    public long AmountMinor { get; set; }
+    public long RemainingNbvMinor { get; set; }
+    public int? JournalId { get; set; }
+    public DateTime PostedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class GlRevRecContract
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string ContractNo { get; set; } = "";
+    public string CustomerName { get; set; } = "";
+    public DateOnly StartDate { get; set; }
+    public DateOnly? EndDate { get; set; }
+    public long TransactionPriceMinor { get; set; }
+    public string Currency { get; set; } = "MYR";
+    public string Status { get; set; } = "active";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<GlRevRecObligation> Obligations { get; set; } = [];
+}
+
+public class GlRevRecObligation
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public int ContractId { get; set; }
+    public GlRevRecContract? Contract { get; set; }
+    public string Description { get; set; } = "";
+    public long AllocatedMinor { get; set; }
+    public long RecognisedMinor { get; set; }
+    /// <summary>point_in_time | over_time</summary>
+    public string Pattern { get; set; } = "over_time";
+}
+
+public class GlStatutoryReturn
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string PackId { get; set; } = "my";
+    /// <summary>SST-02 | BAS | GST-F5 | …</summary>
+    public string ReturnType { get; set; } = "SST-02";
+    public DateOnly PeriodStart { get; set; }
+    public DateOnly PeriodEnd { get; set; }
+    public string Status { get; set; } = "draft";
+    public string BoxesJson { get; set; } = "{}";
+    public DateTime ComputedAt { get; set; } = DateTime.UtcNow;
 }

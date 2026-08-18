@@ -5566,6 +5566,8 @@ export const api = {
       taxAmount?: number;
       narration?: string;
       postJournal?: boolean;
+      createdBy?: string;
+      requireApApproval?: boolean;
     },
   ) =>
     fetchJsonWithMethod<AccountingOpenItem>(
@@ -5599,6 +5601,98 @@ export const api = {
       `/api/accounting/books/bank-statements?companyId=${companyId}`,
       'POST',
       body,
+    ),
+  accountingApplications: (companyId: number, take = 50) =>
+    fetchJson<Array<{ id: number; appliedFromId: number; appliedToId: number; amount: number; effectiveDate: string; reversalOfId: number | null; createdBy: string }>>(
+      `/api/accounting/books/applications?companyId=${companyId}&take=${take}`,
+    ),
+  accountingUnapply: (companyId: number, applicationId: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/unapply/${applicationId}?${params}`, 'POST');
+  },
+  accountingSubmitOpenItem: (companyId: number, id: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/submit?${params}`, 'POST');
+  },
+  accountingApproveOpenItem: (companyId: number, id: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/approve?${params}`, 'POST');
+  },
+  accountingRejectOpenItem: (companyId: number, id: number, actor?: string, reason?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/reject?${params}`, 'POST', { reason });
+  },
+  accountingBankQueue: (companyId: number) =>
+    fetchJson<{
+      unmatched: Array<{ id: number; statementId: number; lineNo: number; valueDate: string; narrative: string; amount: number; currency: string }>;
+      openItems: Array<{ id: number; subledger: string; kind: string; internalDocumentNo: string; counterpartyName: string; open: number; currency: string }>;
+      matches: Array<{ id: number; cardinality: string; matchedAt: string; createdBy: string; notes: string }>;
+    }>(`/api/accounting/books/bank/queue?companyId=${companyId}`),
+  accountingBankSuggest: (companyId: number, lineId: number) =>
+    fetchJson<{ lineId: number; amount: number; narrative: string; candidates: Array<{ openItemId: number; internalDocumentNo: string; counterpartyName: string; score: number; rule: string; open: number }> }>(
+      `/api/accounting/books/bank/suggest/${lineId}?companyId=${companyId}`,
+    ),
+  accountingBankMatch: (
+    companyId: number,
+    body: { statementLineIds: number[]; openItems: Array<{ openItemId: number; amount: number }>; notes?: string; createdBy?: string },
+  ) =>
+    fetchJsonWithMethod<{ id: number; cardinality: string; matchedAt: string; status: string }>(
+      `/api/accounting/books/bank/match?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingBankUnmatch: (companyId: number, matchGroupId: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/books/bank/unmatch/${matchGroupId}?companyId=${companyId}`, 'POST'),
+  accountingBankAutoMatch: (companyId: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/bank/auto-match?${params}`, 'POST');
+  },
+  accountingFixedAssets: (companyId: number) =>
+    fetchJson<Array<{ id: number; assetTag: string; name: string; assetClass: string; acquiredOn: string; cost: number; currency: string; status: string; books: Array<{ bookId: string; method: string; lifeMonths: number }> }>>(
+      `/api/accounting/books/fixed-assets?companyId=${companyId}`,
+    ),
+  accountingCreateFixedAsset: (
+    companyId: number,
+    body: { assetTag: string; name: string; assetClass?: string; acquiredOn: string; cost: number; currency?: string; lifeMonths?: number },
+  ) =>
+    fetchJsonWithMethod<{ id: number; assetTag: string; name: string; bookCount: number }>(
+      `/api/accounting/books/fixed-assets?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingDepreciate: (companyId: number, year: number, periodNo: number, bookId = 'ifrs') =>
+    fetchJsonWithMethod<{ year: number; periodNo: number; bookId: string; posted: unknown[] }>(
+      `/api/accounting/books/fixed-assets/depreciate?companyId=${companyId}&year=${year}&periodNo=${periodNo}&bookId=${bookId}`,
+      'POST',
+    ),
+  accountingRevRec: (companyId: number) =>
+    fetchJson<Array<{ id: number; contractNo: string; customerName: string; transactionPrice: number; currency: string; obligations: Array<{ id: number; description: string; allocated: number; recognised: number }> }>>(
+      `/api/accounting/books/revrec?companyId=${companyId}`,
+    ),
+  accountingCreateRevRec: (
+    companyId: number,
+    body: { contractNo: string; customerName: string; startDate: string; endDate?: string; transactionPrice: number; currency?: string; obligationDescription?: string },
+  ) =>
+    fetchJsonWithMethod<{ id: number; contractNo: string; obligationId?: number }>(
+      `/api/accounting/books/revrec?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingRecogniseRevRec: (companyId: number, obligationId: number, amount: number) =>
+    fetchJsonWithMethod<{ id: number; recognised: number; allocated: number; journalId: number }>(
+      `/api/accounting/books/revrec/obligations/${obligationId}/recognise?companyId=${companyId}`,
+      'POST',
+      { amount },
+    ),
+  accountingSst02: (companyId: number, periodStart: string, periodEnd: string) =>
+    fetchJsonWithMethod<{ id: number; returnType: string; status: string; boxes: Record<string, unknown>; transmission: string }>(
+      `/api/accounting/books/returns/sst-02?companyId=${companyId}&periodStart=${periodStart}&periodEnd=${periodEnd}`,
+      'POST',
     ),
 };
 
@@ -5779,6 +5873,11 @@ export type AccountingOpenItem = {
   journalId?: number | null;
   status: string;
   narration?: string;
+  approvalStatus?: string;
+  createdBy?: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
 };
 
 export type AccountingAging = {

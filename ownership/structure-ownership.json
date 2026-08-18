@@ -794,7 +794,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-18",
-      "notes": "Phase 1 Malaysia Books: pack, FX rates, AR/AP open items, aging, bank statement shells"
+      "notes": "Phase 1–3 internal Books: pack/FX/AR/AP/approval/apply, bank match, FA/RevRec, SST-02 draft (no external transmission)"
     },
     {
       "id": "dr.page.pos-test-tap",

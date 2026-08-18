@@ -100,6 +100,7 @@ builder.Services.AddScoped<IncomeTaxService>();
 builder.Services.AddScoped<LedgerPostingService>();
 builder.Services.AddScoped<MalaysiaAccountingPackService>();
 builder.Services.AddScoped<AccountingSubledgerService>();
+builder.Services.AddScoped<AccountingInternalBooksService>();
 builder.Services.AddScoped<AccountingBridgeService>();
 builder.Services.AddScoped<ReplacementPublicHolidayService>();
 builder.Services.AddScoped<ComponentFifoCostingService>();
