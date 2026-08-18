@@ -290,4 +290,85 @@ public class GlStatutoryReturn
     public string Status { get; set; } = "draft";
     public string BoxesJson { get; set; } = "{}";
     public DateTime ComputedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>draft | queued | submitted | accepted | rejected | not_connected</summary>
+    public string TransmissionStatus { get; set; } = "not_connected";
+    public string? TransmissionRef { get; set; }
+}
+
+/// <summary>Annual / period budget header (Wave D).</summary>
+public class GlBudget
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string Name { get; set; } = "";
+    public int FiscalYear { get; set; }
+    public string Currency { get; set; } = "MYR";
+    public string Status { get; set; } = "draft";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<GlBudgetLine> Lines { get; set; } = [];
+}
+
+public class GlBudgetLine
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public int BudgetId { get; set; }
+    public GlBudget? Budget { get; set; }
+    public int AccountId { get; set; }
+    public int PeriodNo { get; set; }
+    public long AmountMinor { get; set; }
+    public string? LocationExternalId { get; set; }
+    public int? DepartmentId { get; set; }
+}
+
+/// <summary>Saved Books report recipe (kind + filters JSON).</summary>
+public class GlSavedReport
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string Name { get; set; } = "";
+    /// <summary>trial_balance | pnl | balance_sheet | cash_flow | gl_enquiry | budget_vs_actual</summary>
+    public string Kind { get; set; } = "trial_balance";
+    public string FiltersJson { get; set; } = "{}";
+    public string CreatedBy { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Consolidation group for multi-entity reporting (Wave D scaffold).</summary>
+public class GlConsolidationGroup
+{
+    public int Id { get; set; }
+    public int ParentCompanyId { get; set; }
+    public string Name { get; set; } = "";
+    public string Status { get; set; } = "active";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<GlConsolidationMember> Members { get; set; } = [];
+}
+
+public class GlConsolidationMember
+{
+    public int Id { get; set; }
+    public int GroupId { get; set; }
+    public GlConsolidationGroup? Group { get; set; }
+    public int MemberCompanyId { get; set; }
+    /// <summary>100 = wholly owned; used for future NCI.</summary>
+    public decimal OwnershipPercent { get; set; } = 100m;
+}
+
+/// <summary>E-invoice transmission outbox row (MyInvois / Peppol port).</summary>
+public class GlEinvoiceTransmission
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string Provider { get; set; } = "myinvois-stub";
+    public string DocumentType { get; set; } = "invoice";
+    public string SourceDocKey { get; set; } = "";
+    public int? OpenItemId { get; set; }
+    public int? JournalId { get; set; }
+    public string Status { get; set; } = "queued";
+    public string? ExternalUin { get; set; }
+    public string PayloadJson { get; set; } = "{}";
+    public string? LastError { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? SubmittedAt { get; set; }
 }

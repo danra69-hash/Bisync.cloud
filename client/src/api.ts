@@ -5839,6 +5839,143 @@ export const api = {
       `/api/accounting/books/returns/sst-02?companyId=${companyId}&periodStart=${periodStart}&periodEnd=${periodEnd}`,
       'POST',
     ),
+  accountingListReturns: (companyId: number, take = 40) =>
+    fetchJson<Array<{
+      id: number;
+      returnType: string;
+      periodStart: string;
+      periodEnd: string;
+      status: string;
+      transmissionStatus: string;
+      transmissionRef: string | null;
+      computedAt: string;
+    }>>(`/api/accounting/books/returns?companyId=${companyId}&take=${take}`),
+  accountingExportReturnCsvUrl: (companyId: number, id: number) =>
+    `/api/accounting/books/returns/${id}/export?companyId=${companyId}`,
+  accountingExportReturnCsv: async (companyId: number, id: number) => {
+    const path = `/api/accounting/books/returns/${id}/export?companyId=${companyId}`;
+    const res = await fetch(`${API_BASE}${path}`, { headers: tenantHeaders() });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Export failed (${res.status})`);
+    }
+    return res.text();
+  },
+  accountingBudgets: (companyId: number) =>
+    fetchJson<Array<{
+      id: number;
+      name: string;
+      fiscalYear: number;
+      currency: string;
+      status: string;
+      lineCount: number;
+      createdAt: string;
+    }>>(`/api/accounting/books/budgets?companyId=${companyId}`),
+  accountingUpsertBudget: (
+    companyId: number,
+    body: {
+      name: string;
+      fiscalYear: number;
+      currency?: string;
+      lines: Array<{ accountCode: string; periodNo: number; amount: number; locationExternalId?: string }>;
+    },
+  ) =>
+    fetchJsonWithMethod<{ id: number; name: string; fiscalYear: number; currency: string; status: string; lineCount: number }>(
+      `/api/accounting/books/budgets?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingBudgetVsActual: (companyId: number, budgetId: number, periodNo?: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (periodNo != null) params.set('periodNo', String(periodNo));
+    return fetchJson<{
+      id: number;
+      name: string;
+      fiscalYear: number;
+      currency: string;
+      periodNo: number | null;
+      rows: Array<{
+        accountId: number;
+        accountCode: string;
+        accountName: string;
+        budget: number;
+        actual: number;
+        variance: number;
+      }>;
+    }>(`/api/accounting/books/budgets/${budgetId}/vs-actual?${params}`);
+  },
+  accountingSavedReports: (companyId: number) =>
+    fetchJson<Array<{
+      id: number;
+      name: string;
+      kind: string;
+      filtersJson: string;
+      createdBy: string;
+      createdAt: string;
+    }>>(`/api/accounting/books/saved-reports?companyId=${companyId}`),
+  accountingSaveReport: (companyId: number, body: { name: string; kind: string; filtersJson?: string }) =>
+    fetchJsonWithMethod<{ id: number; name: string; kind: string; filtersJson: string; createdBy: string; createdAt: string }>(
+      `/api/accounting/books/saved-reports?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingConsolGroups: (companyId: number) =>
+    fetchJson<Array<{
+      id: number;
+      name: string;
+      status: string;
+      parentCompanyId: number;
+      members: Array<{ memberCompanyId: number; ownershipPercent: number }>;
+    }>>(`/api/accounting/books/consolidation-groups?companyId=${companyId}`),
+  accountingUpsertConsolGroup: (
+    companyId: number,
+    body: { name: string; members: Array<{ memberCompanyId: number; ownershipPercent: number }> },
+  ) =>
+    fetchJsonWithMethod<object>(`/api/accounting/books/consolidation-groups?companyId=${companyId}`, 'POST', body),
+  accountingPostElim: (
+    companyId: number,
+    body: {
+      partnerCompanyId: number;
+      effectiveDate: string;
+      narration: string;
+      lines: Array<{ accountCode: string; direction: string; amount: number; lineNarration?: string }>;
+    },
+  ) =>
+    fetchJsonWithMethod<object>(`/api/accounting/books/consolidation/elim?companyId=${companyId}`, 'POST', body),
+  accountingPnlByLocation: (companyId: number, periodId: number) =>
+    fetchJson<{
+      id: number;
+      year: number;
+      periodNo: number;
+      rows: Array<{ locationExternalId: string; income: number; expense: number; net: number }>;
+    }>(`/api/accounting/books/pnl-by-location?companyId=${companyId}&periodId=${periodId}`),
+  accountingTakeOnCoa: (companyId: number, csvText: string) =>
+    fetchJsonWithMethod<{ created: number; skipped: number; source: string }>(
+      `/api/accounting/books/take-on/coa?companyId=${companyId}`,
+      'POST',
+      { csvText },
+    ),
+  accountingTakeOnJournals: (companyId: number, csvText: string) =>
+    fetchJsonWithMethod<{ journalsPosted: number; source: string; note: string }>(
+      `/api/accounting/books/take-on/journals?companyId=${companyId}`,
+      'POST',
+      { csvText },
+    ),
+  accountingEinvoiceList: (companyId: number, take = 40) =>
+    fetchJson<Array<{
+      id: number;
+      provider: string;
+      documentType: string;
+      sourceDocKey: string;
+      openItemId: number | null;
+      journalId: number | null;
+      status: string;
+      externalUin: string | null;
+      createdAt: string;
+      submittedAt: string | null;
+    }>>(`/api/accounting/books/einvoice?companyId=${companyId}&take=${take}`),
+  accountingQueueEinvoice: (companyId: number, openItemId: number) =>
+    fetchJsonWithMethod<object>(`/api/accounting/books/einvoice/${openItemId}/queue?companyId=${companyId}`, 'POST'),
 };
 
 export type AccountingLedgerStatus = {

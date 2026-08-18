@@ -413,6 +413,8 @@ public class AccountingLedgerController(
         string? Currency,
         decimal? FxRate,
         DateOnly? FxRateDate,
+        string? LocationExternalId,
+        int? DepartmentId,
         List<JournalLineRequest> Lines);
 
     [HttpPost("accounts")]
@@ -490,7 +492,9 @@ public class AccountingLedgerController(
                 CancellationToken.None,
                 txnCurrency: body.Currency,
                 fxRate: body.FxRate,
-                fxRateDate: body.FxRateDate);
+                fxRateDate: body.FxRateDate,
+                locationExternalId: body.LocationExternalId,
+                departmentId: body.DepartmentId);
 
             return Ok(new
             {

@@ -747,7 +747,11 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         CancellationToken ct = default,
         string? txnCurrency = null,
         decimal? fxRate = null,
-        DateOnly? fxRateDate = null)
+        DateOnly? fxRateDate = null,
+        string? ledgerKind = null,
+        string? locationExternalId = null,
+        int? departmentId = null,
+        int? partnerCompanyId = null)
     {
         if (companyId <= 0)
             throw new InvalidOperationException("Company context is required for posting.");
@@ -768,7 +772,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
             var posted = await PostInTransactionAsync(
                 companyId, countryCode, journalType, docSeries, effectiveDate, documentDate,
                 sourceModule, sourceDocKey, narration, createdBy, idempotencyKey, lines,
-                txnCurrency, fxRate, fxRateDate, ct);
+                txnCurrency, fxRate, fxRateDate, ledgerKind, locationExternalId, departmentId, partnerCompanyId, ct);
             await tx.CommitAsync(ct);
             return posted;
         }
@@ -795,6 +799,10 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         string? txnCurrency,
         decimal? fxRate,
         DateOnly? fxRateDate,
+        string? ledgerKind,
+        string? locationExternalId,
+        int? departmentId,
+        int? partnerCompanyId,
         CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(idempotencyKey))
@@ -873,7 +881,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         var journal = new GlJournal
         {
             CompanyId = companyId,
-            LedgerKind = "primary",
+            LedgerKind = string.IsNullOrWhiteSpace(ledgerKind) ? "primary" : ledgerKind.Trim().ToLowerInvariant(),
             JournalType = journalType,
             DocSeries = docSeries,
             FiscalYear = period.Year,
@@ -891,6 +899,7 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         journal.DocNumber = await AllocateDocNumberAsync(companyId, docSeries, period.Year, ct);
         journal.PostedAt = DateTime.UtcNow;
 
+        var loc = string.IsNullOrWhiteSpace(locationExternalId) ? null : locationExternalId.Trim();
         var lineNo = 1;
         foreach (var line in draftLines)
         {
@@ -910,6 +919,9 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
                 Narration = line.Narration,
                 EffectiveDate = effectiveDate,
                 PeriodId = period.Id,
+                LocationExternalId = loc,
+                DepartmentId = departmentId,
+                PartnerCompanyId = partnerCompanyId,
             });
 
             await ApplyPeriodBalanceAsync(

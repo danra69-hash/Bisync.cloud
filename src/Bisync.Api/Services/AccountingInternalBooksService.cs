@@ -945,7 +945,7 @@ public sealed class AccountingInternalBooksService(
                 tax = LedgerPostingService.FromMinor(x.tax),
                 gross = LedgerPostingService.FromMinor(x.gross),
             }),
-            ["filing"] = "SST-02 bimonthly (draft computation — MyInvois transmission external / Phase D)",
+            ["filing"] = "SST-02 bimonthly (draft computation — export CSV available; MyInvois via IEInvoiceTransmissionPort)",
         };
 
         var row = new GlStatutoryReturn
@@ -958,6 +958,7 @@ public sealed class AccountingInternalBooksService(
             Status = "draft",
             BoxesJson = JsonSerializer.Serialize(boxes),
             ComputedAt = DateTime.UtcNow,
+            TransmissionStatus = "not_connected",
         };
         db.GlStatutoryReturns.Add(row);
         await db.SaveChangesAsync(ct);
@@ -969,7 +970,50 @@ public sealed class AccountingInternalBooksService(
             row.PeriodEnd,
             row.Status,
             boxes,
-            transmission = "not_connected",
+            transmission = row.TransmissionStatus,
         };
+    }
+
+    public async Task<string> ExportSst02CsvAsync(int companyId, int returnId, CancellationToken ct = default)
+    {
+        var row = await db.GlStatutoryReturns.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == returnId && r.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException("Statutory return not found.");
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("box,value");
+        sb.AppendLine($"return_id,{row.Id}");
+        sb.AppendLine($"return_type,{row.ReturnType}");
+        sb.AppendLine($"period_start,{row.PeriodStart:yyyy-MM-dd}");
+        sb.AppendLine($"period_end,{row.PeriodEnd:yyyy-MM-dd}");
+        sb.AppendLine($"status,{row.Status}");
+        sb.AppendLine($"transmission,{row.TransmissionStatus}");
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(row.BoxesJson) ? "{}" : row.BoxesJson);
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                var val = prop.Value.ValueKind switch
+                {
+                    JsonValueKind.String => prop.Value.GetString() ?? "",
+                    JsonValueKind.Number => prop.Value.GetRawText(),
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    _ => prop.Value.GetRawText().Replace('\n', ' ').Replace('\r', ' '),
+                };
+                sb.AppendLine($"{CsvEscape(prop.Name)},{CsvEscape(val)}");
+            }
+        }
+        catch
+        {
+            sb.AppendLine($"boxes_raw,{CsvEscape(row.BoxesJson)}");
+        }
+        return sb.ToString();
+    }
+
+    static string CsvEscape(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
     }
 }

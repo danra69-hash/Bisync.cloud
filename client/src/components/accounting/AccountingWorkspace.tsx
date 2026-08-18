@@ -15,14 +15,31 @@ import {
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import {
   BankPanel,
+  BudgetsPanel,
   FixedAssetsPanel,
   FxRatesPanel,
   MalaysiaPackPanel,
   OpenItemsPanel,
   RevRecPanel,
+  ScalePanel,
 } from './AccountingBooksPanels';
+import { loadJsPDF } from '../../data/loadJsPdf';
 
-type BooksTab = 'overview' | 'coa' | 'journals' | 'malaysia' | 'fx' | 'ar' | 'ap' | 'bank' | 'assets' | 'revrec' | 'reports' | 'periods';
+type BooksTab =
+  | 'overview'
+  | 'coa'
+  | 'journals'
+  | 'malaysia'
+  | 'fx'
+  | 'ar'
+  | 'ap'
+  | 'bank'
+  | 'assets'
+  | 'revrec'
+  | 'budgets'
+  | 'scale'
+  | 'reports'
+  | 'periods';
 
 const BOOKS_TABS: { id: BooksTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -35,6 +52,8 @@ const BOOKS_TABS: { id: BooksTab; label: string }[] = [
   { id: 'bank', label: 'Bank' },
   { id: 'assets', label: 'Assets' },
   { id: 'revrec', label: 'RevRec' },
+  { id: 'budgets', label: 'Budgets' },
+  { id: 'scale', label: 'Scale' },
   { id: 'reports', label: 'Reports' },
   { id: 'periods', label: 'Periods' },
 ];
@@ -292,7 +311,28 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
           onError={setError}
         />
       )}
-      {tab === 'reports' && <ReportsPanel tb={tb} statements={statements} cashFlow={cashFlow} gl={gl} />}
+      {tab === 'budgets' && (
+        <BudgetsPanel
+          companyId={companyId}
+          accounts={accounts}
+          functionalCurrency={status?.functionalCurrency ?? status?.currency ?? 'MYR'}
+          onError={setError}
+        />
+      )}
+      {tab === 'scale' && (
+        <ScalePanel companyId={companyId} periodId={periodId} onError={setError} />
+      )}
+      {tab === 'reports' && (
+        <ReportsPanel
+          companyId={companyId}
+          periodId={periodId}
+          tb={tb}
+          statements={statements}
+          cashFlow={cashFlow}
+          gl={gl}
+          onError={setError}
+        />
+      )}
       {tab === 'periods' && (
         <PeriodsPanel
           companyId={companyId}
@@ -768,18 +808,108 @@ function JournalsPanel({
 }
 
 function ReportsPanel({
+  companyId,
+  periodId,
   tb,
   statements,
   cashFlow,
   gl,
+  onError,
 }: {
+  companyId: number;
+  periodId?: number;
   tb: AccountingTrialBalance | null;
   statements: AccountingStatements | null;
   cashFlow: AccountingCashFlow | null;
   gl: AccountingGeneralLedger | null;
+  onError: (msg: string | null) => void;
 }) {
+  const [saving, setSaving] = useState(false);
+
+  const downloadPdfPack = async () => {
+    try {
+      const jsPDF = await loadJsPDF();
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      let y = 48;
+      const line = (text: string, size = 10) => {
+        if (y > 760) {
+          doc.addPage();
+          y = 48;
+        }
+        doc.setFontSize(size);
+        doc.text(text, 40, y);
+        y += size + 6;
+      };
+      line('Bisync Books — period pack', 14);
+      line(`Company ${companyId} · period ${periodId ?? '—'}`);
+      line(`Generated ${new Date().toISOString()}`);
+      y += 8;
+      line('Trial balance', 12);
+      if (tb) {
+        line(`Balanced: ${tb.balanced ? 'yes' : 'no'} · Dr ${money(tb.totalDr)} / Cr ${money(tb.totalCr)}`);
+        tb.rows.slice(0, 40).forEach(r => {
+          line(`${r.accountCode} ${r.accountName}  PDr ${money(r.periodDr)}  PCr ${money(r.periodCr)}`);
+        });
+      } else line('No TB loaded');
+      y += 8;
+      line('Profit & loss', 12);
+      if (statements) {
+        line(`Net income ${money(statements.profitAndLoss.netIncome)}`);
+        statements.profitAndLoss.rows.slice(0, 30).forEach(r => line(`${r.code} ${r.name}  ${money(r.amount)}`));
+      }
+      y += 8;
+      line('Cash flow (indirect)', 12);
+      if (cashFlow) {
+        line(`Operating ${money(cashFlow.operating.netCashFromOperating)}`);
+        line(`Investing ${money(cashFlow.investing.netCashFromInvesting)}`);
+        line(`Financing ${money(cashFlow.financing.netCashFromFinancing)}`);
+        line(`Net change ${money(cashFlow.netChangeInCash)}`);
+      }
+      y += 8;
+      line('GL enquiry (first lines)', 12);
+      (gl?.rows ?? []).slice(0, 25).forEach(l => {
+        line(`${l.effectiveDate} ${l.accountCode} ${l.direction} ${money(l.funcAmount ?? l.amount)} ${l.narration || ''}`);
+      });
+      doc.save(`books-pack-c${companyId}-p${periodId ?? 'x'}.pdf`);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'PDF pack failed');
+    }
+  };
+
+  const saveRecipe = async () => {
+    setSaving(true);
+    try {
+      await api.accountingSaveReport(companyId, {
+        name: `Period pack ${periodId ?? ''}`,
+        kind: 'trial_balance',
+        filtersJson: JSON.stringify({ periodId }),
+      });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Save report failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl">
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => void downloadPdfPack()}
+          className="text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-md"
+        >
+          Download PDF pack
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void saveRecipe()}
+          className="text-xs font-semibold border border-border px-3 py-1.5 rounded-md disabled:opacity-50"
+        >
+          Save report recipe
+        </button>
+      </div>
       <div className="border-t border-border pt-3 space-y-2">
         <p className="text-xs font-semibold">
           Trial balance

@@ -340,7 +340,8 @@ public sealed class AccountingBridgeService(
                 createdBy: "pos-eod",
                 idempotencyKey: idempotency,
                 lines,
-                ct);
+                ct,
+                locationExternalId: locationExternalId);
 
             await db.SaveChangesAsync(ct);
             return new

@@ -178,12 +178,13 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - RevRec: liability seed + over-time schedule runner + recognise.
 - SST-02 from GL tax lines (draft; MyInvois deferred).
 
-### Phase D — Compliance surface (external)
+### Phase D — Compliance surface (external) 🟡 (scaffolds)
 
-- First localisation pack transmission (Malaysia MyInvois / Singapore Peppol path).
-- E-invoicing via aggregator behind an internal port.
-- QBO/Xero take-on migration.
-- Statutory export as required by pack.
+- `IEInvoiceTransmissionPort` + `StubMyInvoisTransmissionPort` (dev/CI); AR approve queues transmission.
+- Replace stub with intermediary aggregator adapter for production MyInvois / Peppol.
+- QBO/Xero take-on via COA + journals CSV import (`AccountingScaleService`).
+- Statutory SST-02 CSV export from computed return boxes.
+- Wave D scale: budgets / budget-vs-actual, saved report recipes, PDF period pack, location P&amp;L, consolidation groups + ELIM journals.
 
 ---
 
