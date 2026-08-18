@@ -1,5 +1,13 @@
-import React from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -18,14 +26,55 @@ import type { MainTabParamList, RootStackParamList } from './src/navigation';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
 
-/** Keep tab labels above the home indicator / browser chrome. */
-const TAB_BAR_BASE_HEIGHT = 56;
-const TAB_BAR_MIN_BOTTOM = Platform.OS === 'web' ? 12 : 0;
+/** Content row for icons+labels; extra bottom pad clears browser chrome / home indicator. */
+const TAB_BAR_CONTENT = 52;
+/** When safe-area reports 0 (common on Android Chrome), still lift the bar. */
+const TAB_BAR_MIN_BOTTOM_WEB = 28;
+
+/**
+ * Mobile browsers often report layout height taller than what's visible
+ * (URL bar / bottom toolbar). Bind the app shell to visualViewport height.
+ */
+function useVisibleHeight() {
+  const { height: windowHeight } = useWindowDimensions();
+  const [height, setHeight] = useState(windowHeight);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      setHeight(windowHeight);
+      return;
+    }
+
+    const apply = () => {
+      const vv = window.visualViewport;
+      const next = Math.floor(vv?.height || window.innerHeight || windowHeight);
+      setHeight(next > 0 ? next : windowHeight);
+    };
+
+    apply();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', apply);
+    vv?.addEventListener('scroll', apply);
+    window.addEventListener('resize', apply);
+    window.addEventListener('orientationchange', apply);
+    return () => {
+      vv?.removeEventListener('resize', apply);
+      vv?.removeEventListener('scroll', apply);
+      window.removeEventListener('resize', apply);
+      window.removeEventListener('orientationchange', apply);
+    };
+  }, [windowHeight]);
+
+  return height;
+}
 
 function MainTabs() {
   const { logout, user } = useAuth();
   const insets = useSafeAreaInsets();
-  const bottomPad = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM);
+  const bottomPad =
+    Platform.OS === 'web'
+      ? Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_WEB)
+      : Math.max(insets.bottom, 8);
 
   return (
     <Tabs.Navigator
@@ -39,25 +88,30 @@ function MainTabs() {
         ),
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
+        tabBarHideOnKeyboard: true,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
-          marginBottom: 2,
+          paddingBottom: 0,
         },
+        tabBarIconStyle: { marginTop: 2 },
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopColor: colors.rule,
-          borderTopWidth: 1,
-          height: TAB_BAR_BASE_HEIGHT + bottomPad,
-          paddingTop: 6,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          height: TAB_BAR_CONTENT + bottomPad,
+          paddingTop: 4,
           paddingBottom: bottomPad,
-          // Keep bar in the layout (not under browser UI / home indicator).
+          marginBottom: 0,
           position: 'relative',
-          elevation: 8,
-          zIndex: 10,
+          // Avoid absolute positioning that can slide under browser chrome.
+          bottom: undefined,
+          left: undefined,
+          right: undefined,
         },
         tabBarItemStyle: {
-          paddingVertical: 2,
+          justifyContent: 'center',
+          paddingTop: 2,
         },
       }}
     >
@@ -66,13 +120,13 @@ function MainTabs() {
         component={TrainingScreen}
         options={{
           title: user?.type === 'coach' ? 'Coach training' : 'My training',
-          tabBarLabel: user?.type === 'coach' ? 'Training' : 'My training',
+          tabBarLabel: user?.type === 'coach' ? 'Training' : 'Training',
         }}
       />
       <Tabs.Screen
         name="Calendar"
         component={CalendarScreen}
-        options={{ tabBarLabel: 'Calendar' }}
+        options={{ title: 'Calendar', tabBarLabel: 'Calendar' }}
       />
       <Tabs.Screen
         name="Packages"
@@ -88,51 +142,81 @@ function MainTabs() {
 
 function Root() {
   const { user, loading, pinOk } = useAuth();
+  const visibleHeight = useVisibleHeight();
 
   if (loading) {
     return (
-      <View style={styles.boot}>
+      <View style={[styles.boot, Platform.OS === 'web' && { height: visibleHeight }]}>
         <ActivityIndicator color={colors.accent} />
         <Text style={styles.bootText}>mobile.pulse</Text>
       </View>
     );
   }
 
-  if (!user) return <LoginScreen />;
-  if (!pinOk) return <PinScreen />;
+  if (!user) {
+    return (
+      <View style={Platform.OS === 'web' ? { height: visibleHeight, flex: 1 } : { flex: 1 }}>
+        <LoginScreen />
+      </View>
+    );
+  }
+  if (!pinOk) {
+    return (
+      <View style={Platform.OS === 'web' ? { height: visibleHeight, flex: 1 } : { flex: 1 }}>
+        <PinScreen />
+      </View>
+    );
+  }
 
   return (
-    <NavigationContainer theme={DefaultTheme}>
-      <Stack.Navigator>
-        <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
-        <Stack.Screen name="Scan" component={ScanScreen} options={{ title: 'Scan QR' }} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <View
+      style={
+        Platform.OS === 'web'
+          ? { height: visibleHeight, maxHeight: visibleHeight, overflow: 'hidden', flex: 1 }
+          : { flex: 1 }
+      }
+    >
+      <NavigationContainer theme={DefaultTheme}>
+        <Stack.Navigator>
+          <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
+          <Stack.Screen name="Scan" component={ScanScreen} options={{ title: 'Scan QR' }} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </View>
   );
 }
 
+function installWebViewport() {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return () => {};
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (meta) {
+    meta.setAttribute(
+      'content',
+      'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover',
+    );
+  }
+  const html = document.documentElement;
+  const body = document.body;
+  html.style.height = '100%';
+  html.style.overflow = 'hidden';
+  body.style.height = '100%';
+  body.style.margin = '0';
+  body.style.overflow = 'hidden';
+  // Prefer dynamic viewport units when supported.
+  body.style.minHeight = '100dvh';
+  const root = document.getElementById('root');
+  if (root) {
+    root.style.height = '100%';
+    root.style.minHeight = '100dvh';
+    root.style.display = 'flex';
+    root.style.flexDirection = 'column';
+    root.style.overflow = 'hidden';
+  }
+  return () => {};
+}
+
 export default function App() {
-  React.useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const meta = document.querySelector('meta[name="viewport"]');
-    if (meta) {
-      meta.setAttribute(
-        'content',
-        'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover',
-      );
-    }
-    // Keep the app root filling the visible viewport on mobile browsers.
-    document.documentElement.style.height = '100%';
-    document.body.style.height = '100%';
-    document.body.style.margin = '0';
-    document.body.style.overflow = 'hidden';
-    const root = document.getElementById('root');
-    if (root) {
-      root.style.height = '100%';
-      root.style.display = 'flex';
-      root.style.flexDirection = 'column';
-    }
-  }, []);
+  React.useEffect(() => installWebViewport(), []);
 
   return (
     <SafeAreaProvider>

@@ -12,8 +12,10 @@ test('bottom tab bar uses safe-area insets so labels stay visible', () => {
   assert.match(appSrc, /SafeAreaProvider/);
   assert.match(appSrc, /useSafeAreaInsets/);
   assert.match(appSrc, /paddingBottom:\s*bottomPad/);
-  assert.match(appSrc, /TAB_BAR_BASE_HEIGHT/);
+  assert.match(appSrc, /TAB_BAR_CONTENT|TAB_BAR_BASE_HEIGHT/);
   assert.match(appSrc, /viewport-fit=cover/);
+  assert.match(appSrc, /visualViewport/);
+  assert.match(appSrc, /TAB_BAR_MIN_BOTTOM_WEB/);
 });
 
 test('web viewport enables safe-area inset coverage', () => {
