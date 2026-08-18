@@ -1,0 +1,8 @@
+{
+  "scannedAt": "2026-08-14",
+  "framework": "Vite + React 19",
+  "fonts": ["Space Grotesk", "JetBrains Mono"],
+  "palette": "Cobalt OKLCH tokens (design.md)",
+  "motion": "IntersectionObserver reveal only",
+  "notes": "New platform under pulse/; separate from Bisync client tokens"
+}

@@ -1,0 +1,72 @@
+# Pulse-only CI — does not build or test Bisync hospitality stack.
+
+name: CI Pulse
+
+on:
+  pull_request:
+    paths:
+      - 'pulse/**'
+      - 'scripts/deploy-simulation/suites/pre-pulse.mjs'
+      - 'scripts/deploy-simulation/registry.mjs'
+      - '.github/workflows/ci-pulse.yml'
+      - '.github/workflows/deploy-pulse.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'pulse/**'
+      - 'scripts/deploy-simulation/suites/pre-pulse.mjs'
+      - 'scripts/deploy-simulation/registry.mjs'
+      - '.github/workflows/ci-pulse.yml'
+      - '.github/workflows/deploy-pulse.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pulse:
+    name: Pulse domain + web build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bisync
+          POSTGRES_PASSWORD: bisync
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PULSE_DATABASE_URL: postgresql://bisync:bisync@127.0.0.1:5432/pulse
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Create pulse database
+        run: PGPASSWORD=bisync psql -h 127.0.0.1 -U bisync -d postgres -c "CREATE DATABASE pulse OWNER bisync;"
+      - name: Pre-pulse simulation
+        run: node scripts/deploy-simulation/suites/pre-pulse.mjs
+      - name: API smoke against Postgres
+        run: |
+          cd pulse/api
+          npm ci
+          node src/seed.mjs
+          node src/server.mjs &
+          PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5400/api/health; then
+              cd ../..
+              npm run smoke --prefix pulse
+              kill "$PID" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          kill "$PID" || true
+          echo "Pulse API failed to become healthy"
+          exit 1

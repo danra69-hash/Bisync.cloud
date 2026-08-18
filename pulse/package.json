@@ -1,0 +1,14 @@
+{
+  "name": "pulse",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pulse fitness membership platform",
+  "scripts": {
+    "dev:api": "npm run dev --prefix api",
+    "dev:web": "npm run dev --prefix web",
+    "seed": "npm run seed --prefix api",
+    "test": "node --test scripts/pulse-domain.test.mjs",
+    "build:web": "npm run build --prefix web",
+    "smoke": "node scripts/smoke.mjs"
+  }
+}
