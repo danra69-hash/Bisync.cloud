@@ -144,17 +144,19 @@ Accounting → Books shows trial balance, journals, and outbox for the selected 
 - Post, reverse, soft-close period, trial balance API (`/api/accounting/*`).
 - Bridges: payroll process + PO reconcile → sealed journals (best-effort; never fails ops).
 
-### Phase C — Core books
+### Phase C — Core books ✅ (usable module)
 
-- COA + statutory map + `ledger_id`.
-- SLA engine (dry-run + versioned rules) seeded for hospitality events above.
-- AR/AP open items only if product scope includes them; otherwise export bridges remain.
+- Expanded hospitality COA (seed + create/update in UI).
+- Manual journal entry UI (balanced post + reverse + detail).
+- Trial balance, P&amp;L, balance sheet, fiscal period soft-close/reopen.
+- Accounting hub defaults to **Books** (not payroll-only).
 
 ### Phase D — Compliance surface
 
 - First localisation pack (likely Malaysia / Singapore Peppol path for hospitality).
 - E-invoicing via aggregator behind an internal port; Temporal-like workflow only when submission durability demands it.
 - Statutory export as required by pack.
+- Full AP/AR open-item aging and bank reconciliation remain next.
 
 ---
 

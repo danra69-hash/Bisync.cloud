@@ -772,7 +772,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15",
-      "notes": "Company Accounting hub: Payroll, Ops→Finance bridges, Books Phase 0"
+      "notes": "Company Accounting hub: Books (COA/journals/reports/periods), Payroll, Ops→Finance bridges"
     },
     {
       "id": "dr.api.accounting-ledger",

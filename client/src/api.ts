@@ -5446,15 +5446,70 @@ export const api = {
 
   accountingStatus: (companyId: number) =>
     fetchJson<AccountingLedgerStatus>(`/api/accounting/status?companyId=${companyId}`),
+  accountingAccounts: (companyId: number) =>
+    fetchJson<AccountingAccount[]>(`/api/accounting/accounts?companyId=${companyId}`),
+  accountingCreateAccount: (
+    companyId: number,
+    body: { code: string; name: string; accountType: string; normalBalance: string },
+  ) =>
+    fetchJsonWithMethod<AccountingAccount>(
+      `/api/accounting/accounts?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingUpdateAccount: (
+    companyId: number,
+    id: number,
+    body: { name?: string; active?: boolean },
+  ) =>
+    fetchJsonWithMethod<AccountingAccount>(
+      `/api/accounting/accounts/${id}?companyId=${companyId}`,
+      'PUT',
+      body,
+    ),
   accountingJournals: (companyId: number, take = 40) =>
     fetchJson<AccountingJournalSummary[]>(
       `/api/accounting/journals?companyId=${companyId}&take=${take}`,
+    ),
+  accountingJournal: (companyId: number, id: number) =>
+    fetchJson<AccountingJournalDetail>(`/api/accounting/journals/${id}?companyId=${companyId}`),
+  accountingPostJournal: (
+    companyId: number,
+    body: {
+      effectiveDate?: string;
+      documentDate?: string;
+      narration?: string;
+      journalType?: string;
+      docSeries?: string;
+      lines: Array<{ accountCode: string; direction: string; amount: number; narration?: string }>;
+    },
+  ) =>
+    fetchJsonWithMethod<{ id: number; docNumber: string; journalType: string; postedAt: string; narration: string; lineCount: number }>(
+      `/api/accounting/journals?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingReverseJournal: (companyId: number, id: number) =>
+    fetchJsonWithMethod<{ id: number; docNumber: string; reversesJournalId: number }>(
+      `/api/accounting/journals/${id}/reverse?companyId=${companyId}`,
+      'POST',
     ),
   accountingTrialBalance: (companyId: number, periodId?: number) => {
     const params = new URLSearchParams({ companyId: String(companyId) });
     if (periodId) params.set('periodId', String(periodId));
     return fetchJson<AccountingTrialBalance>(`/api/accounting/trial-balance?${params}`);
   },
+  accountingStatements: (companyId: number, periodId?: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (periodId) params.set('periodId', String(periodId));
+    return fetchJson<AccountingStatements>(`/api/accounting/statements?${params}`);
+  },
+  accountingPeriods: (companyId: number) =>
+    fetchJson<AccountingPeriod[]>(`/api/accounting/periods?companyId=${companyId}`),
+  accountingSoftClosePeriod: (companyId: number, id: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/periods/${id}/soft-close?companyId=${companyId}`, 'POST'),
+  accountingReopenPeriod: (companyId: number, id: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/periods/${id}/reopen?companyId=${companyId}`, 'POST'),
   accountingOutbox: (companyId: number, take = 30) =>
     fetchJson<AccountingOutboxRow[]>(
       `/api/accounting/outbox?companyId=${companyId}&take=${take}`,
@@ -5473,6 +5528,15 @@ export type AccountingLedgerStatus = {
   bridges: Array<{ eventType: string; module: string; status: string }>;
 };
 
+export type AccountingAccount = {
+  id: number;
+  code: string;
+  name: string;
+  accountType: string;
+  normalBalance: string;
+  active: boolean;
+};
+
 export type AccountingJournalSummary = {
   id: number;
   docNumber: string | null;
@@ -5484,6 +5548,30 @@ export type AccountingJournalSummary = {
   postedAt: string | null;
   reversesJournalId: number | null;
   lineCount: number;
+};
+
+export type AccountingJournalDetail = {
+  id: number;
+  docNumber: string | null;
+  journalType: string;
+  ledgerKind: string;
+  sourceModule: string;
+  sourceDocKey: string | null;
+  narration: string;
+  effectiveDate: string;
+  documentDate: string;
+  postedAt: string | null;
+  reversesJournalId: number | null;
+  idempotencyKey: string | null;
+  lines: Array<{
+    lineNo: number;
+    accountCode: string | null;
+    accountName: string | null;
+    direction: string;
+    amount: number;
+    currency: string;
+    narration: string;
+  }>;
 };
 
 export type AccountingTrialBalance = {
@@ -5507,6 +5595,33 @@ export type AccountingTrialBalance = {
     periodCr: number;
     closing: number;
   }>;
+};
+
+export type AccountingPeriod = {
+  id: number;
+  year: number;
+  periodNo: number;
+  startDate: string;
+  endDate: string;
+  status: string;
+};
+
+export type AccountingStatements = {
+  period: AccountingPeriod;
+  profitAndLoss: {
+    income: number;
+    expense: number;
+    netIncome: number;
+    rows: Array<{ code: string; name: string; accountType: string; amount: number }>;
+  };
+  balanceSheet: {
+    assets: number;
+    liabilities: number;
+    equity: number;
+    balanced: boolean;
+    rows: Array<{ code: string; name: string; accountType: string; amount: number }>;
+    note: string;
+  };
 };
 
 export type AccountingOutboxRow = {

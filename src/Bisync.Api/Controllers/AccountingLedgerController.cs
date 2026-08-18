@@ -38,8 +38,8 @@ public class AccountingLedgerController(
         {
             companyId = cid,
             currency = LedgerPostingService.CurrencyForCountry(company.CountryCode),
-            phase = "B",
-            phaseLabel = "Ledger foundations (Phase 0)",
+            phase = "C",
+            phaseLabel = "Core books (COA, journals, TB, P&L, BS)",
             accounts = accountCount,
             postedJournals = journalCount,
             pendingOutbox = outboxPending,
@@ -283,5 +283,157 @@ public class AccountingLedgerController(
             })
             .ToListAsync();
         return Ok(rows);
+    }
+
+    public sealed record CreateAccountRequest(string Code, string Name, string AccountType, string NormalBalance);
+    public sealed record UpdateAccountRequest(string? Name, bool? Active);
+    public sealed record JournalLineRequest(string AccountCode, string Direction, decimal Amount, string? Narration);
+    public sealed record PostJournalRequest(
+        DateOnly? EffectiveDate,
+        DateOnly? DocumentDate,
+        string? Narration,
+        string? JournalType,
+        string? DocSeries,
+        List<JournalLineRequest> Lines);
+
+    [HttpPost("accounts")]
+    public async Task<ActionResult<object>> CreateAccount(
+        [FromQuery] int? companyId,
+        [FromBody] CreateAccountRequest body)
+    {
+        var cid = ResolveCompany(companyId);
+        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid.Value, company?.CountryCode);
+        try
+        {
+            var row = await ledger.CreateAccountAsync(cid.Value, body.Code, body.Name, body.AccountType, body.NormalBalance);
+            return Ok(new { row.Id, row.Code, row.Name, row.AccountType, row.NormalBalance, row.Active });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpPut("accounts/{id:int}")]
+    public async Task<ActionResult<object>> UpdateAccount(
+        int id,
+        [FromQuery] int? companyId,
+        [FromBody] UpdateAccountRequest body)
+    {
+        var cid = ResolveCompany(companyId);
+        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        try
+        {
+            var row = await ledger.UpdateAccountAsync(cid.Value, id, body.Name, body.Active);
+            return Ok(new { row.Id, row.Code, row.Name, row.AccountType, row.NormalBalance, row.Active });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("journals")]
+    public async Task<ActionResult<object>> PostJournal(
+        [FromQuery] int? companyId,
+        [FromBody] PostJournalRequest body)
+    {
+        var cid = ResolveCompany(companyId);
+        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        if (body.Lines is null || body.Lines.Count < 2)
+            return BadRequest(new { message = "At least two journal lines are required." });
+
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        if (company is null) return NotFound(new { message = "Company not found." });
+
+        var effective = body.EffectiveDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var document = body.DocumentDate ?? effective;
+        var lines = body.Lines
+            .Select(l => (l.AccountCode, l.Direction, l.Amount, l.Narration ?? ""))
+            .ToList();
+
+        try
+        {
+            var journal = await ledger.PostAsync(
+                cid.Value,
+                company.CountryCode,
+                journalType: string.IsNullOrWhiteSpace(body.JournalType) ? "GEN" : body.JournalType.Trim().ToUpperInvariant(),
+                docSeries: string.IsNullOrWhiteSpace(body.DocSeries) ? "GEN" : body.DocSeries.Trim().ToUpperInvariant(),
+                effectiveDate: effective,
+                documentDate: document,
+                sourceModule: "MANUAL",
+                sourceDocKey: null,
+                narration: body.Narration?.Trim() ?? "",
+                createdBy: "accounting-ui",
+                idempotencyKey: null,
+                lines,
+                CancellationToken.None);
+
+            return Ok(new
+            {
+                journal.Id,
+                journal.DocNumber,
+                journal.JournalType,
+                journal.PostedAt,
+                journal.Narration,
+                lineCount = journal.Lines.Count,
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("statements")]
+    public async Task<ActionResult<object>> Statements(
+        [FromQuery] int? companyId,
+        [FromQuery] int? periodId)
+    {
+        var cid = ResolveCompany(companyId);
+        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid);
+        await ledger.EnsureChartAndOpenPeriodsAsync(cid.Value, company?.CountryCode);
+
+        int resolvedPeriodId;
+        if (periodId is > 0)
+        {
+            resolvedPeriodId = periodId.Value;
+        }
+        else
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var period = await db.GlFiscalPeriods.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.CompanyId == cid && p.StartDate <= today && p.EndDate >= today);
+            if (period is null) return BadRequest(new { message = "No fiscal period for today." });
+            resolvedPeriodId = period.Id;
+        }
+
+        try
+        {
+            return Ok(await ledger.BuildFinancialStatementsAsync(cid.Value, resolvedPeriodId));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("periods/{id:int}/reopen")]
+    public async Task<ActionResult> Reopen(int id, [FromQuery] int? companyId)
+    {
+        var cid = ResolveCompany(companyId);
+        if (cid is null or <= 0) return BadRequest(new { message = "Company context required." });
+        try
+        {
+            await ledger.ReopenPeriodAsync(cid.Value, id);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 }
