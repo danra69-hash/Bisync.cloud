@@ -128,7 +128,7 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
   return (
     <div className="w-full min-w-0 flex flex-col lg:flex-row gap-3 items-stretch">
       <div className="w-full lg:w-[min(20rem,32%)] shrink-0 flex flex-col gap-3">
-        <PlatformTeamChatPanel compact />
+        <PlatformTeamChatPanel compact collapsible />
         <DesktopUpdateNotice downloadAnchorId="desktop-download" />
         <HomeDeviceUnlockCard />
         <div id="desktop-download">

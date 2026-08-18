@@ -17,7 +17,7 @@ export function RevMgmtLandingPage({
   return (
     <div className="w-full min-w-0 flex flex-col lg:flex-row gap-3 items-stretch">
       <div className="w-full lg:w-[min(20rem,28%)] shrink-0">
-        <PlatformTeamChatPanel />
+        <PlatformTeamChatPanel collapsible />
       </div>
       <div className="flex-1 min-w-0">
         <OverviewDashboard {...dashboardProps} />
