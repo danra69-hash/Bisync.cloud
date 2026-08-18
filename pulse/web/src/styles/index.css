@@ -664,6 +664,30 @@ textarea {
   color: var(--color-accent);
 }
 
+.btn-compact {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ledger-method-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ledger-invoice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
 .stack {
   display: grid;
   gap: 1rem;

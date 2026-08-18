@@ -18,7 +18,6 @@ import { AppShell } from './components/AppShell';
 import { DashboardPage } from './pages/DashboardPage';
 import { MembersPage } from './pages/MembersPage';
 import { PaymentsPage } from './pages/PaymentsPage';
-import { InvoicesPage } from './pages/InvoicesPage';
 import { PromotionsPage } from './pages/PromotionsPage';
 import { AppointmentsPage } from './pages/AppointmentsPage';
 import { EquipmentPage } from './pages/EquipmentPage';
@@ -35,7 +34,6 @@ const MODULE_ROUTES: { id: ModuleId; path: string; label: string; adminOnly?: bo
   { id: 'products', path: '/app/products', label: 'Product' },
   { id: 'system_config', path: '/app/system-config', label: 'System Config' },
   { id: 'payments', path: '/app/payments', label: 'Payments' },
-  { id: 'invoices', path: '/app/invoices', label: 'Invoices' },
   { id: 'promotions', path: '/app/promotions', label: 'Promotions' },
   { id: 'appointments', path: '/app/appointments', label: 'Appointments' },
   { id: 'equipment', path: '/app/equipment', label: 'Equipment' },
@@ -52,7 +50,7 @@ const ROLE_MODULE_FALLBACK: Record<string, ModuleId[]> = {
   superuser: MODULE_ROUTES.map((m) => m.id),
   management: MODULE_ROUTES.map((m) => m.id),
   admin: MODULE_ROUTES.map((m) => m.id),
-  accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
+  accounting: ['dashboard', 'members', 'products', 'payments', 'promotions'],
   fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
   sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
 };
@@ -276,7 +274,7 @@ export default function App() {
               <Route index element={<DashboardPage />} />
               <Route path="members" element={<MembersPage />} />
               <Route path="payments" element={<PaymentsPage />} />
-              <Route path="invoices" element={<InvoicesPage />} />
+              <Route path="invoices" element={<Navigate to="/app/payments" replace />} />
               <Route path="promotions" element={<PromotionsPage />} />
               <Route path="appointments" element={<AppointmentsPage />} />
               <Route path="equipment" element={<EquipmentPage />} />

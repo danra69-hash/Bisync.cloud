@@ -144,6 +144,14 @@ function gate(...modules) {
   };
 }
 
+/** Allow either payments or invoices module (billing merged into Payments UI). */
+function gateBilling(req, res, next) {
+  if (requireRole(req.user, ['payments']) || requireRole(req.user, ['invoices'])) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Requires access to: payments' });
+}
+
 function companyFilter(alias = '') {
   const prefix = alias ? `${alias}.` : '';
   return `${prefix}company_id = $1`;
@@ -859,7 +867,7 @@ app.patch('/api/promotions/:id', auth, tenant, gate('promotions'), asyncHandler(
   res.json({ ...promo, currentlyActive: isPromotionActive(promo) });
 }));
 
-app.get('/api/invoices', auth, tenant, gate('invoices'), asyncHandler(async (req, res) => {
+app.get('/api/invoices', auth, tenant, gateBilling, asyncHandler(async (req, res) => {
   const { rows } = await query(
     `SELECT i.*, row_to_json(m.*) AS member_row
      FROM invoices i
@@ -876,7 +884,7 @@ app.get('/api/invoices', auth, tenant, gate('invoices'), asyncHandler(async (req
   );
 }));
 
-app.post('/api/invoices', auth, tenant, gate('invoices'), asyncHandler(async (req, res) => {
+app.post('/api/invoices', auth, tenant, gateBilling, asyncHandler(async (req, res) => {
   const b = req.body || {};
   if (!b.memberId || !Array.isArray(b.lines) || b.lines.length === 0) {
     return res.status(400).json({ error: 'memberId and lines required' });
@@ -1033,6 +1041,41 @@ app.post('/api/payments', auth, tenant, gate('payments'), asyncHandler(async (re
       invoiceId,
       req.tenant.companyId,
     ]);
+  } else {
+    // Every captured payment gets a receipt invoice so ledger can offer Invoice actions.
+    const count = await query('SELECT COUNT(*)::int AS n FROM invoices WHERE company_id = $1', [
+      req.tenant.companyId,
+    ]);
+    const lines = [
+      {
+        description: String(b.description || `Payment (${payment.method})`),
+        qty: 1,
+        unitPrice: payment.amount,
+      },
+    ];
+    const subtotal = payment.amount;
+    const tax = 0;
+    const total = payment.amount;
+    invoiceId = id('inv');
+    const invoiceNumber = `INV-2026-${String(count.rows[0].n + 1).padStart(3, '0')}`;
+    await query(
+      `INSERT INTO invoices
+        (id, company_id, number, member_id, status, issued_at, due_at, lines, subtotal, tax, total, promo_code, discount)
+       VALUES ($1,$2,$3,$4,'paid',$5,$5,$6::jsonb,$7,$8,$9,NULL,0)`,
+      [
+        invoiceId,
+        req.tenant.companyId,
+        invoiceNumber,
+        member.id,
+        payment.paidAt,
+        JSON.stringify(lines),
+        subtotal,
+        tax,
+        total,
+      ],
+    );
+    await query(`UPDATE payments SET invoice_id = $2 WHERE id = $1`, [payment.id, invoiceId]);
+    payment.invoiceId = invoiceId;
   }
   if (member.status === 'lead') {
     await query(
@@ -1040,7 +1083,12 @@ app.post('/api/payments', auth, tenant, gate('payments'), asyncHandler(async (re
       [member.id, nowIso(), req.tenant.companyId],
     );
   }
-  res.status(201).json(payment);
+  let invoice = null;
+  if (payment.invoiceId) {
+    const invRes = await query(`SELECT * FROM invoices WHERE id = $1`, [payment.invoiceId]);
+    invoice = mapInvoice(invRes.rows[0]);
+  }
+  res.status(201).json({ ...payment, member, invoice });
 }));
 
 app.get('/api/appointments', auth, tenant, gate('appointments'), asyncHandler(async (req, res) => {

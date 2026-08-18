@@ -31,7 +31,7 @@ export const ROLE_MODULES = {
   superuser: [...ALL_MODULES],
   management: [...ALL_MODULES],
   admin: [...ALL_MODULES],
-  accounting: ['dashboard', 'members', 'products', 'payments', 'invoices', 'promotions'],
+  accounting: ['dashboard', 'members', 'products', 'payments', 'promotions'],
   fitness_coach: ['dashboard', 'appointments', 'equipment', 'training', 'members'],
   sales: ['dashboard', 'members', 'products', 'promotions', 'appointments'],
 };
