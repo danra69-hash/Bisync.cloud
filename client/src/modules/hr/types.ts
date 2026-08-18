@@ -51,6 +51,7 @@ export interface Employee {
   department: string;
   divisionId?: number | null;
   departmentId?: number | null;
+  companyId?: number | null;
   position: string;
   joinDate: string;
   fingerprintEnrolled: boolean;

@@ -2459,3 +2459,207 @@ button.team-rm-list-item-btn:disabled {
   text-decoration: line-through;
   color: var(--team-muted-fg);
 }
+
+.team-home-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+}
+
+.team-home-stack > .team-location-pos {
+  flex-shrink: 0;
+}
+
+.team-home-stack > .team-card:not(.team-location-pos),
+.team-home-stack > .team-chats-landing,
+.team-home-stack > [class*='team-chat'] {
+  min-height: 0;
+  flex: 1;
+}
+.team-location-pos-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-location-pos-title h3 {
+  margin: 0;
+}
+
+.team-location-pos-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-location-pos-asof {
+  margin: 0 0 8px;
+  font-size: 11px;
+}
+
+.team-location-pos-refresh {
+  appearance: none;
+  border: 1px solid var(--team-border, rgba(44, 26, 10, 0.14));
+  background: #fff;
+  color: var(--team-muted-fg);
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.team-location-pos-refresh .is-spin {
+  animation: team-spin 0.8s linear infinite;
+}
+
+@keyframes team-spin {
+  to { transform: rotate(360deg); }
+}
+
+.team-location-pos-picker {
+  position: relative;
+}
+
+.team-location-pos-picker-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--team-border, rgba(44, 26, 10, 0.14));
+  background: #fff;
+  color: var(--team-fg, #2c1a0a);
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  max-width: 9.5rem;
+}
+
+.team-location-pos-picker-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-location-pos-picker-btn .is-open {
+  transform: rotate(180deg);
+}
+
+.team-location-pos-picker-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  width: min(16rem, 72vw);
+  background: #fff;
+  border: 1px solid var(--team-border, rgba(44, 26, 10, 0.14));
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(44, 26, 10, 0.16);
+  overflow: hidden;
+  max-height: 16rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.team-location-pos-picker-row {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--team-fg, #2c1a0a);
+  cursor: pointer;
+}
+
+.team-location-pos-picker-row:hover {
+  background: rgba(243, 112, 33, 0.08);
+}
+
+.team-location-pos-check {
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 3px;
+  border: 1px solid rgba(44, 26, 10, 0.25);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.team-location-pos-check.is-on {
+  background: var(--team-primary, #f37021);
+  border-color: var(--team-primary, #f37021);
+}
+
+.team-location-pos-picker-close {
+  appearance: none;
+  border: 0;
+  border-top: 1px solid var(--team-border, rgba(44, 26, 10, 0.1));
+  background: #faf5ee;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0.5rem;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.team-location-pos-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.team-location-pos-row {
+  border: 1px solid var(--team-border, rgba(44, 26, 10, 0.1));
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.team-location-pos-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.team-location-pos-row-head strong {
+  font-size: 13px;
+}
+
+.team-location-pos-row-head .team-muted {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.team-location-pos-metrics {
+  margin: 0;
+}
+
+.team-location-pos-metrics dd em {
+  font-style: normal;
+  font-weight: 500;
+  font-size: 10px;
+}
+
+.team-location-pos-open {
+  margin: 4px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+}

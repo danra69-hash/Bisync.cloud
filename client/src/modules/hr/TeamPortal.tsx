@@ -37,6 +37,7 @@ import { TeamMyWorkPage } from './TeamMyWorkPage';
 import { TeamRmsLanding } from './TeamRmsLanding';
 import { TeamOrderPage, TeamStockPage } from './TeamStockPage';
 import { TeamScreenshotShare } from './TeamScreenshotShare';
+import { TeamLocationPosList } from './TeamLocationPosList';
 import './TeamPortal.css';
 
 /** Permanent Team shell tabs. Bottom nav: Home (chats) · My Work · RMS · Order · Stock. */
@@ -931,12 +932,15 @@ export default function TeamPortal({
 
           <main className="team-main">
             {shellTab === 'chats' ? (
-              <TeamChatsLanding
-                employeeId={teamEmp.id}
-                employeeName={teamEmp.name}
-                initialConversationId={openChatId}
-                onConversationOpened={(id) => setOpenChatId(id)}
-              />
+              <div className="team-home-stack">
+                <TeamLocationPosList preferredCompanyId={teamEmp.companyId ?? null} />
+                <TeamChatsLanding
+                  employeeId={teamEmp.id}
+                  employeeName={teamEmp.name}
+                  initialConversationId={openChatId}
+                  onConversationOpened={(id) => setOpenChatId(id)}
+                />
+              </div>
             ) : null}
             {shellTab === 'my-work' ? (
               <TeamMyWorkPage
