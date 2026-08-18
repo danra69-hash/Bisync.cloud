@@ -1,0 +1,17 @@
+{
+  "name": "pulse-desktop",
+  "productName": "Pulse Admin",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.js",
+  "description": "Pulse fitness membership — Admin desktop",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env PULSE_DESKTOP_URL=http://localhost:5401/?surface=admin electron .",
+    "smoke": "node -e \"require('./src/config'); console.log('ok')\""
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^37.2.6"
+  }
+}
