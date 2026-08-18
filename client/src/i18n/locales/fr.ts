@@ -237,6 +237,7 @@ export const fr = {
     locations: 'Établissements',
     accessControl: 'Contrôle d\'accès',
     priceDisplay: 'Affichage des prix',
+    malaysia: 'Malaisie',
     auditTrail: 'Audit Trail',
     priceDisplayHeading: 'Décimales d’affichage des prix',
     priceDisplayBody: 'Contrôle l’affichage des prix UOM des composants et des prix de livraison fournisseur sur toute la plateforme. La précision de stockage est inchangée.',

@@ -237,6 +237,7 @@ export const ko = {
     locations: '매장',
     accessControl: '접근 제어',
     priceDisplay: '가격 표시',
+    malaysia: '말레이시아',
     auditTrail: 'Audit Trail',
     priceDisplayHeading: '가격 표시 소수점',
     priceDisplayBody: '플랫폼 전역에서 구성 요소 UOM 및 공급업체 배송 가격 표시 방식을 제어합니다. 저장 정밀도는 변경되지 않습니다.',

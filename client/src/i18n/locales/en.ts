@@ -229,11 +229,12 @@ export const en = {
   systemConfig: {
     title: 'System Configuration',
     platformConfig: 'Platform Config',
-    description: 'Manage companies, locations, platform access control, price display decimals, and system Audit Trail. Employee, pay, org, and holiday settings live under Human Resources. COGS Audit lives under Revenue Management → Reports.',
+    description: 'Manage companies, locations, platform access control, price display decimals, Malaysia localisation pack, and system Audit Trail. Employee, pay, org, and holiday settings live under Human Resources. COGS Audit lives under Revenue Management → Reports.',
     companies: 'Companies',
     locations: 'Locations',
     accessControl: 'Access Control',
     priceDisplay: 'Price Display',
+    malaysia: 'Malaysia',
     auditTrail: 'Audit Trail',
     addCompany: 'Add Company',
     addLocation: 'Add Location',

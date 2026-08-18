@@ -85,6 +85,7 @@ export const HR_CONFIG_TAB_I18N: Record<string, string> = {
   Locations: 'systemConfig.locations',
   'Access Control': 'systemConfig.accessControl',
   'Price Display': 'systemConfig.priceDisplay',
+  Malaysia: 'systemConfig.malaysia',
   'Audit Trail': 'systemConfig.auditTrail',
 };
 

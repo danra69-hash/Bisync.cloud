@@ -3,6 +3,7 @@ import { CompaniesTab } from './CompaniesTab';
 import { AccessControlTab } from './AccessControlTab';
 import { SystemAuditTrailTab } from './SystemAuditTrailTab';
 import { PriceDisplayConfigTab } from './PriceDisplayConfigTab';
+import { MalaysiaPackConfigTab } from './MalaysiaPackConfigTab';
 import { HrConfigTabBar } from './HrConfigTabBar';
 import { LocationsConfigTab } from './LocationsConfigTab';
 import { SYSTEM_HR_CONFIG_TABS, type SystemHrConfigTabId } from './hrConfigTabs';
@@ -47,6 +48,7 @@ export function SystemConfigurationPage({
       )}
       {tab === 'accessControl' && <AccessControlTab />}
       {tab === 'priceDisplay' && <PriceDisplayConfigTab />}
+      {tab === 'malaysia' && <MalaysiaPackConfigTab selectedCompanyId={selectedCompanyId} />}
       {tab === 'auditTrail' && <SystemAuditTrailTab />}
     </div>
   );
