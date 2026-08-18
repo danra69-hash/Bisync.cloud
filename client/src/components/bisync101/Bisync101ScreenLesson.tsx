@@ -15,7 +15,8 @@ type Props = {
   task: Bisync101Task;
 };
 
-const MIN_STEP_MS = 4200;
+/** Floor per canvas step (voice-over may extend beyond this). */
+const STEP_MS = 5600;
 const INTRO_MS = 1400;
 /** Recorded WebM clips play slower so the on-screen cursor is easier to follow. */
 const VIDEO_PLAYBACK_RATE = 0.65;
@@ -41,8 +42,8 @@ function stepDurationsMs(task: Bisync101Task, voiceEnabled: boolean): number[] {
   return task.steps.map(step => {
     const speechMs = voiceEnabled
       ? estimateBisync101SpeechMs(bisync101StepVoiceText(step))
-      : MIN_STEP_MS;
-    return Math.max(MIN_STEP_MS, speechMs);
+      : STEP_MS;
+    return Math.max(STEP_MS, speechMs);
   });
 }
 
@@ -111,7 +112,7 @@ export function Bisync101ScreenLesson({ task }: Props) {
 
   const durations = useMemo(() => stepDurationsMs(task, voiceEnabled), [task, voiceEnabled]);
   const ends = useMemo(() => cumulativeEnds(durations), [durations]);
-  const totalMs = INTRO_MS + (ends[ends.length - 1] ?? MIN_STEP_MS);
+  const totalMs = INTRO_MS + (ends[ends.length - 1] ?? STEP_MS);
 
   useEffect(() => {
     setUseVideo(Boolean(clipSrc));
@@ -204,7 +205,7 @@ export function Bisync101ScreenLesson({ task }: Props) {
     if (!ctx) return;
     const afterIntro = Math.max(0, elapsed - INTRO_MS);
     const prevEnd = stepIndex <= 0 ? 0 : ends[stepIndex - 1] ?? 0;
-    const curEnd = ends[stepIndex] ?? prevEnd + MIN_STEP_MS;
+    const curEnd = ends[stepIndex] ?? prevEnd + STEP_MS;
     const stepLen = Math.max(1, curEnd - prevEnd);
     const intoStep = Math.max(0, afterIntro - prevEnd);
     const stepProgress = Math.min(1, intoStep / stepLen);

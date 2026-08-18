@@ -18,6 +18,8 @@ const capture = fs.readFileSync(
 );
 
 assert.match(lesson, /STEP_MS = 5600/, 'canvas steps must be slowed');
+assert.match(lesson, /estimateBisync101SpeechMs/, 'step duration waits for full voice-over');
+assert.match(lesson, /Math\.max\(STEP_MS, speechMs\)/, 'speech can extend beyond the step floor');
 assert.match(lesson, /INTRO_MS = 1400/, 'intro dwell must be longer');
 assert.match(lesson, /VIDEO_PLAYBACK_RATE = 0\.65/, 'recorded clips play slower');
 assert.match(lesson, /playbackRate = VIDEO_PLAYBACK_RATE/, 'video element uses slowed rate');

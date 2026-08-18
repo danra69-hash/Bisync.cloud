@@ -25,7 +25,8 @@ assert.match(lesson, /speakBisync101Step/, 'Screen lesson must speak voice-over'
 assert.match(lesson, /estimateBisync101SpeechMs/, 'Lesson timing must wait for full script');
 assert.match(lesson, /female voice-over/, 'Badge mentions female voice-over');
 assert.match(lesson, /holdVideoForSpeech|speechBusyRef/, 'Must hold playback until speech finishes');
-assert.doesNotMatch(lesson, /const STEP_MS = 5600/, 'Fixed 5.6s step must not cut off speech');
+assert.match(lesson, /Math\.max\(STEP_MS, speechMs\)/, 'Step floor must yield to longer speech');
+assert.match(lesson, /speechBusyRef/, 'Playback must hold while TTS is speaking');
 
 const gettingStarted = fs.readFileSync(
   path.join(root, 'client/src/data/bisync101/modules/gettingStarted.ts'),
