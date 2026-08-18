@@ -1,8 +1,9 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/AuthContext';
 import { LoginScreen } from './src/screens/LoginScreen';
@@ -17,8 +18,15 @@ import type { MainTabParamList, RootStackParamList } from './src/navigation';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<MainTabParamList>();
 
+/** Keep tab labels above the home indicator / browser chrome. */
+const TAB_BAR_BASE_HEIGHT = 56;
+const TAB_BAR_MIN_BOTTOM = Platform.OS === 'web' ? 12 : 0;
+
 function MainTabs() {
   const { logout, user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM);
+
   return (
     <Tabs.Navigator
       screenOptions={{
@@ -30,19 +38,49 @@ function MainTabs() {
           </Pressable>
         ),
         tabBarActiveTintColor: colors.accent,
-        tabBarStyle: { backgroundColor: colors.white, borderTopColor: colors.rule },
+        tabBarInactiveTintColor: colors.muted,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginBottom: 2,
+        },
+        tabBarStyle: {
+          backgroundColor: colors.white,
+          borderTopColor: colors.rule,
+          borderTopWidth: 1,
+          height: TAB_BAR_BASE_HEIGHT + bottomPad,
+          paddingTop: 6,
+          paddingBottom: bottomPad,
+          // Keep bar in the layout (not under browser UI / home indicator).
+          position: 'relative',
+          elevation: 8,
+          zIndex: 10,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2,
+        },
       }}
     >
       <Tabs.Screen
         name="Training"
         component={TrainingScreen}
-        options={{ title: user?.type === 'coach' ? 'Coach training' : 'My training' }}
+        options={{
+          title: user?.type === 'coach' ? 'Coach training' : 'My training',
+          tabBarLabel: user?.type === 'coach' ? 'Training' : 'My training',
+        }}
       />
-      <Tabs.Screen name="Calendar" component={CalendarScreen} />
+      <Tabs.Screen
+        name="Calendar"
+        component={CalendarScreen}
+        options={{ tabBarLabel: 'Calendar' }}
+      />
       <Tabs.Screen
         name="Packages"
         component={PackagesScreen}
-        options={{ title: 'Packages & stamps' }}
+        options={{
+          title: 'Packages & stamps',
+          tabBarLabel: 'Packages',
+        }}
       />
     </Tabs.Navigator>
   );
@@ -74,11 +112,35 @@ function Root() {
 }
 
 export default function App() {
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (meta) {
+      meta.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover',
+      );
+    }
+    // Keep the app root filling the visible viewport on mobile browsers.
+    document.documentElement.style.height = '100%';
+    document.body.style.height = '100%';
+    document.body.style.margin = '0';
+    document.body.style.overflow = 'hidden';
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.height = '100%';
+      root.style.display = 'flex';
+      root.style.flexDirection = 'column';
+    }
+  }, []);
+
   return (
-    <AuthProvider>
-      <StatusBar style="dark" />
-      <Root />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <StatusBar style="dark" />
+        <Root />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 
