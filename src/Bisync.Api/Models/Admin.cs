@@ -26,6 +26,10 @@ public class EmployeeLevel
     public string LevelName { get; set; } = null!;
     public int AnnualLeaveDays { get; set; }
     public int SickLeaveDays { get; set; }
+    /// <summary>When false, annual leave entitlement is not included for this level.</summary>
+    public bool AnnualLeaveEnabled { get; set; } = true;
+    /// <summary>When false, sick leave entitlement is not included for this level.</summary>
+    public bool SickLeaveEnabled { get; set; } = true;
     /// <summary>JSON array of tenure bands for annual leave (fromYears/toYears/days).</summary>
     public string AnnualLeaveRulesJson { get; set; } = "[]";
     /// <summary>JSON array of tenure bands for sick leave (fromYears/toYears/days).</summary>

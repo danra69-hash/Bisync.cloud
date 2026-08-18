@@ -3,11 +3,11 @@ import { createPortal } from 'react-dom';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, ColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
-import { Plus, X } from 'lucide-react';
-import { api, type Company, type LocationConfig, type AppUser } from '../../api';
+import { ImagePlus, Plus, X } from 'lucide-react';
+import { api, type Company, type DeliveryLocation, type LocationConfig, type AppUser } from '../../api';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
 import type { AddressParts } from '../../utils/countryFormat';
@@ -51,8 +51,64 @@ import {
   type LocationOpeningHours,
   type LocationWeekday,
 } from '../../data/locationOpeningHours';
+import {
+  blankDeliveryPeriod,
+  parseDeliveryAllowPeriodsJson,
+  serializeDeliveryAllowPeriods,
+  validateDeliveryAllowPeriods,
+  type DeliveryAllowPeriod,
+} from '../../data/locationDeliveryAllowTime';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { ToggleSwitch } from './ToggleSwitch';
+
+const MAX_LOCATION_LOGO_BYTES = 1_000_000;
+const ALLOWED_LOCATION_LOGO_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+]);
+
+function locationLogoPreviewSrc(logoBase64?: string, logoContentType?: string): string | null {
+  const raw = (logoBase64 ?? '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('data:')) return raw;
+  const type = (logoContentType ?? '').trim() || 'image/png';
+  return `data:${type};base64,${raw}`;
+}
+
+function readLocationLogoFile(file: File): Promise<{ fileName: string; contentType: string; base64: string }> {
+  return new Promise((resolve, reject) => {
+    const type = (file.type || '').toLowerCase();
+    if (!ALLOWED_LOCATION_LOGO_TYPES.has(type)) {
+      reject(new Error('Location logo must be PNG, JPEG, WebP, GIF, or SVG.'));
+      return;
+    }
+    if (file.size > MAX_LOCATION_LOGO_BYTES) {
+      reject(new Error('Location logo is too large (max 1 MB).'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const comma = result.indexOf(',');
+      const base64 = comma >= 0 ? result.slice(comma + 1) : result;
+      if (!base64) {
+        reject(new Error('Failed to read location logo.'));
+        return;
+      }
+      resolve({
+        fileName: file.name,
+        contentType: type === 'image/jpg' ? 'image/jpeg' : type,
+        base64,
+      });
+    };
+    reader.onerror = () => reject(new Error('Failed to read location logo.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 type LocationSortColumn =
   | 'location'
@@ -67,15 +123,15 @@ type LocationSortColumn =
 type LocationTableColumn = LocationSortColumn | 'accessControl';
 
 const LOCATION_TABLE_COLUMNS: SortableColumnDef<LocationTableColumn>[] = [
-  { key: 'location', label: 'Location' },
-  { key: 'company', label: 'Company' },
-  { key: 'address', label: 'Address' },
-  { key: 'accessControl', label: 'Access Control', sortable: false, className: 'w-[11.5rem]' },
-  { key: 'principalContact', label: 'Principal Contact' },
-  { key: 'businessType', label: 'Type of Business' },
-  { key: 'productPolicy', label: 'Product Policy' },
-  { key: 'country', label: 'Country' },
-  { key: 'status', label: 'Status' },
+  { key: 'location', label: 'Location', ...tableColWidth('12%') },
+  { key: 'company', label: 'Company', ...tableColWidth('10%') },
+  { key: 'address', label: 'Address', ...tableColWidth('16%') },
+  { key: 'accessControl', label: 'Access Control', sortable: false, ...tableColWidth(184) },
+  { key: 'principalContact', label: 'Principal Contact', ...tableColWidth('12%') },
+  { key: 'businessType', label: 'Type of Business', ...tableColWidth('10%') },
+  { key: 'productPolicy', label: 'Product Policy', ...tableColWidth('10%') },
+  { key: 'country', label: 'Country', ...tableColWidth('8%') },
+  { key: 'status', label: 'Status', ...tableColWidth('8%') },
 ];
 
 function LocationAccessControlCell({
@@ -150,24 +206,47 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     vendorPolicyTagsJson: '[]',
     modulesJson: '[]',
     openingHoursJson: '{}',
+    deliveryAllowTimeEnabled: false,
+    deliveryAllowPeriodsJson: '[]',
+    physicalSiteKey: '',
+    conceptLabel: '',
+    conceptSortOrder: 0,
+    logoFileName: '',
+    logoContentType: '',
+    logoBase64: '',
+    logoSet: false,
   };
 }
 
 function LocationPanel({
-  location, isNew, companies, users, onClose, onSave,
+  location, isNew, companies, users, locations, onClose, onSave,
 }: {
   location: LocationConfig;
   isNew: boolean;
   companies: Company[];
   users: AppUser[];
+  locations: LocationConfig[];
   onClose: () => void;
   onSave: (saved: LocationConfig) => void;
 }) {
   const [form, setForm] = useState(() => ({
     ...location,
     active: location.active !== false,
+    logoFileName: location.logoFileName ?? '',
+    logoContentType: location.logoContentType ?? '',
+    logoBase64: location.logoBase64 ?? '',
+    logoSet: Boolean(location.logoSet || location.logoBase64),
   }));
   const locationActive = form.active !== false;
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [inheritanceEnabled, setInheritanceEnabled] = useState(false);
+  const [inheritFromCompanyId, setInheritFromCompanyId] = useState<number | null>(
+    () => location.companyId ?? null,
+  );
+  const [inheritFromLocationExternalId, setInheritFromLocationExternalId] = useState('');
+  const [copyComponents, setCopyComponents] = useState(false);
+  const [copyVendorsAndVendorProducts, setCopyVendorsAndVendorProducts] = useState(false);
+  const [copyProducts, setCopyProducts] = useState(false);
   const initialCompany = companies.find(c => c.id === location.companyId);
   const [inheritsCompanyProfile, setInheritsCompanyProfile] = useState(
     () => isNew || location.profileOverridden !== true,
@@ -193,6 +272,26 @@ function LocationPanel({
   const [openingHours, setOpeningHours] = useState<LocationOpeningHours>(() =>
     parseOpeningHoursJson(location.openingHoursJson),
   );
+  const [deliveryAllowTimeEnabled, setDeliveryAllowTimeEnabled] = useState(
+    () => Boolean(location.deliveryAllowTimeEnabled),
+  );
+  const [deliveryPeriods, setDeliveryPeriods] = useState<DeliveryAllowPeriod[]>(() =>
+    parseDeliveryAllowPeriodsJson(location.deliveryAllowPeriodsJson),
+  );
+  const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>([]);
+  const [deliveryLocationsLoading, setDeliveryLocationsLoading] = useState(false);
+  const [deliveryFormOpen, setDeliveryFormOpen] = useState(false);
+  const [editingDeliveryId, setEditingDeliveryId] = useState<number | null>(null);
+  const [deliveryForm, setDeliveryForm] = useState({
+    name: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    stateProvince: '',
+    postcode: '',
+  });
+  const [deliverySaving, setDeliverySaving] = useState(false);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [overlayCloseArmed, setOverlayCloseArmed] = useState(false);
@@ -220,9 +319,133 @@ function LocationPanel({
   }, [location.id, isNew]);
 
   useEffect(() => {
+    if (isNew || !location.externalId) {
+      setDeliveryLocations([]);
+      setDeliveryFormOpen(false);
+      setEditingDeliveryId(null);
+      return;
+    }
+    let cancelled = false;
+    setDeliveryLocationsLoading(true);
+    setDeliveryError(null);
+    void api.locationDeliveryLocations(location.externalId, { includeInactive: true })
+      .then(rows => {
+        if (!cancelled) setDeliveryLocations(Array.isArray(rows) ? rows.filter(r => r.active !== false) : []);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setDeliveryLocations([]);
+          setDeliveryError(err instanceof Error ? err.message : 'Unable to load delivery locations.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDeliveryLocationsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isNew, location.externalId, location.id]);
+
+  function openNewDeliveryForm() {
+    setEditingDeliveryId(null);
+    setDeliveryForm({
+      name: '',
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      stateProvince: '',
+      postcode: '',
+    });
+    setDeliveryError(null);
+    setDeliveryFormOpen(true);
+  }
+
+  function openEditDeliveryForm(row: DeliveryLocation) {
+    setEditingDeliveryId(row.id);
+    setDeliveryForm({
+      name: row.name ?? '',
+      addressLine1: row.addressLine1 ?? '',
+      addressLine2: row.addressLine2 ?? '',
+      city: row.city ?? '',
+      stateProvince: row.stateProvince ?? '',
+      postcode: row.postcode ?? '',
+    });
+    setDeliveryError(null);
+    setDeliveryFormOpen(true);
+  }
+
+  async function saveDeliveryLocation() {
+    if (!location.externalId) return;
+    const name = deliveryForm.name.trim();
+    if (!name) {
+      setDeliveryError('Name of Delivery Location is required.');
+      return;
+    }
+    const addressError = getAddressValidationError(country.code, {
+      addressLine1: deliveryForm.addressLine1,
+      addressLine2: deliveryForm.addressLine2,
+      city: deliveryForm.city,
+      stateProvince: deliveryForm.stateProvince,
+      postcode: deliveryForm.postcode,
+    });
+    if (addressError) {
+      setDeliveryError(addressError);
+      return;
+    }
+    setDeliverySaving(true);
+    setDeliveryError(null);
+    const payload = {
+      name,
+      addressLine1: deliveryForm.addressLine1.trim(),
+      addressLine2: deliveryForm.addressLine2.trim(),
+      city: deliveryForm.city.trim(),
+      stateProvince: deliveryForm.stateProvince.trim(),
+      postcode: deliveryForm.postcode.trim(),
+      active: true,
+    };
+    try {
+      if (editingDeliveryId != null) {
+        const updated = await api.updateDeliveryLocation(editingDeliveryId, payload);
+        setDeliveryLocations(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+      } else {
+        const created = await api.createDeliveryLocation(location.externalId, payload);
+        setDeliveryLocations(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+      setDeliveryFormOpen(false);
+      setEditingDeliveryId(null);
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Failed to save delivery location.');
+    } finally {
+      setDeliverySaving(false);
+    }
+  }
+
+  async function removeDeliveryLocation(row: DeliveryLocation) {
+    if (!window.confirm(`Remove delivery location “${row.name}”?`)) return;
+    setDeliverySaving(true);
+    setDeliveryError(null);
+    try {
+      await api.deleteDeliveryLocation(row.id);
+      setDeliveryLocations(prev => prev.filter(r => r.id !== row.id));
+      if (editingDeliveryId === row.id) {
+        setDeliveryFormOpen(false);
+        setEditingDeliveryId(null);
+      }
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Failed to remove delivery location.');
+    } finally {
+      setDeliverySaving(false);
+    }
+  }
+
+  useEffect(() => {
     setForm({
       ...location,
       active: location.active !== false,
+      logoFileName: location.logoFileName ?? '',
+      logoContentType: location.logoContentType ?? '',
+      logoBase64: location.logoBase64 ?? '',
+      logoSet: Boolean(location.logoSet || location.logoBase64),
     });
     const initial = companies.find(c => c.id === location.companyId);
     const inherits = isNew || location.profileOverridden !== true;
@@ -238,7 +461,10 @@ function LocationPanel({
       setModules(initial ? locationModulesFromCompany(initial) : []);
     }
     setOpeningHours(parseOpeningHoursJson(location.openingHoursJson));
+    setDeliveryAllowTimeEnabled(Boolean(location.deliveryAllowTimeEnabled));
+    setDeliveryPeriods(parseDeliveryAllowPeriodsJson(location.deliveryAllowPeriodsJson));
     setError(null);
+    if (logoInputRef.current) logoInputRef.current.value = '';
     // Only re-hydrate when the edited location (or create/edit mode) changes — not when
     // the companies list is refreshed, which would wipe in-progress edits and clear errors.
   }, [location.id, isNew]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional
@@ -252,6 +478,21 @@ function LocationPanel({
     setVendorPolicyTags(profile.vendorPolicyTags);
     setModules(locationModulesFromCompany(selectedCompany));
   }, [form.companyId, inheritsCompanyProfile, companies]);
+
+  useEffect(() => {
+    if (!isNew || inheritanceEnabled) return;
+    if (form.companyId && inheritFromCompanyId == null) {
+      setInheritFromCompanyId(form.companyId);
+    }
+  }, [isNew, form.companyId, inheritanceEnabled, inheritFromCompanyId]);
+
+  const inheritSourceLocations = useMemo(
+    () => locations
+      .filter(l => l.companyId === inheritFromCompanyId && l.active !== false)
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [locations, inheritFromCompanyId],
+  );
 
   useEffect(() => {
     if (!company || inheritsCompanyProfile) return;
@@ -319,6 +560,48 @@ function LocationPanel({
     setError(null);
   }
 
+  function buildLogoPayload() {
+    const logoBase64 = (form.logoBase64 ?? '').trim();
+    return {
+      logoFileName: logoBase64 ? (form.logoFileName ?? '').trim() : '',
+      logoContentType: logoBase64 ? (form.logoContentType ?? '').trim() : '',
+      logoBase64,
+    };
+  }
+
+  async function handleLogoPick(file: File | null) {
+    if (!file) return;
+    try {
+      const logo = await readLocationLogoFile(file);
+      setForm(f => ({
+        ...f,
+        logoFileName: logo.fileName,
+        logoContentType: logo.contentType,
+        logoBase64: logo.base64,
+        logoSet: true,
+      }));
+      setError(null);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to read location logo.');
+    } finally {
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  }
+
+  function clearLogo() {
+    setForm(f => ({
+      ...f,
+      logoFileName: '',
+      logoContentType: '',
+      logoBase64: '',
+      logoSet: false,
+    }));
+    setError(null);
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  }
+
+  const logoPreviewSrc = locationLogoPreviewSrc(form.logoBase64, form.logoContentType);
+
   function updateDayHours(day: LocationWeekday, patch: Partial<LocationDayHours>) {
     const next = { ...patch };
     if (next.openFrom !== undefined) next.openFrom = normalizeTime(next.openFrom);
@@ -328,6 +611,29 @@ function LocationPanel({
       ...prev,
       [day]: { ...(prev[day] ?? blankOpeningHours()[day]), ...next },
     }));
+    setError(null);
+  }
+
+  function updateDeliveryPeriod(index: number, patch: Partial<DeliveryAllowPeriod>) {
+    setDeliveryPeriods(prev =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        return {
+          from: patch.from !== undefined ? normalizeTime(patch.from) : row.from,
+          to: patch.to !== undefined ? normalizeTime(patch.to) : row.to,
+        };
+      }),
+    );
+    setError(null);
+  }
+
+  function addDeliveryPeriod() {
+    setDeliveryPeriods(prev => [...prev, blankDeliveryPeriod()]);
+    setError(null);
+  }
+
+  function removeDeliveryPeriod(index: number) {
+    setDeliveryPeriods(prev => prev.filter((_, i) => i !== index));
     setError(null);
   }
 
@@ -358,6 +664,8 @@ function LocationPanel({
         inheritsCompanyProfile,
       );
       const openingHoursJson = serializeOpeningHours(openingHours);
+      const deliveryAllowPeriodsJson = serializeDeliveryAllowPeriods(deliveryPeriods);
+      const logo = buildLogoPayload();
       const saved = await api.updateLocationConfig(form.id, {
         companyId: form.companyId,
         name: form.name.trim() || form.name,
@@ -372,7 +680,13 @@ function LocationPanel({
         vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
         modulesJson: modulesPayload.modulesJson,
         openingHoursJson,
+        deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson,
         active: nextActive,
+        physicalSiteKey: form.physicalSiteKey ?? '',
+        conceptLabel: form.conceptLabel ?? '',
+        conceptSortOrder: form.conceptSortOrder ?? 0,
+        ...logo,
       });
       const next: LocationConfig = {
         ...form,
@@ -384,8 +698,24 @@ function LocationPanel({
         vendorPolicyTagsJson: saved.vendorPolicyTagsJson ?? profilePayload.effectiveVendorPolicyTagsJson,
         modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
+        deliveryAllowTimeEnabled: saved.deliveryAllowTimeEnabled ?? deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson: saved.deliveryAllowPeriodsJson ?? deliveryAllowPeriodsJson,
+        physicalSiteKey: saved.physicalSiteKey ?? form.physicalSiteKey ?? '',
+        conceptLabel: saved.conceptLabel ?? form.conceptLabel ?? '',
+        conceptSortOrder: saved.conceptSortOrder ?? form.conceptSortOrder ?? 0,
+        logoFileName: saved.logoFileName ?? logo.logoFileName,
+        logoContentType: saved.logoContentType ?? logo.logoContentType,
+        logoBase64: saved.logoBase64 ?? logo.logoBase64,
+        logoSet: Boolean(saved.logoSet ?? logo.logoBase64),
       };
-      setForm({ ...next, active: nextActive });
+      setForm({
+        ...next,
+        active: nextActive,
+        logoFileName: next.logoFileName ?? '',
+        logoContentType: next.logoContentType ?? '',
+        logoBase64: next.logoBase64 ?? '',
+        logoSet: Boolean(next.logoSet),
+      });
       onSave(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update location status.');
@@ -405,6 +735,21 @@ function LocationPanel({
       if (!form.name.trim()) {
         showError('Location name is required.');
         return;
+      }
+
+      if (isNew && inheritanceEnabled) {
+        if (!inheritFromCompanyId) {
+          showError('Inheritance: select a source company.');
+          return;
+        }
+        if (!inheritFromLocationExternalId.trim()) {
+          showError('Inheritance: select a source location.');
+          return;
+        }
+        if (!copyComponents && !copyVendorsAndVendorProducts && !copyProducts) {
+          showError('Inheritance: tick at least one copy option.');
+          return;
+        }
       }
 
       const addressError = getAddressValidationError(company?.countryCode ?? form.countryCode, addressParts);
@@ -450,6 +795,11 @@ function LocationPanel({
         showError(hoursError);
         return;
       }
+      const deliveryError = validateDeliveryAllowPeriods(deliveryAllowTimeEnabled, deliveryPeriods);
+      if (deliveryError) {
+        showError(deliveryError);
+        return;
+      }
 
       const profilePayload = buildLocationProfilePayload(
         company,
@@ -459,6 +809,8 @@ function LocationPanel({
       );
       const modulesPayload = buildLocationModulesPayload(company, modules, inheritsCompanyProfile);
       const openingHoursJson = serializeOpeningHours(openingHours);
+      const deliveryAllowPeriodsJson = serializeDeliveryAllowPeriods(deliveryPeriods);
+      const logo = buildLogoPayload();
 
       const payload = {
         companyId: form.companyId,
@@ -474,13 +826,31 @@ function LocationPanel({
         vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
         modulesJson: modulesPayload.modulesJson,
         openingHoursJson,
+        deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson,
         active: locationActive,
+        physicalSiteKey: (form.physicalSiteKey ?? '').trim(),
+        conceptLabel: (form.conceptLabel ?? '').trim(),
+        conceptSortOrder: Number(form.conceptSortOrder) || 0,
+        ...logo,
+        ...(isNew && inheritanceEnabled
+          ? {
+              inheritFromCompanyId,
+              inheritFromLocationExternalId: inheritFromLocationExternalId.trim(),
+              copyComponents,
+              copyVendorsAndVendorProducts,
+              copyProducts,
+            }
+          : {}),
       };
 
       setSaving(true);
       const saved = isNew
         ? await api.createLocationConfig(payload)
         : await api.updateLocationConfig(form.id, payload);
+      const inheritanceError = isNew && saved && 'inheritanceError' in saved
+        ? saved.inheritanceError
+        : undefined;
       // Notify parent first; parent closes the panel on successful save.
       onSave({
         ...form,
@@ -496,9 +866,18 @@ function LocationPanel({
         modulesOverridden: saved.modulesOverridden,
         profileOverridden: saved.profileOverridden ?? (profilePayload.profileOverridden || modulesPayload.modulesJson !== '[]'),
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
+        deliveryAllowTimeEnabled: saved.deliveryAllowTimeEnabled ?? deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson: saved.deliveryAllowPeriodsJson ?? deliveryAllowPeriodsJson,
         secondaryContactUserId: saved.secondaryContactUserId ?? form.secondaryContactUserId ?? null,
+        logoFileName: saved.logoFileName ?? logo.logoFileName,
+        logoContentType: saved.logoContentType ?? logo.logoContentType,
+        logoBase64: saved.logoBase64 ?? logo.logoBase64,
+        logoSet: Boolean(saved.logoSet ?? logo.logoBase64),
       });
       onClose();
+      if (inheritanceError) {
+        window.alert(`Location saved, but inheritance failed: ${inheritanceError}`);
+      }
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save location.');
     } finally {
@@ -570,12 +949,217 @@ function LocationPanel({
             </div>
           </div>
 
+          <div className="rounded-lg border border-border bg-muted/20 px-3 py-3">
+            <div className="flex items-start gap-3">
+              <div className="h-16 w-16 shrink-0 rounded-md border border-dashed border-border bg-background flex items-center justify-center overflow-hidden">
+                {logoPreviewSrc ? (
+                  <img
+                    src={logoPreviewSrc}
+                    alt={`${form.name || 'Location'} logo`}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <ImagePlus size={18} className="text-muted-foreground" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <p className="text-xs font-medium">Location Logo</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    PNG, JPEG, WebP, GIF, or SVG up to 1 MB. Used on PDFs when different from the company logo.
+                  </p>
+                  {form.logoFileName ? (
+                    <p className="text-[11px] text-muted-foreground mt-1 truncate" title={form.logoFileName}>
+                      {form.logoFileName}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => logoInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+                  >
+                    <ImagePlus size={12} />
+                    {logoPreviewSrc ? 'Replace Logo' : 'Upload Logo'}
+                  </button>
+                  {logoPreviewSrc ? (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={clearLogo}
+                      className="text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  className="hidden"
+                  onChange={e => void handleLogoPick(e.target.files?.[0] ?? null)}
+                />
+              </div>
+            </div>
+          </div>
+
           <CountryAddressFields
             countryCode={company?.countryCode ?? form.countryCode}
             value={addressParts}
             onChange={setAddressParts}
             layout="compact"
           />
+
+          {isNew && (
+            <div className="rounded-md border border-border p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Inheritance</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 font-sans">
+                    Copy a clean catalog from another location into this location bucket (components, vendors and vendor products, and/or products).
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 shrink-0 cursor-pointer pt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={inheritanceEnabled}
+                    onChange={e => {
+                      const on = e.target.checked;
+                      setInheritanceEnabled(on);
+                      if (on && inheritFromCompanyId == null && form.companyId) {
+                        setInheritFromCompanyId(form.companyId);
+                      }
+                      setError(null);
+                    }}
+                    className="rounded border-border"
+                  />
+                  <span className="text-xs font-medium">Activate</span>
+                </label>
+              </div>
+
+              {inheritanceEnabled && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Source company *</label>
+                      <select
+                        className={selectCls}
+                        value={inheritFromCompanyId ?? ''}
+                        onChange={e => {
+                          const next = e.target.value ? Number(e.target.value) : null;
+                          setInheritFromCompanyId(next);
+                          setInheritFromLocationExternalId('');
+                          setError(null);
+                        }}
+                      >
+                        <option value="">— Select company —</option>
+                        {companies.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Source location *</label>
+                      <select
+                        className={selectCls}
+                        value={inheritFromLocationExternalId}
+                        disabled={!inheritFromCompanyId}
+                        onChange={e => {
+                          setInheritFromLocationExternalId(e.target.value);
+                          setError(null);
+                        }}
+                      >
+                        <option value="">— Select location —</option>
+                        {inheritSourceLocations.map(l => (
+                          <option key={l.externalId} value={l.externalId}>{l.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={copyComponents}
+                        onChange={e => {
+                          setCopyComponents(e.target.checked);
+                          setError(null);
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-xs">Copy Component</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={copyVendorsAndVendorProducts}
+                        onChange={e => {
+                          setCopyVendorsAndVendorProducts(e.target.checked);
+                          setError(null);
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-xs">Copy Vendor and vendor Products</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={copyProducts}
+                        onChange={e => {
+                          setCopyProducts(e.target.checked);
+                          setError(null);
+                        }}
+                        className="rounded border-border"
+                      />
+                      <span className="text-xs">Copy Product</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <p className="text-xs font-semibold text-foreground">Multi-concept physical site</p>
+            <p className="text-xs text-muted-foreground font-sans">
+              When one venue runs two brands under this company, give both locations the same Physical site key.
+              POS shows brand buttons; reports can select the whole site for combined revenue and cost.
+              Backend ops stay per location.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Physical site key</label>
+                <input
+                  className={inputCls}
+                  value={form.physicalSiteKey ?? ''}
+                  placeholder="e.g. pavilion-kl"
+                  onChange={e => set('physicalSiteKey', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Concept / brand label</label>
+                <input
+                  className={inputCls}
+                  value={form.conceptLabel ?? ''}
+                  placeholder={form.name || 'Brand name on POS'}
+                  onChange={e => set('conceptLabel', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Concept sort</label>
+                <input
+                  className={inputCls}
+                  type="number"
+                  value={form.conceptSortOrder ?? 0}
+                  onChange={e => set('conceptSortOrder', Number(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+          </div>
 
           <CompanyProfileFields
             layout="compact"
@@ -650,6 +1234,7 @@ function LocationPanel({
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs min-w-[28rem]">
+                <ColGroup widths={['18%', '22%', '22%', '22%', 72]} />
                 <thead>
                   <tr className="border-b border-border text-muted-foreground">
                     <th className="py-1.5 pr-2 text-left font-medium">Day</th>
@@ -723,6 +1308,224 @@ function LocationPanel({
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deliveryAllowTimeEnabled}
+                onChange={e => {
+                  const enabled = e.target.checked;
+                  setDeliveryAllowTimeEnabled(enabled);
+                  if (enabled && deliveryPeriods.length === 0) {
+                    setDeliveryPeriods([blankDeliveryPeriod()]);
+                  }
+                  setError(null);
+                }}
+                className="mt-0.5 rounded border-border"
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold text-foreground">Delivery allow time</span>
+                <span className="block text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                  When ticked, define one or more From / To windows when deliveries are allowed at this location.
+                </span>
+              </span>
+            </label>
+
+            {deliveryAllowTimeEnabled ? (
+              <div className="space-y-2 pl-7">
+                {deliveryPeriods.map((period, index) => (
+                  <div key={`delivery-period-${index}`} className="flex flex-wrap items-center gap-2">
+                    <label className="text-[11px] text-muted-foreground shrink-0">From</label>
+                    <select
+                      className={`${selectCls} min-w-[6.5rem]`}
+                      value={period.from}
+                      onChange={e => updateDeliveryPeriod(index, { from: e.target.value })}
+                      aria-label={`Delivery period ${index + 1} from`}
+                    >
+                      <option value="">—</option>
+                      {HALF_HOUR_TIMES.map(t => (
+                        <option key={`dfrom-${index}-${t}`} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <label className="text-[11px] text-muted-foreground shrink-0">To</label>
+                    <select
+                      className={`${selectCls} min-w-[6.5rem]`}
+                      value={period.to}
+                      onChange={e => updateDeliveryPeriod(index, { to: e.target.value })}
+                      aria-label={`Delivery period ${index + 1} to`}
+                    >
+                      <option value="">—</option>
+                      {HALF_HOUR_TIMES.map(t => (
+                        <option key={`dto-${index}-${t}`} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => removeDeliveryPeriod(index)}
+                      className="p-1.5 rounded-md border border-border hover:bg-muted"
+                      aria-label={`Remove delivery period ${index + 1}`}
+                      title="Remove period"
+                    >
+                      <X size={12} className="text-muted-foreground" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addDeliveryPeriod}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold border border-border hover:bg-muted"
+                >
+                  <Plus size={12} />
+                  Add period
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground">Delivery locations</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                  Alternate ship-to addresses for purchase orders. When selected on a PO, the delivery
+                  location is shown instead of this outlet address.
+                </p>
+              </div>
+              {!isNew && location.externalId ? (
+                <button
+                  type="button"
+                  onClick={openNewDeliveryForm}
+                  disabled={deliverySaving}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold border border-border hover:bg-muted shrink-0 disabled:opacity-50"
+                >
+                  <Plus size={12} />
+                  Add Delivery location
+                </button>
+              ) : null}
+            </div>
+
+            {isNew ? (
+              <p className="text-[11px] text-muted-foreground">
+                Save the location first, then add delivery locations.
+              </p>
+            ) : null}
+
+            {deliveryLocationsLoading ? (
+              <p className="text-[11px] text-muted-foreground">Loading delivery locations…</p>
+            ) : null}
+
+            {!isNew && !deliveryLocationsLoading && deliveryLocations.length === 0 && !deliveryFormOpen ? (
+              <p className="text-[11px] text-muted-foreground">No delivery locations yet.</p>
+            ) : null}
+
+            {deliveryLocations.length > 0 ? (
+              <ul className="space-y-2">
+                {deliveryLocations.map(row => (
+                  <li
+                    key={row.id}
+                    className="rounded-md border border-border bg-muted/10 px-3 py-2 flex items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground">{row.name}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                        {[row.addressLine1, row.addressLine2, [row.city, row.stateProvince, row.postcode].filter(Boolean).join(', ')]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEditDeliveryForm(row)}
+                        disabled={deliverySaving}
+                        className="px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeDeliveryLocation(row)}
+                        disabled={deliverySaving}
+                        className="px-2 py-1 rounded-md border border-destructive/30 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {deliveryFormOpen ? (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-3">
+                <p className="text-xs font-semibold text-foreground">
+                  {editingDeliveryId != null ? 'Edit Delivery location' : 'Add Delivery location'}
+                </p>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Name of Delivery Location
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    value={deliveryForm.name}
+                    onChange={e => setDeliveryForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g. Weissbrau Store"
+                    disabled={deliverySaving}
+                  />
+                </div>
+                <CountryAddressFields
+                  countryCode={country.code}
+                  value={{
+                    addressLine1: deliveryForm.addressLine1,
+                    addressLine2: deliveryForm.addressLine2,
+                    city: deliveryForm.city,
+                    stateProvince: deliveryForm.stateProvince,
+                    postcode: deliveryForm.postcode,
+                  }}
+                  onChange={(next: AddressParts) => setDeliveryForm(prev => ({
+                    ...prev,
+                    addressLine1: next.addressLine1,
+                    addressLine2: next.addressLine2,
+                    city: next.city,
+                    stateProvince: next.stateProvince,
+                    postcode: next.postcode,
+                  }))}
+                  showErrors={Boolean(deliveryError)}
+                  layout="compact"
+                />
+                {deliveryError ? (
+                  <p className="text-xs text-destructive" role="alert">{deliveryError}</p>
+                ) : null}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryFormOpen(false);
+                      setEditingDeliveryId(null);
+                      setDeliveryError(null);
+                    }}
+                    disabled={deliverySaving}
+                    className="text-xs font-sans border border-border rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveDeliveryLocation()}
+                    disabled={deliverySaving}
+                    className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-1.5 disabled:opacity-50"
+                  >
+                    {deliverySaving ? 'Saving…' : editingDeliveryId != null ? 'Save Delivery location' : 'Add Delivery location'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {deliveryError && !deliveryFormOpen ? (
+              <p className="text-xs text-destructive" role="alert">{deliveryError}</p>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
@@ -800,13 +1603,18 @@ export function LocationsConfigTab({
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewDeactivated, setViewDeactivated] = useState(false);
   const [editLocation, setEditLocation] = useState<LocationConfig | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [togglingLocationId, setTogglingLocationId] = useState<number | null>(null);
 
-  function refreshList() {
+  function refreshList(includeInactive = viewDeactivated) {
     setLoading(true);
-    Promise.all([api.locationsConfig(), api.companies(), api.users()])
+    Promise.all([
+      api.locationsConfig({ includeInactive }),
+      api.companies({ includeInactive }),
+      api.users(),
+    ])
       .then(([locs, comps, usrs]) => {
         setLocations(locs);
         setCompanies(comps);
@@ -828,7 +1636,11 @@ export function LocationsConfigTab({
     });
     setEditLocation(prev => (prev && prev.id === saved.id ? { ...prev, ...saved } : prev));
     onOrgDataChanged?.();
-    void Promise.all([api.locationsConfig(), api.companies(), api.users()])
+    void Promise.all([
+      api.locationsConfig({ includeInactive: viewDeactivated }),
+      api.companies({ includeInactive: viewDeactivated }),
+      api.users(),
+    ])
       .then(([locs, comps, usrs]) => {
         setCompanies(comps);
         setUsers(usrs);
@@ -883,6 +1695,9 @@ export function LocationsConfigTab({
         vendorPolicyTagsJson: profile.vendorPolicyTagsJson ?? '[]',
         modulesJson: modulesPayload.modulesJson,
         active: location.active !== false,
+        physicalSiteKey: location.physicalSiteKey ?? '',
+        conceptLabel: location.conceptLabel ?? '',
+        conceptSortOrder: location.conceptSortOrder ?? 0,
       });
       setLocations(prev => prev.map(loc => (
         loc.id === location.id
@@ -897,6 +1712,9 @@ export function LocationsConfigTab({
               modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
               modulesOverridden: saved.modulesOverridden,
               profileOverridden: saved.profileOverridden,
+              physicalSiteKey: saved.physicalSiteKey ?? location.physicalSiteKey ?? '',
+              conceptLabel: saved.conceptLabel ?? location.conceptLabel ?? '',
+              conceptSortOrder: saved.conceptSortOrder ?? location.conceptSortOrder ?? 0,
             }
           : loc
       )));
@@ -908,17 +1726,23 @@ export function LocationsConfigTab({
     }
   }
 
-  useEffect(() => { refreshList(); }, []);
+  useEffect(() => { refreshList(viewDeactivated); }, [viewDeactivated]);
 
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<LocationSortColumn>();
 
-  useEffect(() => { resetSort(); }, [locations, selectedCompanyId, resetSort]);
+  useEffect(() => { resetSort(); }, [locations, selectedCompanyId, viewDeactivated, resetSort]);
 
   const filteredLocations = useMemo(
-    () => selectedCompanyId
-      ? locations.filter(loc => loc.companyId === selectedCompanyId)
-      : locations,
-    [locations, selectedCompanyId],
+    () => {
+      let rows = selectedCompanyId
+        ? locations.filter(loc => loc.companyId === selectedCompanyId)
+        : locations;
+      if (!viewDeactivated) {
+        rows = rows.filter(loc => loc.active !== false);
+      }
+      return rows;
+    },
+    [locations, selectedCompanyId, viewDeactivated],
   );
 
   const sortedLocations = useMemo(
@@ -963,12 +1787,28 @@ export function LocationsConfigTab({
         className="sticky z-[16] py-2 bg-background border-b border-border/60"
         style={{ top: 'var(--app-page-filters-height, 0px)' }}
       >
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {selectedCompanyId
-              ? `${filteredLocations.length} of ${locations.length} locations · filtered by company`
-              : `${locations.length} locations · each belongs to a company`}
-          </p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
+            <p className="text-xs text-muted-foreground">
+              {selectedCompanyId
+                ? `${filteredLocations.length} of ${locations.length} locations · filtered by company`
+                : `${filteredLocations.length} locations · each belongs to a company`}
+            </p>
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={viewDeactivated}
+                onChange={e => setViewDeactivated(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>
+                View deactivated locations
+                <span className="block text-[10px] font-normal">
+                  Include inactive locations and companies
+                </span>
+              </span>
+            </label>
+          </div>
           <button
             type="button"
             onClick={openCreate}
@@ -985,7 +1825,8 @@ export function LocationsConfigTab({
           <MillstoneLoader size="sm" layout="block" label="Loading locations…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
+            <TableColGroup columns={LOCATION_TABLE_COLUMNS} />
             <thead>
               <SortableTableHeaderRow
                 columns={LOCATION_TABLE_COLUMNS as SortableColumnDef<LocationSortColumn>[]}
@@ -1047,6 +1888,7 @@ export function LocationsConfigTab({
           isNew={isNew}
           companies={companies}
           users={users}
+          locations={locations}
           onClose={closePanel}
           onSave={afterSave}
         />

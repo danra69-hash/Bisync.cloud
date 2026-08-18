@@ -46,3 +46,4 @@ Status of one-DB-per-company + location LIST partitions inside each operational 
 - Platform-admin tools that expect all data in the shared DB will not see operational rows in provisioned company databases.
 - `CREATE DATABASE` requires privileges on the PostgreSQL instance (Cloud SQL user must be allowed to create DBs).
 - Partition conversion can take time on large tables; failures are logged and retried on next startup.
+- Future Accounting GL tables live on the **company operational DB** and follow [`ACCOUNTING_ARCHITECTURE.md`](./ACCOUNTING_ARCHITECTURE.md) (app-scoped `CompanyId` first; RLS optional later).

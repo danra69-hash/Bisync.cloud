@@ -14,11 +14,14 @@ public static class DevConsoleTabAccess
         "tenant-rollups",
         "sales-module",
         "automated-qa",
-        "qa-history",
         "audit-trail",
         "ghost-support",
         "ref-library",
+        "control-panel",
     ];
+
+    /// <summary>Legacy top-level tab folded into Automated QA.</summary>
+    private const string LegacyQaHistoryTab = "qa-history";
 
     public static readonly string[] TeamTypes =
     [
@@ -42,6 +45,20 @@ public static class DevConsoleTabAccess
         return "Management";
     }
 
+    /// <summary>
+    /// Maps a raw tab id (including legacy <c>qa-history</c>) onto a current AllTabs entry.
+    /// </summary>
+    public static string? NormalizeTabId(string? tab)
+    {
+        var trimmed = tab?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return null;
+
+        if (string.Equals(trimmed, LegacyQaHistoryTab, StringComparison.OrdinalIgnoreCase))
+            return "automated-qa";
+
+        return AllTabs.FirstOrDefault(t => string.Equals(t, trimmed, StringComparison.OrdinalIgnoreCase));
+    }
+
     public static List<string> ParseTabs(string? accessJson)
     {
         if (string.IsNullOrWhiteSpace(accessJson))
@@ -57,10 +74,9 @@ public static class DevConsoleTabAccess
             foreach (var item in tabsEl.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.String) continue;
-                var tab = item.GetString()?.Trim();
-                if (string.IsNullOrWhiteSpace(tab)) continue;
-                if (AllTabs.Any(t => string.Equals(t, tab, StringComparison.OrdinalIgnoreCase)))
-                    allowed.Add(AllTabs.First(t => string.Equals(t, tab, StringComparison.OrdinalIgnoreCase)));
+                var normalized = NormalizeTabId(item.GetString());
+                if (normalized is not null)
+                    allowed.Add(normalized);
             }
 
             return allowed.Count > 0 ? AllTabs.Where(allowed.Contains).ToList() : [];
@@ -78,7 +94,7 @@ public static class DevConsoleTabAccess
         {
             foreach (var tab in tabs)
             {
-                var match = AllTabs.FirstOrDefault(t => string.Equals(t, tab?.Trim(), StringComparison.OrdinalIgnoreCase));
+                var match = NormalizeTabId(tab);
                 if (match is not null && !selected.Contains(match))
                     selected.Add(match);
             }

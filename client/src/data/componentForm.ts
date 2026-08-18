@@ -3,13 +3,17 @@ import {
   parseSplitUseConfig,
   type ComponentSplitUseConfig,
 } from './componentSplitUse';
+import {
+  findSimilarCatalogNames,
+  type SimilarNameMatch,
+} from '../utils/catalogNameMatch';
 
 export type { ComponentSplitUseConfig, SplitUseLine } from './componentSplitUse';
 
 export const RECIPE_UNITS = [
   'Mg', 'Gr', 'Kg', 'Tonne',
   'Ml', 'Cl', 'Ltr',
-  'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Bottle', 'Can', 'Tin', 'Slice',
+  'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Box', 'Set', 'Bottle', 'Can', 'Tin', 'Slice',
   'Oz', 'Lb', 'FlOz', 'Gal',
 ];
 export const STORAGE_OPTIONS = ['Chiller', 'Dry Store', 'Freezer', 'Wine Cellar', 'Storeroom', 'Office', 'Warehouse', 'Bar', 'Prep Kitchen'];
@@ -90,34 +94,132 @@ function resolveInventoryToRecipeQtyOnLoad(
 }
 
 export function toApiUom(unit: string): string {
+  const trimmed = unit.trim();
+  if (!trimmed) return '';
+  const canonical = RECIPE_UNITS.find(u => u.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
   const map: Record<string, string> = {
     Mg: 'mg', Gr: 'g', Kg: 'kg', Tonne: 't',
     Ml: 'ml', Cl: 'cl', Ltr: 'L',
-    Each: 'pcs', Punnet: 'punnet', Bunch: 'bunch', Tray: 'tray', Case: 'case', Bottle: 'btl', Can: 'can', Tin: 'tin', Slice: 'slice',
+    Each: 'pcs', Punnet: 'punnet', Bunch: 'bunch', Tray: 'tray', Case: 'case', Box: 'box', Set: 'set',
+    Bottle: 'btl', Can: 'can', Tin: 'tin', Slice: 'slice',
     Pack: 'pack',
     Oz: 'oz', Lb: 'lb', FlOz: 'fl oz', Gal: 'gal',
   };
-  return map[unit] ?? unit.toLowerCase();
+  if (map[canonical]) return map[canonical];
+  const aliasApi: Record<string, string> = {
+    gr: 'g', gram: 'g', grams: 'g', g: 'g',
+    lt: 'L', ltr: 'L', litre: 'L', liter: 'L', l: 'L',
+    btl: 'btl', bottle: 'btl',
+    pcs: 'pcs', each: 'pcs',
+  };
+  return aliasApi[trimmed.toLowerCase()] ?? trimmed.toLowerCase();
 }
 
 export function fromApiUom(unit: string): string {
+  const trimmed = (unit ?? '').trim();
+  if (!trimmed) return '';
   const map: Record<string, string> = {
-    mg: 'Mg', g: 'Gr', kg: 'Kg', t: 'Tonne',
-    ml: 'Ml', cl: 'Cl', L: 'Ltr',
-    pcs: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case', btl: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
-    oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal', box: 'Case', set: 'Each',
+    mg: 'Mg', g: 'Gr', gr: 'Gr', gram: 'Gr', grams: 'Gr',
+    kg: 'Kg', t: 'Tonne', tonne: 'Tonne',
+    ml: 'Ml', cl: 'Cl', L: 'Ltr', l: 'Ltr', lt: 'Ltr', ltr: 'Ltr', litre: 'Ltr', liter: 'Ltr',
+    pcs: 'Each', each: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case',
+    btl: 'Bottle', bottle: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
+    oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal',
+    // Packaging labels used in vendor delivery / UOM Config — keep distinct from Case/Each.
+    box: 'Box', set: 'Set',
   };
-  return map[unit] ?? unit;
+  const lower = trimmed.toLowerCase();
+  if (map[trimmed]) return map[trimmed];
+  if (map[lower]) return map[lower];
+  const builtin = RECIPE_UNITS.find(u => u.toLowerCase() === lower);
+  return builtin ?? trimmed;
 }
 
 export type AltUnitEntry = { fromQty: string; qty: string; unit: string };
 
-export const MAX_ALTERNATE_UOMS = 2;
+export const MAX_ALTERNATE_UOMS = 5;
 
-/** Principal component UOM plus up to two configured alternates. */
+/** Principal component UOM plus up to five configured alternates. */
 export function getComponentUomChoices(principalUnit: string, altUnits: AltUnitEntry[]): string[] {
   const alternates = altUnits.map(a => a.unit).filter(u => u && u !== principalUnit);
   return [...new Set([principalUnit, ...alternates])].slice(0, 1 + MAX_ALTERNATE_UOMS);
+}
+
+function normalizeUomKey(uom: string): string {
+  return fromApiUom(uom).trim().toLowerCase();
+}
+
+/**
+ * Fold legacy Principal/Alternate Inventory UOMs into Alternate Component UOMs.
+ * Stock and the editor now use Principal Component Unit + up to 5 alternates only.
+ */
+export function migrateInventoryUomsIntoComponentAlts(options: {
+  recipeUnit: string;
+  inventoryUnit: string;
+  altRecipeUnits: AltUnitEntry[];
+  altInventoryUnits: AltUnitEntry[];
+  convertFromInventoryQty?: string;
+  convertToRecipeQty?: string;
+}): {
+  recipeUnit: string;
+  inventoryUnit: string;
+  altRecipeUnits: AltUnitEntry[];
+  altInventoryUnits: AltUnitEntry[];
+  convertFromInventoryQty: string;
+  convertToRecipeQty: string;
+} {
+  const recipeUnit = fromApiUom(options.recipeUnit) || options.recipeUnit.trim();
+  const inventoryUnit = fromApiUom(options.inventoryUnit) || options.inventoryUnit.trim();
+  const recipeKey = normalizeUomKey(recipeUnit);
+  const seen = new Set<string>(recipeKey ? [recipeKey] : []);
+  const altRecipeUnits: AltUnitEntry[] = [];
+
+  const pushAlt = (unitRaw: string, fromQty: string, qty: string) => {
+    const unit = fromApiUom(unitRaw) || unitRaw.trim();
+    const key = normalizeUomKey(unit);
+    if (!unit || !key || seen.has(key) || altRecipeUnits.length >= MAX_ALTERNATE_UOMS) return;
+    seen.add(key);
+    altRecipeUnits.push({
+      unit,
+      fromQty: fromQty?.trim() || '1',
+      qty: qty?.trim() || '',
+    });
+  };
+
+  for (const alt of options.altRecipeUnits) {
+    pushAlt(alt.unit, alt.fromQty || '1', alt.qty);
+  }
+
+  if (inventoryUnit && normalizeUomKey(inventoryUnit) !== recipeKey) {
+    pushAlt(
+      inventoryUnit,
+      options.convertFromInventoryQty || '1',
+      options.convertToRecipeQty || '',
+    );
+  }
+
+  const invFrom = parseFloat(options.convertFromInventoryQty || '1') || 1;
+  const invToRecipe = parseFloat(options.convertToRecipeQty || '0') || 0;
+  for (const alt of options.altInventoryUnits) {
+    const unit = fromApiUom(alt.unit) || alt.unit.trim();
+    if (!unit) continue;
+    // Alternate inventory was relative to inventory unit; rescale to principal component UOM.
+    const altFrom = parseFloat(alt.fromQty || '1') || 1;
+    const altQtyInInventory = parseFloat(alt.qty || '0') || 0;
+    const qtyInRecipe = invToRecipe > 0 && invFrom > 0
+      ? String((altQtyInInventory * invToRecipe) / invFrom)
+      : (alt.qty || '');
+    pushAlt(unit, String(altFrom), qtyInRecipe);
+  }
+
+  return {
+    recipeUnit,
+    inventoryUnit: recipeUnit,
+    altRecipeUnits,
+    altInventoryUnits: [],
+    convertFromInventoryQty: '1',
+    convertToRecipeQty: '1',
+  };
 }
 
 export function swapPrincipalWithAlternateUnit(
@@ -199,11 +301,19 @@ export const EMPTY_COMPONENT_DETAIL_CONFIG: ComponentDetailConfig = {
 };
 
 export function detailConfigFromForm(form: ComponentForm): ComponentDetailConfig {
-  return {
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: form.recipeUnit,
+    inventoryUnit: form.inventoryUnit,
     altRecipeUnits: form.altRecipeUnits,
     altInventoryUnits: form.altInventoryUnits,
     convertFromInventoryQty: form.convertFromInventoryQty,
     convertToRecipeQty: form.convertToRecipeQty,
+  });
+  return {
+    altRecipeUnits: migrated.altRecipeUnits.slice(0, MAX_ALTERNATE_UOMS),
+    altInventoryUnits: [],
+    convertFromInventoryQty: '1',
+    convertToRecipeQty: '1',
     taggedVendorProductIds: form.taggedVendorProductIds,
     vendorProductPrincipalQty: form.vendorProductPrincipalQty,
     vendorProductLossYield: form.vendorProductLossYield,
@@ -360,6 +470,25 @@ export function isComponentNameTaken(
   return existing.some(c => c.id !== excludeId && normalizeComponentNameKey(c.name) === normalized);
 }
 
+/** Exact + similar component names (includes inactive) for create/edit duplicate warnings. */
+export function findSimilarComponentNames(
+  name: string,
+  existing: { id?: number; name: string; active?: boolean; componentId?: string }[],
+  excludeId?: number,
+): SimilarNameMatch[] {
+  return findSimilarCatalogNames(
+    name,
+    existing.map(component => ({
+      id: component.id,
+      name: component.name,
+      active: component.active !== false,
+      code: component.componentId,
+      kindLabel: 'Component',
+    })),
+    { excludeId, limit: 8, minInputLength: 3 },
+  );
+}
+
 export type ComponentRow = {
   id?: number;
   companyId?: number | null;
@@ -376,6 +505,8 @@ export type ComponentRow = {
   parStock?: number;
   parStockUom?: string;
   onHandQty?: number;
+  /** True when inventory has at least one purchase lot for this component. */
+  hasPurchaseRecord?: boolean;
   dailyUsageAuto?: boolean;
   orderFreqAuto?: boolean;
   storage: string[];
@@ -400,6 +531,20 @@ export function toForm(
   const componentId = row.componentId
     || generateComponentId(companyCode, existingComponentIds);
   const detail = resolveDetailConfigForRow(row);
+  const convertToRecipeQty = resolveInventoryToRecipeQtyOnLoad(
+    inventoryUnit,
+    recipeUnit,
+    detail.convertFromInventoryQty || '1',
+    detail.convertToRecipeQty,
+  );
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit,
+    inventoryUnit,
+    altRecipeUnits: detail.altRecipeUnits.map(au => ({ ...au, fromQty: au.fromQty ?? '1' })),
+    altInventoryUnits: detail.altInventoryUnits.map(au => ({ ...au, fromQty: au.fromQty ?? '1' })),
+    convertFromInventoryQty: detail.convertFromInventoryQty || '1',
+    convertToRecipeQty,
+  });
   return {
     name: row.name,
     componentId,
@@ -409,10 +554,10 @@ export function toForm(
     storageNote: row.storageNote ?? '',
     expiryPeriodDays: detail.expiryPeriodDays?.trim() || '',
     active: row.active,
-    recipeUnit,
-    altRecipeUnits: detail.altRecipeUnits.map(au => ({ ...au, fromQty: au.fromQty ?? '1' })),
-    inventoryUnit,
-    altInventoryUnits: detail.altInventoryUnits.map(au => ({ ...au, fromQty: au.fromQty ?? '1' })),
+    recipeUnit: migrated.recipeUnit,
+    altRecipeUnits: migrated.altRecipeUnits,
+    inventoryUnit: migrated.inventoryUnit,
+    altInventoryUnits: migrated.altInventoryUnits,
     vendor: detail.vendor,
     vendorProduct: detail.vendorProduct,
     taggedVendorProductIds: [...detail.taggedVendorProductIds],
@@ -421,13 +566,8 @@ export function toForm(
     vendorProductComponentUom: { ...detail.vendorProductComponentUom },
     vendorProductLocations: { ...detail.vendorProductLocations },
     deliveryUnitPrice: detail.deliveryUnitPrice || String(row.lastPriceInventory),
-    convertFromInventoryQty: detail.convertFromInventoryQty || '1',
-    convertToRecipeQty: resolveInventoryToRecipeQtyOnLoad(
-      inventoryUnit,
-      recipeUnit,
-      detail.convertFromInventoryQty || '1',
-      detail.convertToRecipeQty,
-    ),
+    convertFromInventoryQty: migrated.convertFromInventoryQty,
+    convertToRecipeQty: migrated.convertToRecipeQty,
     lossYield: '0',
     dailyUsage: row.dailyUsage > 0 ? String(row.dailyUsage) : '',
     orderFreqDays: String(row.orderFreqDays > 0 ? row.orderFreqDays : 7),
@@ -438,10 +578,10 @@ export function toForm(
 export const blankComponentRow: ComponentRow = {
   componentId: '',
   name: '',
-  category: 'Food',
-  group: 'Proteins',
+  category: '',
+  group: '',
   recipeUOM: 'g',
-  inventoryUOM: 'kg',
+  inventoryUOM: 'g',
   lastPriceRecipe: 0,
   lastPriceInventory: 0,
   dailyUsage: 0,
@@ -449,6 +589,7 @@ export const blankComponentRow: ComponentRow = {
   parStock: 0,
   parStockUom: 'g',
   onHandQty: 0,
+  hasPurchaseRecord: false,
   dailyUsageAuto: false,
   orderFreqAuto: false,
   storage: ['Dry Store'],

@@ -51,6 +51,7 @@ export interface Employee {
   department: string;
   divisionId?: number | null;
   departmentId?: number | null;
+  companyId?: number | null;
   position: string;
   joinDate: string;
   fingerprintEnrolled: boolean;
@@ -140,6 +141,8 @@ export interface LeaveBalanceRow {
   rdoBalance: number;
   rphBalance: number;
   alBalance: number;
+  /** Unused annual leave carried forward from the previous operating year. */
+  alCarryForward?: number;
 }
 
 export type ScheduleType = 'Work' | 'DO' | 'RDO' | 'AL' | 'RPH' | 'UPL';
@@ -184,6 +187,10 @@ export interface EmployeeLevel {
   levelName: string;
   annualLeaveDays: number;
   sickLeaveDays: number;
+  /** When false, annual leave entitlement is not included for this level. */
+  annualLeaveEnabled?: boolean;
+  /** When false, sick leave entitlement is not included for this level. */
+  sickLeaveEnabled?: boolean;
   /** JSON tenure bands for annual leave. */
   annualLeaveRulesJson?: string | null;
   /** JSON tenure bands for sick leave. */

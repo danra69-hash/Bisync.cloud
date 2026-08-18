@@ -288,6 +288,7 @@ public class CompanyOperationalDbProvisioner(
         BusinessTypesJson = company.BusinessTypesJson ?? "[]",
         VendorPolicyTagsJson = company.VendorPolicyTagsJson ?? "[]",
         ModulesJson = company.ModulesJson ?? "[]",
+        BusinessHoursJson = string.IsNullOrWhiteSpace(company.BusinessHoursJson) ? "{}" : company.BusinessHoursJson,
     };
 
     static AppUser CloneAppUserForSeed(AppUser user) => new()
@@ -335,6 +336,8 @@ public class CompanyOperationalDbProvisioner(
         VendorPolicyTagsJson = loc.VendorPolicyTagsJson ?? "[]",
         ModulesJson = loc.ModulesJson ?? "[]",
         OpeningHoursJson = string.IsNullOrWhiteSpace(loc.OpeningHoursJson) ? "{}" : loc.OpeningHoursJson,
+        DeliveryAllowTimeEnabled = loc.DeliveryAllowTimeEnabled,
+        DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(loc.DeliveryAllowPeriodsJson) ? "[]" : loc.DeliveryAllowPeriodsJson,
         TimeZoneId = string.IsNullOrWhiteSpace(loc.TimeZoneId)
             ? OrgClock.ResolveTimeZoneId(companyCountryCode, loc.StateProvince)
             : loc.TimeZoneId,

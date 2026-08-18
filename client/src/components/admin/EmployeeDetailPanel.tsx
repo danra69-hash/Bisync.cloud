@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppUser } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
 import type { CheckinMethod, DivisionTreeNode, Employee, EmployeeLevel } from '../../modules/hr/types';
@@ -11,7 +11,7 @@ import { PlatformAccessSummary } from './PlatformAccessSummary';
 import { AccessControlLevelField } from './AccessControlLevelField';
 import { parseUserAccess } from '../../data/userAccess';
 import { CHECKIN_METHODS, DEFAULT_PAYROLL_PIN, DEFAULT_POS_PIN, checkinMethodLabel, initials, selectableEmployeeLevels } from './employeeTabShared';
-import { SIDE_PANEL_DETAIL_SHELL_CLS, SIDE_PANEL_ROOT_CLS } from '../layout/sidePanelShared';
+import { SIDE_PANEL_DETAIL_SHELL_CLS, SIDE_PANEL_OVERLAY_CLS } from '../layout/sidePanelShared';
 
 type Props = {
   employee: Employee;
@@ -22,6 +22,8 @@ type Props = {
   departmentName: (employee: Employee) => string;
   countryCode: string;
   employeeIsShift: (employee: Employee) => boolean;
+  saving?: boolean;
+  error?: string | null;
   onClose: () => void;
   onSave: () => void;
   onDelete: () => void;
@@ -31,6 +33,7 @@ type Props = {
   accessControlSaving?: boolean;
   onResetPosPin: () => void;
   onResetPayrollPin: () => void;
+  onClearError?: () => void;
 };
 
 export function EmployeeDetailPanel({
@@ -42,6 +45,8 @@ export function EmployeeDetailPanel({
   departmentName,
   countryCode,
   employeeIsShift,
+  saving = false,
+  error = null,
   onClose,
   onSave,
   onDelete,
@@ -51,12 +56,19 @@ export function EmployeeDetailPanel({
   accessControlSaving = false,
   onResetPosPin,
   onResetPayrollPin,
+  onClearError,
 }: Props) {
   const [addressParts, setAddressParts] = useState<AddressParts>(() => parseAddress(employee.permanentAddress));
+  const footerErrorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setAddressParts(parseAddress(employee.permanentAddress));
   }, [employee.id, employee.permanentAddress]);
+
+  useEffect(() => {
+    if (!error) return;
+    footerErrorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [error]);
 
   function updateAddress(parts: AddressParts) {
     setAddressParts(parts);
@@ -64,8 +76,8 @@ export function EmployeeDetailPanel({
   }
 
   return (
-    <div className={SIDE_PANEL_ROOT_CLS}>
-      <div className="absolute inset-0 bg-foreground/10" onClick={onClose} />
+    <>
+      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
       <div className={SIDE_PANEL_DETAIL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -84,6 +96,15 @@ export function EmployeeDetailPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+          {error ? (
+            <div className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs flex justify-between gap-3">
+              <span>{error}</span>
+              {onClearError ? (
+                <button type="button" onClick={onClearError} className="hover:opacity-70 shrink-0">×</button>
+              ) : null}
+            </div>
+          ) : null}
+
           <div>
             <h4 className="text-sm font-semibold mb-3 pb-2 border-b border-border">Personal & Employment Details</h4>
 
@@ -119,7 +140,7 @@ export function EmployeeDetailPanel({
                 <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Join Date</label>
                 <input
                   type="date"
-                  value={employee.joinDate}
+                  value={(employee.joinDate ?? '').slice(0, 10)}
                   onChange={(e) => onUpdate({ joinDate: e.target.value })}
                   className={`${inputCls} mt-1`}
                 />
@@ -145,6 +166,26 @@ export function EmployeeDetailPanel({
                     <option key={level.id} value={level.id}>{level.levelName}</option>
                   ))}
                 </select>
+              </div>
+              <div className="flex items-end">
+                <label
+                  className="flex items-center gap-2 text-xs cursor-default"
+                  title="Set via HR Config → Level & Entitlement"
+                >
+                  <input
+                    type="checkbox"
+                    checked={employeeIsShift(employee)}
+                    disabled
+                    className="rounded border-border opacity-70"
+                    aria-label="Shift"
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Shift</span>
+                    <span className="block text-[10px] text-muted-foreground mt-0.5">
+                      From Employee Level · edit in Level &amp; Entitlement
+                    </span>
+                  </span>
+                </label>
               </div>
               <div>
                 <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Reports To</label>
@@ -249,9 +290,19 @@ export function EmployeeDetailPanel({
                 </select>
               </div>
               <div className="flex items-end">
-                <p className="text-xs text-muted-foreground">
-                  Shift status: {employeeIsShift(employee) ? 'Shift employee' : 'Non-shift'} (via Employee Level)
-                </p>
+                <label
+                  className="flex items-center gap-2 text-xs cursor-default"
+                  title="Set via HR Config → Level & Entitlement"
+                >
+                  <input
+                    type="checkbox"
+                    checked={employeeIsShift(employee)}
+                    disabled
+                    className="rounded border-border opacity-70"
+                    aria-label="Shift"
+                  />
+                  <span className="font-medium text-foreground">Shift</span>
+                </label>
               </div>
             </div>
 
@@ -461,24 +512,42 @@ export function EmployeeDetailPanel({
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-border flex justify-between items-center shrink-0">
-          <button
-            type="button"
-            onClick={() => { if (confirm('Delete this employee permanently?')) onDelete(); }}
-            className="text-xs font-sans border border-destructive/30 text-destructive rounded-md px-4 py-2 hover:bg-destructive/10"
-          >
-            Delete Employee
-          </button>
-          <div className="flex gap-3">
-            <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
-              Cancel
+        <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
+          {error ? (
+            <div
+              ref={footerErrorRef}
+              className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs flex justify-between gap-3"
+            >
+              <span>{error}</span>
+              {onClearError ? (
+                <button type="button" onClick={onClearError} className="hover:opacity-70 shrink-0">×</button>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex justify-between items-center">
+            <button
+              type="button"
+              onClick={() => { if (confirm('Delete this employee permanently?')) onDelete(); }}
+              className="text-xs font-sans border border-destructive/30 text-destructive rounded-md px-4 py-2 hover:bg-destructive/10"
+            >
+              Delete Employee
             </button>
-            <button type="button" onClick={onSave} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2">
-              Save Changes
-            </button>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saving}
+                className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

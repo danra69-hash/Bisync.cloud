@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
-import { SortableTableHead } from '../../components/shared/SortableTableHead';
+import { SortableTableHead, ColGroup } from '../../components/shared/SortableTableHead';
 import { TableScrollContainer } from '../../components/shared/TableScrollContainer';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { Copy, Save } from 'lucide-react';
@@ -14,6 +22,11 @@ import type {
   ScheduleLeaveType,
   ShiftSchedule,
 } from './types';
+import {
+  colorsForLevel,
+  levelColors,
+  resolveEmployeeLevel,
+} from './scheduleLevelColors';
 
 const LEAVE_OPTIONS: { value: ScheduleLeaveType; label: string }[] = [
   { value: 'DO', label: 'DO' },
@@ -23,7 +36,20 @@ const LEAVE_OPTIONS: { value: ScheduleLeaveType; label: string }[] = [
   { value: 'UPL', label: 'UPL' },
 ];
 
+const LEAVE_CELL_BG: Record<ScheduleLeaveType, string> = {
+  DO: 'bg-gray-200/90 ring-1 ring-inset ring-gray-300',
+  RDO: 'bg-orange-100/90 ring-1 ring-inset ring-orange-200',
+  AL: 'bg-green-100/90 ring-1 ring-inset ring-green-200',
+  RPH: 'bg-purple-100/90 ring-1 ring-inset ring-purple-200',
+  UPL: 'bg-slate-100/90 ring-1 ring-inset ring-slate-300',
+};
+
 const hm = (t?: string | null) => (t ? t.slice(0, 5) : '');
+
+export type ShiftScheduleType2Handle = {
+  /** Persist any unsaved draft changes so Type 1 sees the same schedule. */
+  flushPending: () => Promise<void>;
+};
 
 type CellDraft =
   | { kind: 'empty' }
@@ -131,22 +157,39 @@ function isCellFixed(cell: CellDraft, locked: boolean): boolean {
   return false;
 }
 
-function cellBackgroundClass(cell: CellDraft, locked: boolean): string {
-  if (locked || cell.kind === 'leave') {
+function cellBackgroundClass(
+  cell: CellDraft,
+  locked: boolean,
+  employee: Employee,
+  levels: EmployeeLevel[],
+): string {
+  if (locked) {
     return 'bg-gray-200/90 ring-1 ring-inset ring-gray-300';
+  }
+  if (cell.kind === 'leave') {
+    return LEAVE_CELL_BG[cell.leaveType] ?? 'bg-gray-200/90 ring-1 ring-inset ring-gray-300';
   }
   if (!isCellFixed(cell, locked)) {
     return 'bg-amber-100/90 ring-1 ring-inset ring-amber-200';
   }
   if (cell.kind === 'work') {
-    const { hour, minute } = parseTimeIn(cell.timeIn);
-    const startMinutes = Number(hour) * 60 + Number(minute);
-    if (startMinutes < 12 * 60) {
-      return 'bg-green-100/90 ring-1 ring-inset ring-green-200';
-    }
-    return 'bg-blue-100/90 ring-1 ring-inset ring-blue-200';
+    return levelColors(employee, levels).cell;
   }
   return 'bg-white';
+}
+
+function changeForCell(
+  employeeId: number,
+  date: string,
+  cell: CellDraft,
+): ScheduleBatchChange {
+  if (cell.kind === 'empty') {
+    return { action: 'clear', employeeId, date };
+  }
+  if (cell.kind === 'work') {
+    return { action: 'upsert', employeeId, date, type: 'Work', startTime: cell.timeIn };
+  }
+  return { action: 'upsert', employeeId, date, type: cell.leaveType };
 }
 
 function approvedLeaveFor(
@@ -242,14 +285,17 @@ function buildChanges(
   return changes;
 }
 
-export default function ShiftScheduleType2View({
-  shiftEmployees,
-  employeeLevels,
-  shiftSchedules,
-  approvedLeaveRequests,
-  weekDates,
-  onSave,
-}: Props) {
+const ShiftScheduleType2View = forwardRef<ShiftScheduleType2Handle, Props>(function ShiftScheduleType2View(
+  {
+    shiftEmployees,
+    employeeLevels,
+    shiftSchedules,
+    approvedLeaveRequests,
+    weekDates,
+    onSave,
+  },
+  ref,
+) {
   const baseEmployees = useMemo(
     () =>
       [...shiftEmployees].sort((a, b) => {
@@ -259,6 +305,15 @@ export default function ShiftScheduleType2View({
       }),
     [shiftEmployees, employeeLevels],
   );
+
+  const levelsInView = useMemo(() => {
+    const seen = new Map<number, EmployeeLevel>();
+    for (const employee of shiftEmployees) {
+      const level = resolveEmployeeLevel(employee, employeeLevels);
+      if (level) seen.set(level.id, level);
+    }
+    return [...seen.values()].sort((a, b) => a.id - b.id);
+  }, [shiftEmployees, employeeLevels]);
 
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ScheduleSortColumn>();
 
@@ -310,6 +365,18 @@ export default function ShiftScheduleType2View({
   const [draft, setDraft] = useState<Record<string, CellDraft>>(serverDraft);
   const [saving, setSaving] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const draftRef = useRef(draft);
+  const serverDraftRef = useRef(serverDraft);
+  const saveQueueRef = useRef(Promise.resolve());
+  const saveInflightRef = useRef(0);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    serverDraftRef.current = serverDraft;
+  }, [serverDraft]);
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const scheduleColSpan = 3 + weekDates.length;
@@ -343,10 +410,60 @@ export default function ShiftScheduleType2View({
     return map;
   }, [draft, sortedEmployees, weekDates, approvedLeaveRequests]);
 
-  const setCell = useCallback((employeeId: number, date: string, cell: CellDraft) => {
-    const key = cellKey(employeeId, date);
-    setDraft((prev) => ({ ...prev, [key]: cell }));
-  }, []);
+  const persistChanges = useCallback(
+    (changes: ScheduleBatchChange[]) => {
+      if (changes.length === 0) return Promise.resolve();
+      const run = async () => {
+        saveInflightRef.current += 1;
+        setSaving(true);
+        try {
+          await onSave(changes);
+        } finally {
+          saveInflightRef.current -= 1;
+          if (saveInflightRef.current <= 0) {
+            saveInflightRef.current = 0;
+            setSaving(false);
+          }
+        }
+      };
+      // Serialize saves so Type 1/2 stay consistent under rapid cell edits.
+      const next = saveQueueRef.current.then(run, run);
+      saveQueueRef.current = next.then(
+        () => undefined,
+        () => undefined,
+      );
+      return next;
+    },
+    [onSave],
+  );
+
+  const flushPending = useCallback(async () => {
+    const changes = buildChanges(draftRef.current, serverDraftRef.current);
+    if (changes.length === 0) return;
+    await persistChanges(changes);
+  }, [persistChanges]);
+
+  useImperativeHandle(ref, () => ({ flushPending }), [flushPending]);
+
+  const setCell = useCallback(
+    (employeeId: number, date: string, cell: CellDraft) => {
+      const key = cellKey(employeeId, date);
+      const locked = isApprovedLeaveLocked(employeeId, date, approvedLeaveRequests);
+      setDraft((prev) => {
+        const next = { ...prev, [key]: cell };
+        draftRef.current = next;
+        return next;
+      });
+
+      // Persist as soon as a cell is fixed (or cleared), so Type 1 stays in sync.
+      const baseline = serverDraftRef.current[key] ?? { kind: 'empty' as const };
+      if (serializeCell(cell) === serializeCell(baseline)) return;
+      if (cell.kind === 'empty' || isCellFixed(cell, locked)) {
+        void persistChanges([changeForCell(employeeId, date, cell)]);
+      }
+    },
+    [approvedLeaveRequests, persistChanges],
+  );
 
   const pendingChanges = useMemo(
     () => buildChanges(draft, serverDraft),
@@ -358,18 +475,18 @@ export default function ShiftScheduleType2View({
       setCopyMessage('No schedule changes to save.');
       return;
     }
-    setSaving(true);
     try {
-      await onSave(pendingChanges);
+      await persistChanges(pendingChanges);
       setCopyMessage(null);
-    } finally {
-      setSaving(false);
+    } catch {
+      setCopyMessage('Could not save schedule changes.');
     }
   };
 
   const handleCopyLastWeek = () => {
     let copiedEmployees = 0;
     let skippedEmployees = 0;
+    let nextDraft = draftRef.current;
 
     setDraft((prev) => {
       const next = { ...prev };
@@ -390,18 +507,33 @@ export default function ShiftScheduleType2View({
           );
         }
       }
+      nextDraft = next;
+      draftRef.current = next;
       return next;
     });
 
     if (copiedEmployees === 0) {
       setCopyMessage('No employees copied — none had a full schedule last week.');
-    } else if (skippedEmployees > 0) {
-      setCopyMessage(
-        `Copied ${copiedEmployees} employee(s). ${skippedEmployees} skipped (incomplete last week — enter manually). Click Save to apply.`,
-      );
-    } else {
-      setCopyMessage(`Copied ${copiedEmployees} employee(s) from last week. Click Save to apply.`);
+      return;
     }
+
+    const changes = buildChanges(nextDraft, serverDraftRef.current);
+    if (changes.length === 0) {
+      setCopyMessage(
+        skippedEmployees > 0
+          ? `Copied ${copiedEmployees} employee(s). ${skippedEmployees} skipped (incomplete last week). Already up to date.`
+          : `Copied ${copiedEmployees} employee(s) from last week. Already up to date.`,
+      );
+      return;
+    }
+
+    void persistChanges(changes).then(() => {
+      setCopyMessage(
+        skippedEmployees > 0
+          ? `Copied and saved ${copiedEmployees} employee(s). ${skippedEmployees} skipped (incomplete last week).`
+          : `Copied and saved ${copiedEmployees} employee(s) from last week.`,
+      );
+    });
   };
 
   return (
@@ -410,8 +542,23 @@ export default function ShiftScheduleType2View({
         <div>
           <p className="text-sm font-medium text-gray-900">Type 2 schedule</p>
           <p className="text-xs text-gray-500 mt-0.5">
-            Enter time in or a leave type per day. Amber = incomplete, grey = leave, green = morning shift, blue = afternoon shift.
+            Enter time in or a leave type per day. Fixed cells save immediately and match Type 1.
+            Amber = incomplete; leave and work colors follow leave type / employee level.
           </p>
+          {levelsInView.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 mt-1.5">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Level</span>
+              {levelsInView.map((level) => {
+                const colors = colorsForLevel(level);
+                return (
+                  <span key={level.id} className="inline-flex items-center gap-1 text-xs text-gray-600">
+                    <span className={`w-2.5 h-2.5 rounded-sm ${colors.dot}`} aria-hidden />
+                    {level.levelName}
+                  </span>
+                );
+              })}
+            </div>
+          )}
           {copyMessage && (
             <p className="text-xs text-herme-dark mt-1">{copyMessage}</p>
           )}
@@ -428,7 +575,7 @@ export default function ShiftScheduleType2View({
           </button>
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={saving || pendingChanges.length === 0}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-herme hover:bg-herme-dark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -441,7 +588,15 @@ export default function ShiftScheduleType2View({
       {sortedEmployees.length === 0 ? (
         <p className="text-xs text-gray-500 py-8 text-center">No shift workers in this department.</p>
       ) : (
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
+          <ColGroup
+            widths={[
+              '12%',
+              '10%',
+              '8%',
+              ...weekDates.map(() => `${(70 / Math.max(weekDates.length, 1)).toFixed(2)}%`),
+            ]}
+          />
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <SortableTableHead
@@ -492,13 +647,23 @@ export default function ShiftScheduleType2View({
             {pagedSortedEmployees.map((employee) => (
               <tr key={employee.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                 <td className="px-3 py-2 font-medium text-gray-900 sticky left-0 bg-white z-10">
-                  {employee.name}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${levelColors(employee, employeeLevels).dot}`}
+                      aria-hidden
+                    />
+                    {employee.name}
+                  </span>
                 </td>
                 <td className="px-3 py-2 text-gray-700 sticky left-[120px] bg-white z-10">
                   {employee.position || '—'}
                 </td>
-                <td className="px-3 py-2 text-gray-600 sticky left-[220px] bg-white z-10 border-r border-gray-100">
-                  {levelName(employee, employeeLevels)}
+                <td className="px-3 py-2 sticky left-[220px] bg-white z-10 border-r border-gray-100">
+                  <span
+                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium border ${levelColors(employee, employeeLevels).tag}`}
+                  >
+                    {levelName(employee, employeeLevels)}
+                  </span>
                 </td>
                 {weekDates.map((date) => {
                   const key = cellKey(employee.id, date);
@@ -514,7 +679,7 @@ export default function ShiftScheduleType2View({
                   return (
                     <td
                       key={date}
-                      className={`px-1.5 py-1.5 align-top ${cellBackgroundClass(cell, locked)}`}
+                      className={`px-1.5 py-1.5 align-top ${cellBackgroundClass(cell, locked, employee, employeeLevels)}`}
                     >
                       {locked ? (
                         <div className="px-1.5 py-1 text-center text-xs text-gray-700">
@@ -606,4 +771,6 @@ export default function ShiftScheduleType2View({
       )}
     </TableScrollContainer>
   );
-}
+});
+
+export default ShiftScheduleType2View;

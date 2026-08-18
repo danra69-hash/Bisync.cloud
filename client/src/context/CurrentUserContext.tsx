@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, setApiTenantCompanyId, type AppUser } from '../api';
+import {
+  assertPlatformCredential,
+  clearBiometricEnrollment,
+  createPlatformCredential,
+  loadBiometricEnrollment,
+  saveBiometricEnrollment,
+} from '../auth/platformBiometric';
+import { clearPinEnrollment, savePinEnrollment, unlockPinPayload } from '../auth/platformPin';
 import { REQUIRE_PLATFORM_LOGIN } from '../config/platformAuth';
+import { isDesktopAppSession } from '../data/desktopLauncher';
 import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
 import { clearAllOnboardingFlags } from '../data/onboardingFlags';
 import {
@@ -81,8 +90,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   };
 
   const login = useCallback(async (email: string, password: string) => {
-    // Drop any prior tenant selection (e.g. leftover QA company) so org APIs
-    // hit the control plane until the user explicitly picks a company.
+    // Clear stale tenant (e.g. leftover QA) before login; restore home company after.
     setApiTenantCompanyId(null);
     const user = await api.login(email, password);
     if (!user.active) throw new Error('Invalid email or password.');
@@ -90,6 +98,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setUsers(prev => upsertUser(prev, user));
     localStorage.setItem(AUTH_KEY, 'true');
     localStorage.setItem(STORAGE_KEY, String(user.id));
+    setApiTenantCompanyId(user.companyId ?? null);
     markUserActivity();
     setCurrentUserIdState(user.id);
     setIsAuthenticated(true);
@@ -110,12 +119,81 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setUsers(prev => upsertUser(prev, normalized));
     localStorage.setItem(AUTH_KEY, 'true');
     localStorage.setItem(STORAGE_KEY, String(normalized.id));
+    setApiTenantCompanyId(normalized.companyId ?? null);
     markUserActivity();
     setCurrentUserIdState(normalized.id);
     setIsAuthenticated(true);
     if (isAppLocale(normalized.preferredLanguage)) {
       void setAppLocale(normalized.preferredLanguage);
     }
+  }, []);
+
+  const resolveActiveUser = useCallback(async (userId: number, email: string) => {
+    const fromState = users.find(
+      u => u.id === userId || u.email.toLowerCase() === email.trim().toLowerCase(),
+    );
+    if (fromState?.active) return fromState;
+
+    const list = await api.users();
+    const active = list.filter(user => user.active);
+    setUsers(active);
+    const match = active.find(
+      u => u.id === userId || u.email.toLowerCase() === email.trim().toLowerCase(),
+    );
+    if (!match) {
+      throw new Error('The account linked on this device is no longer available.');
+    }
+    return match;
+  }, [users]);
+
+  const loginWithBiometric = useCallback(async () => {
+    setApiTenantCompanyId(null);
+    const enrollment = loadBiometricEnrollment();
+    if (!enrollment) {
+      throw new Error('Biometric login is not set up on this device.');
+    }
+    await assertPlatformCredential(enrollment.credentialId);
+    const user = await resolveActiveUser(enrollment.userId, enrollment.email);
+    setApiTenantCompanyId(user.companyId ?? null);
+    applyAuthenticatedUser(user);
+  }, [applyAuthenticatedUser, resolveActiveUser]);
+
+  const loginWithPin = useCallback(async (pin: string) => {
+    setApiTenantCompanyId(null);
+    const payload = await unlockPinPayload(pin);
+    const user = await resolveActiveUser(payload.userId, payload.email);
+    setApiTenantCompanyId(user.companyId ?? null);
+    applyAuthenticatedUser(user);
+  }, [applyAuthenticatedUser, resolveActiveUser]);
+
+  const enrollBiometric = useCallback(async () => {
+    const user = users.find(u => u.id === currentUserId);
+    if (!user) throw new Error('Sign in with your password before enabling biometrics.');
+    const credentialId = await createPlatformCredential(user.email);
+    saveBiometricEnrollment({
+      email: user.email.trim().toLowerCase(),
+      userId: user.id,
+      credentialId,
+    });
+  }, [users, currentUserId]);
+
+  const enrollPin = useCallback(async (pin: string) => {
+    const user = users.find(u => u.id === currentUserId);
+    if (!user) throw new Error('Sign in with your password before setting a device PIN.');
+    await savePinEnrollment(pin, {
+      kind: 'platform-session',
+      email: user.email.trim().toLowerCase(),
+      userId: user.id,
+      fullName: user.fullName,
+    });
+  }, [users, currentUserId]);
+
+  const clearBiometric = useCallback(() => {
+    clearBiometricEnrollment();
+  }, []);
+
+  const clearPin = useCallback(() => {
+    clearPinEnrollment();
   }, []);
 
   const logout = useCallback(() => {
@@ -151,7 +229,11 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setCurrentUserIdState(null);
   }, [users, currentUserId]);
 
-  useIdleLogout(REQUIRE_PLATFORM_LOGIN && isAuthenticated, logout);
+  // Desktop app windows stay signed in until closed (or manual Log out).
+  useIdleLogout(
+    REQUIRE_PLATFORM_LOGIN && isAuthenticated && !isDesktopAppSession(),
+    logout,
+  );
 
   const currentUser = users.find(user => user.id === currentUserId) ?? null;
 
@@ -164,6 +246,12 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         setCurrentUserId,
         login,
+        loginWithBiometric,
+        loginWithPin,
+        enrollBiometric,
+        enrollPin,
+        clearBiometric,
+        clearPin,
         logout,
         applyAuthenticatedUser,
       }}

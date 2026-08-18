@@ -148,6 +148,7 @@ public static class HrModelConfiguration
             e.Property(x => x.RdoBalance).HasPrecision(5, 1);
             e.Property(x => x.RphBalance).HasPrecision(5, 1);
             e.Property(x => x.AlBalance).HasPrecision(5, 1);
+            e.Property(x => x.AlCarryForward).HasPrecision(5, 1);
             e.HasOne(x => x.Employee)
                 .WithOne(x => x.LeaveBalance)
                 .HasForeignKey<LeaveBalance>(x => x.EmployeeId)
@@ -326,9 +327,9 @@ public static class HrModelConfiguration
     static void SeedReferenceData(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<EmployeeLevel>().HasData(
-            new EmployeeLevel { Id = 1, LevelName = "Junior", AnnualLeaveDays = 12, SickLeaveDays = 14, AnnualLeaveRulesJson = "[]", SickLeaveRulesJson = "[]", OvertimeEligible = true, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Morning Shift", DutyMealQtyEnabled = false, DutyMealQtyPerWorkingDay = 0, DutyMealAmountEnabled = false, DutyMealAmount = 0, DutyMealAmountPeriod = "Monthly" },
-            new EmployeeLevel { Id = 2, LevelName = "Management", AnnualLeaveDays = 20, SickLeaveDays = 18, AnnualLeaveRulesJson = "[]", SickLeaveRulesJson = "[]", OvertimeEligible = true, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift", DutyMealQtyEnabled = false, DutyMealQtyPerWorkingDay = 0, DutyMealAmountEnabled = false, DutyMealAmount = 0, DutyMealAmountPeriod = "Monthly" },
-            new EmployeeLevel { Id = 3, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, AnnualLeaveRulesJson = "[]", SickLeaveRulesJson = "[]", OvertimeEligible = false, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = false, DutyMealQtyEnabled = false, DutyMealQtyPerWorkingDay = 0, DutyMealAmountEnabled = false, DutyMealAmount = 0, DutyMealAmountPeriod = "Monthly" });
+            new EmployeeLevel { Id = 1, LevelName = "Junior", AnnualLeaveDays = 12, SickLeaveDays = 14, AnnualLeaveEnabled = true, SickLeaveEnabled = true, AnnualLeaveRulesJson = "[]", SickLeaveRulesJson = "[]", OvertimeEligible = true, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Morning Shift", DutyMealQtyEnabled = false, DutyMealQtyPerWorkingDay = 0, DutyMealAmountEnabled = false, DutyMealAmount = 0, DutyMealAmountPeriod = "Monthly" },
+            new EmployeeLevel { Id = 2, LevelName = "Management", AnnualLeaveDays = 20, SickLeaveDays = 18, AnnualLeaveEnabled = true, SickLeaveEnabled = true, AnnualLeaveRulesJson = "[]", SickLeaveRulesJson = "[]", OvertimeEligible = true, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift", DutyMealQtyEnabled = false, DutyMealQtyPerWorkingDay = 0, DutyMealAmountEnabled = false, DutyMealAmount = 0, DutyMealAmountPeriod = "Monthly" },
+            new EmployeeLevel { Id = 3, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, AnnualLeaveEnabled = true, SickLeaveEnabled = true, AnnualLeaveRulesJson = "[]", SickLeaveRulesJson = "[]", OvertimeEligible = false, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = false, DutyMealQtyEnabled = false, DutyMealQtyPerWorkingDay = 0, DutyMealAmountEnabled = false, DutyMealAmount = 0, DutyMealAmountPeriod = "Monthly" });
 
         modelBuilder.Entity<PublicHoliday>().HasData(
             new PublicHoliday { Id = 1, Name = "New Year's Day", Date = new DateOnly(2026, 1, 1), IsRecognized = true, CountryCode = "MY" },

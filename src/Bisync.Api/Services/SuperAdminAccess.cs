@@ -7,6 +7,34 @@ public static class SuperAdminAccess
     public const string SuperAdminEmail = "dra@cubevalue.com";
 
     /// <summary>
+    /// Legacy email before rename to <see cref="SuperAdminEmail"/> (same person, not a second user).
+    /// Startup merge folds leftover AppUser/Employee rows into the canonical identity without
+    /// stacking leave entitlements.
+    /// </summary>
+    public static readonly string[] AliasEmails = ["dra@test.com"];
+
+    public static string NormalizeLoginEmail(string? email)
+    {
+        var normalized = (email ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) return normalized;
+        foreach (var alias in AliasEmails)
+        {
+            if (string.Equals(normalized, alias, StringComparison.OrdinalIgnoreCase))
+                return SuperAdminEmail.ToLowerInvariant();
+        }
+        return normalized;
+    }
+
+    public static bool IsPlatformOwnerEmail(string? email)
+    {
+        var normalized = (email ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) return false;
+        if (string.Equals(normalized, SuperAdminEmail, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return AliasEmails.Any(a => string.Equals(normalized, a, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Bootstrap password for the seeded DRA Super Admin / Dev Console root.
     /// Prefer <c>BISYNC_SUPER_ADMIN_PASSWORD</c> in production; falls back to the
     /// local/demo default used by Automated QA and fresh installs.
@@ -23,7 +51,7 @@ public static class SuperAdminAccess
     }
 
     /// <summary>Local/dev bootstrap only — override via BISYNC_SUPER_ADMIN_PASSWORD in production.</summary>
-    internal const string DefaultBootstrapPassword = "Pass@123";
+    public const string DefaultBootstrapPassword = "Pass@123";
 
     static readonly string[] Modules = ["RMS", "POS", "HRM", "Accounting"];
 
@@ -31,14 +59,15 @@ public static class SuperAdminAccess
     [
         "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder",
         "cashPurchase", "orderTemplate", "productManagement", "subProductManagement", "offlineSales",
+        "centralStore", "stockHold",
         "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage",
-        "transfer", "inventoryConfiguration", "createEdit", "componentConfig", "activateDeactivateVendorProducts",
+        "transfer", "createEdit", "componentConfig", "activateDeactivateVendorProducts",
         "createEditComponentGroup", "createEditStorageAssignment", "accountMapping",
         "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",
         "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",
         "manageCustomers", "customerGroup", "customerManagement", "manageSalesOrder", "approveSalesOrder",
         "manageInvoice", "promotionScheduler", "viewReports",
-        "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit",
+        "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit", "opsExpensesAnalysis",
         // hidePrices intentionally omitted — restriction policy, not a super-admin grant
     ];
 

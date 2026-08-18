@@ -1,10 +1,40 @@
 import { HR_API_BASE } from '../../config/hrBackend';
 import type {
-  AttendanceRecord, CompanySetting, CompanySettingUpdate, CountryOption, Department, Division, DivisionTreeNode,
+  AttendanceRecord, AttendanceStatus, CompanySetting, CompanySettingUpdate, CountryOption, Department, Division, DivisionTreeNode,
   Employee, EmployeeCreateRequest, EmployeeLevel, EmployeeRequest,
   IncomeTaxYear, IncomeTaxYearPreview, IncomeTaxYearRequest,
   LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, PublicHolidayRequest, ScheduleType, ShiftSchedule,
 } from './types';
+import type {
+  TeamChatConversationsResponse,
+  TeamChatDirectoryPerson,
+  TeamChatMessagesResponse,
+  TeamChatProjectDetails,
+} from './teamChatTypes';
+
+function formatHttpError(status: number, statusText: string, body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return `${status} ${statusText}`;
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      message?: string;
+      title?: string;
+      errors?: Record<string, string[] | string>;
+    };
+    if (parsed.errors && typeof parsed.errors === 'object') {
+      const parts = Object.entries(parsed.errors).flatMap(([key, value]) => {
+        const messages = Array.isArray(value) ? value : [String(value)];
+        return messages.map(msg => (key ? `${key}: ${msg}` : msg));
+      });
+      if (parts.length > 0) return parts.join(' ');
+    }
+    if (parsed.message?.trim()) return parsed.message.trim();
+    if (parsed.title?.trim()) return parsed.title.trim();
+  } catch {
+    /* plain-text body */
+  }
+  return trimmed;
+}
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${HR_API_BASE}${path}`, {
@@ -13,60 +43,82 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `${res.status} ${res.statusText}`);
+    throw new Error(formatHttpError(res.status, res.statusText, text));
   }
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
+function blankToNull(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Normalize date fields to yyyy-MM-dd or null (API DateOnly rejects "" / ISO timestamps). */
+function toDateOnlyOrNull(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1]! : null;
+}
+
+function toDateOnlyRequired(value: string | null | undefined, fallback: string): string {
+  return toDateOnlyOrNull(value) ?? fallback;
+}
+
 export function toEmployeeRequest(e: Employee): EmployeeRequest {
+  const today = new Date().toISOString().slice(0, 10);
   return {
     employeeCode: e.employeeCode,
-    name: e.name,
-    email: e.email,
-    mobile: e.mobile,
-    department: e.department,
-    divisionId: e.divisionId,
-    departmentId: e.departmentId,
-    position: e.position,
-    joinDate: e.joinDate,
+    name: e.name?.trim() ?? '',
+    email: e.email?.trim() ?? '',
+    mobile: e.mobile?.trim() ?? '',
+    department: blankToNull(e.department) ?? undefined,
+    divisionId: e.divisionId ?? null,
+    departmentId: e.departmentId ?? null,
+    position: e.position?.trim() ?? '',
+    joinDate: toDateOnlyRequired(e.joinDate, today),
     fingerprintEnrolled: e.fingerprintEnrolled,
     faceRecognitionEnrolled: e.faceRecognitionEnrolled,
     isShiftEmployee: e.isShiftEmployee,
-    shiftType: e.shiftType,
+    shiftType: blankToNull(e.shiftType),
     posEnabled: e.posEnabled,
     bisyncEnabled: e.bisyncEnabled,
     active: e.active ?? true,
     checkinMethod: e.checkinMethod ?? 'Biometrics',
     workingHoursPerDay: e.workingHoursPerDay,
-    employeeLevelId: e.employeeLevelId,
-    reportsToId: e.reportsToId,
-    nationality: e.nationality,
-    idPassportNumber: e.idPassportNumber,
-    dateOfBirth: e.dateOfBirth,
-    personalEmail: e.personalEmail,
-    permanentAddress: e.permanentAddress,
-    maritalStatus: e.maritalStatus,
-    bankName: e.bankName,
-    bankAccountNumber: e.bankAccountNumber,
-    bankAccountHolderName: e.bankAccountHolderName,
+    employeeLevelId: e.employeeLevelId ?? null,
+    reportsToId: e.reportsToId ?? null,
+    nationality: blankToNull(e.nationality),
+    idPassportNumber: blankToNull(e.idPassportNumber),
+    dateOfBirth: toDateOnlyOrNull(e.dateOfBirth),
+    personalEmail: blankToNull(e.personalEmail),
+    permanentAddress: blankToNull(e.permanentAddress),
+    maritalStatus: blankToNull(e.maritalStatus),
+    bankName: blankToNull(e.bankName),
+    bankAccountNumber: blankToNull(e.bankAccountNumber),
+    bankAccountHolderName: blankToNull(e.bankAccountHolderName),
     baseSalary: e.baseSalary,
     serviceAllowance: e.serviceAllowance,
     transportAllowance: e.transportAllowance,
     accommodationAllowance: e.accommodationAllowance,
     mobileAllowance: e.mobileAllowance,
-    otherAllowances: e.otherAllowances,
+    otherAllowances: (e.otherAllowances ?? [])
+      .filter(a => (a.name ?? '').trim().length > 0)
+      .map(a => ({ name: a.name.trim(), amount: a.amount })),
     workPermitByCompany: e.workPermitByCompany,
     transportProvided: e.transportProvided ?? false,
-    transportCarModel: e.transportCarModel,
-    transportPlateNumber: e.transportPlateNumber,
+    transportCarModel: blankToNull(e.transportCarModel),
+    transportPlateNumber: blankToNull(e.transportPlateNumber),
     accommodationProvided: e.accommodationProvided ?? false,
-    accommodationAddress: e.accommodationAddress,
-    accommodationLeaseStart: e.accommodationLeaseStart,
-    accommodationLeaseEnd: e.accommodationLeaseEnd,
+    accommodationAddress: blankToNull(e.accommodationAddress),
+    accommodationLeaseStart: toDateOnlyOrNull(e.accommodationLeaseStart),
+    accommodationLeaseEnd: toDateOnlyOrNull(e.accommodationLeaseEnd),
     mobileProvided: e.mobileProvided ?? false,
-    mobileAllowancePhone: e.mobileAllowancePhone,
-    mobileProvider: e.mobileProvider,
+    mobileAllowancePhone: blankToNull(e.mobileAllowancePhone),
+    mobileProvider: blankToNull(e.mobileProvider),
     overtimeAllowanceEnabled: e.overtimeAllowanceEnabled ?? false,
     bonusEnabled: e.bonusEnabled ?? false,
     bonusMonthly: e.bonusMonthly ?? false,
@@ -85,6 +137,32 @@ export const hrApi = {
     update: (id: number, body: EmployeeRequest) => http<Employee>(`/employees/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     remove: (id: number) => http<void>(`/employees/${id}`, { method: 'DELETE' }),
     resetPosPin: (id: number) => http<Employee>(`/employees/${id}/reset-pos-pin`, { method: 'POST' }),
+    setPosPin: (id: number, pin: string) =>
+      http<Employee>(`/employees/${id}/set-pos-pin`, { method: 'POST', body: JSON.stringify({ pin }) }),
+    verifyPosPin: async (pin: string) => {
+      const result = await http<{
+        valid?: boolean
+        Valid?: boolean
+        employeeId?: number | null
+        EmployeeId?: number | null
+        employeeName?: string | null
+        EmployeeName?: string | null
+        employeeCode?: string | null
+        EmployeeCode?: string | null
+        mustChangePin?: boolean
+        MustChangePin?: boolean
+      }>('/employees/verify-pos-pin', {
+        method: 'POST',
+        body: JSON.stringify({ pin }),
+      });
+      return {
+        valid: result.valid ?? result.Valid ?? false,
+        employeeId: result.employeeId ?? result.EmployeeId ?? null,
+        employeeName: result.employeeName ?? result.EmployeeName ?? null,
+        employeeCode: result.employeeCode ?? result.EmployeeCode ?? null,
+        mustChangePin: result.mustChangePin ?? result.MustChangePin ?? false,
+      };
+    },
     verifyPayrollPin: async (id: number, pin: string) => {
       const result = await http<{ valid?: boolean; Valid?: boolean }>(`/employees/${id}/verify-payroll-pin`, {
         method: 'POST',
@@ -95,7 +173,29 @@ export const hrApi = {
     resetPayrollPin: (id: number) => http<Employee>(`/employees/${id}/reset-payroll-pin`, { method: 'POST' }),
   },
   attendance: {
-    list: (from: string, to: string) => http<AttendanceRecord[]>(`/attendance?from=${from}&to=${to}`),
+    list: (from: string, to: string, employeeId?: number) => {
+      const params = new URLSearchParams({ from, to });
+      if (employeeId != null) params.set('employeeId', String(employeeId));
+      return http<AttendanceRecord[]>(`/attendance?${params}`);
+    },
+    create: (body: {
+      employeeId: number;
+      date: string;
+      status: AttendanceStatus;
+      scheduledIn?: string | null;
+      scheduledOut?: string | null;
+      actualIn?: string | null;
+      actualOut?: string | null;
+    }) => http<AttendanceRecord>('/attendance', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: number, body: {
+      employeeId: number;
+      date: string;
+      status: AttendanceStatus;
+      scheduledIn?: string | null;
+      scheduledOut?: string | null;
+      actualIn?: string | null;
+      actualOut?: string | null;
+    }) => http<AttendanceRecord>(`/attendance/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   },
   leaveRequests: {
     list: () => http<LeaveRequest[]>('/leave-requests'),
@@ -181,6 +281,75 @@ export const hrApi = {
       http<IncomeTaxYear>(`/income-tax/${companyId}/${year}`, { method: 'PUT', body: JSON.stringify(body) }),
     preview: (companyId: number, year: number) =>
       http<IncomeTaxYearPreview>(`/income-tax/${companyId}/${year}/preview`),
+  },
+  teamChat: {
+    directory: (employeeId: number) =>
+      http<TeamChatDirectoryPerson[]>(`/team-chat/directory?employeeId=${employeeId}`),
+    conversations: (employeeId: number) =>
+      http<TeamChatConversationsResponse>(`/team-chat/conversations?employeeId=${employeeId}`),
+    messages: (conversationId: number, employeeId: number, afterId?: number) => {
+      const params = new URLSearchParams({ employeeId: String(employeeId) });
+      if (afterId != null && afterId > 0) params.set('afterId', String(afterId));
+      return http<TeamChatMessagesResponse>(`/team-chat/conversations/${conversationId}/messages?${params}`);
+    },
+    startDirect: (employeeId: number, peerEmployeeId: number) =>
+      http<{ id: number; type: string; title: string; created: boolean }>('/team-chat/conversations/direct', {
+        method: 'POST',
+        body: JSON.stringify({ employeeId, peerEmployeeId }),
+      }),
+    startGroup: (employeeId: number, title: string, memberEmployeeIds: number[]) =>
+      http<{ id: number; type: string; title: string; created: boolean }>('/team-chat/conversations/group', {
+        method: 'POST',
+        body: JSON.stringify({ employeeId, title, memberEmployeeIds }),
+      }),
+    startProject: (
+      employeeId: number,
+      body: {
+        name: string;
+        startDate: string;
+        targetCompletionDate: string;
+        memberEmployeeIds?: number[];
+        tasks: { title: string; assigneeEmployeeIds: number[] }[];
+      },
+    ) =>
+      http<{ id: number; type: string; title: string; created: boolean; project?: TeamChatProjectDetails }>(
+        '/team-chat/conversations/project',
+        {
+          method: 'POST',
+          body: JSON.stringify({ employeeId, ...body }),
+        },
+      ),
+    setProjectTaskCompleted: (conversationId: number, taskId: number, employeeId: number, completed: boolean) =>
+      http<TeamChatProjectDetails>(`/team-chat/conversations/${conversationId}/project/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ employeeId, completed }),
+      }),
+    postMessage: (
+      conversationId: number,
+      body: {
+        employeeId: number;
+        body?: string;
+        attachmentBase64?: string;
+        attachmentContentType?: string;
+      },
+    ) =>
+      http<{
+        id: number;
+        conversationId: number;
+        senderEmployeeId: number;
+        body: string;
+        hasAttachment: boolean;
+        attachmentContentType?: string | null;
+        createdAt: string;
+        mine: boolean;
+      }>(`/team-chat/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    capabilities: (employeeId: number) =>
+      http<{ companyId: number; canSendAnnouncement: boolean }>(
+        `/team-chat/capabilities?employeeId=${employeeId}`,
+      ),
   },
 };
 

@@ -13,6 +13,7 @@ export const SYSTEM_HR_CONFIG_TABS = [
   { id: 'companies' as const, label: 'Companies' },
   { id: 'locations' as const, label: 'Locations' },
   { id: 'accessControl' as const, label: 'Access Control' },
+  { id: 'priceDisplay' as const, label: 'Price Display' },
   { id: 'auditTrail' as const, label: 'Audit Trail' },
 ] as const;
 

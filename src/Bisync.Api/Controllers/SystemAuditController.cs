@@ -1,6 +1,7 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,7 +13,8 @@ public class SystemAuditController(
     SystemAuditDbContext auditDb,
     BisyncDbContext opsDb,
     ISystemAuditService auditService,
-    DevConsoleAuthService devConsoleAuth) : ControllerBase
+    DevConsoleAuthService devConsoleAuth,
+    ITenantConnectionResolver tenantConnections) : ControllerBase
 {
     async Task<(ActionResult? Error, AppUser? User, int? CompanyScope)> GuardWithScopeAsync(CancellationToken ct)
     {
@@ -125,11 +127,21 @@ public class SystemAuditController(
             .Where(e => e.LocationId == locationId || e.LocationId == null);
 
         var total = await q.CountAsync(ct);
-        var rows = await q
+        var rawRows = await q
             .OrderByDescending(e => e.OccurredAtUtc)
             .Skip(skip)
             .Take(take)
-            .Select(e => new
+            .ToListAsync(ct);
+
+        // Prefer the company's registered tenant bucket name (e.g. bisync_c_12) over
+        // legacy rows that stored the shared physical "bisync" connection database.
+        var companyBucket = tenantConnections.ResolveDatabaseBucketName(companyId);
+
+        var rows = rawRows.Select(e =>
+        {
+            var activityType = SystemAuditActivityTypes.NormalizeDisplay(e.Category);
+            var effectedBucket = ResolveEffectedBucketDisplay(e.DatabaseBucket, e.CompanyId, companyBucket);
+            return new
             {
                 e.Id,
                 e.OccurredAtUtc,
@@ -137,7 +149,7 @@ public class SystemAuditController(
                 e.TimeZoneId,
                 e.Year,
                 e.Month,
-                e.Category,
+                Category = activityType,
                 e.Action,
                 e.CompanyId,
                 e.CompanyName,
@@ -145,7 +157,7 @@ public class SystemAuditController(
                 e.LocationId,
                 e.LocationExternalId,
                 e.LocationName,
-                e.DatabaseBucket,
+                DatabaseBucket = effectedBucket,
                 e.UserId,
                 e.UserEmail,
                 e.UserName,
@@ -153,11 +165,12 @@ public class SystemAuditController(
                 e.EntityKey,
                 e.Summary,
                 e.DetailsJson,
-                activityType = e.Category,
+                activityType,
                 activityDetail = e.Summary,
-                effectedDbBucket = e.DatabaseBucket,
-            })
-            .ToListAsync(ct);
+                effectedDbBucket = effectedBucket,
+                loginName = string.IsNullOrWhiteSpace(e.UserEmail) ? e.UserName : e.UserEmail,
+            };
+        }).ToList();
 
         return Ok(new
         {
@@ -168,9 +181,24 @@ public class SystemAuditController(
             total,
             take,
             skip,
-            retentionNote = "Audit Trail records continuously 24/7. Live rows keep the last 1 year; older rows are archived.",
+            retentionNote = "Audit Trail records continuously 24/7. Live rows keep the last 1 year; older rows are archived. Activity types cover PR/PO workflow, receive & consolidation, stock, wastage/transfer, credit notes, cash purchases, and other database changes. Login/logout are session events; create/update actions appear as separate Database change (or workflow) rows for the same login name.",
             rows,
         });
+    }
+
+    static string? ResolveEffectedBucketDisplay(string? storedBucket, int? eventCompanyId, string selectedCompanyBucket)
+    {
+        var stored = (storedBucket ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(stored)
+            || string.Equals(stored, "bisync", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(stored, "postgres", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(selectedCompanyBucket) ? (stored.Length > 0 ? stored : null) : selectedCompanyBucket;
+        }
+
+        // Historical row already has a specific bucket name — keep it.
+        _ = eventCompanyId;
+        return stored;
     }
 
     public record LogoutAuditRequest(int? UserId, int? CompanyId, string? Reason);

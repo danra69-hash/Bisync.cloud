@@ -12,15 +12,15 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { api, type B2bSalesOrder, type InventoryAlert, type MenuItem, type ProgressData, type PurchaseOrder, type RevenuePoint } from '../../api';
+import { api, type B2bSalesOrder, type InventoryAlert, type MenuItem, type PurchaseOrder, type RevenuePoint } from '../../api';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
 import type { DashboardActivityMode, PeriodTotals } from '../../utils/locationMetrics';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
-import { ProgressPanel } from './ProgressPanel';
+import { TaskTodayPanel } from './TaskTodayPanel';
 import { ActivePurchasePanel } from '../revenue/ActivePurchasePanel';
 import { B2bSalesOrderDetailPanel } from '../revenue/B2bSalesOrderDetailPanel';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
@@ -34,11 +34,6 @@ import {
   type OverviewLayoutState,
   type OverviewSectionId,
 } from '../../data/overviewLayout';
-
-/** Consolidated POs are already received into stock and await reconcile — exclude from Active Order. */
-function isConsolidatedPurchaseOrder(order: PurchaseOrder): boolean {
-  return String(order.status ?? '').trim().toLowerCase() === 'received';
-}
 
 function fmtCount(n: number) {
   return n.toLocaleString();
@@ -140,13 +135,12 @@ function clientOrderDate(order: B2bSalesOrder): string {
 
 const SECTION_LABELS: Record<OverviewSectionId, string> = {
   metrics: 'Key metrics',
-  'revenue-progress': 'Revenue & progress',
-  'menu-alerts': 'Product & inventory alerts',
-  'purchase-orders': 'Active orders',
+  'revenue-progress': 'Revenue & inventory alerts',
+  'menu-alerts': 'Task Today & product performance',
+  'purchase-orders': 'Order on hand',
 };
 
 type MenuSortColumn = 'item' | 'orders' | 'revenue' | 'margin';
-type OrderSortColumn = 'po' | 'vendor' | 'delivery' | 'value' | 'status';
 type ClientOrderSortColumn = 'so' | 'customer' | 'date' | 'value' | 'status';
 
 export type OverviewDashboardProps = {
@@ -156,7 +150,6 @@ export type OverviewDashboardProps = {
   orders: PurchaseOrder[];
   clientOrders: B2bSalesOrder[];
   revenue: RevenuePoint[];
-  progress: ProgressData | null;
   sales: PeriodTotals;
   activity: PeriodTotals;
   aov: PeriodTotals;
@@ -236,7 +229,6 @@ export function OverviewDashboard({
   orders,
   clientOrders,
   revenue,
-  progress,
   sales,
   activity,
   aov,
@@ -264,32 +256,22 @@ export function OverviewDashboard({
   }, [editLayout, layout]);
 
   const menuTableColumns = useMemo<SortableColumnDef<MenuSortColumn>[]>(() => [
-    { key: 'item', label: t('overview.item') },
-    { key: 'orders', label: t('overview.orders'), align: 'right' },
-    { key: 'revenue', label: t('overview.revenue'), align: 'right' },
-    { key: 'margin', label: t('overview.margin'), align: 'right' },
-  ], [t]);
-
-  const ordersTableColumns = useMemo<SortableColumnDef<OrderSortColumn>[]>(() => [
-    { key: 'po', label: t('overview.po') },
-    { key: 'vendor', label: t('common.vendor') },
-    { key: 'delivery', label: t('overview.delivery') },
-    { key: 'value', label: t('overview.value'), align: 'right' },
-    { key: 'status', label: t('common.status') },
+    { key: 'item', label: t('overview.item'), ...tableColWidth('40%') },
+    { key: 'orders', label: t('overview.orders'), align: 'right', ...tableColWidth('15%') },
+    { key: 'revenue', label: t('overview.revenue'), align: 'right', ...tableColWidth('25%') },
+    { key: 'margin', label: t('overview.margin'), align: 'right', ...tableColWidth('20%') },
   ], [t]);
 
   const clientOrdersTableColumns = useMemo<SortableColumnDef<ClientOrderSortColumn>[]>(() => [
-    { key: 'so', label: t('overview.so') },
-    { key: 'customer', label: t('overview.customer') },
-    { key: 'date', label: t('overview.orderDate') },
-    { key: 'value', label: t('overview.value'), align: 'right' },
-    { key: 'status', label: t('common.status') },
+    { key: 'so', label: t('overview.so'), ...tableColWidth('18%') },
+    { key: 'customer', label: t('overview.customer'), ...tableColWidth('28%') },
+    { key: 'date', label: t('overview.orderDate'), ...tableColWidth('18%') },
+    { key: 'value', label: t('overview.value'), align: 'right', ...tableColWidth('18%') },
+    { key: 'status', label: t('common.status'), ...tableColWidth('18%') },
   ], [t]);
 
   const { sortColumn: menuSortColumn, sortDirection: menuSortDirection, toggleSort: toggleMenuSort } =
     useTableSort<MenuSortColumn>();
-  const { sortColumn: ordersSortColumn, sortDirection: ordersSortDirection, toggleSort: toggleOrdersSort } =
-    useTableSort<OrderSortColumn>();
   const { sortColumn: clientSortColumn, sortDirection: clientSortDirection, toggleSort: toggleClientSort } =
     useTableSort<ClientOrderSortColumn>();
 
@@ -301,22 +283,6 @@ export function OverviewDashboard({
       margin: row => row.marginPercent,
     }),
     [menuItems, menuSortColumn, menuSortDirection],
-  );
-
-  const activeOrders = useMemo(
-    () => orders.filter(order => !isConsolidatedPurchaseOrder(order)),
-    [orders],
-  );
-
-  const sortedOrders = useMemo(
-    () => sortTableRows(activeOrders, ordersSortColumn, ordersSortDirection, {
-      po: row => row.poNumber,
-      vendor: row => row.vendorName,
-      delivery: row => row.deliveryDate,
-      value: row => row.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
-      status: row => row.status,
-    }),
-    [activeOrders, ordersSortColumn, ordersSortDirection],
   );
 
   const sortedClientOrders = useMemo(
@@ -331,11 +297,9 @@ export function OverviewDashboard({
   );
 
   const menuScrollRef = useRef<HTMLDivElement>(null);
-  const ordersScrollRef = useRef<HTMLDivElement>(null);
   const clientOrdersScrollRef = useRef<HTMLDivElement>(null);
   const alertsScrollRef = useRef<HTMLDivElement>(null);
   const menuScroll = useInfiniteScrollSlice(sortedMenuItems, { scrollRootRef: menuScrollRef });
-  const ordersScroll = useInfiniteScrollSlice(sortedOrders, { scrollRootRef: ordersScrollRef });
   const clientOrdersScroll = useInfiniteScrollSlice(sortedClientOrders, { scrollRootRef: clientOrdersScrollRef });
 
   function scrollAlerts(direction: 'up' | 'down') {
@@ -414,49 +378,13 @@ export function OverviewDashboard({
         );
       case 'revenue-progress':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-1.5">
-            <div className="lg:col-span-2 bg-card border border-border rounded-lg px-2.5 py-2">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-1.5 items-stretch">
+            <div className="lg:col-span-8 bg-card border border-border rounded-lg px-2.5 py-2">
               <h2 className="text-sm font-semibold leading-tight">{t('overview.revenueTrend')}</h2>
               <p className="text-[11px] text-muted-foreground leading-snug">{t('overview.revenueTrendSubtitle')}</p>
               <RevenueChart data={revenue} formatValue={compact} />
             </div>
-            <ProgressPanel progress={progress} />
-          </div>
-        );
-      case 'menu-alerts':
-        return (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-1.5">
-            <div className="lg:col-span-7 bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-2.5 py-1.5 border-b border-border">
-                <h2 className="text-sm font-semibold leading-tight">{t('overview.productPerformance')}</h2>
-              </div>
-              <TableScrollContainer ref={menuScrollRef} className="max-h-44 overflow-y-auto">
-                <table className="w-full table-fixed text-xs">
-                  <thead>
-                    <SortableTableHeaderRow
-                      columns={menuTableColumns}
-                      sortColumn={menuSortColumn}
-                      sortDirection={menuSortDirection}
-                      onSort={toggleMenuSort}
-                      className="border-b border-border"
-                    />
-                  </thead>
-                  <tbody>
-                    {menuScroll.visibleItems.map(m => (
-                      <tr key={m.id} className="border-b border-border last:border-0">
-                        <td className="px-3 py-1.5 font-medium">{m.name}</td>
-                        <td className="px-3 py-1.5 font-sans text-muted-foreground">{m.orders}</td>
-                        <td className="px-3 py-1.5 font-sans">{rm(m.revenue)}</td>
-                        <td className="px-3 py-1.5 font-sans">{m.marginPercent}%</td>
-                      </tr>
-                    ))}
-                    <InfiniteScrollTableSentinel colSpan={4} hasMore={menuScroll.hasMore} onLoadMore={menuScroll.loadMore} nextPageSize={menuScroll.nextPageSize} sentinelRef={menuScroll.sentinelRef} totalCount={menuScroll.totalCount} visibleCount={menuScroll.visibleCount} />
-                  </tbody>
-                </table>
-              </TableScrollContainer>
-            </div>
-
-            <div className="lg:col-span-5 bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-0 max-h-44">
+            <div className="lg:col-span-4 bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-0 max-h-44 lg:max-h-none">
               <div className="px-2.5 py-1.5 border-b border-border flex items-center justify-between gap-2 shrink-0">
                 <h2 className="text-sm font-semibold leading-tight">{t('overview.inventoryAlerts')}</h2>
                 {alerts.length > 0 && onOrderNowFromAlerts ? (
@@ -553,125 +481,110 @@ export function OverviewDashboard({
             </div>
           </div>
         );
+      case 'menu-alerts':
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-1.5 items-stretch">
+            <div className="lg:col-span-7 min-h-[11rem]">
+              <TaskTodayPanel
+                orders={orders}
+                openingPurchaseOrderId={openingPurchaseOrderId}
+                selectedPurchaseOrderId={selectedPurchaseOrder?.id ?? null}
+                onOpenPurchaseOrder={order => void openPurchaseOrder(order)}
+              />
+            </div>
+            <div className="lg:col-span-5 bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-0">
+              <div className="px-2.5 py-1.5 border-b border-border">
+                <h2 className="text-sm font-semibold leading-tight">{t('overview.productPerformance')}</h2>
+              </div>
+              <TableScrollContainer ref={menuScrollRef} className="max-h-44 overflow-y-auto flex-1">
+                <table className="w-full text-xs">
+                  <TableColGroup columns={menuTableColumns} />
+                  <thead>
+                    <SortableTableHeaderRow
+                      columns={menuTableColumns}
+                      sortColumn={menuSortColumn}
+                      sortDirection={menuSortDirection}
+                      onSort={toggleMenuSort}
+                      className="border-b border-border"
+                    />
+                  </thead>
+                  <tbody>
+                    {menuScroll.visibleItems.map(m => (
+                      <tr key={m.id} className="border-b border-border last:border-0">
+                        <td className="px-3 py-1.5 font-medium">{m.name}</td>
+                        <td className="px-3 py-1.5 font-sans text-muted-foreground">{m.orders}</td>
+                        <td className="px-3 py-1.5 font-sans">{rm(m.revenue)}</td>
+                        <td className="px-3 py-1.5 font-sans">{m.marginPercent}%</td>
+                      </tr>
+                    ))}
+                    <InfiniteScrollTableSentinel colSpan={4} hasMore={menuScroll.hasMore} onLoadMore={menuScroll.loadMore} nextPageSize={menuScroll.nextPageSize} sentinelRef={menuScroll.sentinelRef} totalCount={menuScroll.totalCount} visibleCount={menuScroll.visibleCount} />
+                  </tbody>
+                </table>
+              </TableScrollContainer>
+            </div>
+          </div>
+        );
       case 'purchase-orders':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-2.5 py-1.5 border-b border-border flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold leading-tight">{t('overview.activeOrders')}</h2>
-                <span className="text-[10px] font-sans text-muted-foreground tabular-nums">
-                  {activeOrders.length}
-                </span>
-              </div>
-              <TableScrollContainer ref={ordersScrollRef} className="max-h-44 overflow-y-auto">
-                <table className="w-full table-fixed text-xs">
-                  <thead>
-                    <SortableTableHeaderRow
-                      columns={ordersTableColumns}
-                      sortColumn={ordersSortColumn}
-                      sortDirection={ordersSortDirection}
-                      onSort={toggleOrdersSort}
-                      className="border-b border-border"
-                    />
-                  </thead>
-                  <tbody>
-                    {sortedOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground text-center">
-                          {t('overview.noActiveOrders')}
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-2.5 py-1.5 border-b border-border flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold leading-tight">{t('overview.activeClientOrders')}</h2>
+              <span className="text-[10px] font-sans text-muted-foreground tabular-nums">
+                {sortedClientOrders.length}
+              </span>
+            </div>
+            <TableScrollContainer ref={clientOrdersScrollRef} className="max-h-44 overflow-y-auto">
+              <table className="w-full text-xs">
+                <TableColGroup columns={clientOrdersTableColumns} />
+                <thead>
+                  <SortableTableHeaderRow
+                    columns={clientOrdersTableColumns}
+                    sortColumn={clientSortColumn}
+                    sortDirection={clientSortDirection}
+                    onSort={toggleClientSort}
+                    className="border-b border-border"
+                  />
+                </thead>
+                <tbody>
+                  {sortedClientOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground text-center">
+                        {t('overview.noOrdersOnHand')}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {clientOrdersScroll.visibleItems.map(o => {
+                    const value = clientOrderTotal(o);
+                    const opening = openingClientOrderId === o.id;
+                    return (
+                      <tr
+                        key={o.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Open order on hand ${o.orderNumber}`}
+                        onClick={() => void openClientOrder(o)}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            void openClientOrder(o);
+                          }
+                        }}
+                        className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${opening ? 'bg-primary/5' : ''} ${selectedClientOrder?.id === o.id ? 'bg-primary/10' : ''}`}
+                      >
+                        <td className="px-3 py-1.5 font-sans text-primary">{o.orderNumber}</td>
+                        <td className="px-3 py-1.5">{o.customerName}</td>
+                        <td className="px-3 py-1.5 font-sans text-muted-foreground">{clientOrderDate(o)}</td>
+                        <td className="px-3 py-1.5 font-sans">{rm(value)}</td>
+                        <td className="px-3 py-1.5">
+                          <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
                         </td>
                       </tr>
-                    ) : null}
-                    {ordersScroll.visibleItems.map(o => {
-                      const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-                      const opening = openingPurchaseOrderId === o.id;
-                      return (
-                        <tr
-                          key={o.id}
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`Open purchase order ${o.poNumber}`}
-                          onClick={() => void openPurchaseOrder(o)}
-                          onKeyDown={event => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              void openPurchaseOrder(o);
-                            }
-                          }}
-                          className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${opening ? 'bg-primary/5' : ''} ${selectedPurchaseOrder?.id === o.id ? 'bg-primary/10' : ''}`}
-                        >
-                          <td className="px-3 py-1.5 font-sans text-primary underline-offset-2 group-hover:underline">{o.poNumber}</td>
-                          <td className="px-3 py-1.5">{o.vendorName}</td>
-                          <td className="px-3 py-1.5 font-sans text-muted-foreground">{o.deliveryDate}</td>
-                          <td className="px-3 py-1.5 font-sans">{rm(value)}</td>
-                          <td className="px-3 py-1.5">
-                            <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <InfiniteScrollTableSentinel colSpan={5} hasMore={ordersScroll.hasMore} onLoadMore={ordersScroll.loadMore} nextPageSize={ordersScroll.nextPageSize} sentinelRef={ordersScroll.sentinelRef} totalCount={ordersScroll.totalCount} visibleCount={ordersScroll.visibleCount} />
-                  </tbody>
-                </table>
-              </TableScrollContainer>
-            </div>
-
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-2.5 py-1.5 border-b border-border">
-                <h2 className="text-sm font-semibold leading-tight">{t('overview.activeClientOrders')}</h2>
-              </div>
-              <TableScrollContainer ref={clientOrdersScrollRef} className="max-h-44 overflow-y-auto">
-                <table className="w-full table-fixed text-xs">
-                  <thead>
-                    <SortableTableHeaderRow
-                      columns={clientOrdersTableColumns}
-                      sortColumn={clientSortColumn}
-                      sortDirection={clientSortDirection}
-                      onSort={toggleClientSort}
-                      className="border-b border-border"
-                    />
-                  </thead>
-                  <tbody>
-                    {sortedClientOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground text-center">
-                          {t('overview.noOrdersOnHand')}
-                        </td>
-                      </tr>
-                    ) : null}
-                    {clientOrdersScroll.visibleItems.map(o => {
-                      const value = clientOrderTotal(o);
-                      const opening = openingClientOrderId === o.id;
-                      return (
-                        <tr
-                          key={o.id}
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`Open order on hand ${o.orderNumber}`}
-                          onClick={() => void openClientOrder(o)}
-                          onKeyDown={event => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              void openClientOrder(o);
-                            }
-                          }}
-                          className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${opening ? 'bg-primary/5' : ''} ${selectedClientOrder?.id === o.id ? 'bg-primary/10' : ''}`}
-                        >
-                          <td className="px-3 py-1.5 font-sans text-primary">{o.orderNumber}</td>
-                          <td className="px-3 py-1.5">{o.customerName}</td>
-                          <td className="px-3 py-1.5 font-sans text-muted-foreground">{clientOrderDate(o)}</td>
-                          <td className="px-3 py-1.5 font-sans">{rm(value)}</td>
-                          <td className="px-3 py-1.5">
-                            <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <InfiniteScrollTableSentinel colSpan={5} hasMore={clientOrdersScroll.hasMore} onLoadMore={clientOrdersScroll.loadMore} nextPageSize={clientOrdersScroll.nextPageSize} sentinelRef={clientOrdersScroll.sentinelRef} totalCount={clientOrdersScroll.totalCount} visibleCount={clientOrdersScroll.visibleCount} />
-                  </tbody>
-                </table>
-              </TableScrollContainer>
-            </div>
+                    );
+                  })}
+                  <InfiniteScrollTableSentinel colSpan={5} hasMore={clientOrdersScroll.hasMore} onLoadMore={clientOrdersScroll.loadMore} nextPageSize={clientOrdersScroll.nextPageSize} sentinelRef={clientOrdersScroll.sentinelRef} totalCount={clientOrdersScroll.totalCount} visibleCount={clientOrdersScroll.visibleCount} />
+                </tbody>
+              </table>
+            </TableScrollContainer>
           </div>
         );
       default:

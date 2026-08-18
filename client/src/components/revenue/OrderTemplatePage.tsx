@@ -197,7 +197,7 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
       setVendors([]);
       return;
     }
-    api.vendors()
+    api.vendors(true, selectedCompanyId)
       .then(setVendors)
       .catch(() => setVendors([]));
   }, [selectedCompanyId]);
@@ -219,8 +219,14 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
   }, [orgReady, selectedCompanyId, selectedLocationIds]);
 
   const vendorOptions = useMemo(
-    () => resolveVendorsForSelectedLocations(components, selectedLocationIds, vendors, orgPolicyTags),
-    [components, selectedLocationIds, vendors, orgPolicyTags],
+    () => resolveVendorsForSelectedLocations(
+      components,
+      selectedLocationIds,
+      vendors,
+      orgPolicyTags,
+      selectedCompanyId,
+    ),
+    [components, selectedLocationIds, vendors, orgPolicyTags, selectedCompanyId],
   );
 
   const vendorProductCatalog = useMemo(

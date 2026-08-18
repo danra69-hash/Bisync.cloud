@@ -70,10 +70,17 @@ public static class EmployeeSeeder
 
     public static async Task SeedAsync(BisyncDbContext db)
     {
+        var existingCompanyIds = await db.Companies.AsNoTracking()
+            .Select(c => c.Id)
+            .ToHashSetAsync();
         var locationIdsByExternalId = await LoadLocationIdsAsync(db);
 
         foreach (var seed in Seeds)
         {
+            // Hardcoded demo CompanyIds (1/2/3) — skip when those shells were wiped.
+            if (!existingCompanyIds.Contains(seed.CompanyId))
+                continue;
+
             var employee = await db.Employees
                 .Include(e => e.LeaveBalance)
                 .FirstOrDefaultAsync(e => e.Email == seed.Email);
@@ -88,7 +95,6 @@ public static class EmployeeSeeder
             {
                 EmployeeCode = await EmployeeCodeGenerator.NextCodeAsync(db),
                 Email = seed.Email,
-                LeaveBalance = new LeaveBalance { AlBalance = 16 },
             };
             db.Employees.Add(employee);
 
@@ -121,14 +127,26 @@ public static class EmployeeSeeder
             employee.PayrollPin = EmployeesController.DefaultPayrollPin;
             employee.PayrollPinMustChange = true;
 
+            EmployeeLevel? level = null;
+            if (employee.EmployeeLevelId is int levelId)
+                level = await db.EmployeeLevels.FindAsync(levelId);
+
+            employee.LeaveBalance = new LeaveBalance
+            {
+                AlBalance = level is null
+                    ? 0
+                    : AnnualLeaveEntitlement.ResolveOpeningBalanceDays(
+                        level.AnnualLeaveRulesJson,
+                        employee.JoinDate,
+                        level.AnnualLeaveDays,
+                        level.AnnualLeaveEnabled),
+                AlCarryForward = seed.PosEnabled ? 3 : 0,
+            };
+
             await db.SaveChangesAsync();
 
-            if (employee.EmployeeLevelId is int levelId)
-            {
-                var level = await db.EmployeeLevels.FindAsync(levelId);
-                if (level is not null)
-                    EmployeeShiftSync.ApplyFromLevel(employee, level);
-            }
+            if (level is not null)
+                EmployeeShiftSync.ApplyFromLevel(employee, level);
 
             await db.SaveChangesAsync();
             await EmployeeAppUserSync.SyncAsync(db, employee, seed.CompanyId);
@@ -145,7 +163,32 @@ public static class EmployeeSeeder
     {
         if (employee.LeaveBalance is null)
         {
-            employee.LeaveBalance = new LeaveBalance { AlBalance = 16 };
+            EmployeeLevel? level = null;
+            if (employee.EmployeeLevelId is int levelId)
+                level = await db.EmployeeLevels.FindAsync(levelId);
+            else
+            {
+                var resolvedLevelId = await ResolveEmployeeLevelIdAsync(db, seed.EmployeeLevelId);
+                if (resolvedLevelId is int rid)
+                    level = await db.EmployeeLevels.FindAsync(rid);
+            }
+
+            employee.LeaveBalance = new LeaveBalance
+            {
+                AlBalance = level is null
+                    ? 0
+                    : AnnualLeaveEntitlement.ResolveOpeningBalanceDays(
+                        level.AnnualLeaveRulesJson,
+                        employee.JoinDate != default ? employee.JoinDate : seed.JoinDate,
+                        level.AnnualLeaveDays,
+                        level.AnnualLeaveEnabled),
+                AlCarryForward = seed.PosEnabled ? 3 : 0,
+            };
+            await db.SaveChangesAsync();
+        }
+        else if (seed.PosEnabled && employee.LeaveBalance.AlCarryForward <= 0)
+        {
+            employee.LeaveBalance.AlCarryForward = 3;
             await db.SaveChangesAsync();
         }
 

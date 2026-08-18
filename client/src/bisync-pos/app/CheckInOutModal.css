@@ -1,0 +1,240 @@
+.checkin-modal {
+  /* Prefer POS visual-viewport tokens; fall back to measured --checkin-vh. */
+  --checkin-vh: var(--pos-vh, 100dvh);
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding:
+    max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  /* Prefer the live visual viewport on Android Chrome (URL bar / soft UI). */
+  height: 100%;
+  height: var(--checkin-vh);
+  max-height: 100%;
+  max-height: var(--checkin-vh);
+  box-sizing: border-box;
+}
+
+.checkin-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(16, 24, 40, 0.5);
+  cursor: pointer;
+}
+
+.checkin-modal__card {
+  position: relative;
+  width: min(420px, calc(100vw - 16px));
+  max-height: calc(var(--checkin-vh) - 16px);
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.checkin-modal__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checkin-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.checkin-modal__header h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+}
+
+.checkin-modal__header p {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--pos-font-sm);
+  line-height: 1.35;
+}
+
+.checkin-modal__close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.checkin-modal__status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  font-size: var(--pos-font-sm);
+}
+
+.checkin-modal__status strong {
+  font-size: var(--pos-font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-muted);
+}
+
+.checkin-modal__qr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-1) 0;
+}
+
+.checkin-modal__qr-block img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  display: block;
+  background: #fff;
+  border: 1px solid var(--color-border);
+}
+
+.checkin-modal__qr-code {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: var(--pos-font-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.checkin-modal__qr-hint {
+  font-size: var(--pos-font-xs);
+  color: var(--color-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* PIN + keypad stay pinned to the bottom so Android never clips the last row. */
+.checkin-modal__pin-block {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-2) var(--space-4)
+    max(var(--space-3), env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.checkin-modal__pin-block > label {
+  font-size: var(--pos-font-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-muted);
+}
+
+.checkin-modal__pin-dots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+
+.checkin-modal__pin-dots span {
+  height: 40px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  display: grid;
+  place-items: center;
+  font-size: 1.25rem;
+  color: var(--color-ink);
+}
+
+.checkin-modal__pin-dots span.is-filled {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.checkin-modal__keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.checkin-modal__key {
+  height: 44px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.checkin-modal__key:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.checkin-modal__key:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.checkin-modal__key.is-action {
+  font-size: 0.9rem;
+  color: var(--color-ink-muted);
+}
+
+.checkin-modal__error {
+  margin: 0;
+  color: #b42318;
+  font-size: var(--pos-font-sm);
+  font-weight: 650;
+}
+
+.checkin-modal__busy {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--pos-font-sm);
+}
+
+.checkin-modal.is-compact .checkin-modal__header p {
+  font-size: var(--pos-font-xs);
+}
+
+.checkin-modal.is-compact .checkin-modal__pin-dots span {
+  height: 34px;
+}
+
+.checkin-modal.is-compact .checkin-modal__key {
+  height: 40px;
+}
+
+.checkin-modal.is-compact .checkin-modal__status {
+  padding: 6px 8px;
+}

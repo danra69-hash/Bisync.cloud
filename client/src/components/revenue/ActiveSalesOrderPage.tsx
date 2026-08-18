@@ -15,8 +15,8 @@ import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
-import { pageShellClass } from '../layout/pageLayout';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { pageShellClass, TABLE_COL_ACTION } from '../layout/pageLayout';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
@@ -30,15 +30,64 @@ type Props = {
 
 type SortColumn = 'orderNumber' | 'customer' | 'status' | 'items' | 'total' | 'updated' | 'action';
 
-const COLUMNS: SortableColumnDef<SortColumn>[] = [
-  { key: 'orderNumber', label: 'SO Number' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'status', label: 'Status' },
-  { key: 'items', label: 'Items', align: 'right' },
-  { key: 'total', label: 'Total', align: 'right' },
-  { key: 'updated', label: 'Updated' },
-  { key: 'action', label: 'Action', sortable: false },
+type SalesSummaryBucket = 'pending_approval' | 'issued' | 'confirmed' | 'expired';
+
+const SALES_SUMMARY_BOXES: {
+  id: SalesSummaryBucket;
+  label: string;
+  empty: string;
+  hint: string;
+}[] = [
+  {
+    id: 'pending_approval',
+    label: 'Pending Approval',
+    empty: 'No draft sales orders awaiting issue.',
+    hint: 'Drafts waiting to be issued to the client.',
+  },
+  {
+    id: 'issued',
+    label: 'Issued',
+    empty: 'No issued sales orders awaiting client acceptance.',
+    hint: 'Client must accept within 7 working days.',
+  },
+  {
+    id: 'confirmed',
+    label: 'Confirmed',
+    empty: 'No client-confirmed sales orders.',
+    hint: 'Accepted by client — ready for fulfillment.',
+  },
+  {
+    id: 'expired',
+    label: 'Expired',
+    empty: 'No expired sales orders.',
+    hint: 'Client did not accept within 7 working days — holdout released.',
+  },
 ];
+
+const COLUMNS: SortableColumnDef<SortColumn>[] = [
+  { key: 'orderNumber', label: 'SO Number', ...tableColWidth('14%') },
+  { key: 'customer', label: 'Customer', ...tableColWidth('22%') },
+  { key: 'status', label: 'Status', ...tableColWidth('12%') },
+  { key: 'items', label: 'Items', align: 'right', ...tableColWidth('8%') },
+  { key: 'total', label: 'Total', align: 'right', ...tableColWidth('12%') },
+  { key: 'updated', label: 'Updated', ...tableColWidth('14%') },
+  { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
+];
+
+export function resolveActiveSalesBucket(order: Pick<B2bSalesOrder, 'status'>): SalesSummaryBucket | null {
+  switch (order.status) {
+    case 'draft':
+      return 'pending_approval';
+    case 'issued':
+      return 'issued';
+    case 'confirmed':
+      return 'confirmed';
+    case 'expired':
+      return 'expired';
+    default:
+      return null;
+  }
+}
 
 function orderTotal(order: B2bSalesOrder): number {
   return (order.lines ?? []).reduce((sum, line) => sum + line.quantityOrdered * line.rrp, 0);
@@ -99,6 +148,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
   const [busyId, setBusyId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [showCreateSalesOrder, setShowCreateSalesOrder] = useState(false);
+  const [selectedBucket, setSelectedBucket] = useState<SalesSummaryBucket | null>(null);
   const { sortColumn, sortDirection, toggleSort } = useTableSort<SortColumn>();
   const scrollRootRef = useRef<HTMLDivElement>(null);
 
@@ -112,7 +162,10 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
     try {
       const rows = await api.b2bSalesOrders(selectedCompanyId);
       const active = rows.filter(o =>
-        o.status === 'draft' || o.status === 'issued' || o.status === 'confirmed',
+        o.status === 'draft'
+        || o.status === 'issued'
+        || o.status === 'confirmed'
+        || o.status === 'expired',
       );
       setOrders(active);
     } catch (err) {
@@ -144,8 +197,27 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
     void loadCustomers();
   }, [loadCustomers]);
 
+  const bucketed = useMemo(() => {
+    const map: Record<SalesSummaryBucket, B2bSalesOrder[]> = {
+      pending_approval: [],
+      issued: [],
+      confirmed: [],
+      expired: [],
+    };
+    for (const order of orders) {
+      const bucket = resolveActiveSalesBucket(order);
+      if (bucket) map[bucket].push(order);
+    }
+    return map;
+  }, [orders]);
+
+  const filteredOrders = useMemo(
+    () => (selectedBucket ? bucketed[selectedBucket] : orders),
+    [bucketed, orders, selectedBucket],
+  );
+
   const sorted = useMemo(() => {
-    return sortTableRows(orders, sortColumn, sortDirection, {
+    return sortTableRows(filteredOrders, sortColumn, sortDirection, {
       orderNumber: order => order.orderNumber,
       customer: order => order.customerName,
       status: order => statusLabel(order.status),
@@ -153,7 +225,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
       total: order => orderTotal(order),
       updated: order => order.updatedAt,
     });
-  }, [orders, sortColumn, sortDirection]);
+  }, [filteredOrders, sortColumn, sortDirection]);
 
   const {
     visibleItems,
@@ -225,7 +297,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
     <div className={pageShellClass()}>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <p className="text-xs text-muted-foreground">
-          Draft orders await approval. Issued orders are locked for fulfillment.
+          Draft orders await approval. Issued orders lock stock for client acceptance within 7 working days.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -248,12 +320,40 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
         </div>
       </div>
 
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+        {SALES_SUMMARY_BOXES.map(box => {
+          const count = bucketed[box.id].length;
+          const selected = selectedBucket === box.id;
+          return (
+            <button
+              key={box.id}
+              type="button"
+              title={box.hint}
+              onClick={() => setSelectedBucket(prev => (prev === box.id ? null : box.id))}
+              className={[
+                'rounded-lg border px-3 py-2 text-left transition-colors',
+                selected
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border bg-card hover:bg-muted/40',
+              ].join(' ')}
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{box.label}</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">{count}</p>
+              {count === 0 ? (
+                <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{box.empty}</p>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
       {error ? (
         <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
       ) : null}
 
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full text-xs">
+          <TableColGroup columns={COLUMNS} />
           <thead className="bg-muted/30">
             <SortableTableHeaderRow
               columns={COLUMNS}

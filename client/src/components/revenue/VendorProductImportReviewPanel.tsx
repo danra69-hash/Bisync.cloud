@@ -9,6 +9,7 @@ import {
 } from '../../data/vendorProductImportCatalog';
 import type { VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import {
   SIDE_PANEL_OVERLAY_CLS,
   SIDE_PANEL_SHELL_CREATE_VENDOR_CLS,
@@ -18,7 +19,10 @@ import { VendorProductImportNewProductsPanel } from './VendorProductImportNewPro
 
 type Props = {
   plan: VendorProductImportPlan;
-  vendor: Vendor;
+  /** Fallback vendor for legacy single-vendor imports. */
+  vendor?: Vendor;
+  /** Full vendor list for multi-vendor CSV apply. */
+  vendors?: Vendor[];
   existingProducts: VendorProductCatalogItem[];
   groupOptions: string[];
   onClose: () => void;
@@ -28,6 +32,7 @@ type Props = {
 export function VendorProductImportReviewPanel({
   plan,
   vendor,
+  vendors,
   existingProducts,
   groupOptions,
   onClose,
@@ -96,7 +101,10 @@ export function VendorProductImportReviewPanel({
     const planToApply: VendorProductImportPlan = { ...workingPlan, creates };
 
     try {
-      await applyVendorProductImportPlan(planToApply, vendor);
+      await applyVendorProductImportPlan(planToApply, {
+        defaultVendor: vendor,
+        vendors: vendors ?? (vendor ? [vendor] : []),
+      });
       onApplied();
       onClose();
     } catch (err) {
@@ -141,7 +149,9 @@ export function VendorProductImportReviewPanel({
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Vendor Product Import</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5">Review Template Changes</h3>
             <p className="text-xs text-muted-foreground font-sans mt-1">
-              {vendor.name} · {vendor.externalId}
+              {vendor
+                ? `${vendor.name} · ${vendor.externalId}`
+                : `${vendors?.length ?? 0} vendor${(vendors?.length ?? 0) === 1 ? '' : 's'} in catalog`}
             </p>
           </div>
           <button type="button" onClick={() => !saving && onClose()} className="p-1.5 rounded-md hover:bg-muted transition-colors shrink-0">
@@ -203,6 +213,7 @@ export function VendorProductImportReviewPanel({
               <div className="border border-border rounded-lg overflow-hidden">
                 <div className="overflow-auto max-h-72">
                   <table className="w-full text-xs">
+                    <ColGroup widths={['18%', '24%', '58%']} />
                     <thead className="bg-muted/40 sticky top-0">
                       <tr className="border-b border-border">
                         <TableHeaderCell>Vendor Product ID</TableHeaderCell>

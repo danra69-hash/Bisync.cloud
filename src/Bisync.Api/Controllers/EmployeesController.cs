@@ -2,6 +2,7 @@ using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,6 +18,10 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IEnumerable<Employee>> GetAll([FromQuery] string? department, [FromQuery] bool? shift)
     {
+        // EmployeeLevel Include requires leave Include columns present on EmployeeLevels.
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+
         var query = db.Employees.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(department))
             query = query.Where(e => e.Department == department);
@@ -61,20 +66,27 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
             return BadRequest("Employee level not found.");
 
         var employee = new Employee { EmployeeCode = await EmployeeCodeGenerator.NextCodeAsync(db) };
+        if (!string.IsNullOrWhiteSpace(request.PersonalEmail)
+            && !new EmailAddressAttribute().IsValid(request.PersonalEmail.Trim()))
+            return BadRequest("Personal email is not a valid e-mail address.");
+
         if (!await ApplyAsync(employee, request))
             return BadRequest("A valid department is required.");
         await ApplyShiftFromLevel(employee);
-        // Every employee gets a balance row; AL starts from the level tenure band for years of service.
+        // Every employee gets a balance row; AL is the tenure-band entitlement pro-rated
+        // for the current operating year (not a full-year lumpsum for mid-year joiners).
         var level = request.EmployeeLevelId is int assignedLevelId
             ? await db.EmployeeLevels.FindAsync(assignedLevelId)
             : null;
-        var yearsOfService = YearsOfServiceFromJoinDate(employee.JoinDate);
         employee.LeaveBalance = new LeaveBalance
         {
-            AlBalance = LeaveTenureRules.ResolveDays(
-                level?.AnnualLeaveRulesJson,
-                yearsOfService,
-                level?.AnnualLeaveDays ?? 0),
+            AlBalance = level is null
+                ? 0
+                : AnnualLeaveEntitlement.ResolveOpeningBalanceDays(
+                    level.AnnualLeaveRulesJson,
+                    employee.JoinDate,
+                    level.AnnualLeaveDays,
+                    level.AnnualLeaveEnabled),
         };
 
         db.Employees.Add(employee);
@@ -96,6 +108,10 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         if (request.EmployeeLevelId is int levelId &&
             !await db.EmployeeLevels.AnyAsync(l => l.Id == levelId))
             return BadRequest("Employee level not found.");
+
+        if (!string.IsNullOrWhiteSpace(request.PersonalEmail)
+            && !new EmailAddressAttribute().IsValid(request.PersonalEmail.Trim()))
+            return BadRequest("Personal email is not a valid e-mail address.");
 
         if (!await ApplyAsync(employee, request))
             return BadRequest("A valid department is required.");
@@ -130,6 +146,28 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         return employee;
     }
 
+    /// <summary>
+    /// Set the employee's POS unlock PIN (also used by Team mobile PIN). Enables POS when needed.
+    /// </summary>
+    [HttpPost("{id:int}/set-pos-pin")]
+    public async Task<ActionResult<Employee>> SetPosPin(int id, PosPinVerifyRequest request)
+    {
+        var employee = await db.Employees.FindAsync(id);
+        if (employee is null) return NotFound();
+
+        var pin = (request.Pin ?? string.Empty).Trim();
+        if (pin.Length != 4 || !pin.All(char.IsDigit))
+            return BadRequest("POS PIN must be exactly 4 digits.");
+
+        employee.PosEnabled = true;
+        employee.PosPin = pin;
+        employee.PosPinMustChange = false;
+        if (employee.CheckinMethod != CheckinMethod.POS)
+            employee.CheckinMethod = CheckinMethod.POS;
+        await db.SaveChangesAsync();
+        return employee;
+    }
+
     [HttpPost("{id:int}/verify-payroll-pin")]
     public async Task<ActionResult<PayrollPinVerifyResult>> VerifyPayrollPin(int id, PayrollPinVerifyRequest request)
     {
@@ -145,6 +183,35 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
             return BadRequest("Payroll PIN must be exactly 6 digits.");
 
         return new PayrollPinVerifyResult { Valid = employee.PayrollPin == pin };
+    }
+
+    /// <summary>
+    /// Resolve a POS-enabled employee by 4-digit PIN (used for Check in/out duty activation).
+    /// </summary>
+    [HttpPost("verify-pos-pin")]
+    public async Task<ActionResult<PosPinVerifyResult>> VerifyPosPin(PosPinVerifyRequest request)
+    {
+        var pin = (request.Pin ?? string.Empty).Trim();
+        if (pin.Length != 4 || !pin.All(char.IsDigit))
+            return BadRequest("POS PIN must be exactly 4 digits.");
+
+        var match = await db.Employees.AsNoTracking()
+            .Where(e => e.Active && e.PosEnabled && e.PosPin == pin)
+            .OrderBy(e => e.EmployeeCode)
+            .Select(e => new { e.Id, e.Name, e.EmployeeCode, e.PosPinMustChange })
+            .FirstOrDefaultAsync();
+
+        if (match is null)
+            return new PosPinVerifyResult { Valid = false };
+
+        return new PosPinVerifyResult
+        {
+            Valid = true,
+            EmployeeId = match.Id,
+            EmployeeName = match.Name,
+            EmployeeCode = match.EmployeeCode,
+            MustChangePin = match.PosPinMustChange,
+        };
     }
 
     [HttpPost("{id:int}/reset-payroll-pin")]
@@ -274,19 +341,6 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         return NoContent();
     }
 
-    private static decimal YearsOfServiceFromJoinDate(DateOnly joinDate)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (joinDate >= today) return 0;
-        var years = today.Year - joinDate.Year;
-        var anniversary = joinDate.AddYears(years);
-        if (anniversary > today) years--;
-        var partialAnniversary = joinDate.AddYears(Math.Max(0, years));
-        var daysInYear = DateTime.IsLeapYear(today.Year) ? 366d : 365d;
-        var partial = Math.Clamp(today.DayNumber - partialAnniversary.DayNumber, 0, 366) / daysInYear;
-        return Math.Round(Math.Max(0, years + (decimal)partial), 1);
-    }
-
     private async Task<bool> ApplyAsync(Employee employee, EmployeeRequest request)
     {
         employee.Name = request.Name;
@@ -306,7 +360,9 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         employee.Nationality = request.Nationality;
         employee.IdPassportNumber = request.IdPassportNumber;
         employee.DateOfBirth = request.DateOfBirth;
-        employee.PersonalEmail = request.PersonalEmail;
+        employee.PersonalEmail = string.IsNullOrWhiteSpace(request.PersonalEmail)
+            ? null
+            : request.PersonalEmail.Trim();
         employee.PermanentAddress = request.PermanentAddress;
         employee.MaritalStatus = string.IsNullOrWhiteSpace(request.MaritalStatus) ? null : request.MaritalStatus.Trim();
         employee.BankName = request.BankName?.Trim();

@@ -8,6 +8,7 @@ import {
 } from '../../data/qaAuditTrail';
 import type { QaStatus, QaTaskResult } from '../../data/devQaRunner';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 const STATUS_DOT: Record<QaStatus, string> = {
   pending: 'bg-muted-foreground/40',
@@ -187,7 +188,7 @@ function TrailDetailPanel({
   );
 }
 
-export function AuditTrailPanel() {
+export function AuditTrailPanel({ embedded = false }: { embedded?: boolean }) {
   const [history, setHistory] = useState<DevQaHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -229,28 +230,47 @@ export function AuditTrailPanel() {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-sm font-semibold inline-flex items-center gap-2">
-            <ClipboardList size={14} className="text-muted-foreground" />
-            QA History
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            History and results of Automated QA runs as they happen — task outcomes, seals,
-            and whether temporary QA operational data is still active or has disappeared.
-            This is separate from platform Audit Trail (login / DB / computation).
-          </p>
+      {!embedded && (
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold inline-flex items-center gap-2">
+              <ClipboardList size={14} className="text-muted-foreground" />
+              QA History
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
+              History and results of Automated QA runs as they happen — task outcomes, seals,
+              and whether temporary QA operational data is still active or has disappeared.
+              This is separate from platform Audit Trail (login / DB / computation).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadHistory()}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadHistory()}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw size={13} />
-          Refresh
-        </button>
-      </div>
+      )}
+
+      {embedded && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-[11px] text-muted-foreground max-w-3xl">
+            Results of completed Automated QA runs. Successful runs permanently delete operational data; only these history rows remain.
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadHistory()}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-muted/20">
@@ -273,6 +293,7 @@ export function AuditTrailPanel() {
 
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <table className="w-full text-xs">
+          <ColGroup widths={['14%', '10%', '10%', '14%', '18%', '34%']} />
           <thead>
             <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground">
               <th className="px-3 py-2 font-medium">When</th>

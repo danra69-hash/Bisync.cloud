@@ -69,6 +69,23 @@ public class PosVoid
     public long AmountCents { get; set; }
     public string Reason { get; set; } = string.Empty;
     public DateTimeOffset VoidedAt { get; set; } = DateTimeOffset.UtcNow;
+    /// <summary>Staff who authorized the void.</summary>
+    public string AuthorizedBy { get; set; } = string.Empty;
+}
+
+/// <summary>Canceled fired line (under 5 minutes) — reference only, no stock depletion.</summary>
+public class PosCancel
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string LocationExternalId { get; set; } = string.Empty;
+    public string ExternalId { get; set; } = string.Empty;
+    public int CheckNumber { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public long AmountCents { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string CanceledBy { get; set; } = string.Empty;
+    public DateTimeOffset CanceledAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 /// <summary>End-of-day confirmation checklist per location / business date.</summary>

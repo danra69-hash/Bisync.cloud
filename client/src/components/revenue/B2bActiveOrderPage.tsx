@@ -15,9 +15,10 @@ import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { TABLE_COL_ACTION } from '../layout/pageLayout';
 import { ProduceBatchModal, type ProduceConfirmPayload } from './ProduceBatchModal';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { ActiveSalesInboundPanel } from './ActiveSalesInboundPanel';
@@ -61,14 +62,14 @@ type SortColumn =
   | 'action';
 
 const COLUMNS: SortableColumnDef<SortColumn>[] = [
-  { key: 'orderNumber', label: 'SO Number' },
-  { key: 'orderDate', label: 'Order Date' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'product', label: 'Product' },
-  { key: 'lockPeriod', label: 'Lock Period' },
-  { key: 'qtyOrdered', label: 'QTY Ordered', align: 'right' },
-  { key: 'stockAvailable', label: 'Stock on Hand', align: 'right' },
-  { key: 'action', label: 'Action', sortable: false },
+  { key: 'orderNumber', label: 'SO Number', ...tableColWidth('12%') },
+  { key: 'orderDate', label: 'Order Date', ...tableColWidth('11%') },
+  { key: 'customer', label: 'Customer', ...tableColWidth('16%') },
+  { key: 'product', label: 'Product', ...tableColWidth('18%') },
+  { key: 'lockPeriod', label: 'Holdout Period', ...tableColWidth('12%') },
+  { key: 'qtyOrdered', label: 'QTY Ordered', align: 'right', ...tableColWidth('10%') },
+  { key: 'stockAvailable', label: 'Stock on Hand', align: 'right', ...tableColWidth('10%') },
+  { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
 ];
 
 const actionBtnCls =
@@ -79,6 +80,10 @@ const readyToShipBtnCls =
   `${actionBtnCls} border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700`;
 const readyDoneBtnCls =
   `${actionBtnCls} border-emerald-300 bg-emerald-100 text-emerald-800`;
+const issueDoBtnCls =
+  `${actionBtnCls} border-sky-700 bg-sky-600 text-white hover:bg-sky-700`;
+const confirmReceiptBtnCls =
+  `${actionBtnCls} border-violet-700 bg-violet-600 text-white hover:bg-violet-700`;
 
 function isSummaryStockRow(row: ProductManagementSummary): boolean {
   return row.isSummaryRow === true || (row.batchLogId == null && row.isSummaryRow !== false);
@@ -157,7 +162,9 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
   const [pendingEngagements, setPendingEngagements] = useState<VendorEngagement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busyLineId, setBusyLineId] = useState<number | null>(null);
+  const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   const [produceTarget, setProduceTarget] = useState<ProduceTarget | null>(null);
   const [produceSaving, setProduceSaving] = useState(false);
   const [produceError, setProduceError] = useState<string | null>(null);
@@ -303,6 +310,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
   async function handleReadyToShip(row: ActiveOrderLineRow) {
     setBusyLineId(row.line.id);
     setError(null);
+    setInfo(null);
     try {
       const updated = await api.markB2bSalesOrderLineReadyToShip(row.order.id, row.line.id);
       setOrders(prev => prev.map(order => (order.id === updated.id ? updated : order)));
@@ -310,6 +318,40 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
       setError(err instanceof Error ? err.message : 'Failed to mark line ready to ship.');
     } finally {
       setBusyLineId(null);
+    }
+  }
+
+  async function handleIssueDeliveryOrder(order: B2bSalesOrder) {
+    setBusyOrderId(order.id);
+    setError(null);
+    setInfo(null);
+    try {
+      const result = await api.issueB2bDeliveryOrder(order.id);
+      setOrders(prev => prev.map(row => (row.id === result.order.id ? result.order : row)));
+      setInfo(`Delivery Order ${result.deliveryOrder.doNumber} issued (no price). Holdout stays until receipt.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to issue delivery order.');
+    } finally {
+      setBusyOrderId(null);
+    }
+  }
+
+  async function handleConfirmReceipt(order: B2bSalesOrder) {
+    if (!order.deliveryOrderId) {
+      setError('Issue a Delivery Order before confirming receipt.');
+      return;
+    }
+    setBusyOrderId(order.id);
+    setError(null);
+    setInfo(null);
+    try {
+      const updated = await api.confirmB2bDeliveryOrderReceipt(order.deliveryOrderId);
+      setOrders(prev => prev.filter(row => row.id !== updated.id));
+      setInfo(`${updated.orderNumber} marked sold on stock card with DO reference.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm delivery receipt.');
+    } finally {
+      setBusyOrderId(null);
     }
   }
 
@@ -484,9 +526,13 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
       ) : null}
+      {info ? (
+        <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">{info}</p>
+      ) : null}
 
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-18rem)] overflow-y-auto">
         <table className="w-full text-xs">
+          <TableColGroup columns={COLUMNS} />
           <thead className="bg-muted/30">
             <SortableTableHeaderRow
               columns={COLUMNS}
@@ -508,7 +554,14 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
             ) : visibleItems.map(row => {
               const ready = isLineReady(row.line);
               const shortStock = row.stockAvailable < row.line.quantityOrdered;
-              const lineBusy = busyLineId === row.line.id;
+              const lineBusy = busyLineId === row.line.id || busyOrderId === row.order.id;
+              const hasHoldout = (row.order.lines ?? []).some(line => (line.quantityLocked ?? 0) > 0);
+              const canIssueDo = (row.order.status === 'confirmed' || row.order.status === 'issued')
+                && hasHoldout
+                && !row.order.deliveryOrderId;
+              const canConfirmReceipt = Boolean(row.order.deliveryOrderId)
+                && row.order.status !== 'fulfilled';
+              const showOrderDoActions = (row.order.lines ?? []).findIndex(line => line.id === row.line.id) === 0;
               const canMarkReady = (row.order.status || '').toLowerCase() === 'confirmed';
               const isOnline = (row.order.source || '').toLowerCase() === 'online_order';
               return (
@@ -570,6 +623,31 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
                             ? 'Ready'
                             : 'Ready to Ship'}
                       </button>
+                      {showOrderDoActions && canIssueDo ? (
+                        <button
+                          type="button"
+                          disabled={lineBusy}
+                          onClick={() => void handleIssueDeliveryOrder(row.order)}
+                          className={issueDoBtnCls}
+                          title="Issue price-less Delivery Order from Holdout"
+                        >
+                          Issue DO
+                        </button>
+                      ) : null}
+                      {showOrderDoActions && canConfirmReceipt ? (
+                        <button
+                          type="button"
+                          disabled={lineBusy}
+                          onClick={() => void handleConfirmReceipt(row.order)}
+                          className={confirmReceiptBtnCls}
+                          title="Confirm customer receipt — Holdout becomes sold with DO on stock card"
+                        >
+                          Confirm Receipt
+                        </button>
+                      ) : null}
+                      {showOrderDoActions && row.order.deliveryOrderIssued && !canConfirmReceipt ? (
+                        <p className="text-[10px] text-muted-foreground text-center">DO issued</p>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

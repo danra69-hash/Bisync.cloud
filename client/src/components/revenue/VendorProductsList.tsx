@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
@@ -43,16 +43,68 @@ type VendorProductSortColumn =
 
 function vendorProductColumns(showVendorColumn: boolean): SortableColumnDef<VendorProductSortColumn>[] {
   const cols: SortableColumnDef<VendorProductSortColumn>[] = [
-    { key: 'productName', label: 'Vendor Product Name' },
-    { key: 'photo', label: 'Photo', sortable: false, className: 'w-12' },
-    { key: 'id', label: 'Vendor Product ID' },
-    { key: 'group', label: 'Group' },
-    { key: 'specification', label: 'Product Specification' },
-    { key: 'deliveryUnit', label: 'Delivery Unit' },
-    { key: 'deliveryPrice', label: 'Delivery Price', align: 'right' },
+    {
+      key: 'productName',
+      label: 'Vendor Product Name',
+      className: 'w-[18%]',
+      style: { width: showVendorColumn ? '16%' : '20%' },
+    },
+    {
+      key: 'photo',
+      label: 'Photo',
+      sortable: false,
+      align: 'center',
+      className: 'w-[72px]',
+      style: { width: '72px' },
+    },
+    {
+      key: 'id',
+      label: 'Vendor Product ID',
+      className: 'w-[11%]',
+      style: { width: showVendorColumn ? '10%' : '12%' },
+    },
+    {
+      key: 'group',
+      label: 'Group',
+      className: 'w-[9%]',
+      style: { width: showVendorColumn ? '8%' : '10%' },
+    },
+    {
+      key: 'specification',
+      label: 'Product Specification',
+      className: 'w-[18%]',
+      style: { width: showVendorColumn ? '14%' : '20%' },
+    },
+    {
+      key: 'deliveryUnit',
+      label: 'Delivery Unit',
+      className: 'w-[12%]',
+      style: { width: showVendorColumn ? '10%' : '12%' },
+    },
+    {
+      key: 'deliveryPrice',
+      label: 'Delivery Price',
+      align: 'right',
+      className: 'w-[9%]',
+      style: { width: showVendorColumn ? '8%' : '10%' },
+    },
   ];
-  if (showVendorColumn) cols.push({ key: 'vendor', label: 'Vendor' });
-  cols.push({ key: 'tag', label: 'Tag', sortable: false });
+  if (showVendorColumn) {
+    cols.push({
+      key: 'vendor',
+      label: 'Vendor',
+      className: 'w-[14%]',
+      style: { width: '14%' },
+    });
+  }
+  cols.push({
+    key: 'tag',
+    label: 'Tag',
+    sortable: false,
+    align: 'center',
+    className: 'w-[88px]',
+    style: { width: '88px' },
+  });
   return cols;
 }
 
@@ -82,7 +134,7 @@ export function VendorProductsList({
   engageVendorRequest,
   onEngageVendorRequestHandled,
 }: Props) {
-  const { rm } = useCountryFormatters();
+  const { deliveryPrice } = useCountryFormatters();
   const [vendorMap, setVendorMap] = useState(() => new Map(vendors.map(v => [v.externalId, v])));
   const [engageVendor, setEngageVendor] = useState<Vendor | null>(null);
   const [engaging, setEngaging] = useState(false);
@@ -142,7 +194,7 @@ export function VendorProductsList({
       setTaggedProductIds(new Set());
       return;
     }
-    void resyncStaleTaggedComponentPrices().finally(() => {
+    void resyncStaleTaggedComponentPrices(selectedCompanyId).finally(() => {
       void loadTaggedState();
     });
   }, [selectedCompanyId, productIds, products]);
@@ -370,7 +422,8 @@ export function VendorProductsList({
     <>
       <div className="border border-border rounded-lg overflow-hidden">
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs border-collapse">
+          <table className="w-full text-xs border-collapse">
+            <TableColGroup columns={tableColumns} />
             <thead className="bg-muted/40">
               <SortableTableHeaderRow
                 columns={tableColumns}
@@ -388,52 +441,61 @@ export function VendorProductsList({
                 const isEngaged = vendor.engaged;
                 return (
                   <tr key={product.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${isTagged ? 'bg-primary/[0.03]' : ''}`}>
-                    <td className="px-3 py-2.5 border-r border-border ">
+                    <td className="px-3 py-2.5 border-r border-border align-top min-w-0">
                       <button
                         type="button"
                         onClick={e => handleProductNameClick(e, product)}
                         title="View vendor product details"
-                        className="text-left font-medium text-foreground hover:text-primary hover:underline transition-colors"
+                        className="text-left font-medium text-foreground hover:text-primary hover:underline transition-colors break-words [overflow-wrap:anywhere]"
                       >
-                        <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-start gap-1.5 flex-wrap">
                           {product.productName}
                           {product.isPrivate && (
-                            <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 uppercase tracking-wide">
+                            <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 uppercase tracking-wide shrink-0">
                               Private
                             </span>
                           )}
                         </span>
                       </button>
                     </td>
-                    <td className="px-3 py-2.5 border-r border-border">
-                      <VendorProductThumbnail
-                        productName={product.productName}
-                        imageUrl={product.imageUrl}
-                        onImageClick={product.imageUrl ? () => setPreviewImage(product) : undefined}
-                      />
+                    <td className="px-2 py-2.5 border-r border-border align-middle text-center">
+                      <div className="inline-flex justify-center">
+                        <VendorProductThumbnail
+                          productName={product.productName}
+                          imageUrl={product.imageUrl}
+                          size={44}
+                          onImageClick={product.imageUrl ? () => setPreviewImage(product) : undefined}
+                        />
+                      </div>
                     </td>
-                    <td className="px-3 py-2.5 font-sans text-xs text-muted-foreground border-r border-border">{product.id}</td>
-                    <td className="px-3 py-2.5 text-foreground border-r border-border">{product.group}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground border-r border-border  leading-snug">
+                    <td className="px-3 py-2.5 font-sans text-xs text-muted-foreground border-r border-border align-top break-all [overflow-wrap:anywhere]">
+                      {product.id}
+                    </td>
+                    <td className="px-3 py-2.5 text-foreground border-r border-border align-top break-words [overflow-wrap:anywhere]">
+                      {product.group}
+                    </td>
+                    <td className="px-3 py-2.5 text-muted-foreground border-r border-border align-top leading-snug break-words [overflow-wrap:anywhere]">
                       {product.specification}
                     </td>
-                    <td className="px-3 py-2.5 font-sans text-foreground border-r border-border whitespace-nowrap">
+                    <td className="px-3 py-2.5 font-sans text-foreground border-r border-border align-top break-words [overflow-wrap:anywhere]">
                       {deliveryUnit}
                     </td>
-                    <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border">{rm(product.deliveryPrice)}</td>
+                    <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border align-top text-right whitespace-nowrap">
+                      {deliveryPrice(product.deliveryPrice)}
+                    </td>
                     {showVendorColumn && (
-                      <td className="px-3 py-2.5 border-r border-border ">
-                        <div className="flex flex-col gap-1">
-                          <span className="font-medium text-foreground leading-snug">{product.vendorName}</span>
+                      <td className="px-3 py-2.5 border-r border-border align-top min-w-0">
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <span className="font-medium text-foreground leading-snug break-words [overflow-wrap:anywhere]">{product.vendorName}</span>
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs font-sans text-muted-foreground">{product.vendorExternalId}</span>
+                            <span className="text-xs font-sans text-muted-foreground break-all">{product.vendorExternalId}</span>
                             {isEngaged ? (
-                              <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">Engaged</span>
+                              <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A] shrink-0">Engaged</span>
                             ) : (
                               <button
                                 type="button"
                                 onClick={e => handleEngageVendorClick(e, vendor)}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-primary text-primary-foreground shrink-0"
                               >
                                 <UserPlus size={10} />
                                 Engage
@@ -443,7 +505,7 @@ export function VendorProductsList({
                         </div>
                       </td>
                     )}
-                    <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                    <td className="px-2 py-2.5 text-center align-middle whitespace-nowrap">
                       {isTagged ? (
                         <button
                           type="button"

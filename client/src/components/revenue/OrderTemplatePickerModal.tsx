@@ -9,6 +9,7 @@ import {
   weekdayLabelForDate,
 } from '../../data/orderTemplates';
 import type { CreateOrderLine } from '../../data/createOrder';
+import { commitmentVendorProductLabel } from '../../data/createOrder';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
@@ -112,13 +113,13 @@ export function OrderTemplatePickerModal({
               {committedPos.map(po => {
                 const remainingLines = po.items.filter(
                   i => (i.remainingCommitmentQuantity ?? i.remainingQuantity ?? 0) > 0,
-                ).length;
+                );
                 return (
                   <div key={`cpo-${po.id}`} className="px-5 py-4 flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{po.poNumber}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {po.vendorName} · {remainingLines} line{remainingLines === 1 ? '' : 's'} remaining
+                        {po.vendorName} · {remainingLines.length} line{remainingLines.length === 1 ? '' : 's'} remaining
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Commitment {po.commitmentStartDate ?? '—'} → {po.commitmentEndDate ?? '—'}
@@ -128,10 +129,27 @@ export function OrderTemplatePickerModal({
                           Drawdown locations: {(po.drawdownLocationExternalIds ?? po.locationExternalIds)!.length}
                         </p>
                       ) : null}
+                      {remainingLines.length > 0 ? (
+                        <ul className="mt-2 space-y-1">
+                          {remainingLines.slice(0, 6).map(item => (
+                            <li key={item.id} className="text-[11px] text-foreground truncate">
+                              <span className="font-medium">{commitmentVendorProductLabel(item)}</span>
+                              <span className="text-muted-foreground">
+                                {' '}· {(item.remainingCommitmentQuantity ?? item.remainingQuantity ?? 0)} left
+                              </span>
+                            </li>
+                          ))}
+                          {remainingLines.length > 6 ? (
+                            <li className="text-[10px] text-muted-foreground">
+                              +{remainingLines.length - 6} more
+                            </li>
+                          ) : null}
+                        </ul>
+                      ) : null}
                     </div>
                     <button
                       type="button"
-                      disabled={!onApplyCommittedPo || remainingLines === 0}
+                      disabled={!onApplyCommittedPo || remainingLines.length === 0}
                       onClick={() => onApplyCommittedPo?.(po)}
                       className="shrink-0 px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
                     >

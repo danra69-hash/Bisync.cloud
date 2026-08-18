@@ -9,6 +9,10 @@ public static class DataSeeder
 {
     public static async Task SeedAsync(BisyncDbContext db)
     {
+        // Downtown/midtown demo locations + CMP-WAGYUB seed — off unless explicitly enabled.
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+            return;
+
         if (await db.Locations.AnyAsync()) return;
 
         db.Locations.AddRange(

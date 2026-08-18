@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FilePlus2, X } from 'lucide-react';
 import { api } from '../../api';
-import { inputCls, qtyPriceWidthCls } from '../../data/componentForm';
+import { inputCls, qtyPriceWidthCls, RECIPE_UNITS } from '../../data/componentForm';
 import {
   DELIVERY_ORDER_UNITS,
   DELIVERY_UNIT_LEVEL_LABELS,
@@ -82,23 +82,35 @@ export function VendorProductDetailPanel({
   onSave,
 }: Props) {
   const [productName, setProductName] = useState(product.productName);
+  const [vendorProductId, setVendorProductId] = useState(product.id);
   const [group, setGroup] = useState(product.group);
   const [specification, setSpecification] = useState(product.specification);
   const [deliveryPrice, setDeliveryPrice] = useState(String(product.deliveryPrice));
   const [delivery, setDelivery] = useState<DeliveryUnitBreakdown>({ ...product.delivery });
   const [isPrivate, setIsPrivate] = useState(Boolean(product.isPrivate));
   const [privateLocationIds, setPrivateLocationIds] = useState<string[]>(product.privateLocationIds ?? []);
+  const [returnableDeposit, setReturnableDeposit] = useState(Boolean(product.returnableDeposit));
+  const [returnableItemName, setReturnableItemName] = useState(product.returnableItemName ?? '');
+  const [returnableUom, setReturnableUom] = useState(product.returnableUom ?? '');
+  const [returnableDepositAmount, setReturnableDepositAmount] = useState(
+    String(product.returnableDepositAmount ?? ''),
+  );
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationOption[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setProductName(product.productName);
+    setVendorProductId(product.id);
     setGroup(product.group);
     setSpecification(product.specification);
     setDeliveryPrice(String(product.deliveryPrice));
     setDelivery({ ...product.delivery });
     setIsPrivate(Boolean(product.isPrivate));
     setPrivateLocationIds(product.privateLocationIds ?? []);
+    setReturnableDeposit(Boolean(product.returnableDeposit));
+    setReturnableItemName(product.returnableItemName ?? '');
+    setReturnableUom(product.returnableUom ?? '');
+    setReturnableDepositAmount(String(product.returnableDepositAmount ?? ''));
     setSaveError(null);
   }, [product]);
 
@@ -147,9 +159,18 @@ export function VendorProductDetailPanel({
 
   function handleSave() {
     const name = productName.trim();
+    const id = vendorProductId.trim().toUpperCase();
     const price = parseFloat(deliveryPrice);
     if (!name) {
       setSaveError('Vendor product name is required.');
+      return;
+    }
+    if (isNew && !id) {
+      setSaveError('Vendor Product ID is required.');
+      return;
+    }
+    if (isNew && !/^[A-Z0-9][A-Z0-9._-]{1,79}$/.test(id)) {
+      setSaveError('Vendor Product ID must be 2–80 characters (letters, digits, . _ -).');
       return;
     }
     if (!group.trim()) {
@@ -168,9 +189,26 @@ export function VendorProductDetailPanel({
       setSaveError('Order UOM and quantity are required for Delivery Unit.');
       return;
     }
+    let depositAmount = 0;
+    if (returnableDeposit) {
+      if (!returnableItemName.trim()) {
+        setSaveError('Returnable item name is required when Returnable deposit is ticked.');
+        return;
+      }
+      if (!returnableUom.trim()) {
+        setSaveError('Returnable UOM is required when Returnable deposit is ticked.');
+        return;
+      }
+      depositAmount = parseFloat(returnableDepositAmount);
+      if (!Number.isFinite(depositAmount) || depositAmount < 0) {
+        setSaveError('Enter a valid returnable deposit amount.');
+        return;
+      }
+    }
     setSaveError(null);
     onSave({
       ...product,
+      id: isNew ? id : product.id,
       productName: name,
       group: group.trim(),
       specification: specification.trim(),
@@ -178,6 +216,10 @@ export function VendorProductDetailPanel({
       delivery: { ...delivery },
       isPrivate,
       privateLocationIds: isPrivate ? [...privateLocationIds] : [],
+      returnableDeposit,
+      returnableItemName: returnableDeposit ? returnableItemName.trim() : '',
+      returnableUom: returnableDeposit ? returnableUom.trim() : '',
+      returnableDepositAmount: returnableDeposit ? depositAmount : 0,
     });
   }
 
@@ -199,7 +241,7 @@ export function VendorProductDetailPanel({
               {isNew ? 'New Vendor Product' : product.productName}
             </h3>
             <p className="text-xs text-muted-foreground font-sans mt-0.5">
-              {isNew ? product.vendorName : `${product.id} · ${product.vendorName}`}
+              {product.vendorName}
             </p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted transition-colors shrink-0">
@@ -208,6 +250,27 @@ export function VendorProductDetailPanel({
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-5 space-y-6">
+          <Field label="Vendor Product ID">
+            {isNew ? (
+              <input
+                value={vendorProductId}
+                onChange={e => setVendorProductId(e.target.value.toUpperCase())}
+                className={`${inputCls} font-sans`}
+                placeholder="e.g. VP-BEAN001"
+                maxLength={80}
+              />
+            ) : (
+              <p className="text-sm font-sans font-medium text-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
+                {product.id || '—'}
+              </p>
+            )}
+            {isNew ? (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Immutable after create. Letters, digits, and . _ - only.
+              </p>
+            ) : null}
+          </Field>
+
           <Field label="Vendor Product Name">
             <input
               value={productName}
@@ -243,7 +306,7 @@ export function VendorProductDetailPanel({
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
                 Define Order UOM (required). Add Primary and Secondary Packaging when the order breaks into smaller packs.
-                Result must convert to your component Principal / Inventory UOM.
+                Result must convert to your component Principal Component UOM (or an alternate).
               </p>
             </Field>
 
@@ -331,6 +394,62 @@ export function VendorProductDetailPanel({
               </div>
             )}
           </div>
+
+          <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={returnableDeposit}
+                onChange={e => setReturnableDeposit(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+              <span>
+                <span className="text-sm font-medium text-foreground">Returnable deposit</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Orders for this vendor product automatically attach a deposit line for the returnable container.
+                </p>
+              </span>
+            </label>
+
+            {returnableDeposit && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <Field label="Name of Returnable Item">
+                  <input
+                    value={returnableItemName}
+                    onChange={e => setReturnableItemName(e.target.value)}
+                    className={inputCls}
+                    placeholder="e.g. Keg deposit"
+                  />
+                </Field>
+                <Field label="UOM">
+                  <select
+                    value={returnableUom}
+                    onChange={e => setReturnableUom(e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">Select UOM</option>
+                    {RECIPE_UNITS.map(unit => (
+                      <option key={unit} value={unit}>{unit}</option>
+                    ))}
+                    {returnableUom && !(RECIPE_UNITS as readonly string[]).includes(returnableUom) ? (
+                      <option value={returnableUom}>{returnableUom}</option>
+                    ) : null}
+                  </select>
+                </Field>
+                <Field label="Deposit amount">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={returnableDepositAmount}
+                    onChange={e => setReturnableDepositAmount(e.target.value)}
+                    className={`${inputCls} ${qtyPriceWidthCls} font-sans`}
+                    placeholder="0.00"
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
@@ -355,7 +474,7 @@ export function VendorProductDetailPanel({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!productName.trim()}
+                disabled={!productName.trim() || (isNew && !vendorProductId.trim())}
                 className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {isNew ? 'Add Product' : 'Save'}

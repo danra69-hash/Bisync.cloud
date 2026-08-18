@@ -19,7 +19,8 @@ import {
   previewSampleRequestNumber,
   SAMPLE_REQUEST_COUNTRY_OPTIONS,
 } from '../../data/requestForSample';
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { listCategoryFilterOptions, listGroupFormOptions } from '../../data/categoryGroupFilters';
+import { labelsEqual } from '../../utils/labelMatch';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
@@ -33,9 +34,6 @@ type ProductSampleDraft = {
   name: string;
   description: string;
 };
-
-const CATEGORY_OPTIONS = getSiCategoryFilterOptions().filter(c => c !== 'All');
-const GROUP_OPTIONS = getSiGroupFilterOptions().filter(g => g !== 'All');
 
 function newKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -186,14 +184,28 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
     return [...new Set([...RECIPE_UNITS, ...fromIngredients])].sort((a, b) => a.localeCompare(b));
   }, [ingredients]);
 
+  const categoryOptions = useMemo(
+    () => listCategoryFilterOptions([
+      ...ingredients.map(i => i.category),
+      ...products.map(p => p.category),
+    ]).filter(c => c !== 'All'),
+    [ingredients, products],
+  );
+
   const groupOptions = useMemo(() => {
-    const fromData = [
-      ...ingredients.map(i => i.group),
-      ...products.map(p => p.group),
-      ...GROUP_OPTIONS,
-    ].filter(Boolean);
-    return [...new Set(fromData)].sort((a, b) => a.localeCompare(b));
-  }, [ingredients, products]);
+    const rows = [
+      ...ingredients.map(i => ({ category: i.category, group: i.group })),
+      ...products.map(p => ({ category: p.category, group: p.group })),
+    ];
+    return listGroupFormOptions(productCategory, rows, productGroup);
+  }, [ingredients, products, productCategory, productGroup]);
+
+  useEffect(() => {
+    if (!productGroup.trim() || !productCategory.trim()) return;
+    if (!groupOptions.some(option => labelsEqual(option, productGroup))) {
+      setProductGroup('');
+    }
+  }, [productCategory, productGroup, groupOptions]);
 
   const expectedSalesAmount = useMemo(() => {
     const qty = parseFloat(expectedQtyPerYear);
@@ -585,9 +597,16 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <FieldLabel>Product category</FieldLabel>
-                    <select value={productCategory} onChange={e => setProductCategory(e.target.value)} className={selectCls}>
+                    <select
+                      value={productCategory}
+                      onChange={e => {
+                        setProductCategory(e.target.value);
+                        setProductGroup('');
+                      }}
+                      className={selectCls}
+                    >
                       <option value="">Select category…</option>
-                      {CATEGORY_OPTIONS.map(cat => (
+                      {categoryOptions.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>

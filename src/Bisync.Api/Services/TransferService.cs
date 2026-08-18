@@ -53,7 +53,7 @@ public class TransferService(
             var ingredient = await FindIngredientAsync(companyId, key, cancellationToken);
             if (ingredient is not null)
             {
-                (moveQty, moveUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, quantity, uom);
+                (moveQty, moveUom) = IngredientUomBridge.ToRecipePreferred(ingredient, quantity, uom);
                 if (string.IsNullOrWhiteSpace(name))
                     name = ingredient.Name;
             }
@@ -128,7 +128,7 @@ public class TransferService(
         {
             var ingredient = await FindIngredientAsync(companyId, entry.ItemKey, cancellationToken);
             if (ingredient is not null)
-                (moveQty, moveUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, receiveQty, entry.Uom);
+                (moveQty, moveUom) = IngredientUomBridge.ToRecipePreferred(ingredient, receiveQty, entry.Uom);
         }
 
         await EnsureAvailableAsync(
@@ -344,7 +344,7 @@ public class TransferService(
                 ? await FindIngredientAsync(cid, key, cancellationToken)
                 : await db.Ingredients.AsNoTracking().FirstOrDefaultAsync(i => i.ComponentId == key, cancellationToken);
             if (ingredient is not null)
-                (_, moveUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, 1, moveUom);
+                (_, moveUom) = IngredientUomBridge.ToRecipePreferred(ingredient, 1, moveUom);
 
             onHand = await componentStock.GetOnHandAsync(key, loc, moveUom, cancellationToken);
         }

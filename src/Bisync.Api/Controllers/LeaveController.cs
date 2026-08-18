@@ -139,6 +139,7 @@ public class LeaveBalancesController(BisyncDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IEnumerable<object>> GetAll()
     {
+        await EnsureAlCarryForwardColumnAsync();
         return await db.LeaveBalances
             .AsNoTracking()
             .Select(b => new
@@ -147,7 +148,8 @@ public class LeaveBalancesController(BisyncDbContext db) : ControllerBase
                 EmployeeName = b.Employee!.Name,
                 b.RdoBalance,
                 b.RphBalance,
-                b.AlBalance
+                b.AlBalance,
+                b.AlCarryForward
             })
             .OrderBy(b => b.EmployeeName)
             .ToListAsync();
@@ -156,6 +158,7 @@ public class LeaveBalancesController(BisyncDbContext db) : ControllerBase
     [HttpGet("{employeeId:int}")]
     public async Task<ActionResult<LeaveBalance>> GetByEmployee(int employeeId)
     {
+        await EnsureAlCarryForwardColumnAsync();
         var balance = await db.LeaveBalances.FindAsync(employeeId);
         return balance is null ? NotFound() : balance;
     }
@@ -163,6 +166,7 @@ public class LeaveBalancesController(BisyncDbContext db) : ControllerBase
     [HttpPut("{employeeId:int}")]
     public async Task<ActionResult<LeaveBalance>> Update(int employeeId, LeaveBalanceRequest request)
     {
+        await EnsureAlCarryForwardColumnAsync();
         var balance = await db.LeaveBalances.FindAsync(employeeId);
         if (balance is null)
         {
@@ -173,7 +177,16 @@ public class LeaveBalancesController(BisyncDbContext db) : ControllerBase
         balance.RdoBalance = request.RdoBalance;
         balance.RphBalance = request.RphBalance;
         balance.AlBalance = request.AlBalance;
+        balance.AlCarryForward = request.AlCarryForward;
         await db.SaveChangesAsync();
         return balance;
+    }
+
+    /// <summary>
+    /// Self-heal for DBs that missed deferred HrStartup (startup race / tenant DB).
+    /// </summary>
+    async Task EnsureAlCarryForwardColumnAsync()
+    {
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "LeaveBalances", "AlCarryForward", "REAL NOT NULL DEFAULT 0");
     }
 }

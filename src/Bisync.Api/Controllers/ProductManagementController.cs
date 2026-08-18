@@ -13,6 +13,7 @@ namespace Bisync.Api.Controllers;
 public class ProductManagementController(
     BisyncDbContext db,
     ProductionInventoryService productionInventory,
+    CentralStoreService centralStore,
     B2bSalesOrderService salesOrderService) : ControllerBase
 {
     [HttpGet]
@@ -223,7 +224,10 @@ public class ProductManagementController(
     [HttpPost("{productId:int}/to-produce")]
     public async Task<ActionResult<object>> ToProduce(int productId, [FromBody] ProductManagementActionRequest request)
     {
-        var product = await db.Products.FirstOrDefaultAsync(p => p.Id == productId);
+        var product = await db.Products
+            .Include(p => p.Items)
+            .Include(p => p.PackagingItems)
+            .FirstOrDefaultAsync(p => p.Id == productId);
         if (product is null)
             return NotFound();
 
@@ -235,21 +239,31 @@ public class ProductManagementController(
             return BadRequest(new { message = "Enter a quantity greater than zero." });
 
         var productionDate = ResolveProductionDate(request.ProductionDate);
+        var storeConfig = product.CompanyId is int companyId
+            ? await centralStore.GetActiveConfigAsync(companyId)
+            : null;
+        var previewLocations = storeConfig is not null
+            ? new List<string> { storeConfig.StoreLocationExternalId }
+            : locationIds;
 
+        ProduceBatchResult? preview;
         try
         {
-            var preview = await productionInventory.PreviewRequirementsAsync(
+            preview = await productionInventory.PreviewRequirementsAsync(
                 productId,
-                locationIds,
+                previewLocations,
                 request.BatchQty);
 
             if (!request.OverrideStock && !preview.Success && preview.Components.Count > 0)
             {
                 return Conflict(new
                 {
-                    message = "Insufficient component stock for the quantity to produce. Override to queue anyway.",
+                    message = storeConfig is not null
+                        ? "Insufficient Central Store stock for the quantity to produce. Override to queue a store requisition anyway."
+                        : "Insufficient component stock for the quantity to produce. Override to queue anyway.",
                     shortages = preview.Shortages.Select(MapShortageLine),
                     components = preview.Components.Select(MapComponentLine),
+                    centralStoreActive = storeConfig is not null,
                 });
             }
         }
@@ -273,6 +287,24 @@ public class ProductManagementController(
             locationIds,
             product.CompanyId);
 
+        object? requisition = null;
+        if (storeConfig is not null && preview is not null && preview.Components.Count > 0)
+        {
+            try
+            {
+                var created = await centralStore.CreateRequisitionFromToProduceAsync(
+                    product,
+                    request.BatchQty,
+                    storeConfig,
+                    preview.Components);
+                requisition = CentralStoreService.MapRequisition(created);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         product.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
@@ -281,7 +313,15 @@ public class ProductManagementController(
             .Where(s => s.ProductId == productId && locationIds.Contains(s.LocationExternalId))
             .ToListAsync();
 
-        return Ok(await MapSummaryAsync(product, updatedRows));
+        return Ok(new
+        {
+            summary = await MapSummaryAsync(product, updatedRows),
+            storeRequisition = requisition,
+            centralStoreActive = storeConfig is not null,
+            message = requisition is not null
+                ? "Queued to produce and created a Central Store requisition."
+                : null,
+        });
     }
 
     [HttpPost("{productId:int}/produce")]
@@ -329,6 +369,8 @@ public class ProductManagementController(
                         components = componentResult.Components.Select(MapComponentLine),
                     });
                 }
+
+                await DepleteCentralStoreHoldsAsync(product, locationIds, componentResult);
             }
             catch (InvalidOperationException ex)
             {
@@ -355,17 +397,44 @@ public class ProductManagementController(
                         components = componentResult.Components.Select(MapComponentLine),
                     });
                 }
+
+                await DepleteCentralStoreHoldsAsync(product, locationIds, componentResult);
             }
             catch (InvalidOperationException ex)
             {
                 return BadRequest(new { message = ex.Message });
             }
 
+            // Primary stock qty adjusted after bi-product split below.
+        }
+
+        var biRequests = request.SubProductOutputs
+            .Where(o => o.Quantity > 0 && (o.ProductId > 0 || !string.IsNullOrWhiteSpace(o.Name)))
+            .ToList();
+        var biTotalQty = biRequests.Sum(o => o.Quantity);
+        if (biTotalQty > request.BatchQty)
+            return BadRequest(new { message = "Bi-product quantities cannot exceed the produced quantity." });
+
+        var primaryQty = request.BatchQty - biTotalQty;
+        var baseUnitCost = product.IsSubProduct && product.YieldQuantity > 0
+            ? product.TotalCost / product.YieldQuantity
+            : product.TotalCost;
+        var attribution = ProductionCostAttribution.Allocate(
+            baseUnitCost,
+            request.BatchQty,
+            primaryQty,
+            biRequests.Select((o, index) => new ProductionCostAttribution.BiLine(
+                string.IsNullOrWhiteSpace(o.Name) ? $"bi-{index}" : o.Name.Trim(),
+                o.Quantity,
+                o.CostAttributionPct)).ToList());
+
+        if (!product.IsSubProduct)
+        {
             var stockRows = await EnsureStockRowsAsync(productId, locationIds);
             foreach (var row in stockRows)
             {
-                row.InStock += request.BatchQty;
-                row.ProducedQty += request.BatchQty;
+                row.InStock += primaryQty;
+                row.ProducedQty += primaryQty;
                 row.ToProduceQty = Math.Max(0, row.ToProduceQty - request.BatchQty);
                 if (!string.IsNullOrEmpty(expiryDate))
                     row.ExpiryDate = MergeEarliestExpiry(row.ExpiryDate, expiryDate);
@@ -375,35 +444,54 @@ public class ProductManagementController(
             product.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
-
-        if (product.IsSubProduct && !string.IsNullOrEmpty(expiryDate))
+        else
         {
-            var stockRows = await EnsureStockRowsAsync(productId, locationIds);
-            foreach (var row in stockRows)
+            // ProduceSubProductBatchesAsync already credited full BatchQty; carve bi qty out of primary.
+            if (biTotalQty > 0)
             {
-                row.ExpiryDate = MergeEarliestExpiry(row.ExpiryDate, expiryDate);
-                row.UpdatedAt = DateTime.UtcNow;
+                var stockRows = await EnsureStockRowsAsync(productId, locationIds);
+                foreach (var row in stockRows)
+                {
+                    row.InStock = Math.Max(0, row.InStock - biTotalQty);
+                    row.ProducedQty = Math.Max(0, row.ProducedQty - biTotalQty);
+                    row.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await db.SaveChangesAsync();
             }
 
-            await db.SaveChangesAsync();
+            if (!string.IsNullOrEmpty(expiryDate))
+            {
+                var stockRows = await EnsureStockRowsAsync(productId, locationIds);
+                foreach (var row in stockRows)
+                {
+                    row.ExpiryDate = MergeEarliestExpiry(row.ExpiryDate, expiryDate);
+                    row.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await db.SaveChangesAsync();
+            }
         }
 
-        // Additional sub-product outputs (user-selected filter + qty).
-        var subOutputs = new List<object>();
-        foreach (var output in request.SubProductOutputs
-            .Where(o => o.ProductId > 0 && o.Quantity > 0)
-            .GroupBy(o => o.ProductId)
-            .Select(g => new { ProductId = g.Key, Quantity = g.Sum(x => x.Quantity) }))
+        var biOutputs = new List<object>();
+        for (var i = 0; i < biRequests.Count; i++)
         {
-            if (output.ProductId == productId)
-                continue;
+            var output = biRequests[i];
+            var costLine = attribution.BiLines.ElementAtOrDefault(i);
+            Product biProduct;
+            try
+            {
+                biProduct = await ResolveOrCreateBiProductAsync(product, output);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            if (biProduct.Id == productId)
+                return BadRequest(new { message = "Bi-product cannot target the same product being produced." });
 
-            var sub = await db.Products.FirstOrDefaultAsync(p => p.Id == output.ProductId && p.IsSubProduct);
-            if (sub is null)
-                return BadRequest(new { message = $"Sub-product #{output.ProductId} was not found." });
-
-            var subRows = await EnsureStockRowsAsync(sub.Id, locationIds);
-            foreach (var row in subRows)
+            var biRows = await EnsureStockRowsAsync(biProduct.Id, locationIds);
+            foreach (var row in biRows)
             {
                 row.InStock += output.Quantity;
                 row.ProducedQty += output.Quantity;
@@ -412,36 +500,51 @@ public class ProductManagementController(
                 row.UpdatedAt = DateTime.UtcNow;
             }
 
-            sub.UpdatedAt = DateTime.UtcNow;
+            biProduct.UpdatedAt = DateTime.UtcNow;
+            var biUnitCost = costLine?.UnitCost ?? 0;
             await AddProductionLogAsync(
-                sub.Id,
+                biProduct.Id,
                 "produced",
                 output.Quantity,
                 productionDate,
                 locationIds,
-                sub.CompanyId,
-                expiryDate);
-            subOutputs.Add(new { productId = sub.Id, productName = sub.Name, quantity = output.Quantity });
+                biProduct.CompanyId,
+                expiryDate,
+                unitPrice: biUnitCost);
+            biOutputs.Add(new
+            {
+                productId = biProduct.Id,
+                productName = biProduct.Name,
+                quantity = output.Quantity,
+                attributionPct = output.CostAttributionPct,
+                unitCost = biUnitCost,
+                isBiSubProduct = biProduct.IsSubProduct,
+                biSellable = biProduct.BiSellable,
+            });
         }
 
         var usagesJson = SerializeComponentUsages(componentResult?.Components, request.ComponentUsages);
         var outputsJson = JsonSerializer.Serialize(new
         {
-            b2bQty = product.IsSubProduct ? 0m : request.BatchQty,
-            subProductQty = product.IsSubProduct ? request.BatchQty : 0m,
-            subProducts = subOutputs,
+            primaryQty,
+            primaryUnitCost = attribution.PrimaryUnitCost,
+            batchTotalCost = attribution.BatchTotalCost,
+            b2bQty = product.IsSubProduct ? 0m : primaryQty,
+            subProductQty = product.IsSubProduct ? primaryQty : 0m,
+            biProducts = biOutputs,
         });
 
         await AddProductionLogAsync(
             productId,
             "produced",
-            request.BatchQty,
+            primaryQty > 0 ? primaryQty : request.BatchQty,
             productionDate,
             locationIds,
             product.CompanyId,
             expiryDate,
             usagesJson,
-            outputsJson);
+            outputsJson,
+            attribution.PrimaryUnitCost);
         await db.SaveChangesAsync();
 
         var updatedRows = await db.ProductB2bLocationStocks
@@ -456,6 +559,29 @@ public class ProductManagementController(
     [HttpPost("{productId:int}/produced")]
     public Task<ActionResult<object>> Produced(int productId, [FromBody] ProduceBatchRequest request) =>
         Produce(productId, request);
+
+    async Task DepleteCentralStoreHoldsAsync(
+        Product product,
+        IReadOnlyList<string> locationIds,
+        ProduceBatchResult componentResult)
+    {
+        var usages = componentResult.Components
+            .Where(c => c.RequiredQty > 0)
+            .GroupBy(c => $"{c.ComponentId}\u001f{c.Uom}", StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                return (first.ComponentId, first.Uom, Qty: g.Sum(x => x.RequiredQty));
+            })
+            .ToList();
+        if (usages.Count == 0) return;
+
+        await centralStore.DepleteHoldsForProductionAsync(
+            product.Id,
+            product.CompanyId,
+            locationIds,
+            usages);
+    }
 
     static object MapComponentLine(ProduceComponentRequirement c) => new
     {
@@ -628,7 +754,8 @@ public class ProductManagementController(
             productId,
             locationIds,
             request.QuantitySold,
-            request.SalesChannel ?? "pos");
+            request.SalesChannel ?? "pos",
+            request.VariableDetail);
 
         return NoContent();
     }
@@ -663,7 +790,8 @@ public class ProductManagementController(
         int? companyId,
         string? expiryDate = null,
         string? componentUsagesJson = null,
-        string? outputsJson = null)
+        string? outputsJson = null,
+        decimal? unitPrice = null)
     {
         var batchNumber = string.Empty;
         if (string.Equals(entryType, "produced", StringComparison.OrdinalIgnoreCase))
@@ -680,6 +808,7 @@ public class ProductManagementController(
             ProductionDate = productionDate,
             ExpiryDate = expiryDate ?? string.Empty,
             BatchNumber = batchNumber,
+            UnitPrice = unitPrice ?? 0,
             LocationIdsJson = JsonSerializer.Serialize(locationIds),
             ComponentUsagesJson = string.IsNullOrWhiteSpace(componentUsagesJson) ? "[]" : componentUsagesJson,
             OutputsJson = string.IsNullOrWhiteSpace(outputsJson) ? "{}" : outputsJson,
@@ -805,7 +934,53 @@ public class ProductManagementController(
         var productLocs = PurchaseOrderWorkflow.DeserializeLocationIds(product.LocationIdsJson);
         if (productLocs.Count == 0)
             return true;
-        return locationIds.Any(productLocs.Contains);
+        return locationIds.Any(selected =>
+            productLocs.Any(id => id.Equals(selected, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    async Task<Product> ResolveOrCreateBiProductAsync(Product parent, ProduceSubProductOutputRequest output)
+    {
+        if (output.ProductId > 0)
+        {
+            var existing = await db.Products.FirstOrDefaultAsync(p => p.Id == output.ProductId)
+                ?? throw new InvalidOperationException($"Bi-product #{output.ProductId} was not found.");
+            if (!existing.IsBiProduct && !existing.IsSubProduct)
+                throw new InvalidOperationException($"{existing.Name} is not a bi-product or sub-product output.");
+            return existing;
+        }
+
+        var name = (output.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            throw new InvalidOperationException("Enter a bi-product name or select an existing product.");
+
+        var isBiSub = output.IsBiSubProduct || parent.IsSubProduct;
+        var productId = await ProductIdGenerator.GenerateAsync(db, name, isBiSub);
+        var bi = new Product
+        {
+            ProductId = productId,
+            Name = name,
+            Category = parent.Category,
+            Group = parent.Group,
+            IsSubProduct = isBiSub,
+            IsBiProduct = true,
+            BiOfProductId = parent.Id,
+            BiSellable = !isBiSub && output.BiSellable,
+            B2cEnabled = false,
+            B2bEnabled = !isBiSub && output.BiSellable,
+            B2bPackageUnit = parent.B2bPackageUnit,
+            YieldUom = parent.YieldUom,
+            YieldQuantity = isBiSub ? 1 : 0,
+            ExpiryPeriodDays = parent.ExpiryPeriodDays,
+            ActivationPeriodHours = parent.ActivationPeriodHours,
+            CompanyId = parent.CompanyId,
+            LocationIdsJson = parent.LocationIdsJson,
+            Active = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.Products.Add(bi);
+        await db.SaveChangesAsync();
+        return bi;
     }
 
     async Task<List<ProductB2bLocationStock>> EnsureStockRowsAsync(int productId, IReadOnlyList<string> locationIds)

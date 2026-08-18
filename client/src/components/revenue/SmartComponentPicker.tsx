@@ -3,18 +3,29 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import type { ComponentRow } from '../../data/componentForm';
 import { filterComponentsForPicker } from '../../data/productForm';
+import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
+import {
+  bindPickerOptionActivate,
+  eventTargetElement,
+  isEventInsideSelector,
+} from './pickerMenuEvents';
 
 type Props = {
   components: ComponentRow[];
   value: string;
+  /** Shown when value is set but the component is missing from `components` (inactive/unscoped). */
+  fallbackLabel?: string;
   placeholder?: string;
   disabled?: boolean;
   onChange: (component: ComponentRow | null) => void;
 };
 
+const MENU_SELECTOR = '[data-smart-component-picker-menu]';
+
 export function SmartComponentPicker({
   components,
   value,
+  fallbackLabel = '',
   placeholder = 'Search component…',
   disabled = false,
   onChange,
@@ -30,16 +41,32 @@ export function SmartComponentPicker({
     [components, value],
   );
 
-  const filtered = useMemo(
-    () => filterComponentsForPicker(components, query),
-    [components, query],
-  );
+  const selectedLabel = selected
+    ? `${selected.name} (${selected.componentId})`
+    : value && fallbackLabel
+      ? `${fallbackLabel} (${value})`
+      : value
+        ? value
+        : '';
+
+  const filtered = useMemo(() => {
+    const rows = filterComponentsForPicker(components, query);
+    // Keep the current BOM component visible when the menu is unfiltered / it still matches.
+    if (
+      selected
+      && !rows.some(c => c.componentId === selected.componentId)
+      && !query.trim()
+    ) {
+      return [selected, ...rows];
+    }
+    return rows;
+  }, [components, query, selected]);
 
   useEffect(() => {
     if (!open) {
-      setQuery(selected ? `${selected.name} (${selected.componentId})` : '');
+      setQuery(selectedLabel);
     }
-  }, [open, selected]);
+  }, [open, selectedLabel]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -69,15 +96,21 @@ export function SmartComponentPicker({
 
   useEffect(() => {
     if (!open) return;
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
-      if ((target as Element).closest?.('[data-smart-component-picker-menu]')) return;
+    function handlePointerDown(event: PointerEvent) {
+      const el = eventTargetElement(event);
+      if (!el) return;
+      if (rootRef.current?.contains(el)) return;
+      if (isEventInsideSelector(event, MENU_SELECTOR)) return;
       setOpen(false);
     }
-    document.addEventListener('click', handlePointerDown);
-    return () => document.removeEventListener('click', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
   }, [open]);
+
+  function selectComponent(component: ComponentRow) {
+    onChange(component);
+    setOpen(false);
+  }
 
   return (
     <div ref={rootRef} className="relative min-w-[12rem]">
@@ -85,7 +118,7 @@ export function SmartComponentPicker({
         <input
           ref={inputRef}
           type="text"
-          value={open ? query : (selected ? `${selected.name} (${selected.componentId})` : '')}
+          value={open ? query : selectedLabel}
           placeholder={placeholder}
           disabled={disabled}
           onFocus={() => {
@@ -94,19 +127,22 @@ export function SmartComponentPicker({
             setQuery('');
           }}
           onChange={e => {
-            setQuery(e.target.value);
+            const next = e.target.value;
+            setQuery(next);
             setOpen(true);
-            if (!e.target.value.trim()) onChange(null);
+            // Clear selection when the search box is emptied, but keep the menu open.
+            if (!next.trim()) onChange(null);
           }}
           className="w-full rounded-md border border-border bg-background pl-2.5 pr-7 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
         />
-        {selected && !disabled ? (
+        {(selected || value) && !disabled ? (
           <button
             type="button"
             onClick={() => {
               onChange(null);
               setQuery('');
-              setOpen(false);
+              setOpen(true);
+              requestAnimationFrame(() => inputRef.current?.focus());
             }}
             className="absolute right-6 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground"
             aria-label="Clear component"
@@ -121,7 +157,7 @@ export function SmartComponentPicker({
         ? createPortal(
             <div
               data-smart-component-picker-menu
-              className="fixed z-[120] max-h-48 overflow-y-auto rounded-md border border-border bg-card shadow-lg"
+              className={`fixed ${PICKER_MENU_Z_CLS} max-h-48 overflow-y-auto rounded-md border border-border bg-card shadow-lg`}
               style={{ top: menuStyle.top, left: menuStyle.left, width: menuStyle.width }}
             >
               {filtered.length === 0 ? (
@@ -131,10 +167,8 @@ export function SmartComponentPicker({
                   <button
                     key={component.componentId}
                     type="button"
-                    onMouseDown={event => event.preventDefault()}
-                    onClick={() => {
-                      onChange(component);
-                      setOpen(false);
+                    onPointerDown={event => {
+                      bindPickerOptionActivate(event, () => selectComponent(component));
                     }}
                     className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 ${
                       component.componentId === value ? 'bg-primary/10 text-primary' : ''

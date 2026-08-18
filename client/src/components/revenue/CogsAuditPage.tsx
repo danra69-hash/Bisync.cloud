@@ -8,6 +8,7 @@ import {
   type SystemCogsAuditHistoryEntry,
 } from '../../api';
 import { filterSelectCls, inputCls } from '../layout/formControls';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
@@ -20,6 +21,7 @@ import {
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 import { formatPriceOrHidden } from '../../data/priceVisibility';
+import { TABLE_COL_ACTION } from '../layout/pageLayout';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -53,7 +55,7 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
   const money = (value: number) => formatPriceOrHidden(hidePrices, () => fmt2(value, countryCode));
   const [screen, setScreen] = useState<Screen>('summary');
   const [period, setPeriod] = useState(currentStockCardMonth);
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
+  const uomMode: 'recipe' = 'recipe';
   const [search, setSearch] = useState('');
   const [summary, setSummary] = useState<CogsAuditSummaryResult | null>(null);
   const [detail, setDetail] = useState<CogsAuditDetailResult | null>(null);
@@ -257,6 +259,7 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
 
             <TableScrollContainer ref={scrollRootRef} className="max-h-[min(70vh,640px)]">
               <table className="w-full min-w-[1100px] text-left text-xs">
+                <ColGroup widths={['5%', '9%', '10%', '10%', '14%', '8%', '8%', '9%', '9%', '9%', '9%']} />
                 <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-b border-border text-muted-foreground">
                     <th className="px-2 py-2 font-medium">Seq</th>
@@ -322,14 +325,9 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
         {!isSystemHistoryView && (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-            <select
-              value={uomMode}
-              onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-              className={`${filterSelectCls} min-w-[120px]`}
-            >
-              <option value="inventory">Inventory</option>
-              <option value="recipe">Recipe</option>
-            </select>
+            <div className={`${filterSelectCls} min-w-[160px] flex items-center text-muted-foreground`}>
+              Principal Component Unit
+            </div>
           </div>
         )}
         <div className="relative min-w-[200px] flex-1">
@@ -391,6 +389,7 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
 
           <TableScrollContainer ref={scrollRootRef} className="max-h-[min(70vh,640px)]">
             <table className="w-full min-w-[1400px] text-left text-xs">
+              <ColGroup widths={['7%', '6%', '12%', '5%', '6%', '6%', '7%', '7%', '7%', '7%', '6%', '6%', '6%', '6%', '5%', '5%']} />
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-muted-foreground">
                   <th className="px-2 py-2 font-medium">Code</th>
@@ -509,6 +508,7 @@ function HistoryPanel({
       {systemRows.length > 0 && (
         <TableScrollContainer className="max-h-[min(50vh,420px)]">
           <table className="w-full min-w-[1000px] text-left text-xs">
+            <ColGroup widths={['14%', '14%', '8%', '7%', '12%', '10%', '12%', '14%', TABLE_COL_ACTION.style.width]} />
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b border-border text-muted-foreground">
                 <th className="px-2 py-2 font-medium">Company</th>

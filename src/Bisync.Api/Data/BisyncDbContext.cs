@@ -6,6 +6,7 @@ namespace Bisync.Api.Data;
 public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbContext(options)
 {
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<DeliveryLocation> DeliveryLocations => Set<DeliveryLocation>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<Employee> Employees => Set<Employee>();
@@ -41,7 +42,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosClosedCheck> PosClosedChecks => Set<PosClosedCheck>();
     public DbSet<PosPayment> PosPayments => Set<PosPayment>();
     public DbSet<PosVoid> PosVoids => Set<PosVoid>();
+    public DbSet<PosCancel> PosCancels => Set<PosCancel>();
     public DbSet<PosEodSession> PosEodSessions => Set<PosEodSession>();
+    public DbSet<PosSaleDetail> PosSaleDetails => Set<PosSaleDetail>();
     public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
     public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
     public DbSet<SalesModuleCalendarSettings> SalesModuleCalendarSettings => Set<SalesModuleCalendarSettings>();
@@ -69,8 +72,27 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
     public DbSet<B2bSalesOrder> B2bSalesOrders => Set<B2bSalesOrder>();
     public DbSet<B2bSalesOrderLine> B2bSalesOrderLines => Set<B2bSalesOrderLine>();
+    public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
+    public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
+    public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();
+    public DbSet<PosPromotionProduct> PosPromotionProducts => Set<PosPromotionProduct>();
+    public DbSet<PosProductMapping> PosProductMappings => Set<PosProductMapping>();
+    public DbSet<PosPrepaidPurchase> PosPrepaidPurchases => Set<PosPrepaidPurchase>();
+    public DbSet<PosPrepaidLedger> PosPrepaidLedgers => Set<PosPrepaidLedger>();
+    public DbSet<PosDevice> PosDevices => Set<PosDevice>();
+    public DbSet<PosDeviceSetupRule> PosDeviceSetupRules => Set<PosDeviceSetupRule>();
+    public DbSet<PosModifierGroup> PosModifierGroups => Set<PosModifierGroup>();
+    public DbSet<PosModifierOption> PosModifierOptions => Set<PosModifierOption>();
+    public DbSet<PosModifierAttachment> PosModifierAttachments => Set<PosModifierAttachment>();
+    public DbSet<PosConfigType> PosConfigTypes => Set<PosConfigType>();
+    public DbSet<PosTaxServiceConfig> PosTaxServiceConfigs => Set<PosTaxServiceConfig>();
+    public DbSet<PosFloorPlan> PosFloorPlans => Set<PosFloorPlan>();
+    public DbSet<PosFloorPlanVersion> PosFloorPlanVersions => Set<PosFloorPlanVersion>();
+    public DbSet<PosWaitlistEntry> PosWaitlistEntries => Set<PosWaitlistEntry>();
+    public DbSet<PosQrOrder> PosQrOrders => Set<PosQrOrder>();
+    public DbSet<PosPrinterSdk> PosPrinterSdks => Set<PosPrinterSdk>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
     public DbSet<InventoryCountSession> InventoryCountSessions => Set<InventoryCountSession>();
@@ -82,6 +104,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<AccessControlSettings> AccessControlSettings => Set<AccessControlSettings>();
     public DbSet<PlatformLaunchSettings> PlatformLaunchSettings => Set<PlatformLaunchSettings>();
+    public DbSet<PlatformPriceDisplaySettings> PlatformPriceDisplaySettings => Set<PlatformPriceDisplaySettings>();
     public DbSet<RevMgmtCompanyConfig> RevMgmtCompanyConfigs => Set<RevMgmtCompanyConfig>();
     public DbSet<VendorProduct> VendorProducts => Set<VendorProduct>();
     public DbSet<QuoteRequest> QuoteRequests => Set<QuoteRequest>();
@@ -94,12 +117,53 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<DevConsolePasswordTicket> DevConsolePasswordTickets => Set<DevConsolePasswordTicket>();
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
     public DbSet<TenantRollupSnapshot> TenantRollupSnapshots => Set<TenantRollupSnapshot>();
+    public DbSet<GlAccount> GlAccounts => Set<GlAccount>();
+    public DbSet<GlFiscalPeriod> GlFiscalPeriods => Set<GlFiscalPeriod>();
+    public DbSet<GlJournal> GlJournals => Set<GlJournal>();
+    public DbSet<GlJournalLine> GlJournalLines => Set<GlJournalLine>();
+    public DbSet<GlPeriodBalance> GlPeriodBalances => Set<GlPeriodBalance>();
+    public DbSet<GlDocCounter> GlDocCounters => Set<GlDocCounter>();
+    public DbSet<GlOutboxMessage> GlOutboxMessages => Set<GlOutboxMessage>();
+    public DbSet<GlLocalisationPack> GlLocalisationPacks => Set<GlLocalisationPack>();
+    public DbSet<GlFxRate> GlFxRates => Set<GlFxRate>();
+    public DbSet<GlAccountRole> GlAccountRoles => Set<GlAccountRole>();
+    public DbSet<GlTaxCode> GlTaxCodes => Set<GlTaxCode>();
+    public DbSet<GlSlaRuleSet> GlSlaRuleSets => Set<GlSlaRuleSet>();
+    public DbSet<GlSlaRuleLine> GlSlaRuleLines => Set<GlSlaRuleLine>();
+    public DbSet<GlOpenItem> GlOpenItems => Set<GlOpenItem>();
+    public DbSet<GlItemApplication> GlItemApplications => Set<GlItemApplication>();
+    public DbSet<GlBankStatement> GlBankStatements => Set<GlBankStatement>();
+    public DbSet<GlBankStatementLine> GlBankStatementLines => Set<GlBankStatementLine>();
+    public DbSet<GlBankMatchGroup> GlBankMatchGroups => Set<GlBankMatchGroup>();
+    public DbSet<GlBankMatchLink> GlBankMatchLinks => Set<GlBankMatchLink>();
+    public DbSet<GlFixedAsset> GlFixedAssets => Set<GlFixedAsset>();
+    public DbSet<GlFixedAssetBook> GlFixedAssetBooks => Set<GlFixedAssetBook>();
+    public DbSet<GlDepreciationRun> GlDepreciationRuns => Set<GlDepreciationRun>();
+    public DbSet<GlRevRecContract> GlRevRecContracts => Set<GlRevRecContract>();
+    public DbSet<GlRevRecObligation> GlRevRecObligations => Set<GlRevRecObligation>();
+    public DbSet<GlStatutoryReturn> GlStatutoryReturns => Set<GlStatutoryReturn>();
     public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
+    public DbSet<ReturnableGoodsReturn> ReturnableGoodsReturns => Set<ReturnableGoodsReturn>();
+    public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
+    public DbSet<CentralStoreConfig> CentralStoreConfigs => Set<CentralStoreConfig>();
+    public DbSet<StoreRequisition> StoreRequisitions => Set<StoreRequisition>();
+    public DbSet<StoreRequisitionLine> StoreRequisitionLines => Set<StoreRequisitionLine>();
+    public DbSet<ProductionStockHold> ProductionStockHolds => Set<ProductionStockHold>();
+    public DbSet<TeamConversation> TeamConversations => Set<TeamConversation>();
+    public DbSet<TeamConversationMember> TeamConversationMembers => Set<TeamConversationMember>();
+    public DbSet<TeamChatMessage> TeamChatMessages => Set<TeamChatMessage>();
+    public DbSet<TeamProjectTask> TeamProjectTasks => Set<TeamProjectTask>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<DeliveryLocation>(e =>
+        {
+            e.HasIndex(d => d.ExternalId).IsUnique();
+            e.HasIndex(d => new { d.LocationExternalId, d.Active });
+            e.HasIndex(d => new { d.CompanyId, d.Active });
+        });
         modelBuilder.Entity<Location>(e =>
         {
             e.HasIndex(l => l.ExternalId).IsUnique();
@@ -186,7 +250,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => new { x.CompanyId, x.Method });
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
             e.Property(x => x.Method).HasMaxLength(40);
-            e.Property(x => x.Purpose).HasMaxLength(80);
+            e.Property(x => x.Purpose).HasMaxLength(240);
             e.Property(x => x.CardIin).HasMaxLength(8);
             e.Property(x => x.CardIssuer).HasMaxLength(64);
             e.Property(x => x.CardLast4).HasMaxLength(4);
@@ -201,6 +265,28 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
             e.Property(x => x.ProductName).HasMaxLength(200);
             e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.AuthorizedBy).HasMaxLength(120);
+        });
+        modelBuilder.Entity<PosCancel>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.CanceledAt });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.CanceledBy).HasMaxLength(120);
+        });
+        modelBuilder.Entity<PosSaleDetail>(e =>
+        {
+            e.HasIndex(x => new { x.ProductId, x.CreatedAt });
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.CreatedAt });
+            e.Property(x => x.ProductCode).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.SalesChannel).HasMaxLength(20);
+            e.Property(x => x.VariableMode).HasMaxLength(40);
+            e.Property(x => x.WeightUom).HasMaxLength(40);
         });
         modelBuilder.Entity<PosEodSession>(e =>
         {
@@ -214,6 +300,33 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.VoidsConfirmed).HasConversion<int>();
             e.Property(x => x.DiscountConfirmed).HasConversion<int>();
             e.Property(x => x.DayClosed).HasConversion<int>();
+        });
+        modelBuilder.Entity<PosFloorPlan>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId }).IsUnique();
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+        });
+        modelBuilder.Entity<PosFloorPlanVersion>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.CapturedAt });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.Source).HasMaxLength(40);
+        });
+        modelBuilder.Entity<PosWaitlistEntry>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.Status });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Mobile).HasMaxLength(40);
+            e.Property(x => x.Status).HasMaxLength(24);
+        });
+        modelBuilder.Entity<PosQrOrder>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.Status });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.TableLabel).HasMaxLength(64);
+            e.Property(x => x.GuestName).HasMaxLength(120);
+            e.Property(x => x.Status).HasMaxLength(24);
         });
         modelBuilder.Entity<SalesModuleCustomer>(e =>
         {
@@ -341,6 +454,76 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.SourceReferenceType).HasMaxLength(40);
             e.Property(x => x.SplitUseLineKey).HasMaxLength(100);
         });
+        modelBuilder.Entity<CreditNote>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.CreditNoteDate });
+            e.HasIndex(x => x.PurchaseOrderId);
+            e.HasIndex(x => x.PurchaseOrderItemId);
+            e.HasIndex(x => x.Status);
+            e.Property(x => x.LocationExternalId).HasMaxLength(100);
+            e.Property(x => x.CreditNoteNumber).HasMaxLength(80);
+            e.Property(x => x.PoNumber).HasMaxLength(80);
+            e.Property(x => x.VendorExternalId).HasMaxLength(80);
+            e.Property(x => x.VendorName).HasMaxLength(200);
+            e.Property(x => x.VendorProductId).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.ComponentId).HasMaxLength(80);
+            e.Property(x => x.ComponentName).HasMaxLength(200);
+            e.Property(x => x.DeliveryUom).HasMaxLength(50);
+            e.Property(x => x.StockUom).HasMaxLength(50);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.CancelPoNumber).HasMaxLength(80);
+            e.Property(x => x.CancelDoOrInvoiceNumber).HasMaxLength(120);
+            e.Property(x => x.CancelledBy).HasMaxLength(200);
+        });
+        modelBuilder.Entity<CentralStoreConfig>(e =>
+        {
+            e.HasIndex(x => x.CompanyId).IsUnique();
+            e.Property(x => x.StoreLocationExternalId).HasMaxLength(100);
+            e.Property(x => x.KitchenLocationExternalId).HasMaxLength(100);
+        });
+        modelBuilder.Entity<StoreRequisition>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.Kind);
+            e.HasIndex(x => x.ProductId);
+            e.Property(x => x.RequisitionNumber).HasMaxLength(40);
+            e.Property(x => x.Kind).HasMaxLength(20);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.StoreLocationExternalId).HasMaxLength(100);
+            e.Property(x => x.KitchenLocationExternalId).HasMaxLength(100);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.RequestedBy).HasMaxLength(200);
+            e.Property(x => x.IssuedBy).HasMaxLength(200);
+            e.Property(x => x.ReceivedBy).HasMaxLength(200);
+            e.HasMany(x => x.Lines)
+                .WithOne(l => l.StoreRequisition)
+                .HasForeignKey(l => l.StoreRequisitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<StoreRequisitionLine>(e =>
+        {
+            e.HasIndex(x => x.StoreRequisitionId);
+            e.Property(x => x.ComponentId).HasMaxLength(80);
+            e.Property(x => x.ComponentName).HasMaxLength(200);
+            e.Property(x => x.Uom).HasMaxLength(50);
+        });
+        modelBuilder.Entity<ProductionStockHold>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.Status });
+            e.HasIndex(x => x.LocationExternalId);
+            e.HasIndex(x => x.ProductId);
+            e.HasIndex(x => x.StoreRequisitionId);
+            e.Property(x => x.LocationExternalId).HasMaxLength(100);
+            e.Property(x => x.ComponentId).HasMaxLength(80);
+            e.Property(x => x.ComponentName).HasMaxLength(200);
+            e.Property(x => x.Uom).HasMaxLength(50);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20);
+        });
         modelBuilder.Entity<TransferEntry>(e =>
         {
             e.HasIndex(x => x.CompanyId);
@@ -360,6 +543,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.ToLocationExternalId).HasMaxLength(100);
         });
         modelBuilder.Entity<PurchaseOrder>().HasIndex(p => p.PoNumber).IsUnique();
+        // Legacy tenant DBs store VendorAcceptExpiryDate as TEXT; Npgsql cannot read DateOnly
+        // from text. Convert via string so both text and date columns work.
+        modelBuilder.Entity<PurchaseOrder>()
+            .Property(p => p.VendorAcceptExpiryDate)
+            .HasConversion(
+                v => v.HasValue ? v.Value.ToString("yyyy-MM-dd") : null,
+                v => ParseOptionalDateOnly(v));
         modelBuilder.Entity<PurchaseOrder>()
             .HasMany(p => p.Items)
             .WithOne(i => i.PurchaseOrder)
@@ -485,6 +675,155 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.ProductName).HasMaxLength(200);
             e.Property(x => x.DeliveryUnit).HasMaxLength(80);
         });
+        modelBuilder.Entity<PosPromotion>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Active });
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.RepeatMode).HasMaxLength(20);
+            e.Property(x => x.PromoType).HasMaxLength(40);
+            e.Property(x => x.PromotionKind).HasMaxLength(40);
+            e.Property(x => x.ValidityPeriodUnit).HasMaxLength(20);
+            e.Property(x => x.PackageUom).HasMaxLength(40);
+            e.Property(x => x.DepletionMethod).HasMaxLength(40);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
+            e.Property(x => x.FilterCategory).HasMaxLength(100);
+            e.Property(x => x.FilterGroup).HasMaxLength(100);
+            e.HasMany(x => x.Products)
+                .WithOne(x => x.PosPromotion)
+                .HasForeignKey(x => x.PosPromotionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PosPromotionProduct>(e =>
+        {
+            e.HasIndex(x => new { x.PosPromotionId, x.ProductId }).IsUnique();
+            e.HasIndex(x => x.ProductId);
+            e.Property(x => x.ProductCode).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosProductMapping>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.ProductId }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.PluNumber }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.Active });
+            e.Property(x => x.ProductCode).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.PluNumber).HasMaxLength(80);
+        });
+        modelBuilder.Entity<PosPrepaidPurchase>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.CustomerMobile });
+            e.HasIndex(x => x.PosPromotionId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => new { x.CompanyId, x.Status });
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.CustomerName).HasMaxLength(200);
+            e.Property(x => x.CustomerMobile).HasMaxLength(40);
+            e.Property(x => x.PackageUom).HasMaxLength(40);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.HasMany(x => x.LedgerEntries)
+                .WithOne(x => x.PosPrepaidPurchase)
+                .HasForeignKey(x => x.PosPrepaidPurchaseId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PosPrepaidLedger>(e =>
+        {
+            e.HasIndex(x => x.PosPrepaidPurchaseId);
+            e.Property(x => x.EntryType).HasMaxLength(20);
+            e.Property(x => x.UnitCode).HasMaxLength(40);
+            e.Property(x => x.UnitLabel).HasMaxLength(80);
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
+        });
+        modelBuilder.Entity<PosDevice>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.Active });
+            e.HasIndex(x => new { x.CompanyId, x.DeviceType });
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.DeviceType).HasMaxLength(40);
+            e.Property(x => x.ConnectionType).HasMaxLength(40);
+            e.Property(x => x.HostAddress).HasMaxLength(120);
+            e.Property(x => x.MacAddress).HasMaxLength(40);
+            e.Property(x => x.PrinterSdkCode).HasMaxLength(80);
+            e.Property(x => x.PrinterBrand).HasMaxLength(80);
+            e.Property(x => x.PrinterModel).HasMaxLength(120);
+            e.Property(x => x.PrintAlignment).HasMaxLength(20);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
+        });
+        modelBuilder.Entity<PosDeviceSetupRule>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.Active });
+            e.HasIndex(x => new { x.CompanyId, x.ProductId });
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.ProductCategory).HasMaxLength(120);
+            e.Property(x => x.ProductGroup).HasMaxLength(120);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.PrimaryDeviceType).HasMaxLength(80);
+            e.Property(x => x.SecondaryDeviceType).HasMaxLength(80);
+            e.Property(x => x.ConcurrentDeviceType).HasMaxLength(80);
+        });
+        modelBuilder.Entity<PosModifierGroup>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Kind, x.Active });
+            e.Property(x => x.Kind).HasMaxLength(40);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.HasMany(x => x.Options)
+                .WithOne(x => x.PosModifierGroup)
+                .HasForeignKey(x => x.PosModifierGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Attachments)
+                .WithOne(x => x.PosModifierGroup)
+                .HasForeignKey(x => x.PosModifierGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PosModifierOption>(e =>
+        {
+            e.HasIndex(x => x.PosModifierGroupId);
+            e.Property(x => x.Label).HasMaxLength(200);
+            e.Property(x => x.LinkedProductName).HasMaxLength(200);
+            e.Property(x => x.LinkedComponentId).HasMaxLength(80);
+            e.Property(x => x.LinkedComponentName).HasMaxLength(200);
+            e.Property(x => x.BaseComponentId).HasMaxLength(80);
+            e.Property(x => x.BaseComponentName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosModifierAttachment>(e =>
+        {
+            e.HasIndex(x => x.PosModifierGroupId);
+            e.HasIndex(x => x.TargetProductId);
+            e.Property(x => x.TargetType).HasMaxLength(40);
+            e.Property(x => x.TargetProductCategory).HasMaxLength(120);
+            e.Property(x => x.TargetProductGroup).HasMaxLength(120);
+            e.Property(x => x.TargetProductName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosConfigType>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Kind, x.Code }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.Kind, x.Active });
+            e.Property(x => x.Kind).HasMaxLength(40);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Code).HasMaxLength(40);
+            e.Property(x => x.ExceptionGroupsJson).HasColumnType("text");
+            e.Property(x => x.ExceptionProductIdsJson).HasColumnType("text");
+        });
+        modelBuilder.Entity<PosTaxServiceConfig>(e =>
+        {
+            e.HasIndex(x => x.CompanyId).IsUnique();
+            e.Property(x => x.ConfigJson).HasColumnType("text");
+        });
+        modelBuilder.Entity<PosPrinterSdk>(e =>
+        {
+            e.HasIndex(x => x.SdkCode).IsUnique();
+            e.Property(x => x.SdkCode).HasMaxLength(80);
+            e.Property(x => x.Brand).HasMaxLength(80);
+            e.Property(x => x.DisplayName).HasMaxLength(160);
+            e.Property(x => x.Protocol).HasMaxLength(40);
+            e.Property(x => x.Version).HasMaxLength(40);
+            e.Property(x => x.Platform).HasMaxLength(40);
+            e.Property(x => x.PackageKind).HasMaxLength(40);
+            e.Property(x => x.ExternalUrl).HasMaxLength(500);
+            e.Property(x => x.ArtifactFolder).HasMaxLength(160);
+        });
         modelBuilder.Entity<B2bSalesOrder>(e =>
         {
             e.HasIndex(x => new { x.CompanyId, x.OrderNumber }).IsUnique();
@@ -555,5 +894,210 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.PaymentReference).HasMaxLength(128);
             e.Property(x => x.BankName).HasMaxLength(128);
         });
+        modelBuilder.Entity<TeamConversation>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Type });
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.Title).HasMaxLength(200);
+        });
+        modelBuilder.Entity<TeamConversationMember>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.EmployeeId }).IsUnique();
+            e.HasOne(x => x.Conversation)
+                .WithMany(c => c.Members)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Employee)
+                .WithMany()
+                .HasForeignKey(x => x.EmployeeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<TeamChatMessage>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            e.HasOne(x => x.Conversation)
+                .WithMany(c => c.Messages)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Sender)
+                .WithMany()
+                .HasForeignKey(x => x.SenderEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.AttachmentContentType).HasMaxLength(128);
+        });
+        modelBuilder.Entity<TeamProjectTask>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.SortOrder });
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.AssigneeEmployeeIdsJson).HasMaxLength(2000);
+            e.HasOne(x => x.Conversation)
+                .WithMany(c => c.ProjectTasks)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GlAccount>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Code }).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.AccountType).HasMaxLength(32);
+            e.Property(x => x.NormalBalance).HasMaxLength(1);
+        });
+        modelBuilder.Entity<GlFiscalPeriod>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Year, x.PeriodNo }).IsUnique();
+            e.Property(x => x.Status).HasMaxLength(24);
+        });
+        modelBuilder.Entity<GlJournal>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.DocSeries, x.FiscalYear, x.DocNumber })
+                .IsUnique()
+                .HasFilter("\"DocNumber\" IS NOT NULL");
+            e.HasIndex(x => new { x.CompanyId, x.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            e.HasIndex(x => new { x.CompanyId, x.PostedAt });
+            e.Property(x => x.LedgerKind).HasMaxLength(32);
+            e.Property(x => x.JournalType).HasMaxLength(32);
+            e.Property(x => x.DocSeries).HasMaxLength(32);
+            e.Property(x => x.DocNumber).HasMaxLength(64);
+            e.Property(x => x.SourceModule).HasMaxLength(32);
+            e.Property(x => x.SourceDocKey).HasMaxLength(120);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(160);
+            e.Property(x => x.CreatedBy).HasMaxLength(120);
+            e.HasMany(x => x.Lines)
+                .WithOne(x => x.Journal)
+                .HasForeignKey(x => x.JournalId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Period)
+                .WithMany()
+                .HasForeignKey(x => x.PeriodId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<GlJournalLine>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.JournalId, x.LineNo }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.AccountId, x.EffectiveDate });
+            e.Property(x => x.Direction).HasMaxLength(1);
+            e.Property(x => x.Currency).HasMaxLength(3);
+            e.Property(x => x.FuncCurrency).HasMaxLength(3);
+            e.Property(x => x.FxRate).HasPrecision(20, 10);
+            e.Property(x => x.FxRateType).HasMaxLength(24);
+            e.HasOne(x => x.Account)
+                .WithMany()
+                .HasForeignKey(x => x.AccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<GlPeriodBalance>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AccountId, x.PeriodId, x.Currency }).IsUnique();
+            e.Property(x => x.Currency).HasMaxLength(3);
+        });
+        modelBuilder.Entity<GlDocCounter>(e =>
+        {
+            e.HasKey(x => new { x.CompanyId, x.Series, x.FiscalYear });
+            e.Property(x => x.Series).HasMaxLength(32);
+        });
+        modelBuilder.Entity<GlOutboxMessage>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+            e.HasIndex(x => new { x.CompanyId, x.CreatedAt });
+            e.Property(x => x.EventType).HasMaxLength(80);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(160);
+        });
+        modelBuilder.Entity<GlLocalisationPack>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.PackId }).IsUnique();
+            e.Property(x => x.PackId).HasMaxLength(8);
+            e.Property(x => x.Status).HasMaxLength(24);
+        });
+        modelBuilder.Entity<GlFxRate>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.FromCurrency, x.ToCurrency, x.RateDate, x.RateType }).IsUnique();
+            e.Property(x => x.Rate).HasPrecision(20, 10);
+            e.Property(x => x.FromCurrency).HasMaxLength(3);
+            e.Property(x => x.ToCurrency).HasMaxLength(3);
+        });
+        modelBuilder.Entity<GlAccountRole>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.RoleCode }).IsUnique();
+            e.Property(x => x.RoleCode).HasMaxLength(64);
+        });
+        modelBuilder.Entity<GlTaxCode>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Code }).IsUnique();
+            e.Property(x => x.RatePercent).HasPrecision(10, 4);
+            e.Property(x => x.Code).HasMaxLength(32);
+        });
+        modelBuilder.Entity<GlSlaRuleSet>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.EventType, x.Status });
+            e.HasMany(x => x.Lines).WithOne(x => x.RuleSet).HasForeignKey(x => x.RuleSetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlSlaRuleLine>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.RuleSetId, x.Seq }).IsUnique();
+        });
+        modelBuilder.Entity<GlOpenItem>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.InternalDocumentNo }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.Subledger, x.Status });
+            e.Property(x => x.Currency).HasMaxLength(3);
+            e.Property(x => x.ApprovalStatus).HasMaxLength(32);
+        });
+        modelBuilder.Entity<GlItemApplication>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AppliedFromId });
+        });
+        modelBuilder.Entity<GlBankStatement>(e =>
+        {
+            e.HasMany(x => x.Lines).WithOne(x => x.Statement).HasForeignKey(x => x.StatementId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlBankStatementLine>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.StatementId, x.LineNo }).IsUnique();
+        });
+        modelBuilder.Entity<GlBankMatchGroup>(e =>
+        {
+            e.Property(x => x.Status).HasMaxLength(16);
+        });
+        modelBuilder.Entity<GlBankMatchLink>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.MatchGroupId });
+        });
+        modelBuilder.Entity<GlFixedAsset>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AssetTag }).IsUnique();
+            e.HasMany(x => x.Books).WithOne(x => x.Asset).HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlFixedAssetBook>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AssetId, x.BookId }).IsUnique();
+        });
+        modelBuilder.Entity<GlDepreciationRun>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.AssetId, x.BookId, x.Year, x.PeriodNo }).IsUnique();
+        });
+        modelBuilder.Entity<GlRevRecContract>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.ContractNo }).IsUnique();
+            e.HasMany(x => x.Obligations).WithOne(x => x.Contract).HasForeignKey(x => x.ContractId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<GlStatutoryReturn>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.ReturnType, x.PeriodStart });
+        });
+    }
+
+    static DateOnly? ParseOptionalDateOnly(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim();
+        var datePart = trimmed.Length >= 10 ? trimmed.Substring(0, 10) : trimmed;
+        return DateOnly.TryParse(datePart, out var parsed) ? parsed : null;
     }
 }

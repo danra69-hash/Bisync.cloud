@@ -10,7 +10,7 @@ public class SystemAuditEvent
     public string TimeZoneId { get; set; } = "UTC";
     public int Year { get; set; }
     public int Month { get; set; }
-    /// <summary>Login | Logout | DbUpdate | Computation</summary>
+    /// <summary>Activity type title (see <see cref="SystemAuditActivityTypes"/>).</summary>
     public string Category { get; set; } = string.Empty;
     public string Action { get; set; } = string.Empty;
     public int? CompanyId { get; set; }
@@ -57,12 +57,4 @@ public class ArchivedSystemAuditEvent
     public string Summary { get; set; } = string.Empty;
     public string DetailsJson { get; set; } = "{}";
     public DateTime ArchivedAtUtc { get; set; }
-}
-
-public static class SystemAuditCategories
-{
-    public const string Login = "Login";
-    public const string Logout = "Logout";
-    public const string DbUpdate = "DbUpdate";
-    public const string Computation = "Computation";
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { CompaniesTab } from './CompaniesTab';
 import { AccessControlTab } from './AccessControlTab';
 import { SystemAuditTrailTab } from './SystemAuditTrailTab';
+import { PriceDisplayConfigTab } from './PriceDisplayConfigTab';
 import { HrConfigTabBar } from './HrConfigTabBar';
 import { LocationsConfigTab } from './LocationsConfigTab';
 import { SYSTEM_HR_CONFIG_TABS, type SystemHrConfigTabId } from './hrConfigTabs';
@@ -45,6 +46,7 @@ export function SystemConfigurationPage({
         <LocationsConfigTab selectedCompanyId={selectedCompanyId} onOrgDataChanged={onOrgDataChanged} />
       )}
       {tab === 'accessControl' && <AccessControlTab />}
+      {tab === 'priceDisplay' && <PriceDisplayConfigTab />}
       {tab === 'auditTrail' && <SystemAuditTrailTab />}
     </div>
   );

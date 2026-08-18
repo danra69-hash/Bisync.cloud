@@ -43,7 +43,8 @@ public class EmployeeRequest
     [MaxLength(50)]
     public string? IdPassportNumber { get; set; }
     public DateOnly? DateOfBirth { get; set; }
-    [EmailAddress, MaxLength(256)]
+    /// <summary>Optional; empty string is treated as null (avoid [EmailAddress] rejecting "").</summary>
+    [MaxLength(256)]
     public string? PersonalEmail { get; set; }
     [MaxLength(500)]
     public string? PermanentAddress { get; set; }
@@ -171,6 +172,21 @@ public class PayrollPinVerifyResult
     public bool Valid { get; set; }
 }
 
+public class PosPinVerifyRequest
+{
+    [Required, MinLength(4), MaxLength(4)]
+    public string Pin { get; set; } = null!;
+}
+
+public class PosPinVerifyResult
+{
+    public bool Valid { get; set; }
+    public int? EmployeeId { get; set; }
+    public string? EmployeeName { get; set; }
+    public string? EmployeeCode { get; set; }
+    public bool MustChangePin { get; set; }
+}
+
 public class AttendanceRecordRequest
 {
     [Required]
@@ -205,6 +221,8 @@ public class LeaveBalanceRequest
     public decimal RphBalance { get; set; }
     [Range(0, 999)]
     public decimal AlBalance { get; set; }
+    [Range(0, 999)]
+    public decimal AlCarryForward { get; set; }
 }
 
 public class ShiftScheduleRequest
@@ -226,6 +244,10 @@ public class EmployeeLevelRequest
     public int AnnualLeaveDays { get; set; }
     [Range(0, 365)]
     public int SickLeaveDays { get; set; }
+    /// <summary>When false, annual leave bands are cleared and not applied.</summary>
+    public bool AnnualLeaveEnabled { get; set; } = true;
+    /// <summary>When false, sick leave bands are cleared and not applied.</summary>
+    public bool SickLeaveEnabled { get; set; } = true;
     /// <summary>JSON tenure bands for annual leave. When set, drives AnnualLeaveDays summary.</summary>
     public string? AnnualLeaveRulesJson { get; set; }
     /// <summary>JSON tenure bands for sick leave. When set, drives SickLeaveDays summary.</summary>
@@ -613,6 +635,8 @@ public class CreateVendorRequest
     public string City { get; set; } = string.Empty;
     [MaxLength(100)]
     public string State { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Postcode { get; set; } = string.Empty;
     [MaxLength(400)]
     public string Address { get; set; } = string.Empty;
     [MaxLength(200)]
@@ -627,6 +651,9 @@ public class CreateVendorRequest
     public string ProductPolicyTag { get; set; } = string.Empty;
     public bool AllowPartialDelivery { get; set; }
     public List<string>? EngagedLocationIds { get; set; }
+    public decimal? MinOrderAmount { get; set; }
+    /// <summary>Weekday keys: monday…sunday.</summary>
+    public List<string>? DeliveryDays { get; set; }
 }
 
 public class UpdateVendorRequest
@@ -643,6 +670,8 @@ public class UpdateVendorRequest
     public string City { get; set; } = string.Empty;
     [MaxLength(100)]
     public string State { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Postcode { get; set; } = string.Empty;
     [MaxLength(400)]
     public string Address { get; set; } = string.Empty;
     [MaxLength(200)]
@@ -657,6 +686,9 @@ public class UpdateVendorRequest
     public string ProductPolicyTag { get; set; } = string.Empty;
     public bool AllowPartialDelivery { get; set; }
     public List<string>? EngagedLocationIds { get; set; }
+    public decimal? MinOrderAmount { get; set; }
+    /// <summary>Weekday keys: monday…sunday.</summary>
+    public List<string>? DeliveryDays { get; set; }
 }
 
 public class SetVendorActiveRequest
@@ -677,7 +709,7 @@ public class CreatePurchaseOrderItemRequest
     public string? ComponentId { get; set; }
     [MaxLength(200)]
     public string? ComponentName { get; set; }
-    [MaxLength(32)]
+    [MaxLength(80)]
     public string? VendorProductId { get; set; }
     [Required, MaxLength(300)]
     public string Name { get; set; } = string.Empty;
@@ -691,6 +723,10 @@ public class CreatePurchaseOrderItemRequest
     public string? ComponentUom { get; set; }
     [MaxLength(200)]
     public string DeliveryPackage { get; set; } = string.Empty;
+    /// <summary>When true, this line is a returnable container deposit (not inventory).</summary>
+    public bool IsReturnableDeposit { get; set; }
+    [MaxLength(300)]
+    public string? ReturnableItemName { get; set; }
 }
 
 public class CreatePurchaseOrderRequest
@@ -720,11 +756,31 @@ public class CreatePurchaseOrdersBatchRequest
 {
     public int? CompanyId { get; set; }
     public List<string> LocationExternalIds { get; set; } = [];
+    /// <summary>Optional ship-to delivery location (under one of the selected outlets).</summary>
+    [MaxLength(120)]
+    public string? DeliveryLocationExternalId { get; set; }
     [MaxLength(200)]
     public string? InitiatedBy { get; set; }
     [MaxLength(200)]
     public string? ApprovedBy { get; set; }
     public List<CreatePurchaseOrderRequest> Orders { get; set; } = [];
+}
+
+public class DeliveryLocationUpsertRequest
+{
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string AddressLine1 { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? AddressLine2 { get; set; }
+    [MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string StateProvince { get; set; } = string.Empty;
+    [MaxLength(32)]
+    public string Postcode { get; set; } = string.Empty;
+    public bool? Active { get; set; }
 }
 
 public class ApprovePurchaseOrderRequest
@@ -735,6 +791,7 @@ public class ApprovePurchaseOrderRequest
 
 public class PurchaseOrderLineWorkflowRequest
 {
+    /// <summary>Existing PO line id. Use 0 (with vendor/component fields) to receive an unordered freebie or CN replacement.</summary>
     public int ItemId { get; set; }
     [Range(0, 999999999)]
     public decimal Quantity { get; set; }
@@ -751,6 +808,26 @@ public class PurchaseOrderLineWorkflowRequest
     public string? ProductExpiryDate { get; set; }
     /// <summary>Optional temperature check (°C) at receive/consolidate.</summary>
     public decimal? ReceivedTemperature { get; set; }
+
+    // --- Unordered receive lines (ItemId &lt;= 0): freebies / credit-note replacements ---
+    [MaxLength(80)]
+    public string? VendorProductId { get; set; }
+    [MaxLength(32)]
+    public string? ComponentId { get; set; }
+    [MaxLength(200)]
+    public string? ComponentName { get; set; }
+    [MaxLength(300)]
+    public string? Name { get; set; }
+    [MaxLength(50)]
+    public string? Unit { get; set; }
+    [MaxLength(200)]
+    public string? DeliveryPackage { get; set; }
+
+    /// <summary>
+    /// Optional confirmed credit note settled by this receive line (exact vendor product match).
+    /// When set, receive qty cancels the CN (or reduces then cancels when qty is lower).
+    /// </summary>
+    public int? LinkedCreditNoteId { get; set; }
 }
 
 public class CreateCashPurchaseRequest
@@ -772,6 +849,9 @@ public class CreateCashPurchaseRequest
     public decimal Quantity { get; set; }
     [MaxLength(50)]
     public string ComponentUom { get; set; } = string.Empty;
+    /// <summary>Optional tagged vendor product — used for delivery→PCU conversion.</summary>
+    [MaxLength(80)]
+    public string? VendorProductId { get; set; }
     [MaxLength(100)]
     public string? ReceiptNumber { get; set; }
     [MaxLength(500)]
@@ -859,14 +939,29 @@ public class UpsertProductRequest
     [MaxLength(100)]
     public string? Group { get; set; }
     public bool IsSubProduct { get; set; }
+    public bool IsVariableProduct { get; set; }
+    /// <summary>combination | weight</summary>
+    [MaxLength(20)]
+    public string? VariableMode { get; set; }
+    [Range(0, 999999999)]
+    public decimal? VariableChoiceQty { get; set; }
+    public string? VariableOptionsJson { get; set; }
+    [Range(0, 999999999)]
+    public decimal? VariableMinCost { get; set; }
+    [Range(0, 999999999)]
+    public decimal? VariableMaxCost { get; set; }
+    public bool IsVariableComponent { get; set; }
+    public string? VariableComponentOptionsJson { get; set; }
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
     [MaxLength(20)]
     public string? B2bPackageUnit { get; set; }
     public string? B2bSalesConfigJson { get; set; }
     public decimal? Rrp { get; set; }
+    /// <summary>Batch yield for sub-products; defaults to 1 for B2C products.</summary>
     [Range(0, 999999999)]
     public decimal? YieldQuantity { get; set; }
+    /// <summary>Batch yield UOM for sub-products, Product UOM for B2C, Principal Production UOM for B2B.</summary>
     [MaxLength(20)]
     public string? YieldUom { get; set; }
     public string? YieldAltUnitsJson { get; set; }
@@ -893,6 +988,8 @@ public class PatchProductRequest
 {
     public bool? PosEnabled { get; set; }
     public List<PosDeliveryUnitRequest>? PosDeliveryUnits { get; set; }
+    [MaxLength(40)]
+    public string? PosSalesUom { get; set; }
     public bool? Active { get; set; }
     [Range(0, 999999999)]
     public decimal? Rrp { get; set; }
@@ -922,6 +1019,8 @@ public class ProductManagementActionRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
@@ -936,9 +1035,18 @@ public class ProduceComponentUsageRequest
 
 public class ProduceSubProductOutputRequest
 {
+    /// <summary>Existing bi / sub-product catalog id. 0 creates a new bi product when Name is set.</summary>
     public int ProductId { get; set; }
+    /// <summary>Optional name when creating a bi-product on produce.</summary>
+    public string? Name { get; set; }
     [Range(0.0001, 999999999)]
     public decimal Quantity { get; set; }
+    /// <summary>Cost attribution percent (0–100). Weighted vs residual primary cost.</summary>
+    [Range(0, 100)]
+    public decimal CostAttributionPct { get; set; } = 100;
+    /// <summary>True → Bi-Sub-Product (not sellable). False → Bi-Product (optionally sellable).</summary>
+    public bool IsBiSubProduct { get; set; } = true;
+    public bool BiSellable { get; set; }
 }
 
 public class ProduceBatchRequest
@@ -946,6 +1054,8 @@ public class ProduceBatchRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
@@ -960,6 +1070,8 @@ public class ProductionPreviewRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public List<ProduceComponentUsageRequest> ComponentUsages { get; set; } = [];
 }
 
@@ -968,14 +1080,68 @@ public class RecordProductSaleRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal QuantitySold { get; set; }
-  /// <summary>pos, online, or offline</summary>
+    /// <summary>pos, online, or offline</summary>
     public string SalesChannel { get; set; } = "pos";
+    /// <summary>
+    /// Required for variable products: combination picks, replacement substitutions,
+    /// or exact weight served — each quantified and linked to products/components.
+    /// </summary>
+    public PosSaleVariableDetailRequest? VariableDetail { get; set; }
+}
+
+/// <summary>Quantified variable-product detail for a POS/channel sale line.</summary>
+public class PosSaleVariableDetailRequest
+{
+    /// <summary>combination | replacement | weight | variableComponent</summary>
+    [MaxLength(40)]
+    public string? VariableMode { get; set; }
+    /// <summary>Exact weight served (weight mode).</summary>
+    public decimal? EnteredWeight { get; set; }
+    [MaxLength(40)]
+    public string? WeightUom { get; set; }
+    /// <summary>Quoted weight the product RRP/BOM applies to.</summary>
+    public decimal? ReferenceWeightQty { get; set; }
+    public List<PosSaleCombinationSelectionRequest> CombinationSelections { get; set; } = [];
+    public List<PosSaleReplacementSelectionRequest> ReplacementSelections { get; set; } = [];
+}
+
+public class PosSaleCombinationSelectionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [MaxLength(80)]
+    public string? ProductCode { get; set; }
+    [MaxLength(200)]
+    public string? ProductName { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+}
+
+public class PosSaleReplacementSelectionRequest
+{
+    [Required, MaxLength(80)]
+    public string BaseComponentId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? BaseComponentName { get; set; }
+    [Required, MaxLength(80)]
+    public string ChosenComponentId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ChosenComponentName { get; set; }
+    [MaxLength(40)]
+    public string? ComponentUom { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    /// <summary>Optional customer surcharge for a Variable Component substitute (0 = free).</summary>
+    [Range(0, 999999999)]
+    public decimal? ExtraCharge { get; set; }
 }
 
 public class PatchProductionBatchRequest
 {
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
@@ -1039,6 +1205,12 @@ public class PurchaseOrderWorkflowRequest
     public string? HygieneRating { get; set; }
     [MaxLength(2000)]
     public string? HygieneComment { get; set; }
+    /// <summary>Amend only: "received" | "reconciled".</summary>
+    [MaxLength(32)]
+    public string? Phase { get; set; }
+    /// <summary>Optional free-text reason for the correction.</summary>
+    [MaxLength(500)]
+    public string? Reason { get; set; }
 }
 
 public class B2bCustomerContactRequest
@@ -1671,5 +1843,265 @@ public class CreatePromotionProductRequest
 public class SetPromotionActiveRequest
 {
     public bool Active { get; set; }
+}
+
+public class CreatePosPromotionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    /// <summary>yyyy-MM-dd</summary>
+    [MaxLength(16)]
+    public string StartDate { get; set; } = string.Empty;
+    /// <summary>yyyy-MM-dd — omit or empty when EndDateOpen</summary>
+    [MaxLength(16)]
+    public string? EndDate { get; set; }
+    public bool EndDateOpen { get; set; }
+    /// <summary>HH:mm</summary>
+    [MaxLength(8)]
+    public string StartTime { get; set; } = "00:00";
+    /// <summary>HH:mm</summary>
+    [MaxLength(8)]
+    public string EndTime { get; set; } = "23:59";
+    /// <summary>daily | daysOfWeek</summary>
+    [MaxLength(20)]
+    public string RepeatMode { get; set; } = "daily";
+    /// <summary>Weekday codes when RepeatMode is daysOfWeek: Mon…Sun</summary>
+    public List<string> DaysOfWeek { get; set; } = [];
+    [MaxLength(100)]
+    public string? FilterCategory { get; set; }
+    [MaxLength(100)]
+    public string? FilterGroup { get; set; }
+    /// <summary>discountPercent | discountPrice</summary>
+    [MaxLength(40)]
+    public string PromoType { get; set; } = "discountPercent";
+    /// <summary>timeBase | prepaid</summary>
+    [MaxLength(40)]
+    public string? PromotionKind { get; set; }
+    public int ValidityPeriodValue { get; set; }
+    /// <summary>days | months</summary>
+    [MaxLength(20)]
+    public string? ValidityPeriodUnit { get; set; }
+    public decimal PackageQty { get; set; }
+    [MaxLength(40)]
+    public string? PackageUom { get; set; }
+    public decimal PackageRrp { get; set; }
+    public decimal PackageTotalValue { get; set; }
+    public decimal PackageRpp { get; set; }
+    public decimal DiscountAmount { get; set; }
+    /// <summary>weight | salesUnit</summary>
+    [MaxLength(40)]
+    public string? DepletionMethod { get; set; }
+    public List<PosPromotionDepletionUnitRequest>? DepletionUnits { get; set; }
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+    public List<CreatePosPromotionProductRequest> Products { get; set; } = [];
+}
+
+public class PosPromotionDepletionUnitRequest
+{
+    [MaxLength(40)]
+    public string Code { get; set; } = string.Empty;
+    [MaxLength(80)]
+    public string Label { get; set; } = string.Empty;
+    public decimal QtyPerUnit { get; set; } = 1m;
+}
+
+public class CreatePosPrepaidPurchaseRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [Range(1, int.MaxValue)]
+    public int PromotionId { get; set; }
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [MaxLength(200)]
+    public string CustomerName { get; set; } = string.Empty;
+    [MaxLength(40)]
+    public string CustomerMobile { get; set; } = string.Empty;
+    public int? CheckNumber { get; set; }
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+}
+
+public class DepletePosPrepaidRequest
+{
+    [Range(1, int.MaxValue)]
+    public int PurchaseId { get; set; }
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [MaxLength(40)]
+    public string? UnitCode { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Qty { get; set; }
+    public int? ProductId { get; set; }
+    public int? CheckNumber { get; set; }
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+}
+
+public class CreatePosPromotionProductRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [Range(0, 999999999)]
+    public decimal Rrp { get; set; }
+    [Range(0, 999999999)]
+    public decimal Cogs { get; set; }
+    [Range(0, 999999999)]
+    public decimal Rpp { get; set; }
+    [Range(0, 100)]
+    public decimal DiscountPercent { get; set; }
+}
+
+public class SetPosPromotionActiveRequest
+{
+    public bool Active { get; set; }
+}
+
+public class UpsertPosDeviceRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    /// <summary>posMain | posOrderStation | kitchenDisplay | barDisplay | kiosk | printer</summary>
+    [Required, MaxLength(40)]
+    public string DeviceType { get; set; } = string.Empty;
+    /// <summary>ethernet | wifi | usb | bluetooth | cloud</summary>
+    [MaxLength(40)]
+    public string ConnectionType { get; set; } = "ethernet";
+    [MaxLength(120)]
+    public string? HostAddress { get; set; }
+    [Range(1, 65535)]
+    public int? Port { get; set; }
+    [MaxLength(40)]
+    public string? MacAddress { get; set; }
+    [MaxLength(80)]
+    public string? SubnetMask { get; set; }
+    [MaxLength(80)]
+    public string? Gateway { get; set; }
+    [MaxLength(80)]
+    public string? DnsPrimary { get; set; }
+    [MaxLength(80)]
+    public string? DnsSecondary { get; set; }
+    [MaxLength(120)]
+    public string? Hostname { get; set; }
+    [MaxLength(80)]
+    public string? PrinterSdkCode { get; set; }
+    [MaxLength(80)]
+    public string? PrinterBrand { get; set; }
+    [MaxLength(120)]
+    public string? PrinterModel { get; set; }
+    public int? PaperWidthMm { get; set; }
+    [MaxLength(20)]
+    public string? PrintAlignment { get; set; }
+    public int? PrintMarginLeft { get; set; }
+    public int? PrintMarginRight { get; set; }
+    public bool? PrinterSetupComplete { get; set; }
+    public bool Active { get; set; } = true;
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+}
+
+public class PosDeviceNetworkProbeRequest
+{
+    [MaxLength(120)]
+    public string? HostAddress { get; set; }
+    [Range(1, 65535)]
+    public int? Port { get; set; }
+    /// <summary>Optional device type for suggested default ports.</summary>
+    [MaxLength(40)]
+    public string? DeviceType { get; set; }
+}
+
+public class PosPrinterSetupRequest
+{
+    [Range(58, 112)]
+    public int PaperWidthMm { get; set; } = 80;
+    /// <summary>left | center</summary>
+    [MaxLength(20)]
+    public string PrintAlignment { get; set; } = "left";
+    public int PrintMarginLeft { get; set; }
+    public int PrintMarginRight { get; set; }
+    /// <summary>When true, mark setup complete after saving alignment.</summary>
+    public bool MarkComplete { get; set; } = true;
+    [MaxLength(80)]
+    public string? PrinterSdkCode { get; set; }
+    [MaxLength(80)]
+    public string? PrinterBrand { get; set; }
+    [MaxLength(120)]
+    public string? PrinterModel { get; set; }
+}
+
+public class UpsertPosEodSessionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    /// <summary>ISO date yyyy-MM-dd. Defaults to today (UTC) when omitted.</summary>
+    public DateOnly? BusinessDate { get; set; }
+    public bool? CashConfirmed { get; set; }
+    public long? CashCountedCents { get; set; }
+    /// <summary>JSON map of denomination cents → quantity, e.g. {"1000":2,"100":5}.</summary>
+    [MaxLength(4000)]
+    public string? CashCountQtysJson { get; set; }
+    public bool? CreditQrConfirmed { get; set; }
+    public bool? NonRevenueConfirmed { get; set; }
+    public bool? VoidsConfirmed { get; set; }
+    public bool? DiscountConfirmed { get; set; }
+}
+
+public class ClosePosEodSessionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    public DateOnly? BusinessDate { get; set; }
+    /// <summary>When true, close even if open checks remain (manager override).</summary>
+    public bool Force { get; set; }
+}
+
+public class RecordPosPaymentLineRequest
+{
+    /// <summary>cash | credit-card | qr-pay | entertainment | duty-meals | compliment</summary>
+    [MaxLength(40)]
+    public string Method { get; set; } = "cash";
+    public long AmountCents { get; set; }
+    [MaxLength(240)]
+    public string? Purpose { get; set; }
+}
+
+public class RecordPosClosedCheckRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    public int CheckNumber { get; set; }
+    [MaxLength(120)]
+    public string? CheckLabel { get; set; }
+    public int Covers { get; set; } = 1;
+    public long DiscountCents { get; set; }
+    public long TaxCents { get; set; }
+    public long VoidCents { get; set; }
+    public long GrossCents { get; set; }
+    /// <summary>cash | credit-card | qr-pay | entertainment | duty-meals | compliment</summary>
+    [MaxLength(40)]
+    public string PaymentMethod { get; set; } = "cash";
+    public long? PaymentAmountCents { get; set; }
+    [MaxLength(240)]
+    public string? PaymentPurpose { get; set; }
+    /// <summary>Optional multi-tender lines (split pay). When present, each line becomes a PosPayment.</summary>
+    public List<RecordPosPaymentLineRequest>? Payments { get; set; }
 }
 

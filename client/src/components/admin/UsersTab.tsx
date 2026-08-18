@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
@@ -34,14 +34,14 @@ import { MillstoneLoader } from '../shared/MillstoneLoader';
 type UserSortColumn = 'employeeId' | 'name' | 'company' | 'locations' | 'email' | 'role' | 'access' | 'status';
 
 const USER_TABLE_COLUMNS: SortableColumnDef<UserSortColumn>[] = [
-  { key: 'employeeId', label: 'Employee ID' },
-  { key: 'name', label: 'Name' },
-  { key: 'company', label: 'Company' },
-  { key: 'locations', label: 'Locations' },
-  { key: 'email', label: 'Email' },
-  { key: 'role', label: 'Role' },
-  { key: 'access', label: 'Access' },
-  { key: 'status', label: 'Status' },
+  { key: 'employeeId', label: 'Employee ID', ...tableColWidth('10%') },
+  { key: 'name', label: 'Name', ...tableColWidth('16%') },
+  { key: 'company', label: 'Company', ...tableColWidth('12%') },
+  { key: 'locations', label: 'Locations', ...tableColWidth('14%') },
+  { key: 'email', label: 'Email', ...tableColWidth('16%') },
+  { key: 'role', label: 'Role', ...tableColWidth('10%') },
+  { key: 'access', label: 'Access', ...tableColWidth('14%') },
+  { key: 'status', label: 'Status', ...tableColWidth('8%') },
 ];
 
 const blankUser = (): UserUpsert => ({
@@ -630,8 +630,13 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
         {loading ? (
           <MillstoneLoader size="sm" layout="block" label="Loading users…" />
         ) : (
-          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+            tableId="admin.users"
+          >
+          <table className="w-full text-xs">
+            <TableColGroup columns={USER_TABLE_COLUMNS} />
             <thead>
               <SortableTableHeaderRow
                 columns={USER_TABLE_COLUMNS}

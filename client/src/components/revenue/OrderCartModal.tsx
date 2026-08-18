@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, CalendarRange, Copy, Download, ExternalLink, Handshake, ShoppingBag, X } from 'lucide-react';
-import { api, type Company, type LocationConfig, type Vendor } from '../../api';
+import { api, type Company, type DeliveryLocation, type LocationConfig, type Vendor } from '../../api';
 import {
   groupCartByVendor,
   type OrderCartItem,
@@ -87,6 +87,8 @@ export function OrderCartModal({
   const { currentUser, loading: userLoading } = useCurrentUser();
   const [company, setCompany] = useState<Company | null>(null);
   const [locations, setLocations] = useState<LocationConfig[]>([]);
+  const [deliveryLocationOptions, setDeliveryLocationOptions] = useState<DeliveryLocation[]>([]);
+  const [selectedDeliveryLocationId, setSelectedDeliveryLocationId] = useState('');
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [saving, setSaving] = useState(false);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
@@ -122,9 +124,20 @@ export function OrderCartModal({
     [currentUser],
   );
 
-  const deliveryLocations = useMemo(
+  const outletLocations = useMemo(
     () => locations.filter(loc => selectedLocationIds.includes(loc.externalId)),
     [locations, selectedLocationIds],
+  );
+
+  const selectedDeliveryLocation = useMemo(
+    () => deliveryLocationOptions.find(d => d.externalId === selectedDeliveryLocationId) ?? null,
+    [deliveryLocationOptions, selectedDeliveryLocationId],
+  );
+
+  /** Ship-to block on PDF: delivery location when selected, otherwise outlet address(es). */
+  const deliveryLocations = useMemo(
+    () => (selectedDeliveryLocation ? [selectedDeliveryLocation] : outletLocations),
+    [selectedDeliveryLocation, outletLocations],
   );
 
   useEffect(() => {
@@ -140,6 +153,36 @@ export function OrderCartModal({
         setVendors([]);
       });
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!selectedCompanyId || selectedLocationIds.length === 0) {
+      setDeliveryLocationOptions([]);
+      setSelectedDeliveryLocationId('');
+      return;
+    }
+    let cancelled = false;
+    void api.deliveryLocations({
+      companyId: selectedCompanyId,
+      locationExternalIds: selectedLocationIds,
+    })
+      .then(rows => {
+        if (cancelled) return;
+        const list = Array.isArray(rows) ? rows : [];
+        setDeliveryLocationOptions(list);
+        setSelectedDeliveryLocationId(prev => (
+          prev && list.some(d => d.externalId === prev) ? prev : ''
+        ));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDeliveryLocationOptions([]);
+          setSelectedDeliveryLocationId('');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId, selectedLocationIds]);
 
   useEffect(() => {
     if (step !== 'success') return;
@@ -254,6 +297,7 @@ export function OrderCartModal({
       const created = await api.createPurchaseOrders({
         companyId: selectedCompanyId,
         locationExternalIds: selectedLocationIds,
+        deliveryLocationExternalId: selectedDeliveryLocationId || undefined,
         initiatedBy: signatories.initiatedBy,
         approvedBy: signatories.approvedBy,
         orders: groups.map(group => ({
@@ -279,6 +323,10 @@ export function OrderCartModal({
             unit: item.deliveryUnitLabel,
             componentUom: item.componentUom,
             deliveryPackage: item.deliveryUnitLabel,
+            isReturnableDeposit: item.isReturnableDeposit || undefined,
+            returnableItemName: item.isReturnableDeposit
+              ? (item.returnableItemName || item.productName)
+              : undefined,
           })),
         })),
       });
@@ -309,7 +357,8 @@ export function OrderCartModal({
           vendor: findVendorForGroup(vendors, group),
           orderDateLabel,
           deliveryDateLabel,
-          deliveryDateHeading: isPreCommitted ? 'Commitment Date' : undefined,
+          deliveryDateHeading: isPreCommitted ? 'Commitment Period' : undefined,
+          isPreCommitted,
           initiatedBy: signatories.initiatedBy,
           approvedBy: signatories.approvedBy,
           documentKind: 'purchase_order',
@@ -410,7 +459,7 @@ export function OrderCartModal({
       role="presentation"
     >
       <div
-        className={`w-full bg-card border border-border rounded-xl shadow-xl max-h-[92vh] flex flex-col overflow-hidden ${
+        className={`w-full bg-card border border-border rounded-xl shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col overflow-hidden ${
           step === 'success' ? 'max-w-5xl' : 'max-w-3xl'
         }`}
         onClick={e => e.stopPropagation()}
@@ -501,32 +550,76 @@ export function OrderCartModal({
                     </div>
                   </div>
                 ) : (
-                  <div>
-                    <label htmlFor="preferred-delivery-date" className="flex items-center gap-2 text-xs font-sans uppercase tracking-wider text-muted-foreground">
-                      <Calendar size={13} />
-                      Preferred Delivery Date
-                    </label>
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <input
-                        id="preferred-delivery-date"
-                        type="date"
-                        value={deliveryDateValue}
-                        min={minDeliveryDate}
-                        onChange={e => {
-                          setDeliveryDateValue(e.target.value);
-                          setError(null);
-                        }}
-                        disabled={saving}
-                        className={`bisync-filter-select font-sans disabled:opacity-50`}
-                      />
-                      {parseDateInputValue(deliveryDateValue) && (
-                        <p className="text-xs text-muted-foreground">
-                          Deliver on {formatDisplayDate(parseDateInputValue(deliveryDateValue)!)}
-                        </p>
-                      )}
+                  <div className="space-y-3">
+                    <div>
+                      <label htmlFor="preferred-delivery-date" className="flex items-center gap-2 text-xs font-sans uppercase tracking-wider text-muted-foreground">
+                        <Calendar size={13} />
+                        Preferred Delivery Date
+                      </label>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <input
+                          id="preferred-delivery-date"
+                          type="date"
+                          value={deliveryDateValue}
+                          min={minDeliveryDate}
+                          onChange={e => {
+                            setDeliveryDateValue(e.target.value);
+                            setError(null);
+                          }}
+                          disabled={saving}
+                          className="bisync-filter-select font-sans disabled:opacity-50"
+                        />
+                        {parseDateInputValue(deliveryDateValue) && (
+                          <p className="text-xs text-muted-foreground">
+                            Deliver on {formatDisplayDate(parseDateInputValue(deliveryDateValue)!)}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
+
+                <div>
+                  <label
+                    htmlFor="po-delivery-location"
+                    className="text-xs font-sans uppercase tracking-wider text-muted-foreground"
+                  >
+                    Delivery location
+                  </label>
+                  <select
+                    id="po-delivery-location"
+                    value={selectedDeliveryLocationId}
+                    onChange={e => setSelectedDeliveryLocationId(e.target.value)}
+                    disabled={saving || isPreCommitted}
+                    className="bisync-filter-select font-sans disabled:opacity-50 mt-2 w-full max-w-md"
+                  >
+                    <option value="">
+                      Outlet location
+                      {outletLocations.length === 1 ? ` (${outletLocations[0].name})` : ''}
+                    </option>
+                    {deliveryLocationOptions.map(opt => (
+                      <option key={opt.externalId} value={opt.externalId}>
+                        {opt.name}
+                        {opt.city ? ` · ${opt.city}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+                    {selectedDeliveryLocation
+                      ? [
+                          selectedDeliveryLocation.addressLine1,
+                          selectedDeliveryLocation.addressLine2,
+                          [selectedDeliveryLocation.city, selectedDeliveryLocation.stateProvince, selectedDeliveryLocation.postcode]
+                            .filter(Boolean)
+                            .join(', '),
+                        ].filter(Boolean).join(' · ')
+                      : isPreCommitted
+                        ? 'Pre-committed POs use outlet drawdown locations.'
+                        : deliveryLocationOptions.length === 0
+                          ? 'No delivery locations configured — PO will show the outlet address. Add them under System Config → Location.'
+                          : 'Select a delivery location to show it on the PO instead of the outlet address.'}
+                  </p>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-border/60">
                   <div>
@@ -747,10 +840,21 @@ function VendorGroupCard({ group }: { group: OrderCartVendorGroup }) {
         {group.items.map(item => (
           <div key={item.lineKey} className="px-4 py-3 flex items-start justify-between gap-4 text-xs">
             <div className="min-w-0">
-              <p className="font-medium text-foreground">{item.productName}</p>
-              <p className="text-xs text-muted-foreground font-sans mt-0.5">
-                {item.componentName} · {item.componentId}
+              <p className="font-medium text-foreground">
+                {item.productName}
+                {item.isReturnableDeposit ? (
+                  <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">Deposit</span>
+                ) : null}
               </p>
+              {!item.isReturnableDeposit ? (
+                <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                  {item.componentName} · {item.componentId}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                  Returnable deposit · auto-attached
+                </p>
+              )}
               <p className="text-xs text-muted-foreground font-sans mt-0.5">{item.deliveryUnitLabel}</p>
             </div>
             <div className="text-right shrink-0">

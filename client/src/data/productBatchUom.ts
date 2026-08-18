@@ -7,6 +7,9 @@ import {
 
 export const MAX_BATCH_ADDITIONAL_UOMS = 5;
 
+/** B2B Principal Production UOM alternates (1 alt = qty × principal). */
+export const MAX_PRODUCTION_ALT_UOMS = 2;
+
 /** Primary / Secondary Packaging levels for Sub-Product Delivery Unit (Production unit). */
 export type YieldPackagingLevels = {
   primaryQty: string;

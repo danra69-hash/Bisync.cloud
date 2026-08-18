@@ -1,0 +1,58 @@
+---
+description: Every deploy must pass simulation tests for related functions first.
+alwaysApply: true
+---
+
+# Deploy simulation tests (mandatory)
+
+**No deploy ships without simulation tests for the functions touched by that change.**
+This exists to stop production crashes like POS Test / Component SWAP regressions.
+
+## Required gate
+
+Before merge to `master` (and again in CD before Cloud Build), agents **must** run:
+
+```bash
+node scripts/run-deploy-simulation.mjs --phase=pre --base=origin/master
+```
+
+After Cloud Run is healthy, CD (or the agent) **must** run:
+
+```bash
+DEPLOY_SIM_BASE_URL=https://bisync-cloud-389272498937.asia-southeast1.run.app \
+  node scripts/run-deploy-simulation.mjs --phase=post
+```
+
+Use `--all` when the change set is unclear or spans many areas.
+
+## What “simulation” means
+
+1. **Pre-deploy** — exercise the changed domain logic without relying on a human clicking the UI:
+   - node unit scripts under `scripts/*.test.mjs`
+   - area suites under `scripts/deploy-simulation/suites/`
+   - real module smoke via `client/scripts/sim-*.mts` (vite-node) when POS/client helpers change
+   - client `npm run build` when `client/` changes
+2. **Post-deploy** — hit the live URL for related APIs/pages and fail on non-200, malformed JSON, or browser `pageerror`.
+
+If a suite crashes, throws, or asserts false → **do not deploy / do not merge**.
+
+## When adding features
+
+1. Prefer extending an existing suite in `scripts/deploy-simulation/suites/`.
+2. If the feature is a new area, add a suite + register path matchers in `scripts/deploy-simulation/registry.mjs`.
+3. POS / register / modifier / Component SWAP changes must keep `pre-pos` + `post-pos-live` green.
+4. Update this registry in the **same PR** as the feature.
+
+## Agent workflow (with deploy-after-changes)
+
+1. Implement
+2. `node scripts/run-deploy-simulation.mjs --phase=pre --base=origin/master`
+3. Commit / push / PR
+4. Merge only after pre-sim passes (CI/CD also enforces)
+5. After master deploy health OK → confirm post-sim in Actions (or run locally against live URL)
+6. Report which suites ran and passed
+
+## Skip only when
+
+- User explicitly opts out of deploy **and** there is no push to `master`
+- Question-only task with no code changes

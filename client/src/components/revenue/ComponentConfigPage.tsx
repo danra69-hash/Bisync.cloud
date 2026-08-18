@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { api, type Ingredient, type LocationConfig } from '../../api';
 import {
   loadStorageAssignment,
@@ -15,42 +15,32 @@ import {
   saveStorageAssignment,
   ensureLocationStorageEntries,
   STORAGE_AREAS,
-  STORAGE_CATALOG,
-  storageCatalogMatchesLocations,
   storageEntryMatchesLocations,
   storageEntryKey,
   type MyStorageEntry,
-  type StorageCatalogRow,
+  type StorageAssignmentState,
 } from '../../data/storageAssignment';
 import {
   buildHierarchyAttachmentCounts,
   emptyHierarchyAttachmentCounts,
   loadComponentHierarchy,
   loadComponentHierarchyForCompany,
+  reconcileHierarchyWithComponents,
   saveComponentHierarchy,
   type ComponentHierarchyState,
   type HierarchyAttachmentCounts,
 } from '../../data/componentHierarchy';
+import { getKnownStorageOptions } from '../../data/componentCatalogConfig';
 import { ComponentHierarchyPanel } from './ComponentHierarchyPanel';
-import { StorageAreaPicker } from './StorageAreaPicker';
+import { CreateStorageAreaDialog, CreateStorageDialog } from './StorageAreaPicker';
 import { UomConfigPanel } from './UomConfigPanel';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
-type MyStorageTableRow =
-  | { kind: 'header'; id: string; label: string }
-  | { kind: 'entry'; entry: MyStorageEntry };
+type StorageSortColumn = 'area' | 'storage';
 
-type StorageSortColumn = 'name' | 'type' | 'items';
-
-const ALL_STORAGE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
-  { key: 'name', label: 'Storage Area' },
-  { key: 'type', label: 'Storage Type' },
-];
-
-const MY_STORAGE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
-  { key: 'name', label: 'Storage Area' },
-  { key: 'type', label: 'Storage Type' },
-  { key: 'items', label: 'No. of stored Components', align: 'right' },
+const STORAGE_TABLE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
+  { key: 'area', label: 'Storage Area', ...tableColWidth('40%') },
+  { key: 'storage', label: 'Storage', ...tableColWidth('60%') },
 ];
 
 const CONFIG_TABS = [
@@ -59,14 +49,21 @@ const CONFIG_TABS = [
   { id: 'uom' as const, label: 'UOM Config' },
 ] as const;
 
-const STORAGE_AREAS_LIST = [...STORAGE_AREAS];
-
 function resolveFallbackLocationLabels(locationIds: string[]): string {
   return locationIds
     .map(id => id.trim())
     .filter(Boolean)
     .map(id => id.charAt(0).toUpperCase() + id.slice(1))
     .join(', ');
+}
+
+function uniqueAreas(areas: string[], entries: MyStorageEntry[]): string[] {
+  return [...new Set([
+    ...STORAGE_AREAS,
+    ...areas,
+    ...entries.map(entry => entry.area),
+  ].map(area => area.trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export function ComponentConfigPage({
@@ -84,7 +81,6 @@ export function ComponentConfigPage({
   const [attachmentCounts, setAttachmentCounts] = useState<HierarchyAttachmentCounts>(
     () => emptyHierarchyAttachmentCounts(),
   );
-  const [storage] = useState(STORAGE_CATALOG);
   const [companyLocations, setCompanyLocations] = useState<LocationConfig[]>([]);
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
   const selectedLocations = useMemo(
@@ -94,13 +90,73 @@ export function ComponentConfigPage({
   const locationLabelDisplay = selectedLocations.length > 0
     ? selectedLocations.map(location => location.name).join(', ')
     : resolveFallbackLocationLabels(selectedLocationIds);
-  const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>(() => loadStorageAssignment().entries);
-  const [nextEntryId, setNextEntryId] = useState(() => loadStorageAssignment().nextEntryId);
-  const [pendingStorage, setPendingStorage] = useState<StorageCatalogRow | null>(null);
+
+  const initialAssignment = loadStorageAssignment();
+  const [storageAreas, setStorageAreas] = useState<string[]>(() => uniqueAreas(initialAssignment.areas, initialAssignment.entries));
+  const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>(() => initialAssignment.entries);
+  const [nextEntryId, setNextEntryId] = useState(() => initialAssignment.nextEntryId);
+  const [createAreaOpen, setCreateAreaOpen] = useState(false);
+  const [createStorageOpen, setCreateStorageOpen] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameInfo, setRenameInfo] = useState<string | null>(null);
+
+  function persistAssignment(next: StorageAssignmentState) {
+    setStorageAreas(uniqueAreas(next.areas, next.entries));
+    setMyStorageEntries(next.entries);
+    setNextEntryId(next.nextEntryId);
+    saveStorageAssignment(next, selectedCompanyId);
+  }
 
   function updateHierarchy(next: ComponentHierarchyState) {
     setHierarchy(next);
     saveComponentHierarchy(next, selectedCompanyId);
+  }
+
+  async function reloadHierarchyFromCompany() {
+    if (!selectedCompanyId) return;
+    const [nextHierarchy, ingredients] = await Promise.all([
+      loadComponentHierarchyForCompany(selectedCompanyId),
+      api.ingredients(selectedCompanyId).catch(() => [] as Ingredient[]),
+    ]);
+    const reconciled = reconcileHierarchyWithComponents(nextHierarchy, ingredients);
+    if (reconciled.changed) {
+      saveComponentHierarchy(reconciled.state, selectedCompanyId);
+    }
+    setHierarchy(reconciled.state);
+    setAttachmentCounts(buildHierarchyAttachmentCounts(ingredients));
+  }
+
+  async function handleRenameLabel(args: { kind: 'category' | 'group'; from: string; to: string }) {
+    if (!selectedCompanyId) {
+      setRenameError('Select a company before renaming category or group.');
+      return;
+    }
+    setRenameBusy(true);
+    setRenameError(null);
+    setRenameInfo(null);
+    try {
+      const result = await api.renameCompanyCategoryGroup(
+        selectedCompanyId,
+        args.kind,
+        args.from,
+        args.to,
+      );
+      await reloadHierarchyFromCompany();
+      const parts = Object.entries(result.counts)
+        .filter(([, count]) => count > 0)
+        .map(([key, count]) => `${count} ${key}`);
+      setRenameInfo(
+        result.total > 0
+          ? `Renamed “${args.from}” → “${args.to}” and updated ${parts.join(', ') || `${result.total} records`} (including POS).`
+          : `Renamed “${args.from}” → “${args.to}”.`,
+      );
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : 'Failed to rename category/group.');
+      throw err;
+    } finally {
+      setRenameBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -114,21 +170,24 @@ export function ComponentConfigPage({
       api.locationsConfig().catch(() => [] as LocationConfig[]),
       api.ingredients(selectedCompanyId).catch(() => [] as Ingredient[]),
     ]).then(([nextHierarchy, nextStorage, locations, ingredients]) => {
-      setHierarchy(nextHierarchy);
+      const reconciled = reconcileHierarchyWithComponents(nextHierarchy, ingredients);
+      if (reconciled.changed) {
+        saveComponentHierarchy(reconciled.state, selectedCompanyId);
+      }
+      setHierarchy(reconciled.state);
       setAttachmentCounts(buildHierarchyAttachmentCounts(ingredients));
       const companyLocIds = locations
         .filter(location => location.companyId === selectedCompanyId)
         .map(location => location.externalId);
       const selectedOrCompany = selectedLocationIds.length > 0 ? selectedLocationIds : companyLocIds;
       const ensured = ensureLocationStorageEntries(nextStorage, selectedOrCompany);
+      const state = ensured.changed ? ensured.state : nextStorage;
       if (ensured.changed) {
-        saveStorageAssignment(ensured.state, selectedCompanyId);
-        setMyStorageEntries(ensured.state.entries);
-        setNextEntryId(ensured.state.nextEntryId);
-      } else {
-        setMyStorageEntries(nextStorage.entries);
-        setNextEntryId(nextStorage.nextEntryId);
+        saveStorageAssignment(state, selectedCompanyId);
       }
+      setStorageAreas(uniqueAreas(state.areas, state.entries));
+      setMyStorageEntries(state.entries);
+      setNextEntryId(state.nextEntryId);
       setCompanyLocations(locations.filter(location => location.companyId === selectedCompanyId));
     });
   }, [selectedCompanyId, selectedLocationIds.join(',')]);
@@ -137,6 +196,7 @@ export function ComponentConfigPage({
     const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
     const reloadStorage = () => {
       const nextStorage = loadStorageAssignment();
+      setStorageAreas(uniqueAreas(nextStorage.areas, nextStorage.entries));
       setMyStorageEntries(nextStorage.entries);
       setNextEntryId(nextStorage.nextEntryId);
     };
@@ -148,89 +208,48 @@ export function ComponentConfigPage({
     };
   }, []);
 
-  const locationStorage = useMemo(() => {
-    const matched = storage.filter(row => storageCatalogMatchesLocations(row.location, selectedLocationIds));
-    // Non-demo locations may match every catalog row; keep one entry per storage name.
-    const seen = new Set<string>();
-    return matched.filter(row => {
-      const key = `${row.name}::${row.type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [storage, selectedLocationIds]);
+  const visibleEntries = useMemo(
+    () => myStorageEntries.filter(entry => storageEntryMatchesLocations(entry.location, selectedLocationIds)),
+    [myStorageEntries, selectedLocationIds],
+  );
 
-  const myStorageByArea = useMemo(() => {
-    const entries = myStorageEntries.filter(entry => storageEntryMatchesLocations(entry.location, selectedLocationIds));
-    return STORAGE_AREAS_LIST.map(area => ({
-      area,
-      entries: entries.filter(entry => entry.area === area),
-    }));
-  }, [myStorageEntries, selectedLocationIds]);
-
-  const hasMyStorage = myStorageByArea.some(section => section.entries.length > 0);
-
-  const locationStorageScrollRef = useRef<HTMLDivElement>(null);
-  const myStorageScrollRef = useRef<HTMLDivElement>(null);
-
+  const storageScrollRef = useRef<HTMLDivElement>(null);
   const {
-    sortColumn: locationStorageSortColumn,
-    sortDirection: locationStorageSortDirection,
-    toggleSort: toggleLocationStorageSort,
-    resetSort: resetLocationStorageSort,
-  } = useTableSort<StorageSortColumn>();
-  const {
-    sortColumn: myStorageSortColumn,
-    sortDirection: myStorageSortDirection,
-    toggleSort: toggleMyStorageSort,
-    resetSort: resetMyStorageSort,
-  } = useTableSort<StorageSortColumn>();
+    sortColumn,
+    sortDirection,
+    toggleSort,
+    resetSort,
+  } = useTableSort<StorageSortColumn>('area');
 
   useEffect(() => {
-    resetLocationStorageSort();
-    resetMyStorageSort();
-  }, [tab, selectedLocationIds, myStorageEntries, resetLocationStorageSort, resetMyStorageSort]);
+    resetSort();
+  }, [tab, selectedLocationIds, resetSort]);
 
-  const sortedLocationStorage = useMemo(
+  const sortedEntries = useMemo(
     () =>
-      sortTableRows(locationStorage, locationStorageSortColumn, locationStorageSortDirection, {
-        name: row => row.name,
-        type: row => row.type,
+      sortTableRows(visibleEntries, sortColumn, sortDirection, {
+        area: row => row.area,
+        storage: row => row.name,
       }),
-    [locationStorage, locationStorageSortColumn, locationStorageSortDirection],
+    [visibleEntries, sortColumn, sortDirection],
   );
-  const sortedMyStorageTableRows = useMemo((): MyStorageTableRow[] => {
-    return myStorageByArea.flatMap(section => {
-      const sortedEntries = sortTableRows(
-        section.entries,
-        myStorageSortColumn,
-        myStorageSortDirection,
-        {
-          name: row => row.name,
-          type: row => row.type,
-          items: row => row.items,
-        },
-      );
-      return [
-        { kind: 'header' as const, id: `hdr-${section.area}`, label: section.area },
-        ...sortedEntries.map(entry => ({ kind: 'entry' as const, entry })),
-      ];
+
+  const storageScroll = useInfiniteScrollSlice(sortedEntries, { scrollRootRef: storageScrollRef });
+  const storageTypes = useMemo(() => getKnownStorageOptions(), []);
+
+  function createStorageArea(areaName: string) {
+    const areas = uniqueAreas([...storageAreas, areaName], myStorageEntries);
+    persistAssignment({
+      areas,
+      entries: myStorageEntries,
+      nextEntryId,
     });
-  }, [myStorageByArea, myStorageSortColumn, myStorageSortDirection]);
-
-  const locationStorageScroll = useInfiniteScrollSlice(sortedLocationStorage, { scrollRootRef: locationStorageScrollRef });
-  const myStorageScroll = useInfiniteScrollSlice(sortedMyStorageTableRows, { scrollRootRef: myStorageScrollRef });
-
-  function openStorageAreaPicker(source: StorageCatalogRow) {
-    setPendingStorage(source);
+    setCreateAreaOpen(false);
   }
 
-  function closeStorageAreaPicker() {
-    setPendingStorage(null);
-  }
+  function createStorage(payload: { area: string; name: string; type: string }) {
+    if (selectedLocationIds.length === 0) return;
 
-  function confirmAddToMyStorage(area: string) {
-    if (!pendingStorage || selectedLocationIds.length === 0) return;
     const existingKeys = new Set(myStorageEntries.map(storageEntryKey));
     const newEntries: MyStorageEntry[] = [];
     let nextId = nextEntryId;
@@ -239,11 +258,11 @@ export function ComponentConfigPage({
       const candidate: MyStorageEntry = {
         id: nextId,
         location,
-        area,
-        sourceStorageId: pendingStorage.id,
-        name: pendingStorage.name,
-        type: pendingStorage.type,
-        items: pendingStorage.items,
+        area: payload.area,
+        sourceStorageId: 0,
+        name: payload.name,
+        type: payload.type,
+        items: 0,
       };
       const key = storageEntryKey(candidate);
       if (!existingKeys.has(key)) {
@@ -254,24 +273,24 @@ export function ComponentConfigPage({
     }
 
     if (newEntries.length === 0) {
-      setPendingStorage(null);
+      setCreateStorageOpen(false);
       return;
     }
 
-    setNextEntryId(nextId);
-    setMyStorageEntries(prev => {
-      const next = [...prev, ...newEntries];
-      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId: nextId }, selectedCompanyId);
-      return next;
+    persistAssignment({
+      areas: uniqueAreas([...storageAreas, payload.area], [...myStorageEntries, ...newEntries]),
+      entries: [...myStorageEntries, ...newEntries],
+      nextEntryId: nextId,
     });
-    setPendingStorage(null);
+    setCreateStorageOpen(false);
   }
 
   function removeMyStorageEntry(entryId: number) {
-    setMyStorageEntries(prev => {
-      const next = prev.filter(e => e.id !== entryId);
-      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId }, selectedCompanyId);
-      return next;
+    const nextEntries = myStorageEntries.filter(e => e.id !== entryId);
+    persistAssignment({
+      areas: uniqueAreas(storageAreas, nextEntries),
+      entries: nextEntries,
+      nextEntryId,
     });
   }
 
@@ -298,6 +317,11 @@ export function ComponentConfigPage({
           state={hierarchy}
           onChange={updateHierarchy}
           attachmentCounts={attachmentCounts}
+          companyId={selectedCompanyId}
+          onRenameLabel={handleRenameLabel}
+          renameBusy={renameBusy}
+          renameError={renameError}
+          renameInfo={renameInfo}
         />
       ) : tab === 'storage' ? (
         <div className="space-y-3">
@@ -306,162 +330,110 @@ export function ComponentConfigPage({
               Select a company and at least one location to manage storage assignment.
             </p>
           ) : (
-          <>
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <p className="text-xs text-muted-foreground">
-              Location: <span className="font-medium text-foreground">{locationLabelDisplay}</span>
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                locationStorageScrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                const first = locationStorage[0];
-                if (first) openStorageAreaPicker(first);
-              }}
-              disabled={locationStorage.length === 0}
-              title={locationStorage.length === 0 ? 'No storage areas available for this location' : 'Pick a storage area to add to My Storage'}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus size={11} /> Add Storage
-            </button>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
-              <div className="px-3 py-2 border-b border-border bg-muted/30">
-                <p className="text-xs font-semibold">All Storage — {locationLabelDisplay}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Click a storage area, then choose an area to copy it to My Storage</p>
-              </div>
-              <TableScrollContainer ref={locationStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
-                <thead>
-                  <SortableTableHeaderRow
-                    columns={ALL_STORAGE_COLUMNS}
-                    sortColumn={locationStorageSortColumn}
-                    sortDirection={locationStorageSortDirection}
-                    onSort={toggleLocationStorageSort}
-                    className="border-b border-border bg-muted/40"
-                  />
-                </thead>
-                <tbody>
-                  {locationStorageScroll.visibleItems.map(s => (
-                    <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/20">
-                      <td className="px-3 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => openStorageAreaPicker(s)}
-                          className="font-medium text-left text-primary hover:underline"
-                        >
-                          {s.name}
-                        </button>
-                        {s.location === 'All Locations' && (
-                          <p className="text-xs text-muted-foreground mt-0.5">All locations</p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans">{s.type}</span>
-                      </td>
-                    </tr>
-                  ))}
-                  {locationStorage.length === 0 && (
-                    <tr>
-                      <td colSpan={2} className="px-3 py-8 text-center text-muted-foreground">
-                        No storage for this location.
-                      </td>
-                    </tr>
-                  )}
-                  <InfiniteScrollTableSentinel colSpan={2} hasMore={locationStorageScroll.hasMore} onLoadMore={locationStorageScroll.loadMore} nextPageSize={locationStorageScroll.nextPageSize} sentinelRef={locationStorageScroll.sentinelRef} totalCount={locationStorageScroll.totalCount} visibleCount={locationStorageScroll.visibleCount} />
-                </tbody>
-              </table>
-              </TableScrollContainer>
-            </div>
-
-            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
-              <div className="px-3 py-2 border-b border-border bg-muted/30">
-                <p className="text-xs font-semibold">My Storage — {locationLabelDisplay}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Grouped by Dining Room, Bar, and Kitchen. Click a storage area to remove it.</p>
-              </div>
-
-              {!hasMyStorage ? (
-                <div className="px-3 py-6">
-                  <p className="text-center text-xs text-muted-foreground mb-4">
-                    No storage assigned yet. Click a storage area on the left and select Dining Room, Bar, or Kitchen.
-                  </p>
-                  <table className="w-full table-fixed text-xs">
-                    <tbody>
-                      {STORAGE_AREAS_LIST.map(area => (
-                        <tr key={area} className="border-b border-border/60">
-                          <td className="px-3 py-2 text-xs font-sans font-semibold uppercase tracking-wider text-muted-foreground">
-                            {area}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">—</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <p className="text-xs text-muted-foreground">
+                  Location: <span className="font-medium text-foreground">{locationLabelDisplay}</span>
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCreateAreaOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-border bg-background text-foreground hover:bg-muted/40"
+                  >
+                    <Plus size={11} /> Create Storage Area
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateStorageOpen(true)}
+                    disabled={storageAreas.length === 0}
+                    title={storageAreas.length === 0 ? 'Create a storage area first' : 'Create storage'}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={11} /> Create Storage
+                  </button>
                 </div>
-              ) : (
-                <TableScrollContainer ref={myStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-                  <table className="w-full table-fixed text-xs">
+              </div>
+
+              <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
+                <div className="px-3 py-2 border-b border-border bg-muted/30">
+                  <p className="text-xs font-semibold">Storage — {locationLabelDisplay}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Create storage areas, then add storages under each area.
+                  </p>
+                </div>
+                <TableScrollContainer ref={storageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <TableColGroup columns={STORAGE_TABLE_COLUMNS} />
                     <thead>
                       <SortableTableHeaderRow
-                        columns={MY_STORAGE_COLUMNS}
-                        sortColumn={myStorageSortColumn}
-                        sortDirection={myStorageSortDirection}
-                        onSort={toggleMyStorageSort}
+                        columns={STORAGE_TABLE_COLUMNS}
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={toggleSort}
                         className="border-b border-border bg-muted/40"
                       />
                     </thead>
                     <tbody>
-                      {myStorageScroll.visibleItems.map(row => {
-                        if (row.kind === 'header') {
-                          return (
-                            <tr key={row.id} className="bg-muted/20 border-b border-border">
-                              <td colSpan={3} className="px-3 py-2 text-xs font-sans font-semibold uppercase tracking-wider text-foreground">
-                                {row.label}
-                              </td>
-                            </tr>
-                          );
-                        }
-                        const entry = row.entry;
-                        return (
-                          <tr key={entry.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-                            <td className="px-3 py-2.5">
+                      {storageScroll.visibleItems.map(entry => (
+                        <tr key={entry.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
+                          <td className="px-3 py-2.5 font-medium">{entry.area}</td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span>{entry.name}</span>
                               <button
                                 type="button"
                                 onClick={() => removeMyStorageEntry(entry.id)}
-                                className="font-medium text-left text-primary hover:underline"
+                                className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40"
+                                title="Remove storage"
+                                aria-label={`Remove ${entry.name}`}
                               >
-                                {entry.name}
+                                <Trash2 size={12} />
                               </button>
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans">{entry.type}</span>
-                            </td>
-                            <td className="px-3 py-2.5 font-sans">{entry.items}</td>
-                          </tr>
-                        );
-                      })}
-                      <InfiniteScrollTableSentinel colSpan={3} hasMore={myStorageScroll.hasMore} onLoadMore={myStorageScroll.loadMore} nextPageSize={myStorageScroll.nextPageSize} sentinelRef={myStorageScroll.sentinelRef} totalCount={myStorageScroll.totalCount} visibleCount={myStorageScroll.visibleCount} />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {visibleEntries.length === 0 && (
+                        <tr>
+                          <td colSpan={2} className="px-3 py-8 text-center text-muted-foreground">
+                            No storage yet. Create a storage area, then create storage.
+                          </td>
+                        </tr>
+                      )}
+                      <InfiniteScrollTableSentinel
+                        colSpan={2}
+                        hasMore={storageScroll.hasMore}
+                        onLoadMore={storageScroll.loadMore}
+                        nextPageSize={storageScroll.nextPageSize}
+                        sentinelRef={storageScroll.sentinelRef}
+                        totalCount={storageScroll.totalCount}
+                        visibleCount={storageScroll.visibleCount}
+                      />
                     </tbody>
                   </table>
                 </TableScrollContainer>
-              )}
-            </div>
-          </div>
-          </>
+              </div>
+            </>
           )}
         </div>
       ) : (
         <UomConfigPanel selectedCompanyId={selectedCompanyId} />
       )}
 
-      {pendingStorage && (
-        <StorageAreaPicker
-          storageName={pendingStorage.name}
-          areas={STORAGE_AREAS_LIST}
-          onClose={closeStorageAreaPicker}
-          onConfirm={confirmAddToMyStorage}
+      {createAreaOpen && (
+        <CreateStorageAreaDialog
+          existingAreas={storageAreas}
+          onClose={() => setCreateAreaOpen(false)}
+          onConfirm={createStorageArea}
+        />
+      )}
+      {createStorageOpen && (
+        <CreateStorageDialog
+          areas={storageAreas}
+          storageTypes={storageTypes}
+          onClose={() => setCreateStorageOpen(false)}
+          onConfirm={createStorage}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import type { Company, LocationConfig, Vendor } from '../api';
+import type { Company, DeliveryLocation, LocationConfig, Vendor } from '../api';
 
 const COMPANY_SKIP_WORDS = new Set(['sdn', 'bhd', 'sdn.', 'bhd.', 'co', 'ltd', 'inc', 'the', 'and', 'of']);
 
@@ -39,7 +39,9 @@ export function formatCompanyAddress(company: Company): string {
   ].filter(Boolean).join('\n');
 }
 
-export function formatLocationAddress(location: LocationConfig): string {
+export function formatLocationAddress(
+  location: Pick<LocationConfig, 'addressLine1' | 'addressLine2' | 'city' | 'stateProvince' | 'postcode'>,
+): string {
   return [
     location.addressLine1,
     location.addressLine2,
@@ -47,10 +49,14 @@ export function formatLocationAddress(location: LocationConfig): string {
   ].filter(Boolean).join('\n');
 }
 
+export function formatDeliveryLocationAddress(location: DeliveryLocation): string {
+  return formatLocationAddress(location);
+}
+
 export function formatVendorAddress(vendor: Vendor): string {
   return [
     vendor.address,
-    [vendor.city, vendor.state].filter(Boolean).join(', '),
+    [vendor.city, vendor.state, vendor.postcode].filter(Boolean).join(', '),
   ].filter(Boolean).join('\n');
 }
 

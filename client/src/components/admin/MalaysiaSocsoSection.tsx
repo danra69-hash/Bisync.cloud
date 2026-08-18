@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { inputCls } from '../../data/countries';
@@ -15,17 +15,17 @@ const cellInputCls = `${inputCls} py-1.5 min-w-0`;
 type SocsoSortColumn = 'salaryRange' | 'companyAmount' | 'employeeAmount';
 
 const SOCSO_TABLE_COLUMNS: SortableColumnDef<SocsoSortColumn>[] = [
-  { key: 'salaryRange', label: 'Salary Range' },
-  { key: 'companyAmount', label: 'Company (RM)' },
-  { key: 'employeeAmount', label: 'Employee (RM)' },
+  { key: 'salaryRange', label: 'Salary Range', ...tableColWidth('50%') },
+  { key: 'companyAmount', label: 'Company (RM)', ...tableColWidth('25%') },
+  { key: 'employeeAmount', label: 'Employee (RM)', ...tableColWidth('25%') },
 ];
 
 type ForeignSocsoSortColumn = 'salaryRange' | 'companyPct' | 'employeePct';
 
 const FOREIGN_SOCSO_TABLE_COLUMNS: SortableColumnDef<ForeignSocsoSortColumn>[] = [
-  { key: 'salaryRange', label: 'Salary Range', sortable: false },
-  { key: 'companyPct', label: 'Company %', sortable: false },
-  { key: 'employeePct', label: 'Employee %', sortable: false },
+  { key: 'salaryRange', label: 'Salary Range', sortable: false, ...tableColWidth('50%') },
+  { key: 'companyPct', label: 'Company %', sortable: false, ...tableColWidth('25%') },
+  { key: 'employeePct', label: 'Employee %', sortable: false, ...tableColWidth('25%') },
 ];
 
 type Props = {
@@ -87,8 +87,9 @@ function SocsoCategoryTable({
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
       <div className="border border-border rounded-lg overflow-hidden">
-        <TableScrollContainer ref={scrollRootRef} className="max-h-56 overflow-y-auto ">
-          <table className="w-full table-fixed text-xs">
+        <TableScrollContainer ref={scrollRootRef} className="max-h-56 overflow-y-auto">
+          <table className="w-full text-xs">
+            <TableColGroup columns={SOCSO_TABLE_COLUMNS} />
             <thead className="bg-muted/40 border-b border-border sticky top-0 z-10">
               <SortableTableHeaderRow
                 columns={SOCSO_TABLE_COLUMNS}
@@ -172,8 +173,9 @@ export function MalaysiaSocsoSection({ brackets, onChange, foreignEmployerPct, o
           </p>
         </div>
 
-        <div className="border border-border rounded-lg ">
-          <table className="w-full table-fixed text-xs">
+        <div className="border border-border rounded-lg">
+          <table className="w-full text-xs">
+            <TableColGroup columns={FOREIGN_SOCSO_TABLE_COLUMNS} />
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={FOREIGN_SOCSO_TABLE_COLUMNS}

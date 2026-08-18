@@ -21,7 +21,10 @@ public sealed class FifoIssueResult
 /// FOR UPDATE locking, zero-tolerance shortfall). Also maintains <c>inventory_batches</c>
 /// rows on receipt so each inbound shipment stays cost-segregated.
 /// </summary>
-public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingService fifoCosting)
+public class FifoBatchIssueService(
+    BisyncDbContext db,
+    ComponentFifoCostingService fifoCosting,
+    IServiceScopeFactory scopeFactory)
 {
     public async Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
     {
@@ -45,6 +48,124 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
             purchase.Id,
             purchase.CompanyId,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Syncs FIFO batch unit cost when accounting consolidates / affirms a receipt price.
+    /// </summary>
+    public async Task UpdateBatchUnitCostFromPurchaseAsync(
+        InventoryPurchase purchase,
+        CancellationToken cancellationToken = default)
+    {
+        if (purchase.Id <= 0) return;
+        await EnsureSchemaAsync(cancellationToken);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE inventory_batches
+            SET unit_cost = {0}
+            WHERE source_purchase_id = {1}
+            """,
+            StockCardFifoEngine.RoundUnitPrice(purchase.UnitPrice),
+            purchase.Id);
+    }
+
+    /// <summary>
+    /// Keeps <c>inventory_batches</c> aligned with a rewritten InventoryPurchase
+    /// (delivery packages → Principal Component Unit). Without this, ledger can show
+    /// 22,740 Gr while FIFO still has 6 packages leftover — credit notes then fail with
+    /// "Short by ~3787.79" when reversing 1 delivery unit (≈3790 Gr).
+    /// </summary>
+    public async Task SyncBatchFromPurchaseAsync(
+        InventoryPurchase purchase,
+        CancellationToken cancellationToken = default)
+    {
+        if (purchase.Id <= 0)
+            return;
+
+        var location = !string.IsNullOrWhiteSpace(purchase.LocationExternalId)
+            ? purchase.LocationExternalId.Trim()
+            : FirstLocationId(purchase.LocationIdsJson);
+        var normalizedUom = NormalizeUom(purchase.Uom);
+        var qty = DecimalRounding.ToDb(purchase.Quantity);
+        if (string.IsNullOrWhiteSpace(purchase.ComponentId)
+            || string.IsNullOrWhiteSpace(normalizedUom)
+            || qty <= StockCardFifoEngine.QtyEpsilon)
+            return;
+
+        await EnsureSchemaAsync(cancellationToken);
+
+        if (!await ExistsBatchForPurchaseAsync(purchase.Id, cancellationToken))
+        {
+            await RecordReceiptBatchAsync(
+                purchase.ComponentId,
+                location,
+                purchase.Uom,
+                purchase.Quantity,
+                purchase.UnitPrice,
+                purchase.DateCreatedInStock,
+                purchase.Id,
+                purchase.CompanyId,
+                cancellationToken);
+            return;
+        }
+
+        var unitCost = StockCardFifoEngine.RoundUnitPrice(purchase.UnitPrice);
+        // Scale remaining by original→new so partial package-as-PCU consumption is remapped.
+        // Untouched batches (remaining ≈ original) jump to the full converted qty.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE inventory_batches
+            SET
+                component_id = {0},
+                location_external_id = CASE
+                    WHEN {1} = '' THEN location_external_id
+                    ELSE {1}
+                END,
+                uom = {2},
+                unit_cost = {3},
+                remaining_qty = CASE
+                    WHEN original_qty <= 0.0001 THEN {4}
+                    WHEN remaining_qty >= original_qty - 0.0001 THEN {4}
+                    ELSE ROUND(({4}::numeric * remaining_qty) / original_qty, 4)
+                END,
+                original_qty = {4},
+                status = CASE
+                    WHEN CASE
+                        WHEN original_qty <= 0.0001 THEN {4}
+                        WHEN remaining_qty >= original_qty - 0.0001 THEN {4}
+                        ELSE ROUND(({4}::numeric * remaining_qty) / original_qty, 4)
+                    END > 0 THEN 'ACTIVE'
+                    ELSE 'DEPLETED'
+                END
+            WHERE source_purchase_id = {5}
+            """,
+            (purchase.ComponentId ?? string.Empty).Trim(),
+            location,
+            normalizedUom,
+            unitCost,
+            qty,
+            purchase.Id);
+    }
+
+    /// <summary>
+    /// Remap FIFO remaining qty when the source purchase is rewritten from delivery
+    /// packages to principal units (pure helper for tests / callers).
+    /// </summary>
+    public static decimal ScaleBatchRemainingToPurchaseQty(
+        decimal previousOriginalQty,
+        decimal previousRemainingQty,
+        decimal newPurchaseQty)
+    {
+        var newQty = DecimalRounding.ToDb(newPurchaseQty);
+        if (newQty <= StockCardFifoEngine.QtyEpsilon)
+            return 0m;
+        if (previousOriginalQty <= StockCardFifoEngine.QtyEpsilon)
+            return newQty;
+        if (previousRemainingQty + StockCardFifoEngine.QtyEpsilon >= previousOriginalQty)
+            return newQty;
+        if (previousRemainingQty <= StockCardFifoEngine.QtyEpsilon)
+            return 0m;
+        return DecimalRounding.ToDb(newQty * (previousRemainingQty / previousOriginalQty));
     }
 
     public async Task RecordReceiptBatchAsync(
@@ -99,6 +220,47 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
             StockCardFifoEngine.RoundUnitPrice(unitCost),
             sourcePurchaseId,
             companyId);
+
+        RecordStockAuditFireAndForget(
+            SystemAuditActivityTypes.StockIssueReceive,
+            "FifoReceipt",
+            $"Stock receive — {component} qty {DecimalRounding.ToDb(quantity)} {normalizedUom} @ {location}",
+            companyId,
+            location,
+            "inventory_batches",
+            sourcePurchaseId?.ToString());
+    }
+
+    void RecordStockAuditFireAndForget(
+        string activityType,
+        string action,
+        string summary,
+        int? companyId,
+        string? locationExternalId,
+        string? entityType,
+        string? entityKey)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var audit = scope.ServiceProvider.GetRequiredService<ISystemAuditService>();
+                await audit.RecordAsync(new SystemAuditWriteRequest(
+                    activityType,
+                    action,
+                    summary,
+                    companyId,
+                    EntityType: entityType,
+                    EntityKey: entityKey,
+                    LocationExternalId: locationExternalId,
+                    Details: new { activityType, action, locationExternalId, entityKey }));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[SystemAudit] FIFO stock audit failed: {ex.Message}");
+            }
+        });
     }
 
     public async Task EnsureBatchesSyncedAsync(
@@ -117,6 +279,29 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
             return;
 
         var batchCount = await CountActiveOrAnyBatchesAsync(component, location, normalizedUom, cancellationToken);
+        if (batchCount == 0)
+        {
+            // Purchases may already have batches under a stale delivery UOM (e.g. TUB)
+            // while stock now issues in PCU (GR). Remap those batches before inventing new layers.
+            var purchasesForSync = await db.InventoryPurchases.AsNoTracking()
+                .Where(p => p.ComponentId == component)
+                .OrderBy(p => p.DateCreatedInStock)
+                .ThenBy(p => p.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var purchase in purchasesForSync)
+            {
+                if (!StockLocationRules.PurchaseMatchesLocation(purchase.LocationIdsJson, locationExternalId))
+                    continue;
+                if (companyId is int cid && purchase.CompanyId is int pcid && pcid != cid)
+                    continue;
+                if (!await ExistsBatchForPurchaseAsync(purchase.Id, cancellationToken))
+                    continue;
+                await SyncBatchFromPurchaseAsync(purchase, cancellationToken);
+            }
+
+            batchCount = await CountActiveOrAnyBatchesAsync(component, location, normalizedUom, cancellationToken);
+        }
+
         if (batchCount > 0)
         {
             await EnsureMissingPurchaseBatchesAsync(component, location, normalizedUom, companyId, cancellationToken);
@@ -228,6 +413,15 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
             ? StockCardFifoEngine.RoundUnitPrice(totalCost / issuedQty)
             : 0m;
 
+        RecordStockAuditFireAndForget(
+            SystemAuditActivityTypes.StockIssueReceive,
+            "FifoIssue",
+            $"Stock issue — {(componentId ?? string.Empty).Trim()} qty {issuedQty} {NormalizeUom(uom)} @ {(locationExternalId ?? string.Empty).Trim()} ({(string.IsNullOrWhiteSpace(transactionType) ? "issue" : transactionType.Trim())}; ref {referenceId})",
+            companyId,
+            (locationExternalId ?? string.Empty).Trim(),
+            "issue_fifo_stock",
+            transactionId.ToString());
+
         return new FifoIssueResult
         {
             TransactionId = transactionId,
@@ -259,7 +453,11 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
             if (companyId is int cid && purchase.CompanyId is int pcid && pcid != cid)
                 continue;
             if (await ExistsBatchForPurchaseAsync(purchase.Id, cancellationToken))
+            {
+                // Purchase may have been healed to PCU after the batch was created as packages.
+                await SyncBatchFromPurchaseAsync(purchase, cancellationToken);
                 continue;
+            }
 
             // New receipt after batches were already materialized — full qty as a new ACTIVE batch.
             await RecordReceiptBatchAsync(
@@ -365,4 +563,48 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
     }
 
     static string NormalizeUom(string uom) => (uom ?? string.Empty).Trim().ToUpperInvariant();
+
+    /// <summary>
+    /// Puts qty back onto the batches that <c>issue_fifo_stock</c> deducted, then drops the
+    /// transaction audit rows. Used when permanently deleting a credit note (or similar).
+    /// </summary>
+    public async Task RestoreIssueTransactionAsync(
+        Guid transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (transactionId == Guid.Empty)
+            return;
+
+        await EnsureSchemaAsync(cancellationToken);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            WITH restored AS (
+                SELECT batch_id, SUM(qty_deducted) AS qty_deducted
+                FROM transaction_lines
+                WHERE transaction_id = {0}
+                GROUP BY batch_id
+            )
+            UPDATE inventory_batches b
+            SET
+                remaining_qty = ROUND(b.remaining_qty + r.qty_deducted, 4),
+                status = CASE
+                    WHEN ROUND(b.remaining_qty + r.qty_deducted, 4) > 0 THEN 'ACTIVE'
+                    ELSE 'DEPLETED'
+                END
+            FROM restored r
+            WHERE b.batch_id = r.batch_id
+            """,
+            transactionId);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM transaction_lines WHERE transaction_id = {0}
+            """,
+            transactionId);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM transactions WHERE transaction_id = {0}
+            """,
+            transactionId);
+    }
 }

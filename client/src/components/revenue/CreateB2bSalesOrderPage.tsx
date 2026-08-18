@@ -18,6 +18,7 @@ import { inputCls, selectCls } from '../../data/componentForm';
 import type { SalesOrderCartLine } from '../../data/buildSalesOrderPdfData';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { pageShellClass } from '../layout/pageLayout';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { SalesOrderCartModal } from './SalesOrderCartModal';
@@ -267,7 +268,7 @@ export function CreateB2bSalesOrderPage({
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-              Lock period (days)
+              Lock period (working days)
             </label>
             <input
               type="number"
@@ -327,14 +328,15 @@ export function CreateB2bSalesOrderPage({
       ) : (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <TableScrollContainer className="max-h-[calc(100vh-18rem)] overflow-y-auto">
-            <table className="w-full table-fixed">
+            <table className="w-full">
+              <ColGroup widths={['42%', '18%', '12%', '14%', '14%']} />
               <thead className="bg-muted/30">
                 <tr className="border-b border-border text-xs">
                   <th className="px-3 py-2 text-left font-semibold">Product</th>
-                  <th className="px-3 py-2 text-left font-semibold w-[18%]">Delivery UOM</th>
-                  <th className="px-3 py-2 text-right font-semibold w-[12%]">QTY Box</th>
-                  <th className="px-3 py-2 text-right font-semibold w-[14%]">Unit Price</th>
-                  <th className="px-3 py-2 text-right font-semibold w-[14%]">Sub-total</th>
+                  <th className="px-3 py-2 text-left font-semibold">Delivery UOM</th>
+                  <th className="px-3 py-2 text-right font-semibold">QTY Box</th>
+                  <th className="px-3 py-2 text-right font-semibold">Unit Price</th>
+                  <th className="px-3 py-2 text-right font-semibold">Sub-total</th>
                 </tr>
               </thead>
               <tbody>

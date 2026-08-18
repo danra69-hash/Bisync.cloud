@@ -323,6 +323,16 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.active-requisition",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ActiveRequisitionPage.tsx",
+      "symbol": "ActiveRequisitionPage",
+      "route": "/revenue/order?tab=requisition",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-07"
+    },
+    {
       "id": "dr.page.order-template",
       "kind": "client-page",
       "path": "client/src/components/revenue/OrderTemplatePage.tsx",
@@ -422,7 +432,29 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-24",
-      "notes": "Revenue Management / Sales — Active + Create Promotion tabs; RRP applied on B2B sales orders"
+      "notes": "Revenue Management / Sales — Active + Create Promotion + POS Mapping tabs; RRP applied on B2B sales orders"
+    },
+    {
+      "id": "dr.page.pos-mapping-scheduler",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosMappingSchedulerPage.tsx",
+      "symbol": "PosMappingSchedulerPage",
+      "route": "/revenue/external-pos-mapping",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-10",
+      "notes": "Products → External POS Mapping (also Sales → Promotion Scheduler → POS Mapping tab) — catalog product ↔ PLU / POS product number list"
+    },
+    {
+      "id": "dr.api.pos-product-mappings",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosProductMappingsController.cs",
+      "symbol": "PosProductMappingsController",
+      "route": "api/pos-product-mappings",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-10",
+      "notes": "CRUD for POS product PLU mappings per company"
     },
     {
       "id": "dr.page.b2b-active-order",
@@ -495,6 +527,48 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.returnable-goods",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ReturnableGoodsPage.tsx",
+      "symbol": "ReturnableGoodsPage",
+      "route": "/revenue/returnable-goods",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-30"
+    },
+    {
+      "id": "dr.page.credit-note",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CreditNotePage.tsx",
+      "symbol": "CreditNotePage",
+      "route": "/revenue/credit-note",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05"
+    },
+    {
+      "id": "dr.page.central-store",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CentralStorePage.tsx",
+      "symbol": "CentralStorePage",
+      "route": "/revenue/central-store",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "Central Store activation, requisitions, and issue-to-kitchen"
+    },
+    {
+      "id": "dr.page.production-stock-hold",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ProductionStockHoldPanel.tsx",
+      "symbol": "ProductionStockHoldPanel",
+      "route": "/revenue/production/stock-hold",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "Production tab — components issued from Central Store awaiting produce"
+    },
+    {
       "id": "dr.page.cogs-audit",
       "kind": "client-page",
       "path": "client/src/components/revenue/CogsAuditPage.tsx",
@@ -503,6 +577,83 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-21"
+    },
+    {
+      "id": "dr.page.itemized-sales-summary-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/ItemizedSalesSummaryReportPage.tsx",
+      "symbol": "ItemizedSalesSummaryReportPage",
+      "route": "/revenue/reports/itemized-sales-summary",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "RMS Reports — itemized sales summary by product for selected month"
+    },
+    {
+      "id": "dr.page.inventory-summary-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/InventorySummaryReportPage.tsx",
+      "symbol": "InventorySummaryReportPage",
+      "route": "/revenue/reports/inventory-summary",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "RMS Reports — inventory on-hand and movement summary"
+    },
+    {
+      "id": "dr.page.ops-expenses-analysis-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/OpsExpensesAnalysisReportPage.tsx",
+      "symbol": "OpsExpensesAnalysisReportPage",
+      "route": "/revenue/reports/ops-expenses-analysis",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-06",
+      "notes": "RMS Reports — Ops Expenses analysis by week/month with covers and checks"
+    },
+    {
+      "id": "dr.page.detailed-purchase-summary-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/DetailedPurchaseSummaryReportPage.tsx",
+      "symbol": "DetailedPurchaseSummaryReportPage",
+      "route": "/revenue/reports/detailed-purchase-summary",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "RMS Reports — purchase order line detail for selected month"
+    },
+    {
+      "id": "dr.page.production-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/ProductionReportPage.tsx",
+      "symbol": "ProductionReportPage",
+      "route": "/revenue/reports/production",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "RMS Reports — production batch log for selected month"
+    },
+    {
+      "id": "dr.page.wastage-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/WastageReportPage.tsx",
+      "symbol": "WastageReportPage",
+      "route": "/revenue/reports/wastage",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "RMS Reports — wastage lines and reason roll-up"
+    },
+    {
+      "id": "dr.page.bcg-matrix-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/BcgMatrixReportPage.tsx",
+      "symbol": "BcgMatrixReportPage",
+      "route": "/revenue/reports/bcg-matrix",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "RMS Reports — BCG product portfolio chart (margin % vs sales) with category/group filters"
     },
     {
       "id": "dr.page.system-configuration",
@@ -525,6 +676,94 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.team-app",
+      "kind": "client-page",
+      "path": "client/src/pages/TeamAppPage.tsx",
+      "symbol": "TeamAppPage",
+      "route": "/TEAM",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone mobile Team app (Clock-style login/PIN/biometric) at /TEAM for phone testing without HR shell"
+    },
+    {
+      "id": "dr.page.pos-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "PosAppPage",
+      "route": "/POS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone POS floor/register at /POS for phone/tablet testing without Bisync shell"
+    },
+    {
+      "id": "dr.page.kds-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "KdsAppPage",
+      "route": "/KDS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone Kitchen Display System at /KDS for external station testing"
+    },
+    {
+      "id": "dr.page.bds-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "BdsAppPage",
+      "route": "/BDS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone Bar Display System at /BDS for external station testing"
+    },
+    {
+      "id": "dr.page.cds-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "CdsAppPage",
+      "route": "/CDS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone Customer Display System at /CDS for external pre-payment display testing"
+    },
+    {
+      "id": "dr.page.waitlist-join",
+      "kind": "client-page",
+      "path": "client/src/pages/WaitlistJoinPage.tsx",
+      "symbol": "WaitlistJoinPage",
+      "route": "/WAITLIST",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Public customer waitlist join form (name, mobile, pax) opened from POS Waitlist QR"
+    },
+    {
+      "id": "dr.page.qr-order-join",
+      "kind": "client-page",
+      "path": "client/src/pages/QrOrderJoinPage.tsx",
+      "symbol": "QrOrderJoinPage",
+      "route": "/QR",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Public guest e-menu / QR order page opened from POS QR Order button"
+    },
+    {
+      "id": "dr.page.qr-order-board",
+      "kind": "client-page",
+      "path": "client/src/bisync-pos/features/boh/ui/QrOrderPage.tsx",
+      "symbol": "QrOrderPage",
+      "route": "/boh/qr-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "POS QR Order board — guest scan QR plus incoming e-menu orders to send to BDS/KDS"
+    },
+    {
       "id": "dr.page.accounting",
       "kind": "client-page",
       "path": "client/src/components/accounting/AccountingPage.tsx",
@@ -532,7 +771,30 @@
       "route": "/accounting",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
-      "createdAt": "2026-07-15"
+      "createdAt": "2026-07-15",
+      "notes": "Company Accounting hub: Malaysia Books (COA/journals/FX/AR/AP/bank/reports), Payroll, Ops→Finance bridges"
+    },
+    {
+      "id": "dr.api.accounting-ledger",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AccountingLedgerController.cs",
+      "symbol": "AccountingLedgerController",
+      "route": "api/accounting",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-17",
+      "notes": "Phase 0 Books: journals, trial balance, periods, outbox; bridged from payroll and PO consolidate"
+    },
+    {
+      "id": "dr.api.accounting-books",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AccountingBooksController.cs",
+      "symbol": "AccountingBooksController",
+      "route": "api/accounting/books",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-18",
+      "notes": "Phase 1–3 internal Books: pack/FX/AR/AP/approval/apply, bank match, FA/RevRec, SST-02 draft (no external transmission)"
     },
     {
       "id": "dr.page.pos-test-tap",
@@ -543,7 +805,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — POS Test Tap after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
+      "notes": "Point-of-Sales bar — POS Test after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
     },
     {
       "id": "dr.page.pos-menu",
@@ -557,6 +819,127 @@
       "notes": "Point-of-Sales bar — POS Menu of company/location B2C products with POS enabled and RRP"
     },
     {
+      "id": "dr.page.pos-promotion-scheduler",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosPromotionSchedulerPage.tsx",
+      "symbol": "PosPromotionSchedulerPage",
+      "route": "/pos/promotion-scheduler",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-28",
+      "notes": "Point-of-Sales bar — Promotion Scheduler with date/time/day repeat, category/group filters, RRP/RPP discount table"
+    },
+    {
+      "id": "dr.page.pos-config",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosConfigPage.tsx",
+      "symbol": "PosConfigPage",
+      "route": "/pos/config",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-03",
+      "notes": "Point-of-Sales bar — POS Config after Promotion Scheduler; Payment / Entertainment / Discount type tables plus Device Set up routing"
+    },
+    {
+      "id": "dr.api.pos-config-types",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosConfigTypesController.cs",
+      "symbol": "PosConfigTypesController",
+      "route": "api/pos-config-types",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-03",
+      "notes": "POS Config lookup CRUD — payment, entertainment, and discount types per company"
+    },
+    {
+      "id": "dr.api.pos-device-setup",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosDeviceSetupController.cs",
+      "symbol": "PosDeviceSetupController",
+      "route": "api/pos-device-setup",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-06",
+      "notes": "POS Config Device Set up — product category/group/product routes to primary, secondary, and concurrent devices"
+    },
+    {
+      "id": "dr.api.pos-tax-service-config",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosTaxServiceConfigController.cs",
+      "symbol": "PosTaxServiceConfigController",
+      "route": "api/pos-tax-service-config",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-03",
+      "notes": "POS Setup tax and service-charge lines plus per sales-type product-group rules"
+    },
+    {
+      "id": "dr.api.pos-promotions",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosPromotionsController.cs",
+      "symbol": "PosPromotionsController",
+      "route": "api/pos-promotions",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-28",
+      "notes": "POS Promotion Scheduler CRUD — schedule windows, weekday repeat, per-product RRP/RPP lines"
+    },
+    {
+      "id": "dr.api.pos-prepaid",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosPrepaidController.cs",
+      "symbol": "PosPrepaidController",
+      "route": "api/pos-prepaid",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-03",
+      "notes": "POS prepaid promotion purchases, balance ledger, and consumption/depletion"
+    },
+    {
+      "id": "dr.page.pos-device-management",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosDeviceManagementPage.tsx",
+      "symbol": "PosDeviceManagementPage",
+      "route": "/pos/device-management",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-29",
+      "notes": "Point-of-Sales bar — Device Management for stations/displays/kiosks/printers with network assistant and printer SDK setup"
+    },
+    {
+      "id": "dr.api.pos-devices",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosDevicesController.cs",
+      "symbol": "PosDevicesController",
+      "route": "api/pos-devices",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-29",
+      "notes": "POS Device Management CRUD — network probe, printer SDK repository, paper/alignment setup"
+    },
+    {
+      "id": "dr.page.pos-modifier-group",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosModifierGroupPage.tsx",
+      "symbol": "PosModifierGroupPage",
+      "route": "/pos/modifier-group",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-02",
+      "notes": "Point-of-Sales bar — POS Modifier Group for Compulsory / Food / Beverage / Component SWAP with attach by group or product"
+    },
+    {
+      "id": "dr.api.pos-modifier-groups",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosModifierGroupsController.cs",
+      "symbol": "PosModifierGroupsController",
+      "route": "api/pos-modifier-groups",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-02",
+      "notes": "POS Modifier Group CRUD — options, attachments, stock catalog, Component SWAP inherit from RMS"
+    },
+    {
       "id": "dr.module.hr",
       "kind": "client-module",
       "path": "client/src/modules/hr/HrModule.tsx",
@@ -564,7 +947,8 @@
       "route": "/hr/module",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
-      "createdAt": "2026-07-15"
+      "createdAt": "2026-07-15",
+      "notes": "HR Management — includes Team tab (TeamPortal) before Employee Portal: today/month schedule, message box, POS QR check-in/out, outstanding leave with carry-forward, leave request"
     },
     {
       "id": "dr.api.auth",
@@ -625,6 +1009,16 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.tag-suggestions",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/TagSuggestionsController.cs",
+      "symbol": "TagSuggestionsController",
+      "route": "api/tag-suggestions",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-07"
     },
     {
       "id": "dr.api.purchase-orders",
@@ -725,6 +1119,60 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.returnable-goods",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ReturnableGoodsController.cs",
+      "symbol": "ReturnableGoodsController",
+      "route": "api/returnable-goods",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-30"
+    },
+    {
+      "id": "dr.api.credit-notes",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CreditNotesController.cs",
+      "symbol": "CreditNotesController",
+      "route": "api/credit-notes",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "PO short-delivery credit notes with stock outbound and cancel revalue"
+    },
+    {
+      "id": "dr.api.central-store",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CentralStoreController.cs",
+      "symbol": "CentralStoreController",
+      "route": "api/central-store",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "Central Store config, requisitions, issue, and production stock holds"
+    },
+    {
+      "id": "dr.api.uom-rename",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/UomRenameController.cs",
+      "symbol": "UomRenameController",
+      "route": "api/companies/{companyId}/uoms",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-30",
+      "notes": "Company-scoped UOM rename remap across components, products, vendor products, and operations"
+    },
+    {
+      "id": "dr.api.category-group-rename",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CategoryGroupRenameController.cs",
+      "symbol": "CategoryGroupRenameController",
+      "route": "api/companies/{companyId}/category-groups",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-11",
+      "notes": "Remount RMS category/group renames onto ingredients, products, and POS configs"
     },
     {
       "id": "dr.api.transfers",
@@ -844,7 +1292,8 @@
       "route": "api/b2bsalesorders",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
-      "createdAt": "2026-07-15"
+      "createdAt": "2026-07-15",
+      "notes": "Includes Holdout reserve, Delivery Order issue, and confirm-receipt → sold"
     },
     {
       "id": "dr.api.promotions",
@@ -907,7 +1356,18 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "POS Test Tap operational APIs — open/closed checks, payments, voids, EOD sessions"
+      "notes": "POS Test operational APIs — open/closed checks, payments, voids, EOD sessions"
+    },
+    {
+      "id": "dr.api.pos-eod",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosEodController.cs",
+      "symbol": "PosEodController",
+      "route": "api/pos/eod",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-29",
+      "notes": "End-of-day summary, cash count checklist, close day, record closed checks"
     },
     {
       "id": "dr.api.inventory-count-sessions",
@@ -950,6 +1410,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.api.team-chat",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/TeamChatController.cs",
+      "symbol": "TeamChatController",
+      "route": "api/team-chat",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-07",
+      "notes": "Internal Team chat: direct DMs, company announcement channel, screenshot attachments"
+    },
+    {
       "id": "dr.api.access-control",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/AccessControlController.cs",
@@ -968,6 +1439,17 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.reports",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ReportsController.cs",
+      "symbol": "ReportsController",
+      "route": "api/reports",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Common RMS operational reports (sales, inventory, purchase, production, wastage, BCG matrix)"
     },
     {
       "id": "dr.api.system-audit",
@@ -1138,6 +1620,17 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.platform-price-display",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PlatformPriceDisplayController.cs",
+      "symbol": "PlatformPriceDisplayController",
+      "route": "api/platform-price-display",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-13",
+      "notes": "Platform-wide price decimal display settings (principal UOM / alternate UOM / vendor delivery); editable only by platform owner"
     }
   ]
 }

@@ -135,6 +135,10 @@ public static class VendorCatalogSeeder
 
     public static async Task EnsureCatalogVendorsAsync(BisyncDbContext db)
     {
+        // Demo vendor catalog is for Bisync/QA sandboxes only — never recreate on customer tenants.
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+            return;
+
         var existingIds = await db.Vendors
             .Select(v => v.ExternalId)
             .ToListAsync();

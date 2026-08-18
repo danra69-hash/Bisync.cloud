@@ -25,6 +25,7 @@ export function PayrollEmployeeDirectoryPanel({
   const [customBanks, setCustomBanks] = useState<string[]>([]);
   const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -94,6 +95,7 @@ export function PayrollEmployeeDirectoryPanel({
     }
     setSaving(true);
     setError(null);
+    setSuccessMessage(null);
     try {
       const cleanedOther = (detailDraft.otherAllowances ?? [])
         .map(item => ({ name: item.name.trim(), amount: item.amount }))
@@ -106,6 +108,7 @@ export function PayrollEmployeeDirectoryPanel({
       const saved = await hrApi.employees.update(detailDraft.id, toEmployeeRequest(payload));
       setEmployees(prev => prev.map(e => (e.id === saved.id ? saved : e)));
       setDetailDraft(null);
+      setSuccessMessage('Detail saved');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -131,12 +134,22 @@ export function PayrollEmployeeDirectoryPanel({
 
   return (
     <>
+      {successMessage ? (
+        <div className="mb-4 px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 rounded-lg text-xs flex justify-between items-center">
+          <span>{successMessage}</span>
+          <button type="button" onClick={() => setSuccessMessage(null)} className="hover:opacity-70">×</button>
+        </div>
+      ) : null}
+
       <PayrollEmployeeDirectoryTab
         employees={filteredEmployees}
         orgTree={orgTree}
         platformUsers={platformUsers}
         payStructure={payStructure}
-        onOpenDetail={id => void openDetail(id)}
+        onOpenDetail={id => {
+          setSuccessMessage(null);
+          void openDetail(id);
+        }}
       />
 
       {detailDraft && (

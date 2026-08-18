@@ -12,6 +12,7 @@ public class Vendor
     public string Products { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
+    public string Postcode { get; set; } = string.Empty;
     public string ContactPerson { get; set; } = string.Empty;
     public string ContactPosition { get; set; } = string.Empty;
     public string Mobile { get; set; } = string.Empty;
@@ -40,6 +41,10 @@ public class Vendor
     public bool AllowPartialDelivery { get; set; }
     /// <summary>JSON array of location external IDs where this vendor is engaged for the company.</summary>
     public string EngagedLocationIdsJson { get; set; } = "[]";
+    /// <summary>
+    /// JSON array of delivery weekday keys (monday…sunday) when this vendor delivers.
+    /// </summary>
+    public string DeliveryDaysJson { get; set; } = "[]";
     /// <summary>Inactive vendors are hidden from new engage/order flows.</summary>
     public bool Active { get; set; } = true;
 }

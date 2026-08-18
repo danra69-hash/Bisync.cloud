@@ -1,0 +1,25 @@
+@import './core/styles/modalFit.css';
+
+.bisync-pos-root,
+.bisync-pos-root *,
+.bisync-pos-root *::before,
+.bisync-pos-root *::after {
+  box-sizing: border-box;
+}
+
+.bisync-pos-root button,
+.bisync-pos-root input,
+.bisync-pos-root select {
+  font: inherit;
+}
+
+.bisync-pos-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  /* Contain position:fixed overlays (Admin sidebar, modals) inside the POS frame. */
+  transform: translateZ(0);
+}

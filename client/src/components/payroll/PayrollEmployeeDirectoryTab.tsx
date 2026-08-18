@@ -3,7 +3,7 @@ import type { AppUser } from '../../api';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import type { DivisionTreeNode, Employee, PayStructure } from '../../modules/hr/types';
 import {
@@ -36,20 +36,20 @@ type DirectorySortColumn =
   | 'workPermit';
 
 const DIRECTORY_TABLE_COLUMNS: SortableColumnDef<DirectorySortColumn>[] = [
-  { key: 'location', label: 'Location' },
-  { key: 'name', label: 'Name' },
-  { key: 'employeeId', label: 'Employee ID' },
-  { key: 'joinDate', label: 'Date Joined' },
-  { key: 'division', label: 'Division' },
-  { key: 'department', label: 'Department' },
-  { key: 'position', label: 'Position' },
-  { key: 'baseSalary', label: 'Base Salary', align: 'right' },
-  { key: 'service', label: 'Service', align: 'right' },
-  { key: 'transport', label: 'Transport Allowances', align: 'right' },
-  { key: 'accommodation', label: 'Accommodation', align: 'right' },
-  { key: 'mobile', label: 'Mobile Allowances', align: 'right' },
-  { key: 'otherAllowances', label: 'Other Allowances', align: 'right' },
-  { key: 'workPermit', label: 'Work Permit' },
+  { key: 'location', label: 'Location', ...tableColWidth('8%') },
+  { key: 'name', label: 'Name', ...tableColWidth('12%') },
+  { key: 'employeeId', label: 'Employee ID', ...tableColWidth('8%') },
+  { key: 'joinDate', label: 'Date Joined', ...tableColWidth('8%') },
+  { key: 'division', label: 'Division', ...tableColWidth('8%') },
+  { key: 'department', label: 'Department', ...tableColWidth('8%') },
+  { key: 'position', label: 'Position', ...tableColWidth('9%') },
+  { key: 'baseSalary', label: 'Base Salary', align: 'right', ...tableColWidth('7%') },
+  { key: 'service', label: 'Service', align: 'right', ...tableColWidth('6%') },
+  { key: 'transport', label: 'Transport Allowances', align: 'right', ...tableColWidth('7%') },
+  { key: 'accommodation', label: 'Accommodation', align: 'right', ...tableColWidth('7%') },
+  { key: 'mobile', label: 'Mobile Allowances', align: 'right', ...tableColWidth('7%') },
+  { key: 'otherAllowances', label: 'Other Allowances', align: 'right', ...tableColWidth('7%') },
+  { key: 'workPermit', label: 'Work Permit', ...tableColWidth('6%') },
 ];
 
 type Props = {
@@ -121,7 +121,8 @@ export function PayrollEmployeeDirectoryTab({
       </p>
 
       <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
+          <TableColGroup columns={DIRECTORY_TABLE_COLUMNS} />
           <thead>
             <SortableTableHeaderRow
               columns={DIRECTORY_TABLE_COLUMNS}

@@ -22,7 +22,7 @@ public class SystemAuditDbContext(DbContextOptions<SystemAuditDbContext> options
             e.HasIndex(x => x.Category);
             e.HasIndex(x => x.UserId);
             e.Property(x => x.OccurredAtLocal).HasColumnType("timestamp without time zone");
-            e.Property(x => x.Category).HasMaxLength(32);
+            e.Property(x => x.Category).HasMaxLength(64);
             e.Property(x => x.Action).HasMaxLength(128);
             e.Property(x => x.TimeZoneId).HasMaxLength(64);
             e.Property(x => x.CountryCode).HasMaxLength(8);
@@ -44,7 +44,7 @@ public class SystemAuditDbContext(DbContextOptions<SystemAuditDbContext> options
             e.HasIndex(x => x.CompanyId);
             e.HasIndex(x => x.LocationId);
             e.Property(x => x.OccurredAtLocal).HasColumnType("timestamp without time zone");
-            e.Property(x => x.Category).HasMaxLength(32);
+            e.Property(x => x.Category).HasMaxLength(64);
             e.Property(x => x.Action).HasMaxLength(128);
             e.Property(x => x.TimeZoneId).HasMaxLength(64);
             e.Property(x => x.CountryCode).HasMaxLength(8);

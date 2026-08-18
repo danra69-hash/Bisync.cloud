@@ -1,5 +1,4 @@
 import { useMemo, useRef } from 'react';
-import { Plus } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -13,10 +12,20 @@ import {
   hasActivationPeriod,
 } from '../../data/productForm';
 import { formatProductParStock } from '../../data/productParStock';
-import { SubProductBatchAdditionalUoms } from './SubProductBatchUomSection';
 import { SubProductBatchProduceFields } from './SubProductBatchProduceFields';
+import {
+  B2bProductionUomFields,
+  clampProductionAltUnits,
+} from './B2bProductionUomFields';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { ColGroup } from '../shared/SortableTableHead';
 import { ProductEstimatedNutrientBox } from './ProductEstimatedNutrientBox';
+import { ProductMethodBox } from './ProductMethodBox';
+import {
+  getPrimaryVariableComponentSlot,
+  parseVariableComponentOptionsJson,
+} from '../../data/productVariableComponent';
+import { productKeyFromParts } from '../../data/productProductionMethod';
 
 const fieldCls =
   'w-full rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground';
@@ -38,10 +47,8 @@ type Props = {
   onParStockBlur?: () => void;
   yieldAltUnits?: AltUnitEntry[];
   onYieldAltUnitsChange?: (entries: AltUnitEntry[]) => void;
-  onAddBatchAdditionalUom?: () => void;
-  addBatchUomButtonCls?: string;
   onToggleLocation: (externalId: string) => void;
-  onOpenProductionMethod?: () => void;
+  productKey?: string;
 };
 
 function ComponentItemsTable({
@@ -50,16 +57,14 @@ function ComponentItemsTable({
   items,
   totalCost,
   totalLabel,
-  onOpenProductionMethod,
 }: {
   title: string;
   description: string;
   items: ProductComponentItem[];
   totalCost: number;
   totalLabel: string;
-  onOpenProductionMethod?: () => void;
 }) {
-  const { rm } = useCountryFormatters();
+  const { rm, uomPrice } = useCountryFormatters();
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedItems,
@@ -70,20 +75,9 @@ function ComponentItemsTable({
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
-        </div>
-        {onOpenProductionMethod ? (
-          <button
-            type="button"
-            onClick={onOpenProductionMethod}
-            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
-          >
-            Production Method
-          </button>
-        ) : null}
+      <div className="px-4 py-3 border-b border-border bg-muted/20">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
       </div>
 
       {items.length === 0 ? (
@@ -92,7 +86,8 @@ function ComponentItemsTable({
         </p>
       ) : (
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed border-collapse">
+          <table className="w-full border-collapse">
+            <ColGroup widths={['36%', '16%', '18%', '14%', '16%']} />
             <thead>
               <tr>
                 <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Smart component</th>
@@ -110,7 +105,7 @@ function ComponentItemsTable({
                     <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.componentId}</p>
                   </td>
                   <td className={tdCls}>{item.componentUom || '—'}</td>
-                  <td className={tdCls}>{rm(item.componentUomPrice)}</td>
+                  <td className={tdCls}>{uomPrice(item.componentUomPrice)}</td>
                   <td className={tdCls}>{item.quantity}</td>
                   <td className={`${tdCls} font-medium`}>{rm(item.subtotal)}</td>
                 </tr>
@@ -142,15 +137,14 @@ export function ProductReadOnlyView({
   onParStockBlur,
   yieldAltUnits = [],
   onYieldAltUnitsChange,
-  onAddBatchAdditionalUom,
-  addBatchUomButtonCls = '',
   onToggleLocation,
-  onOpenProductionMethod,
+  productKey,
 }: Props) {
   const { rm, currency, symbol, cogsPercent } = useCountryFormatters();
   const items = product.items ?? [];
   const packagingItems = product.packagingItems ?? [];
   const packagingCost = product.packagingCost ?? 0;
+  const methodProductKey = productKey || productKeyFromParts(product.id, product.productId);
 
   const productCogs = useMemo(
     () => calcProductCogs(product.totalCost, packagingCost, product),
@@ -164,11 +158,6 @@ export function ProductReadOnlyView({
 
   const yieldUomLabel = product.yieldUom ? fromApiUom(product.yieldUom) : '';
   const parStockUomLabel = product.parStockUom ? fromApiUom(product.parStockUom) : '';
-  const b2bBatchUom = product.b2bPackageUnit?.trim() || '';
-  const batchUomForAdditional = product.isSubProduct ? yieldUomLabel : b2bBatchUom;
-  const batchQtyForAdditional = product.isSubProduct
-    ? (product.yieldQuantity > 0 ? String(product.yieldQuantity) : '')
-    : '1';
   const subProductUnitCost = product.isSubProduct && product.yieldQuantity > 0
     ? calcSubProductUnitCost(productCogs, String(product.yieldQuantity))
     : 0;
@@ -181,12 +170,35 @@ export function ProductReadOnlyView({
             <p className={labelCls}>Type</p>
             <div className="flex flex-wrap gap-4">
               <label className="inline-flex items-center gap-2 text-xs">
-                <input type="checkbox" checked={!product.isSubProduct} disabled className="rounded border-border" />
+                <input
+                  type="checkbox"
+                  checked={!product.isSubProduct && !product.isVariableProduct}
+                  disabled
+                  className="rounded border-border"
+                />
                 Product
               </label>
               <label className="inline-flex items-center gap-2 text-xs">
                 <input type="checkbox" checked={product.isSubProduct} disabled className="rounded border-border" />
                 Sub-Product
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.isVariableProduct) && !product.isSubProduct}
+                  disabled
+                  className="rounded border-border"
+                />
+                Variable Product
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.isVariableComponent) && !product.isSubProduct}
+                  disabled
+                  className="rounded border-border"
+                />
+                Variable Component
               </label>
             </div>
           </div>
@@ -216,12 +228,41 @@ export function ProductReadOnlyView({
                   className="border-border"
                   readOnly
                 />
-                B2B
+                B2B Principal
               </label>
             </div>
             {product.isSubProduct ? (
               <p className="text-[10px] text-muted-foreground">
-                Sub-products are made or prepped as part of a B2C or B2B product.
+                Sub-products are made or prepped as part of a B2C or B2B Principal product.
+              </p>
+            ) : product.isVariableProduct ? (
+              <p className="text-[10px] text-muted-foreground">
+                {product.variableMode === 'weight' ? (
+                  <>
+                    Weight based
+                    {product.variableChoiceQty && product.variableChoiceQty > 0
+                      ? ` · RRP ${currency(product.rrp)} / ${product.variableChoiceQty}`
+                      : ''}
+                    {(() => {
+                      try {
+                        const parsed = JSON.parse(product.variableOptionsJson || '{}') as { weightUom?: string };
+                        return parsed.weightUom ? ` ${parsed.weightUom}` : '';
+                      } catch {
+                        return '';
+                      }
+                    })()}
+                  </>
+                ) : (
+                  <>
+                    Variable {product.variableMode === 'weight' ? 'weight' : 'combination'}
+                    {' · '}Min {currency(product.variableMinCost ?? 0)}
+                    {' · '}Max {currency(product.variableMaxCost ?? 0)}
+                  </>
+                )}
+              </p>
+            ) : product.isVariableComponent ? (
+              <p className="text-[10px] text-muted-foreground">
+                Variable Component — SWAP Name with original/alternate components and Addon RRP.
               </p>
             ) : null}
           </div>
@@ -248,12 +289,18 @@ export function ProductReadOnlyView({
 
       <section className="rounded-lg border border-border bg-card p-4 space-y-4">
         <h3 className="text-sm font-semibold">
-          {product.isSubProduct ? 'Batch produce & Location' : 'Pricing, Par Stock & Location'}
+          {product.isSubProduct
+            ? 'Batch produce & Location'
+            : product.isVariableComponent
+              ? 'Pricing & Location'
+              : 'Pricing, Par Stock & Location'}
         </h3>
         <p className="text-[11px] text-muted-foreground -mt-2">
           {product.isSubProduct
             ? 'Sub-products are made in batches for use as components inside a Product recipe. Batch yield drives unit COGS.'
-            : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
+            : product.isVariableComponent
+              ? 'SWAP Name is sold on POS. Alternates and Addon RRP are configured under Variable Component.'
+              : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
         </p>
 
         {product.isSubProduct ? (
@@ -262,28 +309,87 @@ export function ProductReadOnlyView({
               <p className={labelCls}>Sub-Product Name</p>
               <p className={fieldCls}>{product.name}</p>
             </div>
-            <SubProductBatchProduceFields
-              batchQty={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
-              batchUom={yieldUomLabel}
-              altUnits={yieldAltUnits}
-              batchReadOnly
-              onAltUnitsChange={saving ? undefined : onYieldAltUnitsChange}
-              cogsLabel={
-                yieldUomLabel && product.yieldQuantity > 0
-                  ? `${rm(subProductUnitCost)} / ${yieldUomLabel}`
-                  : '—'
-              }
-              cogsHint={`Batch COGS ${rm(productCogs)} ÷ ${product.yieldQuantity > 0 ? product.yieldQuantity : '—'}`}
-            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              <SubProductBatchProduceFields
+                batchQty={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
+                batchUom={yieldUomLabel}
+                altUnits={yieldAltUnits}
+                batchReadOnly
+                onAltUnitsChange={saving ? undefined : onYieldAltUnitsChange}
+                cogsLabel={
+                  yieldUomLabel && product.yieldQuantity > 0
+                    ? `${rm(subProductUnitCost)} / ${yieldUomLabel}`
+                    : '—'
+                }
+                cogsHint={`Batch COGS ${rm(productCogs)} ÷ ${product.yieldQuantity > 0 ? product.yieldQuantity : '—'}`}
+              />
+              <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>Expiry period (days)</p>
+                    <p className={fieldCls}>
+                      {product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '—'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Production batches expire this many days after their production date.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>Incubation (hours)</p>
+                    <p className={fieldCls}>
+                      {formatActivationPeriodHoursDisplay(product.activationPeriodHours)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {hasActivationPeriod(product.activationPeriodHours)
+                        ? 'Hours after production before the batch can be sold.'
+                        : 'No incubation — batch is sellable immediately after production.'}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>Par Stock</p>
+                    {onParStockChange ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={parStockDraft ?? ''}
+                        disabled={saving}
+                        onChange={e => onParStockChange(e.target.value)}
+                        onBlur={onParStockBlur}
+                        placeholder="0"
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                      />
+                    ) : (
+                      <p className={fieldCls}>{(product.parStock ?? 0) > 0 ? String(product.parStock) : '—'}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className={labelCls}>UOM</p>
+                    <p className={fieldCls}>{yieldUomLabel || parStockUomLabel || '—'}</p>
+                    <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </>
         ) : (
           <>
             <div className="space-y-1.5">
-              <p className={labelCls}>Principal Product Name</p>
+              <p className={labelCls}>{product.isVariableComponent ? 'SWAP Name' : 'Principal Product Name'}</p>
               <p className={fieldCls}>{product.name}</p>
             </div>
 
-            {(product.aliases ?? []).length > 0 ? (
+            {product.b2cEnabled && !product.b2bEnabled ? (
+              <div className="space-y-1.5 max-w-xs">
+                <p className={labelCls}>Product UOM</p>
+                <p className={fieldCls}>{yieldUomLabel || '—'}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Used for product stock and as the default POS sales UOM.
+                </p>
+              </div>
+            ) : null}
+
+            {!product.isVariableComponent && (product.aliases ?? []).length > 0 ? (
               <div className="space-y-2 pl-3 border-l-2 border-primary/20">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Product aliases
@@ -332,39 +438,30 @@ export function ProductReadOnlyView({
                 <p className="text-sm font-semibold mt-1">{cogsPercent(productCogs, rrpValue)}</p>
               </div>
             </div>
-            {product.b2bEnabled && onYieldAltUnitsChange && batchUomForAdditional ? (
+            {product.b2bEnabled && onYieldAltUnitsChange ? (
               <div className="space-y-2">
-                <div className="flex gap-1.5 items-center max-w-md">
-                  <p className={`${fieldCls} flex-1`}>{batchUomForAdditional}</p>
-                  {onAddBatchAdditionalUom ? (
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onAddBatchAdditionalUom();
-                      }}
-                      disabled={saving || !batchUomForAdditional}
-                      className={addBatchUomButtonCls}
-                      title="Add additional UOM"
-                      aria-label="Add additional UOM"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  ) : null}
-                </div>
-                <SubProductBatchAdditionalUoms
-                  yieldQuantity={batchQtyForAdditional}
-                  yieldUom={batchUomForAdditional}
+                <p className="text-sm font-semibold">Production UOM</p>
+                <B2bProductionUomFields
+                  principalUnit={yieldUomLabel}
                   altUnits={yieldAltUnits}
-                  onAltUnitsChange={onYieldAltUnitsChange}
+                  disabled={saving || !yieldUomLabel}
+                  lockPrincipal
+                  onPrincipalChange={() => {
+                    /* Principal Production UOM is edited in the full product editor. */
+                  }}
+                  onAltUnitsChange={entries => onYieldAltUnitsChange(clampProductionAltUnits(entries))}
                 />
+                {!yieldUomLabel ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Set Principal Production UOM in Edit to configure alternate production units.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </>
         )}
 
-        {(product.isSubProduct || product.b2bEnabled) ? (
+        {!product.isSubProduct && product.b2bEnabled ? (
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 max-w-2xl">
             <div className="space-y-1.5">
               <p className={labelCls}>Expiry period (days)</p>
@@ -389,33 +486,7 @@ export function ProductReadOnlyView({
           </div>
         ) : null}
 
-        {product.isSubProduct ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-            <div className="space-y-1.5">
-              <p className={labelCls}>Par Stock</p>
-              {onParStockChange ? (
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={parStockDraft ?? ''}
-                  disabled={saving}
-                  onChange={e => onParStockChange(e.target.value)}
-                  onBlur={onParStockBlur}
-                  placeholder="0"
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                />
-              ) : (
-                <p className={fieldCls}>{(product.parStock ?? 0) > 0 ? String(product.parStock) : '—'}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <p className={labelCls}>UOM</p>
-              <p className={fieldCls}>{yieldUomLabel || parStockUomLabel || '—'}</p>
-              <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
-            </div>
-          </div>
-        ) : (
+        {product.isVariableComponent || product.isSubProduct ? null : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
           <div className="space-y-1.5">
             <p className={labelCls}>Par Stock</p>
@@ -479,28 +550,83 @@ export function ProductReadOnlyView({
         </div>
       </section>
 
-      <ComponentItemsTable
-        title="Product Component"
-        description="Add smart components and quantities to calculate product cost"
-        items={items}
-        totalCost={product.totalCost}
-        totalLabel="Total cost"
-        onOpenProductionMethod={onOpenProductionMethod}
-      />
+      {product.isVariableComponent ? (
+        <VariableComponentReadOnly
+          rawJson={product.variableComponentOptionsJson}
+          currency={currency}
+        />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <ComponentItemsTable
+            title="Product Component"
+            description="Add smart components and quantities to calculate product cost"
+            items={items}
+            totalCost={product.totalCost}
+            totalLabel="Total cost"
+          />
+          {methodProductKey ? (
+            <ProductMethodBox productKey={methodProductKey} disabled={saving} />
+          ) : null}
+        </div>
+      )}
 
-      <ProductEstimatedNutrientBox
-        productId={product.id}
-        yieldQuantity={product.isSubProduct && product.yieldQuantity > 0 ? product.yieldQuantity : 1}
-        productName={product.name}
-      />
+      {!product.isVariableComponent ? (
+        <ProductEstimatedNutrientBox
+          productId={product.id}
+          yieldQuantity={product.isSubProduct && product.yieldQuantity > 0 ? product.yieldQuantity : 1}
+          productName={product.name}
+        />
+      ) : null}
 
-      <ComponentItemsTable
-        title="Packaging Cost"
-        description="Add packaging smart components and quantities to calculate packaging cost"
-        items={packagingItems}
-        totalCost={packagingCost}
-        totalLabel="Total packaging cost"
-      />
+      {!product.isVariableComponent ? (
+        <ComponentItemsTable
+          title="Packaging Cost"
+          description="Add packaging smart components and quantities to calculate packaging cost"
+          items={packagingItems}
+          totalCost={packagingCost}
+          totalLabel="Total packaging cost"
+        />
+      ) : null}
     </div>
+  );
+}
+
+function VariableComponentReadOnly({
+  rawJson,
+  currency,
+}: {
+  rawJson?: string | null;
+  currency: (n: number) => string;
+}) {
+  const slot = getPrimaryVariableComponentSlot(parseVariableComponentOptionsJson(rawJson));
+  return (
+    <section className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">Variable Component</h3>
+        <p className="text-[11px] text-muted-foreground mt-0.5">Original component and alternates for POS SWAP.</p>
+      </div>
+      <div className="rounded-md border border-border bg-muted/10 px-3 py-2 text-xs">
+        <p className="font-semibold text-foreground">Original</p>
+        <p className="text-muted-foreground mt-0.5">
+          {slot.baseComponentName || '—'}
+          {slot.quantity > 0 ? ` · ${slot.quantity} ${slot.baseComponentUom}` : ''}
+        </p>
+      </div>
+      {slot.alternatives.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No alternate components configured.</p>
+      ) : (
+        <ul className="space-y-2">
+          {slot.alternatives.map(alt => (
+            <li key={alt.key} className="rounded-md border border-border px-3 py-2 text-xs">
+              <span className="font-semibold text-foreground">{alt.componentName}</span>
+              <span className="text-muted-foreground">
+                {' · '}{alt.quantity} {alt.componentUom}
+                {' · '}Addon RRP {alt.extraCharge > 0 ? currency(alt.extraCharge) : '—'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

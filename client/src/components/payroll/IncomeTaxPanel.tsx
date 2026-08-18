@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, ColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { inputCls, selectCls } from '../../data/countries';
@@ -29,23 +29,23 @@ type ReliefSortColumn = 'name' | 'amount' | 'limit' | 'appliesWhen';
 type RebateSortColumn = 'name' | 'amount';
 
 const BRACKET_TABLE_COLUMNS: SortableColumnDef<BracketSortColumn>[] = [
-  { key: 'range', label: 'Chargeable income' },
-  { key: 'from', label: 'From (RM)' },
-  { key: 'to', label: 'To (RM)' },
-  { key: 'rate', label: 'Rate %', align: 'right' },
-  { key: 'baseTax', label: 'Base tax amount (min)', align: 'right' },
+  { key: 'range', label: 'Chargeable income', ...tableColWidth('28%') },
+  { key: 'from', label: 'From (RM)', ...tableColWidth('18%') },
+  { key: 'to', label: 'To (RM)', ...tableColWidth('18%') },
+  { key: 'rate', label: 'Rate %', align: 'right', ...tableColWidth('12%') },
+  { key: 'baseTax', label: 'Base tax amount (min)', align: 'right', ...tableColWidth('24%') },
 ];
 
 const RELIEF_TABLE_COLUMNS: SortableColumnDef<ReliefSortColumn>[] = [
-  { key: 'name', label: 'Relief name' },
-  { key: 'amount', label: 'Amount (RM)', align: 'right' },
-  { key: 'limit', label: 'Limit' },
-  { key: 'appliesWhen', label: 'Applies when' },
+  { key: 'name', label: 'Relief name', ...tableColWidth('30%') },
+  { key: 'amount', label: 'Amount (RM)', align: 'right', ...tableColWidth('20%') },
+  { key: 'limit', label: 'Limit', ...tableColWidth('20%') },
+  { key: 'appliesWhen', label: 'Applies when', ...tableColWidth('30%') },
 ];
 
 const REBATE_TABLE_COLUMNS: SortableColumnDef<RebateSortColumn>[] = [
-  { key: 'name', label: 'Rebate name' },
-  { key: 'amount', label: 'Amount (RM)', align: 'right' },
+  { key: 'name', label: 'Rebate name', ...tableColWidth('70%') },
+  { key: 'amount', label: 'Amount (RM)', align: 'right', ...tableColWidth('30%') },
 ];
 
 type Props = {
@@ -327,7 +327,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             </div>
 
             <TableScrollContainer ref={bracketsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
+                <TableColGroup columns={BRACKET_TABLE_COLUMNS} />
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={BRACKET_TABLE_COLUMNS}
@@ -419,7 +420,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             </div>
 
             <TableScrollContainer ref={reliefsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
+                <TableColGroup columns={RELIEF_TABLE_COLUMNS} />
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={RELIEF_TABLE_COLUMNS}
@@ -503,7 +505,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             </div>
 
             <TableScrollContainer ref={rebatesScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
+                <TableColGroup columns={REBATE_TABLE_COLUMNS} />
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={REBATE_TABLE_COLUMNS}
@@ -564,7 +567,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
               </div>
 
               <TableScrollContainer ref={previewScrollRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-                <table className="w-full table-fixed">
+                <table className="w-full">
+                  <ColGroup widths={['10%', '18%', '14%', '12%', '10%', '12%', '12%', '12%']} />
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
                       <th className={tableHeaderCls('left')}>Employee ID</th>

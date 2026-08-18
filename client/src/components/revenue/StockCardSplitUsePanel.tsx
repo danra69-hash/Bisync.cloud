@@ -9,6 +9,7 @@ import { fromApiUom } from '../../data/componentForm';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { inputCls, qtyPriceWidthCls } from '../layout/formControls';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   splitUse: ComponentSplitUseConfig;
@@ -106,6 +107,7 @@ export function StockCardSplitUsePanel({
 
           <div className="overflow-x-auto border border-border rounded-md">
             <table className="w-full text-xs min-w-[520px]">
+              <ColGroup widths={['30%', '22%', '28%', '20%']} />
               <thead>
                 <tr className="border-b border-border bg-muted/20">
                   <TableHeaderCell>Sub-component</TableHeaderCell>

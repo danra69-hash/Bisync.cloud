@@ -1,6 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
+import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
+import {
+  bindPickerOptionActivate,
+  eventTargetElement,
+  isEventInsideSelector,
+} from './pickerMenuEvents';
 
 type Props = {
   value: string;
@@ -27,6 +33,7 @@ export function SearchableSelect({
   const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const menuSelector = `[data-searchable-select-menu="${listId}"]`;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -68,15 +75,16 @@ export function SearchableSelect({
 
   useEffect(() => {
     if (!open) return;
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
-      if ((target as Element).closest?.(`[data-searchable-select-menu="${listId}"]`)) return;
+    function handlePointerDown(event: PointerEvent) {
+      const el = eventTargetElement(event);
+      if (!el) return;
+      if (rootRef.current?.contains(el)) return;
+      if (isEventInsideSelector(event, menuSelector)) return;
       setOpen(false);
     }
-    document.addEventListener('click', handlePointerDown);
-    return () => document.removeEventListener('click', handlePointerDown);
-  }, [listId, open]);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
+  }, [menuSelector, open]);
 
   function selectOption(option: string) {
     onChange(option);
@@ -103,7 +111,7 @@ export function SearchableSelect({
       {open && menuStyle ? createPortal(
         <div
           data-searchable-select-menu={listId}
-          className="fixed z-[130] rounded-md border border-border bg-card shadow-lg overflow-hidden"
+          className={`fixed ${PICKER_MENU_Z_CLS} rounded-md border border-border bg-card shadow-lg overflow-hidden`}
           style={{ top: menuStyle.top, left: menuStyle.left, width: menuStyle.width }}
         >
           <div className="p-2 border-b border-border">
@@ -139,7 +147,9 @@ export function SearchableSelect({
                   className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted/40 ${
                     option === value ? 'bg-primary/10 font-medium' : ''
                   }`}
-                  onClick={() => selectOption(option)}
+                  onPointerDown={event => {
+                    bindPickerOptionActivate(event, () => selectOption(option));
+                  }}
                 >
                   {option}
                 </button>

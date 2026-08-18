@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Edit2, Plus, Trash2, X } from 'lucide-react';
@@ -13,10 +13,10 @@ import { inputCls, selectCls } from '../../data/countries';
 type DivisionDeptSortColumn = 'division' | 'code' | 'department' | 'actions';
 
 const DIVISION_DEPT_TABLE_COLUMNS: SortableColumnDef<DivisionDeptSortColumn>[] = [
-  { key: 'division', label: 'Division' },
-  { key: 'code', label: 'Code', className: 'w-28' },
-  { key: 'department', label: 'Department' },
-  { key: 'actions', label: 'Actions', align: 'right', sortable: false, className: 'w-44' },
+  { key: 'division', label: 'Division', ...tableColWidth('28%') },
+  { key: 'code', label: 'Code', ...tableColWidth('12%') },
+  { key: 'department', label: 'Department', ...tableColWidth('40%') },
+  { key: 'actions', label: 'Actions', align: 'right', sortable: false, ...tableColWidth(176) },
 ];
 
 const emptyDivision = { name: '', code: '' };
@@ -255,7 +255,8 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
 
       {tree.length === 0 ? (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
+            <TableColGroup columns={DIVISION_DEPT_TABLE_COLUMNS} />
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={DIVISION_DEPT_TABLE_COLUMNS}
@@ -276,7 +277,8 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
         </div>
       ) : (
         <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
+            <TableColGroup columns={DIVISION_DEPT_TABLE_COLUMNS} />
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={DIVISION_DEPT_TABLE_COLUMNS}

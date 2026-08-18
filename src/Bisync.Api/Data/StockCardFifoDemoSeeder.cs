@@ -16,6 +16,15 @@ public static class StockCardFifoDemoSeeder
 
     public static async Task<object> EnsureAsync(BisyncDbContext db, int companyId = 1, bool force = false)
     {
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+        {
+            return new
+            {
+                skipped = true,
+                message = "Skipped — customer tenant present; FIFO demo seed is disabled.",
+            };
+        }
+
         var existing = await db.Ingredients
             .FirstOrDefaultAsync(i =>
                 i.ComponentId == LegacyComponentId
@@ -449,7 +458,7 @@ public static class StockCardFifoDemoSeeder
                 {
                     "Company: Bisync Hospitality Sdn Bhd (id 1)",
                     "Stock Card → search SC FIFO Integrity Chicken Breast",
-                    "Filters: Downtown · Inventory UOM · July 2026",
+                    "Filters: Downtown · Principal Component Unit · July 2026",
                     "Jul 1–3 sales then Jul 4 C/F @ 30/kg backfills; Jul 6 top-up @ 40/kg",
                     "On-hand after Jul 6 ≈ -0.2 kg with negative banner",
                 },

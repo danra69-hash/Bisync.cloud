@@ -51,3 +51,33 @@ export function blankLeaveTenureRule(after?: LeaveTenureRule): LeaveTenureRule {
     days: after?.days ?? 10,
   };
 }
+
+/** Round to nearest 0.5 day (matches API AnnualLeaveEntitlement). */
+export function roundToHalfDay(value: number): number {
+  return Math.round(value * 2) / 2;
+}
+
+/**
+ * Pro-rate full-year AL for the operating (calendar) year.
+ * Prior-year joiners keep the full entitlement; same-year joiners get
+ * (months from join month through Dec inclusive) / 12.
+ */
+export function prorateAnnualLeaveForOperatingYear(
+  fullYearDays: number,
+  joinDate: Date | string,
+  asOf: Date = new Date(),
+): number {
+  if (fullYearDays <= 0) return 0;
+  const join = typeof joinDate === 'string' ? new Date(`${joinDate}T00:00:00Z`) : joinDate;
+  if (Number.isNaN(join.getTime())) return 0;
+
+  const asOfUtc = new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate()));
+  const joinUtc = new Date(Date.UTC(join.getUTCFullYear(), join.getUTCMonth(), join.getUTCDate()));
+  if (joinUtc > asOfUtc) return 0;
+
+  const yearStart = new Date(Date.UTC(asOfUtc.getUTCFullYear(), 0, 1));
+  if (joinUtc < yearStart) return roundToHalfDay(fullYearDays);
+
+  const monthsRemaining = 12 - joinUtc.getUTCMonth();
+  return roundToHalfDay((fullYearDays * monthsRemaining) / 12);
+}

@@ -32,8 +32,30 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         if (order.VendorAcceptedAt is not null)
             return Ok(await BuildPortalViewAsync(order));
 
-        if (!PurchaseOrderWorkflow.CanVendorAccept(order))
-            return Conflict(new { message = "This purchase order can no longer be accepted." });
+        var acceptCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync() ?? "MY";
+        var acceptToday = OrgClock.TodayLocal(acceptCountry);
+        if (order.VendorAcceptExpiryDate is null && PurchaseOrderWorkflow.NeedsVendorAcceptWindow(order))
+        {
+            var from = order.OrderDate;
+            if (order.ApprovedAt is DateTime approvedAt)
+                from = DateOnly.FromDateTime(CountryTimeZones.ToLocal(approvedAt, acceptCountry));
+            PurchaseOrderWorkflow.AssignVendorAcceptExpiry(order, from);
+            await db.SaveChangesAsync();
+        }
+
+        if (!PurchaseOrderWorkflow.CanVendorAccept(order, acceptToday))
+        {
+            if (PurchaseOrderWorkflow.IsVendorAcceptPastDeadline(order, acceptToday)
+                && !PurchaseOrderWorkflow.IsExpiredStatus(order.Status))
+            {
+                order.Status = PurchaseOrderWorkflow.StatusExpired;
+                await db.SaveChangesAsync();
+            }
+            return Conflict(new { message = "This purchase order can no longer be accepted (vendor accept window expired)." });
+        }
 
         var acceptedBy = request?.AcceptedBy?.Trim();
         if (string.IsNullOrWhiteSpace(acceptedBy))
@@ -45,7 +67,9 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         order.VendorAcceptedAt = DateTime.UtcNow;
         order.VendorAcceptedBy = acceptedBy;
 
-        if (string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+        // Pre-committed masters stay Committed so drawdown matching continues after vendor accept.
+        if (!order.IsPreCommitted
+            && string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReceived, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
         {
@@ -145,6 +169,14 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 .Where(l => locationExternalIds.Contains(l.ExternalId))
                 .ToListAsync();
 
+        DeliveryLocation? shipTo = null;
+        var deliveryLocationExternalId = (order.DeliveryLocationExternalId ?? string.Empty).Trim();
+        if (deliveryLocationExternalId.Length > 0)
+        {
+            shipTo = await db.DeliveryLocations.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.ExternalId == deliveryLocationExternalId && d.Active);
+        }
+
         var vendor = await db.Vendors.AsNoTracking()
             .FirstOrDefaultAsync(v =>
                 (!string.IsNullOrWhiteSpace(order.VendorExternalId) && v.ExternalId == order.VendorExternalId)
@@ -154,6 +186,35 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
             ? "purchase_request"
             : "purchase_order";
 
+        var deliveryLocations = shipTo is not null
+            ? new object[]
+            {
+                new
+                {
+                    shipTo.Name,
+                    ExternalId = shipTo.ExternalId,
+                    addressLine1 = shipTo.AddressLine1,
+                    AddressLine2 = shipTo.AddressLine2,
+                    shipTo.City,
+                    stateProvince = shipTo.StateProvince,
+                    shipTo.Postcode,
+                    logoContentType = string.Empty,
+                    logoBase64 = string.Empty,
+                },
+            }
+            : locations.Select(l => (object)new
+            {
+                l.Name,
+                l.ExternalId,
+                addressLine1 = string.IsNullOrWhiteSpace(l.AddressLine1) ? l.Address : l.AddressLine1,
+                l.AddressLine2,
+                l.City,
+                stateProvince = l.StateProvince,
+                l.Postcode,
+                logoContentType = l.LogoContentType ?? string.Empty,
+                logoBase64 = string.IsNullOrWhiteSpace(l.LogoBase64) ? string.Empty : l.LogoBase64,
+            }).ToArray();
+
         return new
         {
             order.Id,
@@ -162,6 +223,9 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
             vendorExternalId = order.VendorExternalId,
             documentType = order.DocumentType,
             documentKind,
+            isPreCommitted = order.IsPreCommitted,
+            commitmentStartDate = order.CommitmentStartDate,
+            commitmentEndDate = order.CommitmentEndDate,
             status = order.Status,
             orderDate = order.OrderDate,
             deliveryDate = order.DeliveryDate,
@@ -169,7 +233,10 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
             approvedBy = order.ApprovedBy,
             vendorAcceptedAt = order.VendorAcceptedAt,
             vendorAcceptedBy = order.VendorAcceptedBy,
-            canAccept = PurchaseOrderWorkflow.CanVendorAccept(order),
+            vendorAcceptExpiryDate = order.VendorAcceptExpiryDate,
+            canAccept = PurchaseOrderWorkflow.CanVendorAccept(
+                order,
+                company is null ? null : OrgClock.TodayLocal(company.CountryCode)),
             allowLineAdjustments = true,
             company = company is null ? null : new
             {
@@ -183,6 +250,8 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 company.City,
                 stateProvince = company.StateProvince,
                 company.Postcode,
+                logoContentType = company.LogoContentType ?? string.Empty,
+                logoBase64 = string.IsNullOrWhiteSpace(company.LogoBase64) ? string.Empty : company.LogoBase64,
             },
             vendor = new
             {
@@ -196,16 +265,7 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 mobile = vendor?.Mobile ?? string.Empty,
                 email = vendor?.Email ?? string.Empty,
             },
-            deliveryLocations = locations.Select(l => new
-            {
-                l.Name,
-                l.ExternalId,
-                addressLine1 = string.IsNullOrWhiteSpace(l.AddressLine1) ? l.Address : l.AddressLine1,
-                l.AddressLine2,
-                l.City,
-                stateProvince = l.StateProvince,
-                l.Postcode,
-            }),
+            deliveryLocations,
             items = order.Items.Select(i => new
             {
                 i.Id,

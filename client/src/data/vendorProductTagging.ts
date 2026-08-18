@@ -10,12 +10,17 @@ import {
 } from './componentForm';
 import {
   applyVendorProductOverrides,
+  calcComponentPrincipalUomPrice,
   calcNettUomPrice,
   calcNettUomQty,
   resolveComponentUomQty,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
 import { calcSplitUseNettUnitCost, toSplitUseBasisQty } from './componentSplitUse';
+import {
+  convertComponentQtyBetweenUoms,
+  type ComponentUomSource,
+} from './componentParStock';
 
 export type VendorProductTagApplyOptions = {
   recipeUnit: string;
@@ -132,8 +137,142 @@ export function findComponentRowForTaggedProduct(
   return rows.find(r => componentRowTagsVendorProduct(r, productId)) ?? null;
 }
 
-function findCatalogProduct(productId: string): VendorProductCatalogItem | undefined {
-  return applyVendorProductOverrides().find(p => p.id === productId);
+function findCatalogProduct(productId: string, catalog?: VendorProductCatalogItem[]): VendorProductCatalogItem | undefined {
+  const source = catalog ?? applyVendorProductOverrides();
+  return source.find(p => p.id === productId);
+}
+
+function unitsEqual(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function uomSourceFromRow(row: ComponentRow): ComponentUomSource {
+  const detail = resolveDetailConfigForRow(row);
+  return {
+    recipeUom: fromApiUom(row.recipeUOM),
+    inventoryUom: fromApiUom(row.inventoryUOM),
+    altRecipeUnits: detail.altRecipeUnits,
+    altInventoryUnits: detail.altInventoryUnits,
+  };
+}
+
+function convertUnitPrice(
+  priceFrom: number,
+  fromUom: string,
+  toUom: string,
+  row: ComponentRow,
+): number {
+  if (!(priceFrom > 0)) return 0;
+  if (!fromUom || !toUom || unitsEqual(fromUom, toUom)) return priceFrom;
+  const detail = resolveDetailConfigForRow(row);
+  const qty = convertComponentQtyBetweenUoms(1, fromUom, toUom, {
+    ...uomSourceFromRow(row),
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  if (qty == null || !(qty > 0)) return priceFrom;
+  return priceFrom / qty;
+}
+
+/** Primary tagged vendor principal UOM pricing for My Component table fallback. */
+export function resolveAttachedVendorPrincipalPricing(
+  row: ComponentRow,
+  catalog: VendorProductCatalogItem[] = applyVendorProductOverrides(),
+): {
+  product: VendorProductCatalogItem;
+  componentUom: string;
+  principalQty: number;
+  principalPrice: number;
+  deliveryPrice: number;
+} | null {
+  const detail = resolveDetailConfigForRow(row);
+  const primaryId = detail.taggedVendorProductIds[0];
+  if (!primaryId) return null;
+
+  const product = findCatalogProduct(primaryId, catalog);
+  if (!product) return null;
+
+  const recipeUnit = fromApiUom(row.recipeUOM);
+  const componentUom = detail.vendorProductComponentUom[primaryId] ?? recipeUnit;
+  const { qty: principalQty } = resolveVendorProductPrincipalQty(
+    product,
+    recipeUnit,
+    detail.altRecipeUnits,
+    componentUom,
+    detail.vendorProductPrincipalQty[primaryId],
+  );
+  const principalPrice = calcComponentPrincipalUomPrice(product.deliveryPrice, principalQty);
+  if (!(principalPrice > 0) && !(product.deliveryPrice > 0)) return null;
+
+  return {
+    product,
+    componentUom,
+    principalQty,
+    principalPrice,
+    deliveryPrice: product.deliveryPrice,
+  };
+}
+
+/**
+ * Last UOM Price for My Component table.
+ * With a usable last-purchase price → stored purchase-derived prices.
+ * Otherwise → current in-system component price until the first purchase is made,
+ * then live tagged-vendor principal pricing as a final fallback.
+ */
+export function resolveMyComponentLastUomPrice(
+  row: ComponentRow,
+  uomFilter: 'principal' | 'inventory' | string = 'principal',
+  catalog: VendorProductCatalogItem[] = applyVendorProductOverrides(),
+): number {
+  const recipeUom = fromApiUom(row.recipeUOM);
+
+  if (row.hasPurchaseRecord) {
+    if (uomFilter === 'inventory' && (row.lastPriceInventory || 0) > 0) {
+      return row.lastPriceInventory || 0;
+    }
+    if (uomFilter === 'principal' && (row.lastPriceRecipe || 0) > 0) {
+      return row.lastPriceRecipe || 0;
+    }
+    if (uomFilter !== 'inventory' && uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
+      const converted = convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+      if (converted > 0) return converted;
+    }
+  }
+
+  // No usable purchase price yet — show the current price stored on the component.
+  if (uomFilter === 'inventory' && (row.lastPriceInventory || 0) > 0) {
+    return row.lastPriceInventory || 0;
+  }
+  if (uomFilter === 'principal' && (row.lastPriceRecipe || 0) > 0) {
+    return row.lastPriceRecipe || 0;
+  }
+  if (uomFilter !== 'inventory' && uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
+    const converted = convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+    if (converted > 0) return converted;
+  }
+  if ((row.lastPriceInventory || 0) > 0 && uomFilter === 'principal') {
+    const inventoryUom = fromApiUom(row.inventoryUOM);
+    const converted = convertUnitPrice(row.lastPriceInventory || 0, inventoryUom, recipeUom, row);
+    if (converted > 0) return converted;
+  }
+
+  const vendor = resolveAttachedVendorPrincipalPricing(row, catalog);
+  if (!vendor) {
+    return uomFilter === 'inventory'
+      ? (row.lastPriceInventory || 0)
+      : (row.lastPriceRecipe || 0);
+  }
+
+  if (uomFilter === 'inventory') {
+    return vendor.deliveryPrice > 0 ? vendor.deliveryPrice : row.lastPriceInventory || 0;
+  }
+
+  const targetUom = uomFilter === 'principal' ? recipeUom : uomFilter;
+  if (vendor.principalPrice > 0) {
+    return convertUnitPrice(vendor.principalPrice, vendor.componentUom, targetUom, row);
+  }
+
+  return row.lastPriceRecipe || 0;
 }
 
 /** Derive recipe/inventory prices from the primary tagged vendor product when missing. */
@@ -219,7 +358,6 @@ export function buildComponentRowWithVendorProductTag(
   }
 
   const recipeUnit = options.recipeUnit;
-  const inventoryUnit = options.inventoryUnit;
   const componentUom = options.componentUom;
   const lossYield = parseFloat(options.yieldLossPct) || 0;
 
@@ -237,6 +375,9 @@ export function buildComponentRowWithVendorProductTag(
 
   const nextDetail: ComponentDetailConfig = {
     ...detail,
+    altInventoryUnits: [],
+    convertFromInventoryQty: '1',
+    convertToRecipeQty: '1',
     taggedVendorProductIds,
     vendorProductPrincipalQty: {
       ...detail.vendorProductPrincipalQty,
@@ -270,7 +411,7 @@ export function buildComponentRowWithVendorProductTag(
   return {
     ...row,
     recipeUOM: toApiUom(recipeUnit),
-    inventoryUOM: toApiUom(inventoryUnit),
+    inventoryUOM: toApiUom(recipeUnit),
     storage: storages,
     detailConfig: nextDetail,
     detailConfigJson: serializeDetailConfig(nextDetail),

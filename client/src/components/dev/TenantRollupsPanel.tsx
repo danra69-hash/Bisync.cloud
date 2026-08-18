@@ -8,6 +8,7 @@ import {
   type DevUsageResponse,
 } from '../../data/devConsoleApi';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
@@ -25,6 +26,7 @@ function toDateInputValue(value?: string | null): string {
 
 function statusTone(status?: string, locked?: boolean): string {
   if (locked || status === 'locked') return 'text-destructive';
+  if (status === 'deactivated') return 'text-muted-foreground';
   if (status === 'subscribed' || status === 'renewed') return 'text-emerald-700 dark:text-emerald-400';
   return 'text-amber-800 dark:text-amber-300';
 }
@@ -481,7 +483,7 @@ export function TenantRollupsPanel() {
             Tenant rollups
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Trial and subscription status by company location.
+            Trial and subscription status by active company location. Deactivated locations are omitted.
             {data?.generatedAt ? (
               <> Last generated {new Date(data.generatedAt).toLocaleString()}.</>
             ) : null}
@@ -520,6 +522,7 @@ export function TenantRollupsPanel() {
       ) : (
         <div className="rounded-lg border border-border bg-card overflow-x-auto">
           <table className="w-full text-xs">
+            <ColGroup widths={['22%', '18%', '14%', '14%', '14%', '18%']} />
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <th className="px-3 py-2 font-medium">Company</th>

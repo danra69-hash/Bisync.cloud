@@ -62,6 +62,21 @@ public class DevConsoleController(
         return (null, user);
     }
 
+    async Task<(ActionResult? Error, DevTeamUser? User)> RequireControlPanelAsync(CancellationToken ct)
+    {
+        var (err, user) = await RequireSessionAsync(ct);
+        if (err is not null) return (err, null);
+        if (!DevConsoleControlPanelAccess.CanManageTeam(user!.Email))
+        {
+            return (StatusCode(403, new
+            {
+                message = "Control panel access is limited to authorized operators only.",
+                code = "control_panel_forbidden",
+            }), null);
+        }
+        return (null, user);
+    }
+
     public class LaunchSettingsUpdateRequest
     {
         public bool DemoMode { get; set; }
@@ -85,7 +100,7 @@ public class DevConsoleController(
         [FromBody] LaunchSettingsUpdateRequest body,
         CancellationToken ct)
     {
-        var (err, user) = await RequireRootAsync(ct);
+        var (err, user) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         // Prefer explicit DemoMode from new clients; legacy clients may send goLive instead.
@@ -852,43 +867,25 @@ public class DevConsoleController(
 
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        async Task TrackAsync(string key, Func<Task<int>> action)
-        {
-            counts[key] = await action();
-        }
-
-        // Any remaining non-kept company rows (products/locations/company shell).
+        // Full operational wipe for non-kept company shells (users, inventory, POs, tenant DBs).
         var remainingCompanyPurgeIds = allCompanies
             .Where(c => !keepIds.Contains(c.Id))
             .Select(c => c.Id)
             .ToList();
         if (remainingCompanyPurgeIds.Count > 0)
         {
-            var productIds = await db.Products.AsNoTracking()
-                .Where(p => p.CompanyId != null && remainingCompanyPurgeIds.Contains(p.CompanyId.Value))
-                .Select(p => p.Id)
-                .ToListAsync(ct);
-            if (productIds.Count > 0)
-            {
-                await TrackAsync("productComponentItems", () => db.ProductComponentItems
-                    .Where(i => productIds.Contains(i.ProductId)).ExecuteDeleteAsync(ct));
-                await TrackAsync("productPackagingItems", () => db.ProductPackagingItems
-                    .Where(i => productIds.Contains(i.ProductId)).ExecuteDeleteAsync(ct));
-                await TrackAsync("productAliases", () => db.ProductAliases
-                    .Where(i => productIds.Contains(i.ProductId)).ExecuteDeleteAsync(ct));
-                await TrackAsync("products", () => db.Products
-                    .Where(p => productIds.Contains(p.Id)).ExecuteDeleteAsync(ct));
-            }
-
-            await TrackAsync("locations", () => db.Locations
-                .Where(l => l.CompanyId != null && remainingCompanyPurgeIds.Contains(l.CompanyId.Value))
-                .ExecuteDeleteAsync(ct));
-            await TrackAsync("companies", () => db.Companies
-                .Where(c => remainingCompanyPurgeIds.Contains(c.Id))
-                .ExecuteDeleteAsync(ct));
+            var cleanup = await CleanupQaData(new CleanupQaRequest(remainingCompanyPurgeIds.ToArray(), false), ct);
+            if (cleanup.Result is not OkObjectResult)
+                return cleanup.Result!;
+            counts["companiesViaQaCleanup"] = remainingCompanyPurgeIds.Count;
         }
 
-        // Orphan catalog rows whose company row is already gone.
+        async Task TrackAsync(string key, Func<Task<int>> action)
+        {
+            counts[key] = await action();
+        }
+
+        // Orphan catalog rows whose company row is already gone (e.g. CompanyId=1 after earlier wipe).
         await TrackAsync("orphanIngredients", () => db.Ingredients
             .Where(i => i.CompanyId != null && !keepIds.Contains(i.CompanyId.Value))
             .ExecuteDeleteAsync(ct));
@@ -948,8 +945,48 @@ public class DevConsoleController(
             tenantConnections.Invalidate(reg.CompanyId);
         }
         counts["leftoverTenantConnections"] = leftoverRegs.Count;
-        db.TenantConnections.RemoveRange(leftoverRegs);
-        await db.SaveChangesAsync(ct);
+        if (leftoverRegs.Count > 0)
+        {
+            db.TenantConnections.RemoveRange(leftoverRegs);
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Demo AppUsers (@bisync.cloud) left behind when company rows were deleted earlier.
+        var orphanDemoUsers = await db.AppUsers
+            .Where(u => (u.CompanyId == null || !keepIds.Contains(u.CompanyId.Value))
+                && u.Email.EndsWith("@bisync.cloud")
+                && u.Email != SuperAdminAccess.SuperAdminEmail)
+            .ToListAsync(ct);
+        counts["orphanDemoAppUsers"] = orphanDemoUsers.Count;
+        if (orphanDemoUsers.Count > 0)
+        {
+            db.AppUsers.RemoveRange(orphanDemoUsers);
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Demo employees left with hard-coded CompanyId 1/2/3 after sandbox wipe.
+        var orphanDemoEmployees = await db.Employees
+            .Where(e => e.Email.EndsWith("@bisync.cloud"))
+            .ToListAsync(ct);
+        if (orphanDemoEmployees.Count > 0)
+        {
+            var empIds = orphanDemoEmployees.Select(e => e.Id).ToList();
+            await TrackAsync("orphanDemoLeaveRequests", () => db.LeaveRequests.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoLeaveBalances", () => db.LeaveBalances.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoShiftSchedules", () => db.ShiftSchedules.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoAttendanceRecords", () => db.AttendanceRecords.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoEducationRecords", () => db.EducationRecords.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoPreviousEmployments", () => db.PreviousEmployments.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoEmployeeMovements", () => db.EmployeeMovements.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoPerformanceAppraisals", () => db.PerformanceAppraisals.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            counts["orphanDemoEmployees"] = orphanDemoEmployees.Count;
+            db.Employees.RemoveRange(orphanDemoEmployees);
+            await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            counts["orphanDemoEmployees"] = 0;
+        }
 
         var remaining = await db.Companies.AsNoTracking()
             .OrderBy(c => c.Id)

@@ -11,6 +11,9 @@ import { ComparePricePage } from './ComparePricePage';
 import { OrderPage } from './OrderPage';
 import { CashPurchasePage } from './CashPurchasePage';
 import { OrderTemplatePage } from './OrderTemplatePage';
+import { ReturnableGoodsPage } from './ReturnableGoodsPage';
+import { CreditNotePage } from './CreditNotePage';
+import { CentralStorePage } from './CentralStorePage';
 import { ProductsSection } from './ProductsSection';
 import { ProductionSection } from './ProductionSection';
 import { StockCardPage } from './StockCardPage';
@@ -18,9 +21,21 @@ import { InventoryPage } from './InventoryPage';
 import { WastagePage } from './WastagePage';
 import { TransferPage } from './TransferPage';
 import { CogsAuditPage } from './CogsAuditPage';
+import { ItemizedSalesSummaryReportPage } from './reports/ItemizedSalesSummaryReportPage';
+import { InventorySummaryReportPage } from './reports/InventorySummaryReportPage';
+import { DetailedPurchaseSummaryReportPage } from './reports/DetailedPurchaseSummaryReportPage';
+import { ProductionReportPage } from './reports/ProductionReportPage';
+import { WastageReportPage } from './reports/WastageReportPage';
+import { BcgMatrixReportPage } from './reports/BcgMatrixReportPage';
+import { OpsExpensesAnalysisReportPage } from './reports/OpsExpensesAnalysisReportPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
+import { PosMappingSchedulerPage } from './PosMappingSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
+import { PosPromotionSchedulerPage } from './PosPromotionSchedulerPage';
+import { PosConfigPage } from './PosConfigPage';
+import { PosDeviceManagementPage } from './PosDeviceManagementPage';
+import { PosModifierGroupPage } from './PosModifierGroupPage';
 import { ProductAuditPage } from './ProductAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
@@ -82,7 +97,7 @@ function renderRevMgmtContent(
       <div className="p-2 sm:p-3 w-full min-w-0">
         <p className="text-sm text-muted-foreground">
           {isB2bProductNavLabel(label)
-            ? 'B2B products are available for Central Kitchen / Warehouse and Manufacturer.'
+            ? 'B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.'
             : 'Active Sales is available for Central Kitchen / Warehouse, Distributor, and Manufacturer.'}
         </p>
       </div>
@@ -132,6 +147,15 @@ function renderRevMgmtContent(
           initialPrefillItems={createOrderPrefill}
         />
       );
+    case 'Returnable Goods':
+      return <ReturnableGoodsPage selectedCompanyId={selectedCompanyId} />;
+    case 'Credit Note':
+      return (
+        <CreditNotePage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'Cash Purchase':
       return (
         <CashPurchasePage
@@ -157,6 +181,10 @@ function renderRevMgmtContent(
       return (
         <ProductAuditPage selectedCompanyId={selectedCompanyId} />
       );
+    case 'External POS Mapping':
+      return (
+        <PosMappingSchedulerPage selectedCompanyId={selectedCompanyId} />
+      );
     case 'Production':
       return (
         <ProductionSection
@@ -164,6 +192,14 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
+    case 'Central Store':
+      return (
+        <CentralStorePage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'B2B Principal Product':
     case 'B2B Product':
     case 'Product Management':
       return (
@@ -187,6 +223,14 @@ function renderRevMgmtContent(
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
           initialTab="subProduct"
+        />
+      );
+    case 'Stock Hold':
+      return (
+        <ProductionSection
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          initialTab="stockHold"
         />
       );
     case 'Stock Card':
@@ -217,9 +261,58 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
+    case 'Itemized Sales Summary':
+      return (
+        <ItemizedSalesSummaryReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Inventory Summary':
+      return (
+        <InventorySummaryReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Detailed Purchase Summary':
+      return (
+        <DetailedPurchaseSummaryReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Production Report':
+      return (
+        <ProductionReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Wastage Report':
+      return (
+        <WastageReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'BCG Matrix':
+      return (
+        <BcgMatrixReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'COGS Audit':
       return (
         <CogsAuditPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Ops Expenses Analysis':
+      return (
+        <OpsExpensesAnalysisReportPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />
@@ -289,8 +382,28 @@ export function RevenueSection({
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}
           />
-        ) : posItem === 'POS Test Tap' ? (
+        ) : posItem === 'POS Modifier Group' ? (
+          <PosModifierGroupPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'Promotion Scheduler' ? (
+          <PosPromotionSchedulerPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'POS Config' ? (
+          <PosConfigPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'POS Test' ? (
           <PosTestTapPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'Device Management' ? (
+          <PosDeviceManagementPage
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}
           />

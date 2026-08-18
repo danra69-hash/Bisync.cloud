@@ -8,6 +8,26 @@ public class Product
     public string Category { get; set; } = string.Empty;
     public string Group { get; set; } = string.Empty;
     public bool IsSubProduct { get; set; }
+    /// <summary>Bi-Product / Bi-Sub-Product created from a production split of BiOfProductId.</summary>
+    public bool IsBiProduct { get; set; }
+    /// <summary>Principal B2B or Sub-Product this bi-product was split from.</summary>
+    public int? BiOfProductId { get; set; }
+    /// <summary>When true and not a Bi-Sub-Product, may sell externally. Bi-Sub-Product always false.</summary>
+    public bool BiSellable { get; set; }
+    /// <summary>Sellable product with combination choices or weight-based pricing.</summary>
+    public bool IsVariableProduct { get; set; }
+    /// <summary>combination | weight</summary>
+    public string VariableMode { get; set; } = string.Empty;
+    /// <summary>For combination: total units the customer may choose.</summary>
+    public decimal VariableChoiceQty { get; set; }
+    /// <summary>JSON config for combination options or weight settings.</summary>
+    public string VariableOptionsJson { get; set; } = "{}";
+    public decimal VariableMinCost { get; set; }
+    public decimal VariableMaxCost { get; set; }
+    /// <summary>Product has substitutable recipe components (POS SWAP).</summary>
+    public bool IsVariableComponent { get; set; }
+    /// <summary>JSON slots/alternatives with optional extraCharge for Variable Component.</summary>
+    public string VariableComponentOptionsJson { get; set; } = "{}";
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
     public string B2bPackageUnit { get; set; } = "pcs";
@@ -19,7 +39,9 @@ public class Product
     public decimal? PreviousPackagingCost { get; set; }
     public decimal? PreviousRrp { get; set; }
     public decimal YieldQuantity { get; set; }
+    /// <summary>B2C Product UOM; Sub-Product batch UOM; B2B Principal Production UOM.</summary>
     public string YieldUom { get; set; } = string.Empty;
+    /// <summary>Alternate production/batch UOMs JSON. For B2B Principal: up to 2 alts (1 alt = qty × principal).</summary>
     public string YieldAltUnitsJson { get; set; } = "[]";
     public int ExpiryPeriodDays { get; set; }
     public int ActivationPeriodHours { get; set; }
@@ -29,6 +51,8 @@ public class Product
     public string ParStockUom { get; set; } = string.Empty;
     public bool PosEnabled { get; set; }
     public string PosDeliveryUnitsJson { get; set; } = "[]";
+    /// <summary>POS Menu sales unit label (from company UOM catalog / product units).</summary>
+    public string PosSalesUom { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
     public int? CompanyId { get; set; }
     public string LocationIdsJson { get; set; } = "[]";

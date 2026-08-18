@@ -15,6 +15,13 @@ import {
 } from './vendorProductCatalog';
 import { formatCountryNumber } from '../utils/numberFormat';
 
+export type VendorProductImportOptions = {
+  /** When set, drafts without Vendor ID inherit this vendor (per-vendor panel). */
+  defaultVendor?: Pick<Vendor, 'externalId' | 'name'>;
+  /** Known vendors for multi-vendor CSV validation / apply. */
+  vendors?: Array<Pick<Vendor, 'externalId' | 'name'>>;
+};
+
 export type VendorProductFieldChange = {
   field: string;
   label: string;
@@ -89,13 +96,27 @@ function draftDefaults(): Pick<VendorProductImportDraft, 'active'> {
   return { active: true };
 }
 
-function normalizeDraft(draft: VendorProductImportDraft): VendorProductImportDraft {
+function vendorScopeKey(draft: Pick<VendorProductImportDraft, 'vendorExternalId' | 'productName'>): string {
+  const vendor = (draft.vendorExternalId || '').trim().toUpperCase();
+  return `${vendor}::${draft.productName.trim().toLowerCase()}`;
+}
+
+function normalizeDraft(
+  draft: VendorProductImportDraft,
+  defaultVendor?: Pick<Vendor, 'externalId' | 'name'>,
+): VendorProductImportDraft {
+  const vendorExternalId = (draft.vendorExternalId || defaultVendor?.externalId || '').trim().toUpperCase() || undefined;
+  const vendorName = (draft.vendorName || defaultVendor?.name || '').trim() || undefined;
+  const group = draft.group.trim() || draft.category?.trim() || 'Dry Goods';
   return {
     ...draftDefaults(),
     ...draft,
+    vendorExternalId,
+    vendorName,
+    category: draft.category?.trim() || undefined,
     vendorProductId: draft.vendorProductId?.trim().toUpperCase() || undefined,
     productName: draft.productName.trim(),
-    group: draft.group.trim() || 'Dry Goods',
+    group,
     specification: draft.specification.trim(),
     deliveryUnitText: draft.deliveryUnitText.trim(),
     deliveryPrice: draft.deliveryPrice,
@@ -104,6 +125,8 @@ function normalizeDraft(draft: VendorProductImportDraft): VendorProductImportDra
 
 function productToDraft(product: VendorProductCatalogItem): VendorProductImportDraft {
   return normalizeDraft({
+    vendorExternalId: product.vendorExternalId,
+    vendorName: product.vendorName,
     vendorProductId: product.id,
     productName: product.productName,
     group: product.group,
@@ -151,7 +174,11 @@ function mergeDraftWithExisting(
 ): VendorProductImportDraft {
   return {
     ...draft,
+    vendorExternalId: draft.vendorExternalId || existing.vendorExternalId,
+    vendorName: draft.vendorName || existing.vendorName,
     vendorProductId: draft.vendorProductId || existing.id,
+    // New template omits Specification — preserve DB value when CSV cell is blank.
+    specification: draft.specification.trim() || existing.specification,
     active: draft.active !== false,
   };
 }
@@ -193,9 +220,9 @@ function detectImportConflicts(
 
   drafts.forEach((draft, index) => {
     register(`t:${index}`);
-    const nameKey = draft.productName.trim().toLowerCase();
+    const nameKey = vendorScopeKey(draft);
     const idKey = draft.vendorProductId?.trim().toUpperCase() ?? '';
-    if (nameKey) {
+    if (draft.productName.trim()) {
       if (!byName.has(nameKey)) byName.set(nameKey, []);
       byName.get(nameKey)!.push(index);
     }
@@ -205,6 +232,7 @@ function detectImportConflicts(
     }
   });
 
+  // Template↔template duplicates only (same Vendor Product ID or same vendor+name).
   for (const indices of byName.values()) {
     if (indices.length < 2) continue;
     for (let i = 1; i < indices.length; i++) {
@@ -219,10 +247,13 @@ function detectImportConflicts(
     }
   }
 
-  const existingByName = new Map(
+  const existingByScopedName = new Map(
     existingProducts
       .filter(product => product.productName.trim())
-      .map(product => [product.productName.trim().toLowerCase(), product]),
+      .map(product => [
+        `${product.vendorExternalId.trim().toUpperCase()}::${product.productName.trim().toLowerCase()}`,
+        product,
+      ]),
   );
   const existingById = new Map(
     existingProducts
@@ -230,19 +261,18 @@ function detectImportConflicts(
       .map(product => [product.id.trim().toUpperCase(), product]),
   );
 
+  // Ambiguous template↔database: same vendor+name but different / missing IDs.
+  // Clean Vendor Product ID matches are updates, not merge conflicts.
   drafts.forEach((draft, index) => {
-    const nameKey = draft.productName.trim().toLowerCase();
     const productId = draft.vendorProductId?.trim().toUpperCase() ?? '';
-    const existingByProductId = productId ? existingById.get(productId) : undefined;
-    const existingByProductName = nameKey ? existingByName.get(nameKey) : undefined;
+    if (productId && existingById.has(productId)) return;
 
-    if (existingByProductId) {
-      register(`e:${existingByProductId.id}`);
-      conflictNodeUnion(parent, `t:${index}`, `e:${existingByProductId.id}`);
-    } else if (existingByProductName) {
-      register(`e:${existingByProductName.id}`);
-      conflictNodeUnion(parent, `t:${index}`, `e:${existingByProductName.id}`);
-    }
+    const scoped = vendorScopeKey(draft);
+    const existingByProductName = scoped ? existingByScopedName.get(scoped) : undefined;
+    if (!existingByProductName) return;
+
+    register(`e:${existingByProductName.id}`);
+    conflictNodeUnion(parent, `t:${index}`, `e:${existingByProductName.id}`);
   });
 
   const grouped = new Map<ConflictNodeId, ConflictNodeId[]>();
@@ -318,8 +348,14 @@ function blockedTemplateIndices(conflicts: VendorProductImportConflict[]): Set<n
 export function buildVendorProductImportPlan(
   drafts: VendorProductImportDraft[],
   existingProducts: VendorProductCatalogItem[],
+  options: VendorProductImportOptions = {},
 ): VendorProductImportPlan {
-  const normalizedDrafts = drafts.map(normalizeDraft);
+  const vendorsById = new Map(
+    (options.vendors ?? [])
+      .filter(vendor => vendor.externalId)
+      .map(vendor => [vendor.externalId.trim().toUpperCase(), vendor]),
+  );
+  const normalizedDrafts = drafts.map(draft => normalizeDraft(draft, options.defaultVendor));
   const conflicts = detectImportConflicts(normalizedDrafts, existingProducts);
   const blocked = blockedTemplateIndices(conflicts);
 
@@ -337,8 +373,11 @@ export function buildVendorProductImportPlan(
       .filter(product => product.id)
       .map(product => [product.id.trim().toUpperCase(), product]),
   );
-  const byName = new Map(
-    existingProducts.map(product => [product.productName.trim().toLowerCase(), product]),
+  const byScopedName = new Map(
+    existingProducts.map(product => [
+      `${product.vendorExternalId.trim().toUpperCase()}::${product.productName.trim().toLowerCase()}`,
+      product,
+    ]),
   );
   const seenIds = new Map<string, string>();
 
@@ -348,6 +387,7 @@ export function buildVendorProductImportPlan(
     const rawDraft = normalizedDrafts[index];
     const productId = rawDraft.vendorProductId?.trim().toUpperCase() ?? '';
     const nameKey = rawDraft.productName.trim().toLowerCase();
+    const vendorId = rawDraft.vendorExternalId?.trim().toUpperCase() ?? '';
 
     if (!rawDraft.productName.trim()) {
       plan.errors.push('Skipped row with empty product name.');
@@ -369,6 +409,16 @@ export function buildVendorProductImportPlan(
       continue;
     }
 
+    if (vendorId && vendorsById.size > 0 && !vendorsById.has(vendorId)) {
+      plan.errors.push(`"${rawDraft.productName}" references unknown Vendor ID ${vendorId}.`);
+      continue;
+    }
+
+    if (!vendorId && !options.defaultVendor && !productId) {
+      plan.errors.push(`"${rawDraft.productName}" is missing Vendor ID (required for new products).`);
+      continue;
+    }
+
     if (productId) {
       const priorName = seenIds.get(productId);
       if (priorName && priorName !== nameKey) {
@@ -380,9 +430,16 @@ export function buildVendorProductImportPlan(
 
     const existing = productId
       ? byProductId.get(productId)
-      : byName.get(nameKey);
+      : byScopedName.get(vendorScopeKey(rawDraft));
 
-    const draft = existing ? mergeDraftWithExisting(rawDraft, existing) : rawDraft;
+    // Fill vendor name from catalog of known vendors when CSV name is blank.
+    const vendorMeta = vendorId ? vendorsById.get(vendorId) : undefined;
+    const withVendorName: VendorProductImportDraft = {
+      ...rawDraft,
+      vendorName: rawDraft.vendorName || vendorMeta?.name || existing?.vendorName,
+    };
+
+    const draft = existing ? mergeDraftWithExisting(withVendorName, existing) : withVendorName;
 
     if (existing) {
       const changes = diffProduct(existing, draft);
@@ -391,6 +448,11 @@ export function buildVendorProductImportPlan(
       } else {
         plan.updates.push({ existing, draft, changes });
       }
+      continue;
+    }
+
+    if (!draft.vendorExternalId) {
+      plan.errors.push(`"${draft.productName}" is missing Vendor ID (required for new products).`);
       continue;
     }
 
@@ -494,7 +556,7 @@ export function applyMergeResolutions(
 
 export function draftToCatalogProduct(
   draft: VendorProductImportDraft,
-  vendor: Vendor,
+  vendor: Pick<Vendor, 'externalId' | 'name' | 'productPolicyTag'>,
   existing?: VendorProductCatalogItem,
 ): VendorProductCatalogItem | null {
   const delivery = parseDeliveryUnitPath(draft.deliveryUnitText);
@@ -503,10 +565,13 @@ export function draftToCatalogProduct(
   const id = draft.vendorProductId?.trim().toUpperCase() || existing?.id;
   if (!id) return null;
 
+  const vendorExternalId = (draft.vendorExternalId || vendor.externalId).trim();
+  const vendorName = (draft.vendorName || vendor.name).trim();
+
   return {
     id,
-    vendorExternalId: vendor.externalId,
-    vendorName: vendor.name,
+    vendorExternalId,
+    vendorName,
     productName: draft.productName.trim(),
     group: draft.group.trim() || 'Dry Goods',
     specification: draft.specification.trim(),
@@ -516,29 +581,91 @@ export function draftToCatalogProduct(
     productPolicyTag: draft.productPolicyTag
       ?? existing?.productPolicyTag
       ?? inferCatalogProductPolicyTag({
-        vendorExternalId: vendor.externalId,
+        vendorExternalId,
         group: draft.group,
         specification: draft.specification,
       }, vendor.productPolicyTag),
   };
 }
 
+function resolveApplyVendor(
+  draft: VendorProductImportDraft,
+  existing: VendorProductCatalogItem | undefined,
+  defaultVendor: Vendor | undefined,
+  vendorsById: Map<string, Vendor>,
+): Vendor | null {
+  const vendorId = (draft.vendorExternalId || existing?.vendorExternalId || defaultVendor?.externalId || '')
+    .trim()
+    .toUpperCase();
+  if (vendorId && vendorsById.has(vendorId)) return vendorsById.get(vendorId)!;
+  if (defaultVendor && (!vendorId || defaultVendor.externalId.trim().toUpperCase() === vendorId)) {
+    return defaultVendor;
+  }
+  if (vendorId && (draft.vendorName || existing?.vendorName)) {
+    // Synthetic vendor shell when CSV has ID+name but vendor list wasn't passed.
+    return {
+      id: 0,
+      externalId: vendorId,
+      name: draft.vendorName || existing?.vendorName || vendorId,
+      type: '',
+      brn: '',
+      products: '',
+      city: '',
+      state: '',
+      address: '',
+      contactPerson: '',
+      contactPosition: '',
+      mobile: '',
+      email: '',
+      contactsJson: '[]',
+      engaged: false,
+    };
+  }
+  return defaultVendor ?? null;
+}
+
 export async function applyVendorProductImportPlan(
   plan: VendorProductImportPlan,
-  vendor: Vendor,
+  vendorOrOptions: Vendor | (VendorProductImportOptions & { defaultVendor?: Vendor }),
 ): Promise<{ created: number; updated: number; deactivated: number }> {
+  const options: VendorProductImportOptions & { defaultVendor?: Vendor } =
+    'externalId' in vendorOrOptions
+      ? { defaultVendor: vendorOrOptions, vendors: [vendorOrOptions] }
+      : vendorOrOptions;
+
+  const defaultVendor = options.defaultVendor;
+  const vendorsById = new Map(
+    (options.vendors ?? (defaultVendor ? [defaultVendor] : []))
+      .filter(vendor => vendor.externalId)
+      .map(vendor => [vendor.externalId.trim().toUpperCase(), vendor as Vendor]),
+  );
+
   let created = 0;
   let updated = 0;
   let deactivated = 0;
 
   const activeCreates = plan.creates.filter(draft => draft.active !== false);
-  if (activeCreates.length > 0) {
-    const added = await saveImportedVendorProducts(vendor.externalId, vendor.name, activeCreates);
+  const createsByVendor = new Map<string, { vendor: Vendor; drafts: VendorProductImportDraft[] }>();
+  for (const draft of activeCreates) {
+    const vendor = resolveApplyVendor(draft, undefined, defaultVendor, vendorsById);
+    if (!vendor) {
+      throw new Error(`Cannot create "${draft.productName}" — Vendor ID is missing or unknown.`);
+    }
+    const key = vendor.externalId.trim().toUpperCase();
+    const bucket = createsByVendor.get(key) ?? { vendor, drafts: [] };
+    bucket.drafts.push(draft);
+    createsByVendor.set(key, bucket);
+  }
+
+  for (const { vendor, drafts } of createsByVendor.values()) {
+    const added = await saveImportedVendorProducts(vendor.externalId, vendor.name, drafts);
     created += added.length;
   }
 
   for (const update of plan.updates) {
     if (update.draft.active === false) continue;
+    const vendor = resolveApplyVendor(update.draft, update.existing, defaultVendor, vendorsById);
+    if (!vendor) continue;
     const product = draftToCatalogProduct(update.draft, vendor, update.existing);
     if (!product) continue;
     await persistVendorProductUpdate(product);
@@ -555,8 +682,11 @@ export async function applyVendorProductImportPlan(
   return { created, updated, deactivated };
 }
 
-export function parseVendorProductImportCsv(text: string): VendorProductImportDraft[] {
-  return parseVendorProductTemplateCsv(text).map(draft => normalizeDraft(draft));
+export function parseVendorProductImportCsv(
+  text: string,
+  defaultVendor?: Pick<Vendor, 'externalId' | 'name'>,
+): VendorProductImportDraft[] {
+  return parseVendorProductTemplateCsv(text).map(draft => normalizeDraft(draft, defaultVendor));
 }
 
 export function allVendorProductIds(): Set<string> {

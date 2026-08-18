@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
-import { api, type Vendor } from '../../api';
+import { api, type Vendor, type ComponentTagSuggestion } from '../../api';
 import {
   getKnownRecipeUnits,
   getKnownStorageOptions,
@@ -9,6 +9,7 @@ import {
   getHierarchyCategoryOptions,
   getHierarchyGroupOptions,
   loadComponentHierarchy,
+  loadComponentHierarchyForCompany,
   type ComponentHierarchyState,
 } from '../../data/componentHierarchy';
 import {
@@ -19,9 +20,9 @@ import {
   getConversion,
   getComponentUomChoices,
   isConversionQtyAutoFilled,
-  resolveInventoryToRecipeQty,
   inputCls,
   isComponentNameTaken,
+  findSimilarComponentNames,
   componentNameValidationMessage,
   normalizeComponentName,
   MAX_ALTERNATE_UOMS,
@@ -32,21 +33,20 @@ import {
   toForm,
 } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_DETAIL_CLS, DETAIL_PANEL_OVERLAY_ELEVATED_CLS, DETAIL_PANEL_SHELL_ELEVATED_CLS } from '../layout/sidePanelShared';
+import { labelsEqual } from '../../utils/labelMatch';
 import {
   resolveScopedTaggedVendorProducts,
   VendorProductTable,
   VendorProductTaggedSection,
+  VendorProductSuggestedSection,
   type CompanyLocationOption,
 } from './VendorProductTable';
 import { isVendorProductTagReady, countComponentTaggedVendors } from '../../data/vendorProductTagging';
 import {
-  dailyUsageToRecipeBasis,
   formatParStock,
-  resolveDailyUsageInBasis,
   resolveParStockDisplay,
-  type ParStockUomBasis,
 } from '../../data/componentParStock';
-import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
+import { VENDOR_PRODUCT_CATALOG, applyVendorProductOverrides, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { ComponentSplitUseSection } from './ComponentSplitUseSection';
 import { SearchableSelect } from './SearchableSelect';
 import {
@@ -55,6 +55,8 @@ import {
   toSplitUseBasisQty,
   validateSplitUseConfig,
 } from '../../data/componentSplitUse';
+import { hasExactCatalogNameMatch } from '../../utils/catalogNameMatch';
+import { SimilarNameMatchesNotice } from '../shared/SimilarNameMatchesNotice';
 
 function computeTaggedVendorProductPricing(
   product: VendorProductCatalogItem,
@@ -333,7 +335,7 @@ function PrincipalAlternateUomBlock({
         principalUnit === referencePrincipalUom ? (
           <div className="mb-4 rounded-md border border-border bg-muted/20 p-3">
             <p className="text-xs text-muted-foreground">
-              Inventory UOM matches principal component UOM — no conversion required.
+              Selected unit matches the principal component UOM — no conversion required.
             </p>
           </div>
         ) : (
@@ -342,7 +344,7 @@ function PrincipalAlternateUomBlock({
             Principal Conversion Reference
           </p>
           <p className="text-xs text-muted-foreground mb-2">
-            Define how inventory UOM converts to principal component UOM (auto-filled when known).
+            Define how this unit converts to the principal component UOM (auto-filled when known).
           </p>
           <UomConversionLine
             unit={principalUnit}
@@ -416,23 +418,41 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [companyCode, setCompanyCode] = useState<string | null>(null);
   const [form, setForm] = useState<ComponentForm>(() => toForm(row, existingComponentIds));
   const [nameError, setNameError] = useState<string | null>(null);
+  const similarComponentNameMatches = useMemo(
+    () => findSimilarComponentNames(form.name, existingComponents, row.id),
+    [form.name, existingComponents, row.id],
+  );
   const [productSearch, setProductSearch] = useState('');
   const [vendorSearch, setVendorSearch] = useState('');
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationOption[]>([]);
-  const [parStockUomBasis, setParStockUomBasis] = useState<ParStockUomBasis>('recipe');
   const [splitUseError, setSplitUseError] = useState<string | null>(null);
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
   const [catalogVersion, setCatalogVersion] = useState(0);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [tagSuggestions, setTagSuggestions] = useState<ComponentTagSuggestion[]>([]);
+
+  const categoryExtras = useMemo(
+    () => existingComponents.map(component => component.category).filter(Boolean),
+    [existingComponents],
+  );
+  const groupExtras = useMemo(
+    () => existingComponents
+      .filter(component => !form.category || labelsEqual(component.category, form.category))
+      .map(component => component.group)
+      .filter(Boolean),
+    [existingComponents, form.category],
+  );
 
   const categoryOptions = useMemo(
-    () => getHierarchyCategoryOptions(hierarchy, form.category, []),
-    [hierarchy, form.category],
+    () => getHierarchyCategoryOptions(hierarchy, form.category, categoryExtras),
+    [hierarchy, form.category, categoryExtras],
   );
 
   const groupOptions = useMemo(
-    () => getHierarchyGroupOptions(hierarchy, form.category, form.group, []),
-    [hierarchy, form.category, form.group],
+    () => getHierarchyGroupOptions(hierarchy, form.category, form.group, groupExtras),
+    [hierarchy, form.category, form.group, groupExtras],
   );
 
   const storageOptions = useMemo(() => {
@@ -464,33 +484,44 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   }, [selectedCompanyId]);
 
   useEffect(() => {
+    let cancelled = false;
     const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
     const reloadCatalog = () => setCatalogVersion(version => version + 1);
     reloadHierarchy();
+    if (selectedCompanyId) {
+      void loadComponentHierarchyForCompany(selectedCompanyId).then(next => {
+        if (!cancelled) setHierarchy(next);
+      });
+    }
     window.addEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
     window.addEventListener('bisync:componentCatalogChanged', reloadCatalog);
     window.addEventListener('storage', reloadHierarchy);
     return () => {
+      cancelled = true;
       window.removeEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
       window.removeEventListener('bisync:componentCatalogChanged', reloadCatalog);
       window.removeEventListener('storage', reloadHierarchy);
     };
-  }, []);
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     setForm(f => {
-      const categories = getHierarchyCategoryOptions(hierarchy, f.category, []);
+      const categories = getHierarchyCategoryOptions(hierarchy, f.category, categoryExtras);
       const categoryValid = categories.some(
         category => category.toLowerCase() === f.category.toLowerCase(),
       );
       const category = categoryValid ? f.category : (categories[0] ?? f.category);
-      const groups = getHierarchyGroupOptions(hierarchy, category, f.group, []);
+      const groupsForCategory = existingComponents
+        .filter(component => !category || labelsEqual(component.category, category))
+        .map(component => component.group)
+        .filter(Boolean);
+      const groups = getHierarchyGroupOptions(hierarchy, category, f.group, groupsForCategory);
       const groupValid = groups.some(group => group.toLowerCase() === f.group.toLowerCase());
       const group = groupValid ? f.group : (groups[0] ?? f.group);
       if (category === f.category && group === f.group) return f;
       return { ...f, category, group };
     });
-  }, [hierarchy]);
+  }, [hierarchy, categoryExtras, existingComponents]);
 
   useEffect(() => {
     api.vendors(true).then(setVendors).catch(() => setVendors([]));
@@ -505,13 +536,40 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       .then(locations => {
         setCompanyLocations(
           locations
-            .filter(l => l.companyId === selectedCompanyId)
+            .filter(l => l.companyId === selectedCompanyId && l.active !== false)
             .map(l => ({ externalId: l.externalId, name: l.name }))
             .sort((a, b) => a.name.localeCompare(b.name)),
         );
       })
       .catch(() => setCompanyLocations([]));
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    const componentName = form.name.trim();
+    if (!selectedCompanyId || !componentName) {
+      setTagSuggestions([]);
+      setSuggestionError(null);
+      setSuggestionLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSuggestionLoading(true);
+    setSuggestionError(null);
+    void api.componentTagSuggestions(selectedCompanyId, componentName, selectedLocationIds)
+      .then(res => {
+        if (cancelled) return;
+        setTagSuggestions(Array.isArray(res.suggestions) ? res.suggestions : []);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setTagSuggestions([]);
+        setSuggestionError(e instanceof Error ? e.message : 'Failed to load suggested vendor products.');
+      })
+      .finally(() => {
+        if (!cancelled) setSuggestionLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedCompanyId, form.name, selectedLocationIds]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -541,7 +599,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         if (validation) {
           setNameError(validation);
         } else if (isComponentNameTaken(val, existingComponents, row.id)) {
-          setNameError('A component with this name already exists for this company.');
+          setNameError('A component with this name already exists (active or inactive).');
         } else {
           setNameError(null);
         }
@@ -553,26 +611,11 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     });
   }
 
-  function resolveConvertToRecipeQty(
-    inventoryUnit: string,
-    recipeUnit: string,
-    fromQty: string,
-    currentQty: string,
-  ) {
-    return resolveInventoryToRecipeQty(inventoryUnit, recipeUnit, fromQty, currentQty);
-  }
-
   function handleComponentUnitChange(val: string) {
     const isAlternateChoice = form.altRecipeUnits.some(a => a.unit === val) && val !== form.recipeUnit;
     if (isAlternateChoice) {
       const swapped = swapPrincipalWithAlternateUnit(form.recipeUnit, form.altRecipeUnits, val);
       setForm(f => {
-        const converted = resolveConvertToRecipeQty(
-          f.inventoryUnit,
-          swapped.principalUnit,
-          f.convertFromInventoryQty,
-          f.convertToRecipeQty,
-        );
         const choices = getComponentUomChoices(swapped.principalUnit, swapped.altUnits);
         const vendorProductComponentUom = Object.fromEntries(
           Object.entries(f.vendorProductComponentUom).filter(([, uom]) => choices.includes(uom)),
@@ -580,9 +623,11 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         return {
           ...f,
           recipeUnit: swapped.principalUnit,
+          inventoryUnit: swapped.principalUnit,
           altRecipeUnits: refreshAltUnitQtys(swapped.altUnits, swapped.principalUnit),
-          convertFromInventoryQty: converted.fromQty,
-          convertToRecipeQty: converted.qty,
+          altInventoryUnits: [],
+          convertFromInventoryQty: '1',
+          convertToRecipeQty: '1',
           vendorProductComponentUom,
         };
       });
@@ -590,7 +635,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     }
 
     setForm(f => {
-      const converted = resolveConvertToRecipeQty(f.inventoryUnit, val, f.convertFromInventoryQty, f.convertToRecipeQty);
       const choices = getComponentUomChoices(val, f.altRecipeUnits);
       const vendorProductComponentUom = Object.fromEntries(
         Object.entries(f.vendorProductComponentUom).filter(([, uom]) => choices.includes(uom)),
@@ -598,35 +642,12 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       return {
         ...f,
         recipeUnit: val,
-        altRecipeUnits: refreshAltUnitQtys(f.altRecipeUnits, val),
-        convertFromInventoryQty: converted.fromQty,
-        convertToRecipeQty: converted.qty,
-        vendorProductComponentUom,
-      };
-    });
-  }
-
-  function handleInventoryUnitChange(val: string) {
-    setForm(f => {
-      const converted = resolveConvertToRecipeQty(val, f.recipeUnit, f.convertFromInventoryQty, f.convertToRecipeQty);
-      return {
-        ...f,
         inventoryUnit: val,
-        altInventoryUnits: refreshAltUnitQtys(f.altInventoryUnits, val),
-        convertFromInventoryQty: converted.fromQty,
-        convertToRecipeQty: converted.qty,
-      };
-    });
-  }
-
-  function handleReferenceFromQtyChange(fromQty: string) {
-    setForm(f => {
-      const from = parseFloat(fromQty || '1') || 1;
-      const conv = getConversion(f.inventoryUnit, f.recipeUnit);
-      return {
-        ...f,
-        convertFromInventoryQty: fromQty,
-        convertToRecipeQty: conv !== null ? String(conv * from) : f.convertToRecipeQty,
+        altRecipeUnits: refreshAltUnitQtys(f.altRecipeUnits, val),
+        altInventoryUnits: [],
+        convertFromInventoryQty: '1',
+        convertToRecipeQty: '1',
+        vendorProductComponentUom,
       };
     });
   }
@@ -746,6 +767,35 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     [form.recipeUnit, form.altRecipeUnits],
   );
 
+  const suggestedVendorProducts = useMemo(() => {
+    const catalog = applyVendorProductOverrides();
+    const tagged = new Set(form.taggedVendorProductIds);
+    const seen = new Set<string>();
+    const products: VendorProductCatalogItem[] = [];
+    for (const suggestion of tagSuggestions) {
+      if (suggestion.alreadyTagged) continue;
+      const id = suggestion.vendorProductId;
+      if (!id || tagged.has(id) || seen.has(id)) continue;
+      const product = catalog.find(p => p.id === id) ?? VENDOR_PRODUCT_CATALOG.find(p => p.id === id);
+      if (!product) continue;
+      seen.add(id);
+      products.push(product);
+    }
+    return products;
+  }, [tagSuggestions, form.taggedVendorProductIds]);
+
+  const suggestionProbabilityByProductId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const suggestion of tagSuggestions) {
+      if (!suggestion.vendorProductId || suggestion.alreadyTagged) continue;
+      const prev = map[suggestion.vendorProductId];
+      if (prev == null || suggestion.probability > prev) {
+        map[suggestion.vendorProductId] = suggestion.probability;
+      }
+    }
+    return map;
+  }, [tagSuggestions]);
+
   const taggedPricing = useMemo(() => {
     const primaryId = form.taggedVendorProductIds[0];
     if (!primaryId) return null;
@@ -795,24 +845,16 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const dailyUsageRecipe = parseFloat(form.dailyUsage) > 0
     ? parseFloat(form.dailyUsage) || 0
     : 0;
-
-  const dailyUsageDisplay = resolveDailyUsageInBasis(
-    dailyUsageRecipe,
-    parStockUomBasis,
-    form.recipeUnit,
-    form.inventoryUnit,
-    form.convertFromInventoryQty,
-    form.convertToRecipeQty,
-  );
+  const dailyUsageDisplay = dailyUsageRecipe;
 
   const parStockDisplay = resolveParStockDisplay({
     dailyUsage: dailyUsageRecipe,
     orderFreqDays: parseInt(form.orderFreqDays, 10) || 0,
-    basis: parStockUomBasis,
+    basis: 'recipe',
     recipeUnit: form.recipeUnit,
-    inventoryUnit: form.inventoryUnit,
-    convertFromInventoryQty: form.convertFromInventoryQty,
-    convertToRecipeQty: form.convertToRecipeQty,
+    inventoryUnit: form.recipeUnit,
+    convertFromInventoryQty: '1',
+    convertToRecipeQty: '1',
   });
 
   function handleDailyUsageChange(rawValue: string) {
@@ -822,19 +864,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     }
     const parsed = parseFloat(rawValue);
     if (!Number.isFinite(parsed) || parsed <= 0) return;
-    const recipeValue = dailyUsageToRecipeBasis(
-      parsed,
-      parStockUomBasis,
-      form.recipeUnit,
-      form.inventoryUnit,
-      form.convertFromInventoryQty,
-      form.convertToRecipeQty,
-    );
-    set('dailyUsage', String(recipeValue));
-  }
-
-  function toggleParStockUomBasis() {
-    setParStockUomBasis(prev => (prev === 'recipe' ? 'inventory' : 'recipe'));
+    set('dailyUsage', String(parsed));
   }
 
   const vendorNames = useMemo(() => {
@@ -851,8 +881,8 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         nextSplitUse.lines = [createSplitUseLine()];
       }
       if (enabled && (!nextSplitUse.componentQty.trim() || nextSplitUse.componentQty === '1')) {
-        nextSplitUse.componentQty = f.convertFromInventoryQty || '1';
-        nextSplitUse.qtyBasis = 'inventory';
+        nextSplitUse.componentQty = '1';
+        nextSplitUse.qtyBasis = 'recipe';
       }
       return {
         ...f,
@@ -869,8 +899,9 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       return;
     }
     const trimmedName = normalizeComponentName(form.name);
-    if (isComponentNameTaken(trimmedName, existingComponents, row.id)) {
-      setNameError('A component with this name already exists for this company.');
+    if (isComponentNameTaken(trimmedName, existingComponents, row.id)
+      || hasExactCatalogNameMatch(similarComponentNameMatches)) {
+      setNameError('A component with this name already exists (active or inactive).');
       return;
     }
     const splitError = validateSplitUseConfig(
@@ -894,7 +925,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       storageNote: form.storageNote,
       active: form.active,
       recipeUOM: toApiUom(form.recipeUnit),
-      inventoryUOM: toApiUom(form.inventoryUnit),
+      inventoryUOM: toApiUom(form.recipeUnit),
       lastPriceInventory: delivPrice,
       lastPriceRecipe: componentPrice,
       dailyUsage: dailyUsageRecipe,
@@ -934,12 +965,13 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Component Name">
                 <input
-                  className={`${inputCls}${nameError ? ' border-red-500 focus:ring-red-500' : ''}`}
+                  className={`${inputCls}${nameError || hasExactCatalogNameMatch(similarComponentNameMatches) ? ' border-red-500 focus:ring-red-500' : ''}`}
                   value={form.name}
                   onChange={e => set('name', e.target.value)}
                   placeholder="e.g. Wagyu Beef A5"
                 />
                 {nameError && <p className="text-xs text-red-500 mt-0.5">{nameError}</p>}
+                <SimilarNameMatchesNotice matches={similarComponentNameMatches} entityLabel="component" />
               </FormField>
               <FormField label="Component ID">
                 <input className={`${inputCls} bg-muted text-muted-foreground`} value={form.componentId} readOnly />
@@ -1050,30 +1082,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               showComponentUomChoices
               onPrincipalChange={handleComponentUnitChange}
               onAltUnitsChange={handleAltRecipeUnitsChange}
-            />
-
-            <PrincipalAlternateUomBlock
-              principalLabel="Principal Inventory UOM"
-              alternateLabel="Alternate Inventory UOM"
-              addAlternateLabel="+ Add alternate inventory UOM"
-              principalUnit={form.inventoryUnit}
-              referencePrincipalUom={form.recipeUnit}
-              referenceFromQty={form.convertFromInventoryQty}
-              referenceQty={form.convertToRecipeQty}
-              referenceQtyAutoFilled={
-                form.inventoryUnit !== form.recipeUnit
-                && isAltQtyAutoFilled(
-                  form.inventoryUnit,
-                  form.recipeUnit,
-                  form.convertToRecipeQty,
-                  form.convertFromInventoryQty,
-                )
-              }
-              onReferenceFromQtyChange={handleReferenceFromQtyChange}
-              onReferenceQtyChange={qty => set('convertToRecipeQty', qty)}
-              altUnits={form.altInventoryUnits}
-              onPrincipalChange={handleInventoryUnitChange}
-              onAltUnitsChange={units => set('altInventoryUnits', units.slice(0, MAX_ALTERNATE_UOMS))}
               principalAside={(
                 <div className="flex-1 min-w-[280px] rounded-md border border-border bg-muted/10 p-3">
                   <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
@@ -1089,7 +1097,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                     <ComponentSplitUseSection
                       form={form}
                       componentPrice={componentPrice}
-                      principalQty={taggedPricing?.principalQty ?? (parseFloat(form.convertToRecipeQty) || 1)}
+                      principalQty={taggedPricing?.principalQty ?? 1}
                       onChange={splitUse => setForm(f => ({ ...f, splitUse }))}
                     />
                   ) : (
@@ -1104,30 +1112,13 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
 
           <div>
             <SectionTitle>Usage &amp; Par Stock</SectionTitle>
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <p className="text-xs text-muted-foreground font-sans">
-                Base par stock = daily usage × order frequency. Stored daily usage uses component UOM.
-              </p>
-              <div className="flex items-center border border-border rounded-md overflow-hidden text-xs font-sans shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setParStockUomBasis('recipe')}
-                  className={`px-3 py-1.5 transition-colors ${parStockUomBasis === 'recipe' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  Component UOM
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setParStockUomBasis('inventory')}
-                  className={`px-3 py-1.5 border-l border-border transition-colors ${parStockUomBasis === 'inventory' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  Inventory UOM
-                </button>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground font-sans mb-3">
+              Base par stock = daily usage × order frequency. Quantities use Principal Component UOM
+              ({form.recipeUnit}).
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <FormField label={`Daily Usage (${parStockUomBasis === 'recipe' ? form.recipeUnit : form.inventoryUnit}/day)`}>
+              <FormField label={`Daily Usage (${form.recipeUnit}/day)`}>
                 <input
                   className={inputCls}
                   type="number"
@@ -1149,14 +1140,9 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 />
               </FormField>
               <FormField label="Base Par Stock">
-                <button
-                  type="button"
-                  onClick={toggleParStockUomBasis}
-                  className={`${inputCls} text-left cursor-pointer hover:border-primary/60 transition-colors`}
-                  title="Click to switch par stock UOM basis"
-                >
+                <div className={inputCls}>
                   {formatParStock(parStockDisplay.value, parStockDisplay.uom)}
-                </button>
+                </div>
               </FormField>
             </div>
           </div>
@@ -1188,6 +1174,34 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 onProductLocationsChange: handleProductLocationsChange,
               }}
             />
+
+            {selectedCompanyId && form.name.trim() ? (
+              <VendorProductSuggestedSection
+                products={suggestedVendorProducts}
+                companyLocations={companyLocations}
+                hideYieldLoss={form.splitUse.enabled}
+                loading={suggestionLoading}
+                error={suggestionError}
+                probabilityByProductId={suggestionProbabilityByProductId}
+                handlers={{
+                  defaultComponentUom: form.recipeUnit,
+                  principalComponentUom: form.recipeUnit,
+                  altRecipeUnits: form.altRecipeUnits,
+                  componentUomChoices,
+                  componentUomByProduct: form.vendorProductComponentUom,
+                  principalQtyByProduct: form.vendorProductPrincipalQty,
+                  lossYieldByProduct: form.vendorProductLossYield,
+                  locationsByProduct: form.vendorProductLocations,
+                  taggedProductIds: form.taggedVendorProductIds,
+                  activeLocationIds: selectedLocationIds,
+                  onPrincipalQtyChange: handlePrincipalQtyChange,
+                  onLossYieldChange: handleLossYieldChange,
+                  onComponentUomChange: handleVendorProductComponentUomChange,
+                  onToggleTag: handleToggleVendorProductTag,
+                  onProductLocationsChange: handleProductLocationsChange,
+                }}
+              />
+            ) : null}
 
             <SectionTitle>Vendor &amp; Pricing</SectionTitle>
 

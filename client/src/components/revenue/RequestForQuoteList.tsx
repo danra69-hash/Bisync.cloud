@@ -6,6 +6,7 @@ import {
   copyVendorRfqShareLink,
 } from '../../data/vendorRfqShare';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { ColGroup } from '../shared/SortableTableHead';
 import { QuoteComparisonModal } from './QuoteComparisonModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
@@ -157,6 +158,7 @@ export function RequestForQuoteList({
       </div>
       <TableScrollContainer className="max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full text-xs">
+          <ColGroup widths={['16%', '16%', '10%', '8%', '14%', '36%']} />
           <thead className="bg-muted/30 sticky top-0">
             <tr className="border-b border-border text-left">
               <th className="px-4 py-2.5 font-semibold">RFQ</th>

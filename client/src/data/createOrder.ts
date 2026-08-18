@@ -5,6 +5,7 @@ import { resolveComparePriceCell } from './comparePrice';
 import {
   applyVendorProductOverrides,
   formatDeliveryUnitPath,
+  parseDeliveryUnitPath,
   resolveComponentUomQty,
   vendorProductPolicyTag,
   vendorProductVisibleToLocations,
@@ -43,11 +44,15 @@ export type CreateOrderLine = {
 type PurchaseOrderLike = {
   id: number;
   poNumber: string;
+  vendorName: string;
+  vendorExternalId?: string;
   orderDate?: string;
   commitmentStartDate?: string | null;
   items: Array<{
     vendorProductId?: string;
     componentId?: string;
+    componentName?: string;
+    name?: string;
     quantity: number;
     unitPrice: number;
     unit?: string;
@@ -57,6 +62,188 @@ type PurchaseOrderLike = {
     remainingCommitmentQuantity?: number;
   }>;
 };
+
+/** Display label for a pre-committed line (vendor product name preferred). */
+export function commitmentVendorProductLabel(item: {
+  name?: string;
+  componentName?: string;
+  vendorProductId?: string;
+}): string {
+  const name = (item.name || '').trim();
+  if (name) return name;
+  const fromCatalog = (item.vendorProductId || '').trim();
+  if (fromCatalog) {
+    const catalog = applyVendorProductOverrides();
+    const hit = catalog.find(p => p.id === fromCatalog);
+    const catalogName = (hit?.productName || '').trim();
+    if (catalogName) return catalogName;
+  }
+  return (item.componentName || '').trim() || '—';
+}
+
+function commitmentRemaining(item: PurchaseOrderLike['items'][number]): number {
+  return item.remainingCommitmentQuantity
+    ?? item.remainingQuantity
+    ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+}
+
+function stubComponentFromCommitment(
+  item: PurchaseOrderLike['items'][number],
+  locationIds: string[],
+): ComponentRow {
+  const componentId = (item.componentId || '').trim() || `committed-${item.vendorProductId || item.name || 'line'}`;
+  const name = (item.componentName || '').trim() || commitmentVendorProductLabel(item);
+  return {
+    componentId,
+    name,
+    category: 'Committed',
+    group: 'Committed',
+    recipeUOM: item.unit || 'Unit',
+    inventoryUOM: item.unit || 'Unit',
+    lastPriceRecipe: item.unitPrice,
+    lastPriceInventory: item.unitPrice,
+    dailyUsage: 0,
+    orderFreqDays: 0,
+    attachedProducts: 0,
+    attachedVendors: 0,
+    active: true,
+    locations: locationIds.length > 0 ? [...locationIds] : ['all'],
+    storage: [],
+  };
+}
+
+function synthesizeVendorProductFromCommitment(
+  item: PurchaseOrderLike['items'][number],
+  vendorExternalId: string,
+  vendorName: string,
+): VendorProductCatalogItem {
+  const deliveryText = (item.deliveryPackage || item.unit || '').trim();
+  const delivery = parseDeliveryUnitPath(deliveryText) ?? {
+    orderUnit: deliveryText || 'Unit',
+    orderQty: 1,
+    packUnit: deliveryText || 'Unit',
+    packQty: 1,
+    unitUnit: deliveryText || 'Unit',
+    unitQty: 1,
+  };
+  const id = (item.vendorProductId || '').trim() || `committed-line-${vendorExternalId}-${item.name || 'x'}`;
+  return {
+    id,
+    vendorExternalId,
+    vendorName,
+    productName: commitmentVendorProductLabel(item),
+    group: 'Committed',
+    specification: '',
+    deliveryPrice: item.unitPrice,
+    delivery,
+  };
+}
+
+/**
+ * Ensure active Pre-committed vendor products appear on My Order even when they are
+ * not currently tagged on a component for the selected location.
+ * Drawdown / Apply need these lines present to open a release PO.
+ */
+export function appendMissingCommittedOrderLines(
+  lines: CreateOrderLine[],
+  committedPos: PurchaseOrderLike[],
+  components: ComponentRow[],
+  options: {
+    vendorExternalId: string;
+    locationIds: string[];
+    categoryFilter: string;
+    search: string;
+  },
+): CreateOrderLine[] {
+  if (committedPos.length === 0) return lines;
+
+  const existingVp = new Set(lines.map(line => line.vendorProduct.id));
+  const existingKeys = new Set(lines.map(line => line.key));
+  const catalog = applyVendorProductOverrides();
+  const query = options.search.trim().toLowerCase();
+  const extras: CreateOrderLine[] = [];
+
+  for (const po of committedPos) {
+    const vendorExternalId = (po.vendorExternalId || '').trim();
+    if (options.vendorExternalId && vendorExternalId
+      && options.vendorExternalId !== vendorExternalId) {
+      continue;
+    }
+
+    for (const item of po.items) {
+      const remaining = commitmentRemaining(item);
+      if (remaining <= 0.0001) continue;
+
+      const vpId = (item.vendorProductId || '').trim();
+      if (vpId && existingVp.has(vpId)) continue;
+
+      const catalogProduct = vpId ? catalog.find(p => p.id === vpId) : undefined;
+      if (options.vendorExternalId && catalogProduct
+        && catalogProduct.vendorExternalId !== options.vendorExternalId) {
+        continue;
+      }
+
+      const component = (item.componentId || '').trim()
+        ? components.find(c => c.componentId === item.componentId) ?? null
+        : null;
+
+      if (component) {
+        if (!component.active) continue;
+        if (options.categoryFilter && options.categoryFilter !== 'All'
+          && component.category !== options.categoryFilter) {
+          continue;
+        }
+      } else if (options.categoryFilter && options.categoryFilter !== 'All') {
+        continue;
+      }
+
+      const resolvedVendorExternalId = vendorExternalId
+        || catalogProduct?.vendorExternalId
+        || options.vendorExternalId
+        || 'unknown';
+      const product = catalogProduct ?? synthesizeVendorProductFromCommitment(
+        item,
+        resolvedVendorExternalId,
+        po.vendorName,
+      );
+
+      const rowComponent = component ?? stubComponentFromCommitment(item, options.locationIds);
+      if (query) {
+        const haystack = [
+          rowComponent.componentId,
+          rowComponent.name,
+          rowComponent.category,
+          product.productName,
+          product.id,
+          po.poNumber,
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(query)) continue;
+      }
+
+      const key = `${rowComponent.id ?? rowComponent.componentId}::${product.id}::committed-${po.id}`;
+      if (existingKeys.has(key) || (vpId && existingVp.has(vpId))) continue;
+      existingKeys.add(key);
+      if (vpId) existingVp.add(vpId);
+
+      extras.push({
+        key,
+        component: rowComponent,
+        vendorProduct: product,
+        stockOnHand: null,
+        parStock: component ? calcParStock(component) : 0,
+        parStockUom: fromApiUom(rowComponent.recipeUOM) || rowComponent.recipeUOM,
+        suggestedDeliveryUnits: null,
+        deliveryUnitLabel: formatDeliveryUnitPath(product.delivery)
+          || (item.deliveryPackage || item.unit || '').trim(),
+        deliveryPrice: item.unitPrice,
+        commitment: null,
+      });
+    }
+  }
+
+  if (extras.length === 0) return lines;
+  return [...lines, ...extras].sort((a, b) => a.component.name.localeCompare(b.component.name));
+}
 
 /** Overlay active Pre-committed price / delivery unit onto My Order lines. */
 export function applyCommitmentOverlays(
@@ -71,9 +258,7 @@ export function applyCommitmentOverlays(
 
   for (const po of committedPos) {
     for (const item of po.items) {
-      const remaining = item.remainingCommitmentQuantity
-        ?? item.remainingQuantity
-        ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+      const remaining = commitmentRemaining(item);
       if (remaining <= 0.0001) continue;
       const match: Match = {
         poId: po.id,
@@ -273,30 +458,49 @@ export function resolveLowestEngagedTaggedVendorPrice(
   return best;
 }
 
+export function parseVendorEngagedLocationIds(vendor: Vendor): string[] {
+  const raw = vendor.engagedLocationIdsJson?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(value => String(value ?? '').trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Engaged at selected outlets. Empty EngagedLocationIdsJson = company-wide (tag-suggestion parity). */
+export function vendorEngagedAtLocations(vendor: Vendor, locationIds: string[]): boolean {
+  if (!vendor.engaged) return false;
+  if (locationIds.length === 0) return false;
+  const engagedLocs = parseVendorEngagedLocationIds(vendor);
+  if (engagedLocs.length === 0) return true;
+  const selected = new Set(locationIds.map(id => id.trim()).filter(Boolean));
+  return engagedLocs.some(id => selected.has(id));
+}
+
+/**
+ * My Order / templates vendor dropdown: every active engaged vendor for the selected
+ * locations (and org policy) — not only vendors that currently have tagged lines.
+ * Tagged-only filtering previously hid engaged vendors from "All vendors".
+ */
 export function resolveVendorsForSelectedLocations(
-  components: ComponentRow[],
+  _components: ComponentRow[],
   locationIds: string[],
   vendors: Vendor[],
   orgPolicyTags: CompanyVendorPolicyTag[] = [],
+  companyId: number | null = null,
 ): Vendor[] {
-  const catalog = applyVendorProductOverrides();
-  const vendorsByExternalId = new Map(vendors.map(v => [v.externalId, v]));
-  const vendorIds = new Set<string>();
-
-  for (const component of components) {
-    if (!component.active) continue;
-    if (!componentMatchesLocations(component, locationIds)) continue;
-
-    for (const product of resolveTaggedProductsForComponent(component, catalog, { locationIds })) {
-      if (!productAllowedByOrgPolicy(product, vendorsByExternalId, orgPolicyTags)) continue;
-      vendorIds.add(product.vendorExternalId);
-    }
-  }
-
   return vendors
-    .filter(v => v.engaged
-      && vendorIds.has(v.externalId)
-      && vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v))
+    .filter(v => {
+      if (v.active === false) return false;
+      if (companyId != null && v.companyId != null && v.companyId !== companyId) return false;
+      if (!vendorEngagedAtLocations(v, locationIds)) return false;
+      return vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v);
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -404,6 +608,9 @@ export type OrderCartItem = {
   deliveryPrice: number;
   quantity: number;
   lineTotal: number;
+  /** True when this cart line is an auto-attached returnable deposit. */
+  isReturnableDeposit?: boolean;
+  returnableItemName?: string;
 };
 
 export type OrderCartVendorGroup = {
@@ -413,18 +620,65 @@ export type OrderCartVendorGroup = {
   subtotal: number;
 };
 
+function depositCombineKey(item: OrderCartItem): string {
+  const name = (item.returnableItemName || item.productName || '').trim().toLowerCase();
+  const uom = (item.deliveryUnitLabel || item.componentUom || '').trim().toLowerCase();
+  const price = Number.isFinite(item.deliveryPrice) ? item.deliveryPrice : 0;
+  return `${item.vendorExternalId}|${name}|${uom}|${price}`;
+}
+
+/**
+ * Collapse auto-attached returnable deposit lines so the same deposit type
+ * (vendor + name + UOM + unit price) becomes one line with summed quantity.
+ */
+export function combineReturnableDepositLines(items: OrderCartItem[]): OrderCartItem[] {
+  const products: OrderCartItem[] = [];
+  const depositsByKey = new Map<string, OrderCartItem>();
+
+  for (const item of items) {
+    if (!item.isReturnableDeposit) {
+      products.push(item);
+      continue;
+    }
+
+    const key = depositCombineKey(item);
+    const existing = depositsByKey.get(key);
+    if (!existing) {
+      depositsByKey.set(key, {
+        ...item,
+        lineKey: `returnable::${key}`,
+        vendorProductId: '',
+        componentId: '',
+        quantity: item.quantity,
+        lineTotal: item.quantity * item.deliveryPrice,
+      });
+      continue;
+    }
+
+    existing.quantity += item.quantity;
+    existing.lineTotal = existing.quantity * existing.deliveryPrice;
+  }
+
+  return [
+    ...products,
+    ...[...depositsByKey.values()].sort((a, b) =>
+      (a.returnableItemName || a.productName).localeCompare(b.returnableItemName || b.productName),
+    ),
+  ];
+}
+
 export function buildCartItems(
   lines: CreateOrderLine[],
   orderQtyByKey: Record<string, string>,
 ): OrderCartItem[] {
-  return lines.flatMap(line => {
+  const expanded = lines.flatMap(line => {
     const quantity = parseFloat(orderQtyByKey[line.key] || '') || 0;
     if (quantity <= 0) return [];
-    return [{
+    const productLine: OrderCartItem = {
       lineKey: line.key,
       componentId: line.component.componentId,
       componentName: line.component.name,
-      componentUom: line.component.inventoryUOM,
+      componentUom: fromApiUom(line.component.recipeUOM) || line.component.recipeUOM,
       vendorProductId: line.vendorProduct.id,
       vendorExternalId: line.vendorProduct.vendorExternalId,
       vendorName: line.vendorProduct.vendorName,
@@ -433,8 +687,44 @@ export function buildCartItems(
       deliveryPrice: line.deliveryPrice,
       quantity,
       lineTotal: quantity * line.deliveryPrice,
-    }];
+    };
+
+    const vp = line.vendorProduct;
+    const depositName = (vp.returnableItemName ?? '').trim();
+    const depositUom = (vp.returnableUom ?? '').trim();
+    const depositAmount = Number(vp.returnableDepositAmount ?? 0);
+    if (
+      vp.returnableDeposit
+      && depositName
+      && depositUom
+      && Number.isFinite(depositAmount)
+      && depositAmount >= 0
+    ) {
+      return [
+        productLine,
+        {
+          lineKey: `${line.key}::returnable`,
+          componentId: '',
+          componentName: depositName,
+          componentUom: depositUom,
+          vendorProductId: vp.id,
+          vendorExternalId: vp.vendorExternalId,
+          vendorName: vp.vendorName,
+          productName: depositName,
+          deliveryUnitLabel: depositUom,
+          deliveryPrice: depositAmount,
+          quantity,
+          lineTotal: quantity * depositAmount,
+          isReturnableDeposit: true,
+          returnableItemName: depositName,
+        },
+      ];
+    }
+
+    return [productLine];
   });
+
+  return combineReturnableDepositLines(expanded);
 }
 
 export function groupCartByVendor(items: OrderCartItem[]): OrderCartVendorGroup[] {

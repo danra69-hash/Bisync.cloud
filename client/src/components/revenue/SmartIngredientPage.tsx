@@ -2,22 +2,35 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
-import { FilePlus2, Search, Upload, X } from 'lucide-react';
+import { FilePlus2, Search, Tag, Upload, X } from 'lucide-react';
 import { api } from '../../api';
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { ComponentTagSuggestionModal } from './ComponentTagSuggestionModal';
+import {
+  coerceGroupFilterForCategory,
+  listCategoryFilterOptions,
+  listGroupFilterOptions,
+} from '../../data/categoryGroupFilters';
+import { labelsEqual } from '../../utils/labelMatch';
 import {
   blankComponentRow,
   fromApiUom,
+  migrateInventoryUomsIntoComponentAlts,
   resolveDetailConfigForRow,
   type ComponentRow,
 } from '../../data/componentForm';
-import { getDefaultCategoryAndGroup, loadComponentHierarchy } from '../../data/componentHierarchy';
+import {
+  getDefaultCategoryAndGroup,
+  loadComponentHierarchy,
+  loadComponentHierarchyForCompany,
+  reconcileHierarchyWithComponents,
+  saveComponentHierarchy,
+} from '../../data/componentHierarchy';
 import {
   buildSmartComponentImportPlan,
   downloadSmartComponentTemplateCsv,
@@ -28,7 +41,11 @@ import {
 import { ComponentEditPanel } from './ComponentEditPanel';
 import { SmartComponentImportReviewPanel } from './SmartComponentImportReviewPanel';
 import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
-import { countComponentTaggedVendors } from '../../data/vendorProductTagging';
+import { countComponentTaggedVendors, resolveMyComponentLastUomPrice } from '../../data/vendorProductTagging';
+import {
+  applyVendorProductOverrides,
+  refreshVendorProductCatalog,
+} from '../../data/vendorProductCatalog';
 import {
   convertComponentQtyBetweenUoms,
   formatParStock,
@@ -40,6 +57,14 @@ import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { canEditComponentParStock, parseUserAccess } from '../../data/userAccess';
 import { formatCountryNumber } from '../../utils/numberFormat';
+import {
+  UOM_FILTER_OPTIONS,
+  resolveDisplayUomForFilter,
+  type UomFilterMode,
+} from '../../data/myComponentUomFilter';
+
+export type { UomFilterMode };
+export { UOM_FILTER_OPTIONS };
 
 type IngredientSortColumn =
   | 'componentId'
@@ -53,24 +78,24 @@ type IngredientSortColumn =
   | 'storage'
   | 'products'
   | 'vendors'
+  | 'tagSuggest'
   | 'active';
 
 const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
-  { key: 'componentId', label: 'Component ID' },
-  { key: 'name', label: 'Component Name' },
-  { key: 'uom', label: 'Principal Component UOM' },
-  { key: 'lastPrice', label: 'Last UOM Price', align: 'right' },
-  { key: 'dailyUsage', label: 'Daily Usage', align: 'right' },
-  { key: 'orderFreq', label: 'Order Freq (days)', align: 'right' },
-  { key: 'parStock', label: 'Par Stock', align: 'right' },
-  { key: 'onHand', label: 'Qty on Hand', align: 'right' },
-  { key: 'storage', label: 'Storage' },
-  { key: 'products', label: 'Products', align: 'center' },
-  { key: 'vendors', label: 'Vendors', align: 'center' },
-  { key: 'active', label: 'Active', align: 'center', sortable: false },
+  { key: 'componentId', label: 'Component ID', ...tableColWidth('10%') },
+  { key: 'name', label: 'Component Name', ...tableColWidth('14%') },
+  { key: 'uom', label: 'Component UOM', ...tableColWidth('10%') },
+  { key: 'lastPrice', label: 'Last UOM Price', align: 'right', ...tableColWidth('8%') },
+  { key: 'dailyUsage', label: 'Daily Usage', align: 'right', ...tableColWidth('7%') },
+  { key: 'orderFreq', label: 'Order Freq (days)', align: 'right', ...tableColWidth('7%') },
+  { key: 'parStock', label: 'Par Stock', align: 'right', ...tableColWidth('10%') },
+  { key: 'onHand', label: 'Qty on Hand', align: 'right', ...tableColWidth('7%') },
+  { key: 'storage', label: 'Storage', ...tableColWidth('9%') },
+  { key: 'products', label: 'Products', align: 'center', ...tableColWidth(72) },
+  { key: 'vendors', label: 'Vendors', align: 'center', ...tableColWidth(72) },
+  { key: 'tagSuggest', label: 'Tag suggest', align: 'center', sortable: false, ...tableColWidth(88) },
+  { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
 ];
-
-type UomFilterMode = 'principal' | 'inventory' | string;
 
 function FilterSelect({ label, value, options, onChange }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
@@ -91,19 +116,30 @@ function FilterSelect({ label, value, options, onChange }: {
 
 function uomSourceForRow(row: ComponentRow): ComponentUomSource {
   const detail = resolveDetailConfigForRow(row);
-  return {
-    recipeUom: fromApiUom(row.recipeUOM),
-    inventoryUom: fromApiUom(row.inventoryUOM),
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: fromApiUom(row.recipeUOM),
+    inventoryUnit: fromApiUom(row.inventoryUOM),
     altRecipeUnits: detail.altRecipeUnits,
     altInventoryUnits: detail.altInventoryUnits,
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  return {
+    recipeUom: migrated.recipeUnit,
+    inventoryUom: migrated.inventoryUnit,
+    altRecipeUnits: migrated.altRecipeUnits,
+    altInventoryUnits: [],
   };
 }
 
-function displayUomForRow(row: ComponentRow, mode: UomFilterMode): string {
+/**
+ * Resolve the UOM shown for a row under the UOM filter.
+ * Alternate N falls back to the highest filled alternate ≤ N, else Principal.
+ */
+export function displayUomForRow(row: ComponentRow, mode: UomFilterMode): string {
   const source = uomSourceForRow(row);
-  if (mode === 'principal') return source.recipeUom;
-  if (mode === 'inventory') return source.inventoryUom;
-  return mode || source.recipeUom;
+  const altUnits = [0, 1, 2, 3, 4].map(i => fromApiUom(source.altRecipeUnits[i]?.unit || ''));
+  return resolveDisplayUomForFilter(source.recipeUom || '', altUnits, mode);
 }
 
 function convertFromRecipe(
@@ -128,7 +164,7 @@ export function SmartIngredientPage({
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 }) {
-  const { rm, countryCode } = useCountryFormatters();
+  const { componentUomPrice, countryCode } = useCountryFormatters();
   const hidePrices = useShouldHidePrices();
   const { currentUser } = useCurrentUser();
   const access = useMemo(
@@ -150,6 +186,7 @@ export function SmartIngredientPage({
   const [catFilter, setCatFilter] = useState('All');
   const [grpFilter, setGrpFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false);
   const [uomFilter, setUomFilter] = useState<UomFilterMode>('principal');
   const [editRow, setEditRow] = useState<ComponentRow | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
@@ -159,6 +196,10 @@ export function SmartIngredientPage({
   const [savingParId, setSavingParId] = useState<number | null>(null);
   const [importPlan, setImportPlan] = useState<SmartComponentImportPlan | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const [hierarchyRevision, setHierarchyRevision] = useState(0);
+  const [tagSuggestCounts, setTagSuggestCounts] = useState<Record<string, number>>({});
+  const [tagSuggestRow, setTagSuggestRow] = useState<ComponentRow | null>(null);
   const templateRef = useRef<HTMLInputElement | null>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<IngredientSortColumn>();
 
@@ -171,6 +212,44 @@ export function SmartIngredientPage({
   }, [selectedCompanyId, selectedLocationIds]);
 
   useEffect(() => {
+    let cancelled = false;
+    if (!selectedCompanyId) {
+      setHierarchyRevision(value => value + 1);
+      return;
+    }
+    void Promise.all([
+      loadComponentHierarchyForCompany(selectedCompanyId),
+      api.ingredients(selectedCompanyId).catch(() => []),
+    ]).then(([hierarchy, ingredients]) => {
+      if (cancelled) return;
+      const reconciled = reconcileHierarchyWithComponents(hierarchy, ingredients);
+      if (reconciled.changed) {
+        saveComponentHierarchy(reconciled.state, selectedCompanyId);
+      }
+      setHierarchyRevision(value => value + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void refreshVendorProductCatalog().then(() => {
+      if (!cancelled) setCatalogRevision(value => value + 1);
+    });
+    const onCatalogChange = () => setCatalogRevision(value => value + 1);
+    const onHierarchyChange = () => setHierarchyRevision(value => value + 1);
+    window.addEventListener('bisync:vendorProductCatalogChanged', onCatalogChange);
+    window.addEventListener('bisync:componentHierarchyChanged', onHierarchyChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('bisync:vendorProductCatalogChanged', onCatalogChange);
+      window.removeEventListener('bisync:componentHierarchyChanged', onHierarchyChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!selectedCompanyId) {
       setCompanyLocations([]);
       return;
@@ -179,7 +258,9 @@ export function SmartIngredientPage({
       .then(locations => {
         setCompanyLocations(
           locations
-            .filter(location => location.companyId === selectedCompanyId)
+            .filter(location =>
+              location.companyId === selectedCompanyId && location.active !== false,
+            )
             .map(location => ({ externalId: location.externalId, name: location.name }))
             .sort((a, b) => a.name.localeCompare(b.name)),
         );
@@ -197,12 +278,36 @@ export function SmartIngredientPage({
 
   useEffect(() => {
     resetSort();
-  }, [catFilter, grpFilter, search, uomFilter, resetSort]);
+  }, [catFilter, grpFilter, search, uomFilter, showInactiveOnly, resetSort]);
+
+  useEffect(() => {
+    if (!selectedCompanyId || rows.length === 0) {
+      setTagSuggestCounts({});
+      return;
+    }
+    let cancelled = false;
+    const names = [...new Set(rows.map(r => r.name).filter(Boolean))];
+    void api.componentTagSuggestionCounts(selectedCompanyId, names)
+      .then(res => {
+        if (!cancelled) setTagSuggestCounts(res.counts ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setTagSuggestCounts({});
+      });
+    return () => { cancelled = true; };
+  }, [selectedCompanyId, rows]);
+
+  /** Active and inactive components stay in the same table; the UI buckets them via this filter. */
+  const activityScopedRows = useMemo(
+    () => rows.filter(row => (showInactiveOnly ? !row.active : row.active)),
+    [rows, showInactiveOnly],
+  );
 
   const filtered = useMemo(() => {
-    return rows.filter(row => {
-      const matchCat = catFilter === 'All' || row.category === catFilter;
-      const matchGrp = grpFilter === 'All' || row.group === grpFilter;
+    return activityScopedRows.filter(row => {
+      // Uploaded catalogs often use FOOD / BEVERAGE; filters use Food / Beverage.
+      const matchCat = catFilter === 'All' || labelsEqual(row.category, catFilter);
+      const matchGrp = grpFilter === 'All' || labelsEqual(row.group, grpFilter);
       const q = search.toLowerCase();
       const matchQ = !q
         || (row.name ?? '').toLowerCase().includes(q)
@@ -211,23 +316,37 @@ export function SmartIngredientPage({
         || (row.group ?? '').toLowerCase().includes(q);
       return matchCat && matchGrp && matchQ;
     });
-  }, [rows, catFilter, grpFilter, search]);
+  }, [activityScopedRows, catFilter, grpFilter, search]);
 
-  const alternateUomOptions = useMemo(() => {
-    const units = new Set<string>();
-    for (const row of rows) {
-      const source = uomSourceForRow(row);
-      for (const alt of [...source.altRecipeUnits, ...source.altInventoryUnits]) {
-        const unit = fromApiUom(alt.unit);
-        if (unit) units.add(unit);
-      }
-    }
-    return [...units].sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+  // Filter dropdowns use hierarchy + every component row (active and inactive) so
+  // Category/Group always reflect the full updated catalog, not just the current bucket.
+  const categoryFilterOptions = useMemo(
+    () => listCategoryFilterOptions(rows.map(row => row.category)),
+    [rows, hierarchyRevision],
+  );
+  const groupFilterOptions = useMemo(
+    () => listGroupFilterOptions(rows, catFilter),
+    [rows, catFilter, hierarchyRevision],
+  );
+
+  useEffect(() => {
+    setGrpFilter(prev => coerceGroupFilterForCategory(prev, catFilter, rows));
+  }, [catFilter, rows, groupFilterOptions]);
+
+  const vendorCatalog = useMemo(
+    () => applyVendorProductOverrides(),
+    [catalogRevision],
+  );
 
   const price = (r: ComponentRow) => {
-    if (uomFilter === 'inventory') return r.lastPriceInventory;
-    return r.lastPriceRecipe;
+    // Price follows the UOM actually shown for this row (with alternate fallback).
+    const displayUom = displayUomForRow(r, uomFilter);
+    const principal = fromApiUom(r.recipeUOM);
+    const mode: 'principal' | string =
+      uomFilter === 'principal' || !displayUom || displayUom === principal
+        ? 'principal'
+        : displayUom;
+    return resolveMyComponentLastUomPrice(r, mode, vendorCatalog);
   };
   const vendorCount = (r: ComponentRow) => countComponentTaggedVendors(r, selectedLocationIds);
 
@@ -258,7 +377,7 @@ export function SmartIngredientPage({
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
-    [filtered, sortColumn, sortDirection, uomFilter, selectedLocationIds],
+    [filtered, sortColumn, sortDirection, uomFilter, selectedLocationIds, vendorCatalog],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -384,7 +503,12 @@ export function SmartIngredientPage({
       return;
     }
     setImportError(null);
-    downloadSmartComponentTemplateCsv(rows, locationScope);
+    // Full My Component catalog for the selected locations (not only alternate-UOM rows).
+    const exportRows = rows.map(row => ({
+      ...row,
+      attachedVendors: vendorCount(row),
+    }));
+    downloadSmartComponentTemplateCsv(exportRows, locationScope);
   }
 
   async function handleTemplateUpload(files: FileList | null) {
@@ -426,6 +550,7 @@ export function SmartIngredientPage({
             onClick={handleDownloadTemplate}
             disabled={!templateLocationReady}
             className="inline-flex items-center gap-1.5 text-xs font-sans border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] rounded-md px-3 py-2 hover:bg-[#2563eb]/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Downloads editable catalog fields only (no Last UOM Price, Daily Usage, Order Freq, Qty on Hand, Location, Products, or Vendors)"
           >
             <FilePlus2 size={12} />
             Download Template CSV
@@ -455,6 +580,9 @@ export function SmartIngredientPage({
           </button>
         </div>
       </div>
+      <p className="text-[11px] text-muted-foreground font-sans -mt-1">
+        Template CSV is catalog fields only — excludes Last UOM Price, Daily Usage, Order Freq, Qty on Hand, Location, Products, and Vendors.
+      </p>
 
       {importError && (
         <p className="text-xs text-red-500 border border-red-300/50 rounded-lg px-3 py-2">{importError}</p>
@@ -474,21 +602,27 @@ export function SmartIngredientPage({
       <PageStickyFilters opaque className="space-y-2 pb-2">
       <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
-          <FilterSelect label="Category" value={catFilter} options={getSiCategoryFilterOptions()} onChange={setCatFilter} />
-          <FilterSelect label="Group" value={grpFilter} options={getSiGroupFilterOptions()} onChange={setGrpFilter} />
+          <FilterSelect
+            label="Category"
+            value={catFilter}
+            options={categoryFilterOptions}
+            onChange={value => {
+              setCatFilter(value);
+              setGrpFilter('All');
+            }}
+          />
+          <FilterSelect label="Group" value={grpFilter} options={groupFilterOptions} onChange={setGrpFilter} />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-              Principal Component UOM
+              UOM
             </label>
             <select
               value={uomFilter}
-              onChange={e => setUomFilter(e.target.value)}
+              onChange={e => setUomFilter(e.target.value as UomFilterMode)}
               className={`${filterSelectCls} min-w-[180px]`}
             >
-              <option value="principal">Principal Component UOM</option>
-              <option value="inventory">Principal Inventory UOM</option>
-              {alternateUomOptions.map(unit => (
-                <option key={unit} value={unit}>Alternate: {unit}</option>
+              {UOM_FILTER_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
           </div>
@@ -504,6 +638,20 @@ export function SmartIngredientPage({
               />
             </div>
           </div>
+          <label className="flex items-center gap-2 text-xs text-foreground pb-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showInactiveOnly}
+              onChange={e => setShowInactiveOnly(e.target.checked)}
+              className="rounded border-border"
+            />
+            <span className="font-sans">
+              Inactive components
+              <span className="block text-[10px] text-muted-foreground font-normal">
+                Show only inactive
+              </span>
+            </span>
+          </label>
           {hasFilters && (
             <button
               onClick={() => { setCatFilter('All'); setGrpFilter('All'); setSearch(''); }}
@@ -516,7 +664,9 @@ export function SmartIngredientPage({
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-sans text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
+        <p className="text-xs font-sans text-muted-foreground">
+          {filtered.length} {showInactiveOnly ? 'inactive ' : ''}result{filtered.length !== 1 ? 's' : ''}
+        </p>
       </div>
       </PageStickyFilters>
 
@@ -524,8 +674,13 @@ export function SmartIngredientPage({
         {loading ? (
           <MillstoneLoader size="sm" layout="block" label="Loading components…" />
         ) : (
-          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-            <table className="w-full table-fixed text-xs">
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+            tableId="revenue.smart-components"
+          >
+            <table className="w-full text-xs">
+              <TableColGroup columns={tableColumns} />
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
                   columns={tableColumns}
@@ -539,7 +694,9 @@ export function SmartIngredientPage({
                 {filtered.length === 0 ? (
                   <tr>
                     <td colSpan={columnCount} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
-                      No items match the selected filters.
+                      {showInactiveOnly
+                        ? 'No inactive components match the selected filters.'
+                        : 'No items match the selected filters.'}
                     </td>
                   </tr>
                 ) : pagedFiltered.map(row => {
@@ -567,13 +724,15 @@ export function SmartIngredientPage({
                       </button>
                     </td>
                     <td className="px-4 py-3 font-sans text-foreground">
-                      <span>{displayUom || '—'}</span>
-                      {uomFilter !== 'principal' && fromApiUom(row.recipeUOM) !== displayUom ? (
-                        <span className="block text-[10px] text-muted-foreground">Principal: {fromApiUom(row.recipeUOM)}</span>
-                      ) : null}
+                      {displayUom || '—'}
                     </td>
                     {!hidePrices && (
-                      <td className="px-4 py-3 font-sans text-foreground text-right">{rm(price(row))}</td>
+                      <td className="px-4 py-3 font-sans text-foreground text-right">
+                        {componentUomPrice(
+                          price(row),
+                          !displayUom || displayUom === fromApiUom(row.recipeUOM),
+                        )}
+                      </td>
                     )}
                     <td className="px-4 py-3 font-sans text-muted-foreground text-right">
                       {daily.value > 0
@@ -593,7 +752,7 @@ export function SmartIngredientPage({
                     </td>
                     <td className="px-4 py-3 font-sans text-muted-foreground text-right">
                       {canEditPar && row.id ? (
-                        <div className="inline-flex items-center gap-1 justify-end">
+                        <div className="inline-flex flex-col items-end gap-0.5 justify-end">
                           <input
                             type="number"
                             min={0}
@@ -612,7 +771,7 @@ export function SmartIngredientPage({
                             className="min-w-[8.5rem] w-[8.5rem] max-w-[10rem] rounded border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
                             title="Adjust par stock qty (requires permission)"
                           />
-                          <span className="text-[10px] text-muted-foreground">{displayUom}</span>
+                          <span className="text-[10px] text-muted-foreground leading-none">{displayUom}</span>
                         </div>
                       ) : (
                         formatParStock(storedPar.value, storedPar.uom, countryCode)
@@ -623,7 +782,7 @@ export function SmartIngredientPage({
                         ? `${formatCountryNumber(onHand.value, countryCode)} ${onHand.uom}`
                         : '—'}
                     </td>
-                    <td className="px-4 py-3 ">
+                    <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         {(Array.isArray(row.storage) ? row.storage : []).map((s, si) => (
                           <span key={si} className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans inline-block w-fit">{s}</span>
@@ -639,6 +798,32 @@ export function SmartIngredientPage({
                       {vendors > 0 ? (
                         <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-sans font-semibold">{vendors}</span>
                       ) : <span className="text-muted-foreground font-sans">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {(() => {
+                        const suggestCount = tagSuggestCounts[row.name] ?? 0;
+                        return (
+                          <button
+                            type="button"
+                            disabled={!selectedCompanyId}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setTagSuggestRow(row);
+                            }}
+                            className={`inline-flex items-center justify-center gap-1 min-w-[2rem] h-7 px-1.5 rounded-md border text-xs font-sans transition-colors ${
+                              suggestCount > 0
+                                ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
+                                : 'border-border text-muted-foreground hover:bg-muted'
+                            }`}
+                            title={suggestCount > 0
+                              ? `${suggestCount} tag suggestion${suggestCount === 1 ? '' : 's'} (≥50%)`
+                              : 'Open tag suggestions'}
+                          >
+                            <Tag size={12} />
+                            {suggestCount > 0 ? suggestCount : ''}
+                          </button>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
@@ -671,6 +856,21 @@ export function SmartIngredientPage({
           onSave={handleSave}
         />
       )}
+
+      {tagSuggestRow && selectedCompanyId ? (
+        <ComponentTagSuggestionModal
+          row={tagSuggestRow}
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          companyLocationIds={companyLocations.map(l => l.externalId)}
+          onClose={() => setTagSuggestRow(null)}
+          onTagged={updated => {
+            setRows(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+            setTagSuggestRow(null);
+            setCatalogRevision(v => v + 1);
+          }}
+        />
+      ) : null}
 
       {importPlan && (
         <SmartComponentImportReviewPanel

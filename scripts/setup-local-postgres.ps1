@@ -12,7 +12,8 @@ param(
     [string]$AppPassword = "bisync",
     [string]$Database = "bisync",
     [string]$ArchiveDatabase = "bisync_archive",
-    [string]$AuditDatabase = "bisync_audit"
+    [string]$AuditDatabase = "bisync_audit",
+    [string]$TagSuggestionDatabase = "bisync_tag_suggestions"
 )
 
 $ErrorActionPreference = "Stop"
@@ -72,6 +73,13 @@ if (-not ($auditExists -match "1")) {
     Invoke-Psql -Psql $psql -DatabaseName "postgres" -Sql "CREATE DATABASE $AuditDatabase OWNER $AppUser"
 } else {
     Write-Host "Database $AuditDatabase already exists." -ForegroundColor Gray
+}
+
+$tagSuggestionExists = & $psql -h $DbHost -p $DbPort -U $SuperUser -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$TagSuggestionDatabase'"
+if (-not ($tagSuggestionExists -match "1")) {
+    Invoke-Psql -Psql $psql -DatabaseName "postgres" -Sql "CREATE DATABASE $TagSuggestionDatabase OWNER $AppUser"
+} else {
+    Write-Host "Database $TagSuggestionDatabase already exists." -ForegroundColor Gray
 }
 
 Write-Host "Local PostgreSQL ready for Bisync ($AppUser / $Database)." -ForegroundColor Green

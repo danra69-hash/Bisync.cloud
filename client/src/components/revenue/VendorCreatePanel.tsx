@@ -15,10 +15,11 @@ import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import { CountryLocalityFields } from '../shared/CountryLocalityFields';
 import { CountryPhoneInput } from '../shared/CountryPhoneInput';
-import type { LocalityParts } from '../../utils/countryFormat';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
+import { TABLE_COL_ACTION } from '../layout/pageLayout';
 
 type Props = {
   countryCode: string;
@@ -37,6 +38,7 @@ const blank = (nextExternalId: string): VendorCreatePayload => ({
   products: '',
   city: '',
   state: '',
+  postcode: '',
   address: '',
   contactPerson: '',
   contactPosition: '',
@@ -47,7 +49,6 @@ const blank = (nextExternalId: string): VendorCreatePayload => ({
 
 export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors, onClose, onCreated, onProductsImported }: Props) {
   const [form, setForm] = useState<VendorCreatePayload>(() => blank(nextExternalId));
-  const [locality, setLocality] = useState<LocalityParts>({ city: '', state: '', postcode: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scannedDocs, setScannedDocs] = useState<File[]>([]);
@@ -214,7 +215,8 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
         products: form.products.trim(),
         city: form.city.trim(),
         state: form.state.trim(),
-        address: [form.address.trim(), locality.postcode.trim()].filter(Boolean).join(', '),
+        postcode: form.postcode.trim(),
+        address: form.address.trim(),
         contactPerson: form.contactPerson.trim(),
         contactPosition: form.contactPosition.trim(),
         mobile: form.mobile.trim(),
@@ -296,12 +298,12 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                 value={{
                   city: form.city,
                   state: form.state,
-                  postcode: locality.postcode,
+                  postcode: form.postcode,
                 }}
                 onChange={next => {
                   setField('city', next.city);
                   setField('state', next.state);
-                  setLocality(prev => ({ ...prev, postcode: next.postcode }));
+                  setField('postcode', next.postcode);
                 }}
                 extraCityOptions={cityOptions}
                 extraStateOptions={stateOptions}
@@ -395,7 +397,8 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                 {ocrRunning ? 'Running OCR…' : 'Run OCR on Scanned Document'}
               </button>
               <p className="text-xs text-muted-foreground">
-                Expected format: Vendor Product ID | Product Name | Group | Specification | Delivery Unit | Price
+                Expected format: Vendor ID | Vendor Name | Category | Group | Vendor Product | Vendor Product ID | Principal Delivery unit | DU breakdown 1 Unit | DU breakdown 1 Qty | DU breakdown 2 Unit | DU breakdown 2 Qty | Delivery Unit Price
+                (e.g. Principal 1 CTN · breakdown 1 BTL / 12 · breakdown 2 ML / 500)
               </p>
               {parsedRows.length > 0 && (
                 <div className="space-y-2">
@@ -414,7 +417,8 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                   </div>
                   <div className="border border-border rounded-lg overflow-hidden">
                     <TableScrollContainer ref={parsedRowsScrollRef} className="overflow-auto max-h-72">
-                      <table className="w-full table-fixed text-xs">
+                      <table className="w-full text-xs">
+                        <ColGroup widths={['14%', '20%', '12%', '16%', '12%', '10%', TABLE_COL_ACTION.style.width]} />
                         <thead className="sticky top-0 bg-muted/50">
                           <tr className="border-b border-border">
                             <TableHeaderCell compact>Vendor Product ID</TableHeaderCell>
@@ -429,13 +433,13 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                         <tbody>
                           {pagedParsedRows.map((row, i) => (
                             <tr key={`row-${i}`} className="border-b border-border last:border-b-0">
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.vendorProductId ?? ''} onChange={e => updateParsedRow(i, { vendorProductId: e.target.value })} placeholder="VP-..." />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.productName} onChange={e => updateParsedRow(i, { productName: e.target.value })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <>
                                   <input
                                     list="vendor-group-options"
@@ -451,16 +455,16 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                                   </datalist>
                                 </>
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.specification} onChange={e => updateParsedRow(i, { specification: e.target.value })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.deliveryUnitText} onChange={e => updateParsedRow(i, { deliveryUnitText: e.target.value })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs min-w-[8.5rem] tabular-nums text-right`} type="number" step={0.01} value={row.deliveryPrice} onChange={e => updateParsedRow(i, { deliveryPrice: parseFloat(e.target.value) || 0 })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <button
                                   type="button"
                                   onClick={() => removeParsedRow(i)}

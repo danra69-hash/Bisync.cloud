@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { labelsEqual } from '../../utils/labelMatch';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
@@ -21,7 +22,12 @@ import {
   type ProductListRrpPoint,
 } from '../../data/productListDisplay';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import {
+  coerceGroupFilterForCategory,
+  listCategoryFilterOptions,
+  listGroupFilterOptions,
+} from '../../data/categoryGroupFilters';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProductPosUnitsModal } from './ProductPosUnitsModal';
@@ -33,15 +39,17 @@ type Props = {
   selectedLocationIds: string[];
   embedded?: boolean;
   onCreateProduct?: () => void;
-  onEditProduct?: (productId: number) => void;
 };
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 const filterCls = filterSelectCls;
 
 type ProductListSortColumn =
-  | 'name'
+  | 'category'
+  | 'group'
+  | 'productId'
   | 'type'
+  | 'name'
   | 'deliveryUnit'
   | 'rrp'
   | 'cogs'
@@ -51,22 +59,29 @@ type ProductListSortColumn =
   | 'activate';
 
 const PRODUCT_LIST_TABLE_COLUMNS: SortableColumnDef<ProductListSortColumn>[] = [
-  { key: 'name', label: 'Product Name' },
-  { key: 'type', label: 'Type' },
-  { key: 'deliveryUnit', label: 'Delivery Unit' },
-  { key: 'rrp', label: 'RRP' },
-  { key: 'cogs', label: 'COGS' },
-  { key: 'cogsPercent', label: 'COGS %' },
-  { key: 'channel', label: 'Channel' },
-  { key: 'pos', label: 'POS', align: 'center', sortable: false },
-  { key: 'activate', label: 'Activate', align: 'center', sortable: false },
+  { key: 'category', label: 'Category', ...tableColWidth('9%') },
+  { key: 'group', label: 'Group', ...tableColWidth('9%') },
+  { key: 'productId', label: 'Product ID', ...tableColWidth('9%') },
+  { key: 'type', label: 'Product Type', ...tableColWidth('8%') },
+  { key: 'name', label: 'Product', ...tableColWidth('16%') },
+  { key: 'deliveryUnit', label: 'Delivery Unit', ...tableColWidth('10%') },
+  { key: 'rrp', label: 'RRP', ...tableColWidth('8%') },
+  { key: 'cogs', label: 'COGS', ...tableColWidth('7%') },
+  { key: 'cogsPercent', label: 'COGS %', ...tableColWidth('7%') },
+  { key: 'channel', label: 'Channel', ...tableColWidth('8%') },
+  { key: 'pos', label: 'POS', align: 'center', sortable: false, ...tableColWidth(72) },
+  { key: 'activate', label: 'Activate', align: 'center', sortable: false, ...tableColWidth(80) },
 ];
+
+const PRODUCT_LIST_COL_SPAN = PRODUCT_LIST_TABLE_COLUMNS.length;
 
 function productMatchesLocations(product: Product, locationIds: string[]): boolean {
   const productLocs = product.locationExternalIds ?? [];
   if (locationIds.length === 0) return false;
   if (productLocs.length === 0) return true;
-  return locationIds.some(id => productLocs.includes(id));
+  return locationIds.some(selected =>
+    productLocs.some(id => id.localeCompare(selected, undefined, { sensitivity: 'accent' }) === 0),
+  );
 }
 
 function VariationStack({
@@ -112,12 +127,74 @@ function channelLabel(product: Product): string {
   return channels.length > 0 ? channels.join(', ') : '—';
 }
 
+function InlineRrpInput({
+  product,
+  disabled,
+  onCommit,
+}: {
+  product: Product;
+  disabled?: boolean;
+  onCommit: (rrp: number) => void | Promise<void>;
+}) {
+  const { symbol } = useCountryFormatters();
+  const [draft, setDraft] = useState(() => String(product.rrp ?? 0));
+
+  useEffect(() => {
+    setDraft(String(product.rrp ?? 0));
+  }, [product.id, product.rrp]);
+
+  async function commit() {
+    const parsed = Number(draft);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setDraft(String(product.rrp ?? 0));
+      return;
+    }
+    const next = Math.round(parsed * 100) / 100;
+    if (next === Number(product.rrp ?? 0)) {
+      setDraft(String(next));
+      return;
+    }
+    await onCommit(next);
+  }
+
+  if (product.isSubProduct) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1 min-w-0 w-full">
+      <span className="text-[10px] text-muted-foreground shrink-0">{symbol}</span>
+      <input
+        type="number"
+        min={0}
+        step="0.01"
+        value={draft}
+        disabled={disabled}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => void commit()}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') {
+            setDraft(String(product.rrp ?? 0));
+            e.currentTarget.blur();
+          }
+        }}
+        className="w-full min-w-0 max-w-[6rem] rounded-md border border-border bg-background px-1.5 py-1 text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+        aria-label={`RRP for ${product.name}`}
+      />
+    </div>
+  );
+}
+
 export function ProductListPage({
   selectedCompanyId,
   selectedLocationIds,
   embedded = false,
   onCreateProduct,
-  onEditProduct,
 }: Props) {
   const countryCode = useOrgCountryCode();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -130,8 +207,12 @@ export function ProductListPage({
   const [groupFilter, setGroupFilter] = useState('All');
   const [filterProduct, setFilterProduct] = useState(false);
   const [filterSubProduct, setFilterSubProduct] = useState(false);
+  const [filterVariableProduct, setFilterVariableProduct] = useState(false);
   const [filterB2c, setFilterB2c] = useState(false);
   const [filterB2b, setFilterB2b] = useState(false);
+  const [filterPos, setFilterPos] = useState(false);
+  /** When true, show only deactivated products (exclusive, like Smart Components). */
+  const [showDeactivated, setShowDeactivated] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [posModalProduct, setPosModalProduct] = useState<Product | null>(null);
@@ -145,9 +226,10 @@ export function ProductListPage({
     setLoading(true);
     setError(null);
     try {
-      await resyncStaleTaggedComponentPrices();
       const data = await api.products(selectedCompanyId);
       setProducts(data);
+      // Price backfill is best-effort and must not block the product grid.
+      void resyncStaleTaggedComponentPrices(selectedCompanyId);
     } catch (e) {
       setProducts([]);
       setError(e instanceof Error ? e.message : 'Failed to load products.');
@@ -168,48 +250,59 @@ export function ProductListPage({
     groupFilter,
     filterProduct,
     filterSubProduct,
+    filterVariableProduct,
     filterB2c,
     filterB2b,
+    filterPos,
+    showDeactivated,
     selectedLocationIds,
     resetSort,
   ]);
 
-  const categoryOptions = useMemo(() => {
-    const fromProducts = products.map(p => p.category).filter(Boolean);
-    return [...new Set([
-      ...getSiCategoryFilterOptions().filter(c => c !== 'All'),
-      ...fromProducts,
-    ])].sort((a, b) => a.localeCompare(b));
-  }, [products]);
+  const categoryOptions = useMemo(
+    () => listCategoryFilterOptions(products.map(p => p.category ?? '')).filter(c => c !== 'All'),
+    [products],
+  );
 
-  const groupOptions = useMemo(() => {
-    const fromProducts = products.map(p => p.group).filter(Boolean);
-    return [...new Set([
-      ...getSiGroupFilterOptions().filter(g => g !== 'All'),
-      ...fromProducts,
-    ])].sort((a, b) => a.localeCompare(b));
-  }, [products]);
+  const groupOptions = useMemo(
+    () => listGroupFilterOptions(products, categoryFilter).filter(g => g !== 'All'),
+    [products, categoryFilter],
+  );
+
+  useEffect(() => {
+    setGroupFilter(prev => coerceGroupFilterForCategory(prev, categoryFilter, products));
+  }, [categoryFilter, products, groupOptions]);
 
   const visibleProducts = useMemo(() => {
     let scoped = products.filter(p => productMatchesLocations(p, selectedLocationIds));
 
+    // Exclusive modes (parity with Smart Components inactive list).
+    scoped = scoped.filter(p => (showDeactivated ? !p.active : p.active));
+
     if (categoryFilter !== 'All') {
-      scoped = scoped.filter(p => p.category === categoryFilter);
+      scoped = scoped.filter(p => labelsEqual(p.category, categoryFilter));
     }
     if (groupFilter !== 'All') {
-      scoped = scoped.filter(p => p.group === groupFilter);
+      scoped = scoped.filter(p => labelsEqual(p.group, groupFilter));
     }
 
-    if (filterProduct && !filterSubProduct) {
-      scoped = scoped.filter(p => !p.isSubProduct);
-    } else if (filterSubProduct && !filterProduct) {
-      scoped = scoped.filter(p => p.isSubProduct);
+    const typeFiltersOn = [filterProduct, filterSubProduct, filterVariableProduct].filter(Boolean).length;
+    if (typeFiltersOn > 0 && typeFiltersOn < 3) {
+      scoped = scoped.filter(p => {
+        if (p.isSubProduct) return filterSubProduct;
+        if (p.isVariableProduct) return filterVariableProduct;
+        return filterProduct;
+      });
     }
 
     if (filterB2c || filterB2b) {
       scoped = scoped.filter(p => (
         (filterB2c && p.b2cEnabled) || (filterB2b && p.b2bEnabled)
       ));
+    }
+
+    if (filterPos) {
+      scoped = scoped.filter(p => p.posEnabled);
     }
 
     const query = search.trim().toLowerCase();
@@ -221,7 +314,21 @@ export function ProductListPage({
       p.category,
       p.group,
     ].join(' ').toLowerCase().includes(query));
-  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterB2c, filterB2b]);
+  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterVariableProduct, filterB2c, filterB2b, filterPos, showDeactivated]);
+
+  const listResetKey = [
+    search,
+    categoryFilter,
+    groupFilter,
+    filterProduct,
+    filterSubProduct,
+    filterVariableProduct,
+    filterB2c,
+    filterB2b,
+    filterPos,
+    showDeactivated,
+    selectedLocationIds.join(','),
+  ].join('|');
 
   const sortedVisibleProducts = useMemo(
     () =>
@@ -230,8 +337,11 @@ export function ProductListPage({
         sortColumn,
         sortDirection,
         {
+          category: p => p.category || '',
+          group: p => p.group || '',
+          productId: p => p.productId || '',
           name: p => p.name,
-          type: p => (p.isSubProduct ? 'Sub-Product' : 'Product'),
+          type: p => (p.isSubProduct ? 'Sub-Product' : p.isVariableProduct ? 'Variable Product' : 'Product'),
           deliveryUnit: p => resolveProductListDeliveryUnitSortValue(p, products),
           rrp: p => resolveProductListRrpSortValue(p, products),
           cogs: p => resolveProductListVariationCogsSortValue(p, products),
@@ -249,10 +359,21 @@ export function ProductListPage({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedVisibleProducts, {
+    scrollRootRef,
+    resetKey: listResetKey,
+  });
 
   function replaceProduct(updated: Product) {
-    setProducts(prev => prev.map(p => (p.id === updated.id ? updated : p)));
+    setProducts(prev => {
+      const index = prev.findIndex(p => p.id === updated.id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = updated;
+        return next;
+      }
+      return [...prev, updated];
+    });
     setDetailProduct(prev => (prev?.id === updated.id ? updated : prev));
   }
 
@@ -279,15 +400,18 @@ export function ProductListPage({
     if (updated) setPosModalProduct(null);
   }
 
-  const hasActiveFilters = Boolean(
+  const hasFacetFilters = Boolean(
     search.trim()
     || categoryFilter !== 'All'
     || groupFilter !== 'All'
     || filterProduct
     || filterSubProduct
+    || filterVariableProduct
     || filterB2c
-    || filterB2b,
+    || filterB2b
+    || filterPos,
   );
+  const hasActiveFilters = hasFacetFilters || showDeactivated;
 
   return (
     <div className={pageShellClass({ embedded })}>
@@ -356,6 +480,15 @@ export function ProductListPage({
               <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
                 <input
                   type="checkbox"
+                  checked={filterVariableProduct}
+                  onChange={e => setFilterVariableProduct(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Variable Product
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
                   checked={filterB2c}
                   onChange={e => setFilterB2c(e.target.checked)}
                   className="rounded border-border"
@@ -371,6 +504,29 @@ export function ProductListPage({
                 />
                 B2B
               </label>
+              <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filterPos}
+                  onChange={e => setFilterPos(e.target.checked)}
+                  className="rounded border-border"
+                />
+                POS
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showDeactivated}
+                  onChange={e => setShowDeactivated(e.target.checked)}
+                  className="rounded border-border"
+                />
+                <span>
+                  Show deactivated
+                  <span className="block text-[10px] text-muted-foreground font-normal">
+                    Show only inactive products
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" htmlFor="product-category-filter">
@@ -379,7 +535,11 @@ export function ProductListPage({
               <select
                 id="product-category-filter"
                 value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
+                onChange={e => {
+                  const next = e.target.value;
+                  setCategoryFilter(next);
+                  setGroupFilter(prev => coerceGroupFilterForCategory(prev, next, products));
+                }}
                 className={`${filterCls} `}
               >
                 <option value="All">All categories</option>
@@ -405,7 +565,7 @@ export function ProductListPage({
               </select>
             </div>
             <p className="text-xs text-muted-foreground pb-2">
-              {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
+              {visibleProducts.length} {showDeactivated ? 'deactivated ' : ''}product{visibleProducts.length !== 1 ? 's' : ''}
             </p>
           </div>
         )}
@@ -419,8 +579,13 @@ export function ProductListPage({
             </p>
           ) : null}
 
-          <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
-            <table className="w-full table-fixed border-collapse">
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className={TABLE_SCROLL_CLS}
+            tableId="revenue.product-list"
+          >
+            <table className="w-full border-collapse">
+              <TableColGroup columns={PRODUCT_LIST_TABLE_COLUMNS} />
               <thead>
                 <SortableTableHeaderRow
                   columns={PRODUCT_LIST_TABLE_COLUMNS}
@@ -432,44 +597,74 @@ export function ProductListPage({
               </thead>
               <tbody>
                 {loading ? (
-                  <TableLoadingRow colSpan={9} label="Loading products…" />
+                  <TableLoadingRow colSpan={PRODUCT_LIST_COL_SPAN} label="Loading products…" />
                 ) : visibleProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">
-                      {hasActiveFilters
-                        ? 'No products match your filters.'
-                        : 'No products saved yet. Create one from the Products tab.'}
+                    <td colSpan={PRODUCT_LIST_COL_SPAN} className="px-3 py-8 text-center text-xs text-muted-foreground">
+                      {showDeactivated
+                        && !hasFacetFilters
+                        ? 'No deactivated products for this location.'
+                        : !showDeactivated
+                          && products.some(p => !p.active && productMatchesLocations(p, selectedLocationIds))
+                          && !hasFacetFilters
+                          ? 'No active products. Tick “Show deactivated” to view inactive ones.'
+                          : hasActiveFilters
+                            ? 'No products match your filters.'
+                            : 'No products saved yet. Create one from the Products tab.'}
                     </td>
                   </tr>
                 ) : (
                   pagedVisibleProducts.map(product => {
                     const rowBusy = savingId === product.id;
                     const variationPoints = collectProductListRrpPoints(product, products);
+                    const openDetails = () => setDetailProduct(product);
                     return (
-                      <tr key={product.id} className={`hover:bg-muted/20 ${!product.active ? 'opacity-60' : ''}`}>
-                        <td className={tdCls}>
-                          <button
-                            type="button"
-                            onClick={() => setDetailProduct(product)}
-                            className="font-medium text-left hover:text-primary hover:underline"
-                          >
-                            {product.name}
-                          </button>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{product.productId}</p>
+                      <tr
+                        key={product.id}
+                        className={`hover:bg-muted/30 cursor-pointer ${!product.active ? 'opacity-60' : ''} ${detailProduct?.id === product.id ? 'bg-primary/5' : ''}`}
+                        onClick={openDetails}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openDetails();
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`View details for ${product.name}`}
+                      >
+                        <td className={`${tdCls} text-muted-foreground min-w-0`}>
+                          <span className="line-clamp-2">{product.category?.trim() || '—'}</span>
                         </td>
-                        <td className={tdCls}>{product.isSubProduct ? 'Sub-Product' : 'Product'}</td>
+                        <td className={`${tdCls} text-muted-foreground min-w-0`}>
+                          <span className="line-clamp-2">{product.group?.trim() || '—'}</span>
+                        </td>
+                        <td className={`${tdCls} font-mono text-[11px] text-muted-foreground tabular-nums whitespace-nowrap`}>
+                          {product.productId || '—'}
+                        </td>
+                        <td className={tdCls}>
+                          {product.isSubProduct
+                            ? 'Sub-Product'
+                            : product.isVariableProduct
+                              ? 'Variable Product'
+                              : 'Product'}
+                        </td>
+                        <td className={tdCls}>
+                          <span className="font-medium text-left line-clamp-2">
+                            {product.name}
+                          </span>
+                        </td>
                         <td className={tdCls}>
                           <VariationStack
                             points={variationPoints}
                             render={point => point.deliveryUnit}
                           />
                         </td>
-                        <td className={tdCls}>
-                          <VariationStack
-                            points={variationPoints}
-                            render={point => (
-                              point.rrp > 0 ? formatRm(point.rrp, countryCode) : '—'
-                            )}
+                        <td className={tdCls} onClick={e => e.stopPropagation()}>
+                          <InlineRrpInput
+                            product={product}
+                            disabled={rowBusy}
+                            onCommit={rrp => void patchProduct(product, { rrp })}
                           />
                         </td>
                         <td className={tdCls}>
@@ -492,6 +687,7 @@ export function ProductListPage({
                         <td className={tdCls}>{channelLabel(product)}</td>
                         <td
                           className={`${tdCls} text-center`}
+                          onClick={e => e.stopPropagation()}
                           onDoubleClick={() => {
                             if (!product.isSubProduct && product.b2cEnabled && product.posEnabled) {
                               setPosModalProduct(product);
@@ -505,10 +701,9 @@ export function ProductListPage({
                               rowBusy
                               || product.isSubProduct
                               || !product.b2cEnabled
-                              || (product.rrp ?? 0) <= 0
                             }
                             onChange={e => {
-                              if (product.isSubProduct || !product.b2cEnabled || (product.rrp ?? 0) <= 0) return;
+                              if (product.isSubProduct || !product.b2cEnabled) return;
                               if (e.target.checked) {
                                 setPosModalProduct(product);
                                 return;
@@ -522,15 +717,15 @@ export function ProductListPage({
                                 ? 'POS is not available for sub-products'
                                 : !product.b2cEnabled
                                   ? 'POS requires a B2C product'
-                                  : (product.rrp ?? 0) <= 0
-                                    ? 'Set an RRP before enabling POS'
-                                    : product.posEnabled
-                                      ? 'POS enabled — double-click to change packaging, uncheck to disable'
-                                      : 'Enable POS and choose packaging'
+                                  : product.posEnabled
+                                    ? 'POS enabled — double-click to change sell units, uncheck to disable'
+                                    : (product.rrp ?? 0) <= 0
+                                      ? 'Enable POS and choose sell units (RRP can be set after)'
+                                      : 'Enable POS and choose sell units'
                             }
                           />
                         </td>
-                        <td className={`${tdCls} text-center`}>
+                        <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
                           <div className="inline-flex justify-center">
                             <ToggleSwitch
                               checked={product.active}
@@ -544,7 +739,7 @@ export function ProductListPage({
                     );
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={PRODUCT_LIST_COL_SPAN} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
@@ -555,13 +750,9 @@ export function ProductListPage({
         <ProductDetailPanel
           product={detailProduct}
           companyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
           onClose={() => setDetailProduct(null)}
           onUpdated={replaceProduct}
-          onEdit={onEditProduct ? () => {
-            const id = detailProduct.id;
-            setDetailProduct(null);
-            onEditProduct(id);
-          } : undefined}
         />
       ) : null}
 

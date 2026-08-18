@@ -1,9 +1,14 @@
 import { api } from '../api';
-import { EMPTY_COMPONENT_DETAIL_CONFIG, serializeDetailConfig } from './componentForm';
+import {
+  EMPTY_COMPONENT_DETAIL_CONFIG,
+  parseDetailConfigJson,
+  serializeDetailConfig,
+} from './componentForm';
 import {
   buildSmartComponentImportPlan,
   buildSmartComponentTemplateCsv,
   parseSmartComponentTemplateCsv,
+  SMART_COMPONENT_TEMPLATE_HEADERS,
 } from './smartComponentCatalog';
 import { ingredientToRow } from '../components/revenue/smartIngredientShared';
 import { REV_MGMT_HIERARCHY_KEY } from './revMgmtConfigStore';
@@ -98,6 +103,39 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         });
       },
     },
+    {
+      id: 'sysconfig-delivery-locations',
+      label: 'Create delivery location under restaurant outlet',
+      group: 'system-config',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId && !!ctx.restaurantExternalId, 'Restaurant location missing');
+        const created = await api.createDeliveryLocation(ctx.restaurantExternalId!, {
+          name: `QA Dock ${ctx.runKey}`,
+          addressLine1: '12 QA Loading Bay',
+          addressLine2: '',
+          city: 'Kuala Lumpur',
+          stateProvince: 'Wilayah Persekutuan',
+          postcode: '50450',
+          active: true,
+        });
+        await assert(!!created.id && !!created.externalId, 'Delivery location create failed');
+        const listed = await api.locationDeliveryLocations(ctx.restaurantExternalId!);
+        const found = listed.find(d => d.id === created.id || d.externalId === created.externalId);
+        await assert(!!found, 'Created delivery location not listed under restaurant');
+        ctx.deliveryLocationId = created.id;
+        ctx.deliveryLocationExternalId = created.externalId;
+        update({
+          detail: `Delivery location ${created.name} · ${created.externalId}`,
+          facts: {
+            deliveryLocationId: created.id,
+            deliveryLocationExternalId: created.externalId,
+            outletExternalId: ctx.restaurantExternalId!,
+            listedCount: listed.length,
+          },
+          fixActions: defaultFixActions('sysconfig-delivery-locations'),
+        });
+      },
+    },
   ],
 
   'create-five-component-vendors': [
@@ -117,12 +155,39 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           selectedLocationIds: [ctx.restaurantExternalId!, ctx.kitchenExternalId!],
         };
         const csv = buildSmartComponentTemplateCsv(rows, scope);
-        await assert(csv.includes('Component'), 'Template CSV missing Component header');
+        await assert(csv.includes('Principal Component'), 'Template CSV missing Principal Component header');
+        await assert(
+          csv.includes('Alternate Component Unit 1'),
+          'Template CSV missing Alternate Component Unit 1 header',
+        );
+        await assert(csv.includes('Storage'), 'Template CSV missing Storage header');
+        await assert(csv.includes('Par Stock'), 'Template CSV missing Par Stock header');
+        await assert(csv.includes('Active'), 'Template CSV missing Active header');
+        await assert(!csv.includes('Inventory UOM'), 'Template CSV still contains legacy Inventory UOM header');
+        const headerLine = csv.split(/\r?\n/)[0] ?? '';
+        for (const omitted of [
+          'Last UOM Price',
+          'Daily Usage',
+          'Order Freq (days)',
+          'Qty on Hand',
+          'Location',
+          'Products',
+          'Vendors',
+        ]) {
+          await assert(
+            !headerLine.includes(`"${omitted}"`),
+            `Template CSV header should omit ${omitted}`,
+          );
+        }
+        await assert(
+          SMART_COMPONENT_TEMPLATE_HEADERS.every(h => csv.includes(h)),
+          'Template CSV missing one or more current headers',
+        );
         await assert(csv.split('\n').length > 2, 'Template CSV should include existing component rows');
         ctx.componentTemplateCsv = csv;
         update({
-          detail: `Exported template with ${rows.length} component row(s)`,
-          facts: { rowCount: rows.length, csvBytes: csv.length },
+          detail: `Exported My Component template with ${rows.length} row(s)`,
+          facts: { rowCount: rows.length, csvBytes: csv.length, headerCount: SMART_COMPONENT_TEMPLATE_HEADERS.length },
           fixActions: defaultFixActions('component-download-template'),
         });
       },
@@ -141,7 +206,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           selectedLocationIds: [ctx.restaurantExternalId!, ctx.kitchenExternalId!],
         };
         const existing = (await api.ingredients(ctx.companyId)).map(ingredientToRow);
-        // Append a brand-new row into CSV text for create path
+        // Append a brand-new row: Principal Kg + Alternate Bag (1 Bag = 10 Kg).
         const importName = `QA Import Flour ${ctx.runKey}`;
         const extraLine = [
           '',
@@ -149,12 +214,12 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           'QA Power',
           importName,
           'Kg',
+          'Bag',
+          '10',
           '',
           '',
           '',
           '',
-          'Kg',
-          '1',
           '',
           '',
           '',
@@ -163,7 +228,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           'Kg',
           'Kitchen',
           'Dry Store',
-          'QA Restaurant; QA Kitchen',
+          'Yes',
           '',
         ].map(v => `"${v}"`).join(',');
         const csv = `${(ctx.componentTemplateCsv ?? '').trim()}\n${extraLine}\n`;
@@ -172,20 +237,30 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         const plan = buildSmartComponentImportPlan(drafts, existing, scope);
         const create = plan.creates.find(c => c.name === importName) ?? plan.creates[0];
         await assert(!!create, 'Import plan produced no creates');
+        const altUnits = create!.altRecipeUnits?.length
+          ? create!.altRecipeUnits
+          : [{ unit: 'Bag', fromQty: '1', qty: '10' }];
+        await assert(
+          altUnits.some(a => a.unit.trim().toLowerCase() === 'bag'),
+          'Import draft missing Alternate Component Unit Bag',
+        );
         const created = await api.createIngredient({
           componentId: '',
           name: create!.name,
           category: create!.category || 'Dry Goods',
           group: create!.group || 'QA Power',
           recipeUom: create!.recipeUom || 'Kg',
-          inventoryUom: create!.inventoryUom || 'Kg',
+          inventoryUom: create!.recipeUom || 'Kg',
           lastPriceRecipe: create!.lastPriceRecipe || 1,
           lastPriceInventory: create!.lastPriceInventory || 1,
           dailyUsage: create!.dailyUsage || 1,
           orderFreqDays: create!.orderFreqDays || 7,
           storageJson: JSON.stringify(create!.storage?.length ? create!.storage : ['Dry Store']),
           storageNote: 'QA CSV import',
-          detailConfigJson: serializeDetailConfig(EMPTY_COMPONENT_DETAIL_CONFIG),
+          detailConfigJson: serializeDetailConfig({
+            ...EMPTY_COMPONENT_DETAIL_CONFIG,
+            altRecipeUnits: altUnits,
+          }),
           attachedProducts: 0,
           attachedVendors: 0,
           active: true,
@@ -194,10 +269,12 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         ctx.importedComponentId = created.componentId || String(created.id);
         ctx.importedIngredientId = created.id;
         update({
-          detail: `Imported ${created.name} · ${created.componentId || created.id}`,
+          detail: `Imported ${created.name} · PCU ${created.recipeUom} · Alt ${altUnits[0]?.unit || '—'}`,
           facts: {
             ingredientId: created.id,
             componentId: created.componentId,
+            recipeUom: created.recipeUom,
+            alternateUom: altUnits[0]?.unit ?? null,
             planCreates: plan.creates.length,
             planUpdates: plan.updates.length,
           },
@@ -255,6 +332,129 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
             saved: true,
           },
           fixActions: defaultFixActions('component-config'),
+        });
+      },
+    },
+    {
+      id: 'component-alternate-uoms',
+      label: 'Verify Alternate Component UOMs on seeded components',
+      group: 'component',
+      run: async (ctx, update) => {
+        await assert(ctx.components.length >= 1 && !!ctx.companyId, 'Components missing');
+        const target = ctx.components[0];
+        const current = await api.ingredients(ctx.companyId).then(list =>
+          list.find(i => i.id === target.ingredientId || i.componentId === target.componentId),
+        );
+        await assert(!!current, `Ingredient ${target.componentId} not found`);
+        const detail = parseDetailConfigJson(current!.detailConfigJson);
+        const bag = detail.altRecipeUnits.find(a => a.unit.trim().toLowerCase() === 'bag');
+        await assert(!!bag, 'Seeded component missing Alternate Component UOM Bag');
+        await assert(String(bag!.qty) === '10', `Expected 1 Bag = 10 Kg, got qty=${bag!.qty}`);
+        // Ensure a second alternate can be persisted (Tin).
+        const nextAlts = [
+          ...detail.altRecipeUnits.filter(a => a.unit.trim().toLowerCase() !== 'tin'),
+          { unit: 'Tin', fromQty: '1', qty: '5' },
+        ].slice(0, 5);
+        const updated = await api.updateIngredient(current!.id, {
+          ...current!,
+          inventoryUom: current!.recipeUom || 'Kg',
+          detailConfigJson: serializeDetailConfig({
+            ...detail,
+            altRecipeUnits: nextAlts,
+          }),
+        });
+        const saved = parseDetailConfigJson(updated.detailConfigJson);
+        await assert(
+          saved.altRecipeUnits.some(a => a.unit.trim().toLowerCase() === 'tin'),
+          'Failed to persist Alternate Component UOM Tin',
+        );
+        update({
+          detail: `${updated.name} · PCU ${updated.recipeUom} · alts ${saved.altRecipeUnits.map(a => a.unit).join(', ')}`,
+          facts: {
+            componentId: updated.componentId,
+            principalUom: updated.recipeUom,
+            alternateCount: saved.altRecipeUnits.length,
+            alternates: saved.altRecipeUnits.map(a => a.unit).join(', '),
+          },
+          fixActions: defaultFixActions('component-alternate-uoms'),
+        });
+      },
+    },
+    {
+      id: 'component-tag-suggestions',
+      label: 'My Component tag suggestions API',
+      group: 'component',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId && ctx.components.length >= 1, 'Components missing');
+        const names = ctx.components.map(c => c.name);
+        const counts = await api.componentTagSuggestionCounts(ctx.companyId!, names);
+        await assert(!!counts?.counts && typeof counts.counts === 'object', 'Tag suggestion counts response invalid');
+        const sample = ctx.components[0];
+        const suggestions = await api.componentTagSuggestions(
+          ctx.companyId!,
+          sample.name,
+          [ctx.restaurantExternalId!, ctx.kitchenExternalId!].filter(Boolean) as string[],
+        );
+        await assert(suggestions.componentName === sample.name, 'Suggestion response component name mismatch');
+        await assert(
+          typeof suggestions.minProbability === 'number' && suggestions.minProbability >= 0.5,
+          `Expected minProbability ≥ 0.5, got ${suggestions.minProbability}`,
+        );
+        await assert(Array.isArray(suggestions.suggestions), 'Suggestions array missing');
+        update({
+          detail: `Tag suggestions for ${sample.name} · ${suggestions.count} hit(s) (≥${Math.round(suggestions.minProbability * 100)}%)`,
+          facts: {
+            componentName: sample.name,
+            suggestionCount: suggestions.count,
+            minProbability: suggestions.minProbability,
+            namesQueried: names.length,
+            countsKeys: Object.keys(counts.counts).length,
+          },
+          fixActions: defaultFixActions('component-tag-suggestions'),
+        });
+      },
+    },
+    {
+      id: 'vendor-listings-state-city-filter',
+      label: 'Vendor Listings State & City filters',
+      group: 'vendors',
+      run: async (ctx, update) => {
+        await assert(ctx.components.length >= 3, 'Need seeded vendors across localities');
+        const vendors = await api.vendors();
+        const qaVendors = vendors.filter(v =>
+          ctx.components.some(c => c.vendorExternalId === v.externalId),
+        );
+        await assert(qaVendors.length >= 3, `Expected ≥3 QA vendors, got ${qaVendors.length}`);
+        const states = [...new Set(qaVendors.map(v => (v.state || '').trim()).filter(Boolean))];
+        const cities = [...new Set(qaVendors.map(v => (v.city || '').trim()).filter(Boolean))];
+        await assert(states.length >= 2, `Expected ≥2 vendor states for filter coverage, got ${states.join(', ') || 'none'}`);
+        await assert(cities.length >= 2, `Expected ≥2 vendor cities for filter coverage, got ${cities.join(', ') || 'none'}`);
+
+        const stateFilter = 'Selangor';
+        const byState = qaVendors.filter(v => (v.state || '').trim().toLowerCase() === stateFilter.toLowerCase());
+        await assert(byState.length >= 1, `No QA vendors in state ${stateFilter}`);
+        const cityFilter = (byState[0].city || '').trim();
+        await assert(!!cityFilter, `Vendor in ${stateFilter} missing city`);
+        const byCity = byState.filter(v => (v.city || '').trim().toLowerCase() === cityFilter.toLowerCase());
+        await assert(byCity.length >= 1, `State→City cascade empty for ${stateFilter}/${cityFilter}`);
+        const crossStateCity = qaVendors.filter(
+          v =>
+            (v.city || '').trim().toLowerCase() === cityFilter.toLowerCase()
+            && (v.state || '').trim().toLowerCase() !== stateFilter.toLowerCase(),
+        );
+        update({
+          detail: `State/City filters · ${states.length} states · ${cities.length} cities · ${stateFilter}/${cityFilter}=${byCity.length}`,
+          facts: {
+            qaVendorCount: qaVendors.length,
+            stateCount: states.length,
+            cityCount: cities.length,
+            filteredState: stateFilter,
+            filteredCity: cityFilter,
+            stateMatchCount: byState.length,
+            cityMatchCount: byCity.length,
+            crossStateSameCity: crossStateCity.length,
+          },
+          fixActions: defaultFixActions('vendor-listings-state-city-filter'),
         });
       },
     },
@@ -557,6 +757,161 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         });
       },
     },
+    {
+      id: 'order-with-delivery-location',
+      label: 'Create PO ship-to delivery location',
+      group: 'operation-order',
+      run: async (ctx, update) => {
+        await assert(
+          !!ctx.companyId && !!ctx.restaurantExternalId && !!ctx.deliveryLocationExternalId && ctx.components.length >= 1,
+          'Delivery location / components missing',
+        );
+        const c = ctx.components[0];
+        const created = await api.createPurchaseOrders({
+          companyId: ctx.companyId,
+          locationExternalIds: [ctx.restaurantExternalId!],
+          deliveryLocationExternalId: ctx.deliveryLocationExternalId!,
+          initiatedBy: ctx.adminName ?? 'QA System Admin',
+          orders: [{
+            vendorName: c.vendorName,
+            documentType: 'PO',
+            orderDate: todayIso(),
+            deliveryDate: todayIso(),
+            status: 'Pending Approval',
+            items: [{
+              componentId: c.componentId,
+              componentName: c.name,
+              vendorProductId: c.catalogId,
+              name: c.catalogName,
+              quantity: 2,
+              unitPrice: c.unitPrice,
+              unit: 'Kg',
+              componentUom: 'Kg',
+              deliveryPackage: '1 Kg',
+            }],
+          }],
+        });
+        await assert(created.length === 1, `Expected 1 PO, got ${created.length}`);
+        const po = created[0];
+        const shipTo =
+          po.deliveryLocationExternalId
+          || po.deliveryLocation?.externalId
+          || '';
+        await assert(
+          shipTo === ctx.deliveryLocationExternalId,
+          `PO ship-to mismatch (expected ${ctx.deliveryLocationExternalId}, got ${shipTo || 'none'})`,
+        );
+        update({
+          detail: `PO #${po.id} ship-to ${shipTo}`,
+          facts: {
+            purchaseOrderId: po.id,
+            deliveryLocationExternalId: shipTo,
+            outletExternalId: ctx.restaurantExternalId!,
+          },
+          fixActions: defaultFixActions('order-with-delivery-location'),
+        });
+      },
+    },
+    {
+      id: 'order-store-requisition-flow',
+      label: 'Store Requisition create → issue → receive',
+      group: 'operation-order',
+      run: async (ctx, update) => {
+        await assert(
+          !!ctx.companyId && !!ctx.kitchenExternalId && !!ctx.restaurantExternalId && ctx.components.length >= 1,
+          'Central store / outlet / components missing',
+        );
+        const c = ctx.components[0];
+        const activated = await api.activateCentralStore({
+          companyId: ctx.companyId!,
+          storeLocationExternalId: ctx.kitchenExternalId!,
+          kitchenLocationExternalId: ctx.kitchenExternalId!,
+        });
+        await assert(!!activated?.storeLocationExternalId, 'Central Store activation failed');
+        const created = await api.createOutletStoreRequisition({
+          companyId: ctx.companyId!,
+          requesterLocationExternalId: ctx.restaurantExternalId!,
+          requestedBy: ctx.adminName || 'QA',
+          lines: [{
+            componentId: c.componentId,
+            componentName: c.name,
+            uom: 'Kg',
+            quantity: 1,
+          }],
+        });
+        await assert(!!created.id, 'Store requisition create failed');
+        await assert(
+          (created.kind || '').toLowerCase() === 'outlet' || (created.kind || '') === '',
+          `Expected outlet requisition kind, got ${created.kind}`,
+        );
+        const issued = await api.issueStoreRequisition(created.id, {
+          companyId: ctx.companyId!,
+          issuedBy: ctx.adminName || 'QA',
+        });
+        await assert((issued.status || '').toLowerCase() === 'issued', `Issue failed (status=${issued.status})`);
+        const received = await api.receiveStoreRequisition(created.id, {
+          companyId: ctx.companyId!,
+          receivedBy: ctx.adminName || 'QA',
+        });
+        await assert((received.status || '').toLowerCase() === 'received', `Receive failed (status=${received.status})`);
+        const listed = await api.storeRequisitions(ctx.companyId!, undefined, 'outlet');
+        const found = listed.find(r => r.id === created.id);
+        await assert(!!found && (found.status || '').toLowerCase() === 'received', 'Requisition missing from Active Requisition list');
+        ctx.storeRequisitionId = created.id;
+        update({
+          detail: `Store Requisition #${created.requisitionNumber || created.id} · received`,
+          facts: {
+            storeRequisitionId: created.id,
+            requisitionNumber: created.requisitionNumber,
+            status: received.status,
+            storeLocation: ctx.kitchenExternalId!,
+            requesterLocation: ctx.restaurantExternalId!,
+            componentId: c.componentId,
+            listedOutletCount: listed.length,
+          },
+          fixActions: defaultFixActions('order-store-requisition-flow'),
+        });
+      },
+    },
+    {
+      id: 'team-rms-po-counts',
+      label: 'Team RMS PO group counts',
+      group: 'operation-order',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId && ctx.purchaseOrders.length > 0, 'Purchase orders missing');
+        const all = await api.purchaseOrders();
+        const qaIds = new Set(ctx.purchaseOrders.map(p => p.id));
+        const qaPos = all.filter(p => qaIds.has(p.id));
+        await assert(qaPos.length >= ctx.purchaseOrders.length, `Expected ≥${ctx.purchaseOrders.length} QA POs in list`);
+        const normalize = (status: string) => (status || '').trim().toLowerCase();
+        const buckets = {
+          toApprove: 0,
+          active: 0,
+          received: 0,
+          other: 0,
+        };
+        for (const po of qaPos) {
+          const s = normalize(po.status);
+          if (s.includes('pending') || s.includes('approval')) buckets.toApprove += 1;
+          else if (s.includes('receiv') || s.includes('complete') || s.includes('closed')) buckets.received += 1;
+          else if (s.includes('accept') || s.includes('active') || s.includes('approved') || s.includes('open')) buckets.active += 1;
+          else buckets.other += 1;
+        }
+        const total = buckets.toApprove + buckets.active + buckets.received + buckets.other;
+        await assert(total === qaPos.length, 'PO bucket total mismatch');
+        update({
+          detail: `Team RMS counts · to-approve ${buckets.toApprove} · active ${buckets.active} · received ${buckets.received}`,
+          facts: {
+            qaPoCount: qaPos.length,
+            toApprove: buckets.toApprove,
+            active: buckets.active,
+            received: buckets.received,
+            other: buckets.other,
+          },
+          fixActions: defaultFixActions('team-rms-po-counts'),
+        });
+      },
+    },
   ],
 
   'verify-stock-after-cash': [
@@ -629,7 +984,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
     },
     {
       id: 'inventory-adjustment',
-      label: 'Stock Card inventory adjustment',
+      label: 'Stock Card adjustment (Principal Component Unit)',
       group: 'operation-inventory',
       run: async (ctx, update) => {
         await assert(ctx.components.length >= 1 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
@@ -638,7 +993,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           companyId: ctx.companyId,
           locationIds: ctx.kitchenExternalId!,
           locationExternalId: ctx.kitchenExternalId!,
-          uomMode: 'inventory',
+          uomMode: 'recipe',
           adjustmentDate: todayIso(),
           quantity: 0.1,
           direction: 'in',
@@ -647,18 +1002,10 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           inboundUnitPrice: c.unitPrice,
         });
         update({
-          detail: `Adjusted +0.1 Kg on ${c.componentId}`,
-          facts: { componentId: c.componentId, direction: 'in', quantity: 0.1 },
+          detail: `Adjusted +0.1 Kg PCU on ${c.componentId}`,
+          facts: { componentId: c.componentId, direction: 'in', quantity: 0.1, uomMode: 'recipe' },
           fixActions: defaultFixActions('inventory-adjustment'),
         });
-      },
-    },
-    {
-      id: 'inventory-config',
-      label: 'Inventory Config',
-      group: 'operation-inventory',
-      run: async () => {
-        skipInactive('Inventory Config');
       },
     },
   ],

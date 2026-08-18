@@ -102,6 +102,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             c.BusinessTypesJson,
             c.VendorPolicyTagsJson,
             c.ModulesJson,
+            c.BusinessHoursJson,
             logoFileName = c.LogoFileName ?? string.Empty,
             logoContentType = c.LogoContentType ?? string.Empty,
             logoBase64 = hasLogo ? (c.LogoBase64 ?? string.Empty) : string.Empty,
@@ -160,11 +161,17 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetAll()
+    public async Task<ActionResult<IEnumerable<object>>> GetAll([FromQuery] bool includeInactive = false)
     {
-        var rows = await db.Companies
+        var query = db.Companies
             .AsNoTracking()
             .Include(c => c.Locations)
+            .AsQueryable();
+
+        if (!includeInactive)
+            query = query.Where(c => c.Active);
+
+        var rows = await query
             .OrderBy(c => c.Name)
             .ToListAsync();
         return Ok(rows.Select(c => MapCompany(c, c.Locations.Count)));
@@ -196,6 +203,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.LogoFileName = logoFileName;
         company.LogoContentType = logoContentType;
         company.LogoBase64 = logoBase64;
+        if (string.IsNullOrWhiteSpace(company.BusinessHoursJson))
+            company.BusinessHoursJson = "{}";
 
         await CompanyCodeService.EnsureCodeAsync(db, company);
         db.Companies.Add(company);
@@ -231,6 +240,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.BusinessTypesJson = updated.BusinessTypesJson;
         company.VendorPolicyTagsJson = updated.VendorPolicyTagsJson;
         company.ModulesJson = updated.ModulesJson;
+        company.BusinessHoursJson = string.IsNullOrWhiteSpace(updated.BusinessHoursJson)
+            ? "{}"
+            : updated.BusinessHoursJson;
         company.LogoFileName = logoFileName;
         company.LogoContentType = logoContentType;
         company.LogoBase64 = logoBase64;
@@ -416,6 +428,8 @@ public class UsersController(BisyncDbContext db) : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
     {
+        await PlatformOwnerIdentityMigrator.EnsureMergedAsync(db);
+
         var users = await db.AppUsers
             .AsNoTracking()
             .Include(u => u.Employee)
@@ -604,8 +618,16 @@ public record LocationConfigUpdate(
     string VendorPolicyTagsJson,
     string ModulesJson,
     string? OpeningHoursJson = null,
+    bool DeliveryAllowTimeEnabled = false,
+    string? DeliveryAllowPeriodsJson = null,
     int? SecondaryContactUserId = null,
-    bool Active = true
+    bool Active = true,
+    string? PhysicalSiteKey = null,
+    string? ConceptLabel = null,
+    int? ConceptSortOrder = null,
+    string? LogoFileName = null,
+    string? LogoContentType = null,
+    string? LogoBase64 = null
 );
 
 public record LocationConfigCreate(
@@ -621,6 +643,20 @@ public record LocationConfigCreate(
     string? VendorPolicyTagsJson,
     string? ModulesJson,
     string? OpeningHoursJson = null,
+    bool DeliveryAllowTimeEnabled = false,
+    string? DeliveryAllowPeriodsJson = null,
     int? SecondaryContactUserId = null,
-    bool Active = true
+    bool Active = true,
+    string? PhysicalSiteKey = null,
+    string? ConceptLabel = null,
+    int? ConceptSortOrder = null,
+    string? LogoFileName = null,
+    string? LogoContentType = null,
+    string? LogoBase64 = null,
+    /// <summary>When set with at least one copy flag, catalog items are inherited into the new location.</summary>
+    int? InheritFromCompanyId = null,
+    string? InheritFromLocationExternalId = null,
+    bool CopyComponents = false,
+    bool CopyVendorsAndVendorProducts = false,
+    bool CopyProducts = false
 );

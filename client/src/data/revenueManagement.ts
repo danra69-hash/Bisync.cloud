@@ -1,4 +1,5 @@
-import { loadComponentHierarchy } from './componentHierarchy';
+import { getHierarchyGroupOptions, loadComponentHierarchy } from './componentHierarchy';
+import { uniqueLabelsPreferCanonical } from '../utils/labelMatch';
 
 export type RevMgmtItem = { label: string };
 export type RevMgmtSubSection = { subtitle?: string; items: RevMgmtItem[] };
@@ -10,8 +11,9 @@ export const SUPPLY_SIDE_NAV_LABELS = new Set([
   'Sales Order',
 ]);
 
-/** Nav labels for B2B Product management (CK / warehouse and manufacturer only). */
+/** Nav labels for B2B Principal Product management (CK / warehouse and manufacturer only). */
 export const B2B_PRODUCT_NAV_LABELS = new Set([
+  'B2B Principal Product',
   'B2B Product',
 ]);
 
@@ -23,6 +25,8 @@ export const revMgmtNav: RevMgmtSection[] = [
         subtitle: 'Order',
         items: [
           { label: 'My Order' },
+          { label: 'Returnable Goods' },
+          { label: 'Credit Note' },
           { label: 'Cash Purchase' },
           { label: 'Order Template' },
         ],
@@ -31,6 +35,7 @@ export const revMgmtNav: RevMgmtSection[] = [
         subtitle: 'Production',
         items: [
           { label: 'Production' },
+          { label: 'Central Store' },
         ],
       },
       {
@@ -40,7 +45,6 @@ export const revMgmtNav: RevMgmtSection[] = [
           { label: 'Inventory' },
           { label: 'Wastage' },
           { label: 'Transfer' },
-          { label: 'Inventory Config' },
         ],
       },
     ],
@@ -105,7 +109,9 @@ export const revMgmtNav: RevMgmtSection[] = [
           { label: 'Detailed Purchase Summary' },
           { label: 'Production Report' },
           { label: 'Wastage Report' },
+          { label: 'BCG Matrix' },
           { label: 'COGS Audit' },
+          { label: 'Ops Expenses Analysis' },
         ],
       },
     ],
@@ -152,7 +158,8 @@ export const posItems = [
   'POS Menu',
   'POS Modifier Group',
   'Promotion Scheduler',
-  'POS Test Tap',
+  'POS Config',
+  'POS Test',
   'Device Management',
   'E-Invoice',
 ] as const;
@@ -162,21 +169,11 @@ export const COMING_SOON_NAV_ITEMS = new Set<string>(['Report']);
 
 /** Rev Mgmt submenu labels that still route to ModuleContent placeholders. */
 export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
-  'Inventory Config',
   'Account Mapping',
-  'External POS Mapping',
-  'Itemized Sales Summary',
-  'Inventory Summary',
-  'Detailed Purchase Summary',
-  'Production Report',
-  'Wastage Report',
 ]);
 
 /** POS bar items that still route to ModuleContent placeholders. */
 export const COMING_SOON_POS_ITEMS = new Set<string>([
-  'POS Modifier Group',
-  'Promotion Scheduler',
-  'Device Management',
   'E-Invoice',
 ]);
 
@@ -195,34 +192,78 @@ export type NavItem = (typeof NAV_ITEMS)[number];
 export const siCategories = ['All', 'Assets', 'Ops Expenses', 'FF&E', 'Maintenance', 'MarComm', 'Food', 'Beverage', 'Retail'];
 export const siGroups = ['All', 'Proteins', 'Dairy', 'Produce', 'Dry Goods', 'Beverages', 'Spirits', 'Cleaning', 'Equipment', 'Packaging'];
 
-function uniqueSortedLabels(values: string[]): string[] {
-  return [...new Set(values.map(value => value.trim()).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b));
+const SI_CATEGORY_CANONICAL = siCategories.filter(category => category !== 'All');
+const SI_GROUP_CANONICAL = siGroups.filter(group => group !== 'All');
+
+/** Map common import spellings onto built-in category labels. */
+const SI_CATEGORY_ALIASES: Record<string, string> = {
+  food: 'Food',
+  beverage: 'Beverage',
+  beverages: 'Beverage',
+  bev: 'Beverage',
+  retail: 'Retail',
+  assets: 'Assets',
+  'ops expenses': 'Ops Expenses',
+  'ops expense': 'Ops Expenses',
+  opex: 'Ops Expenses',
+  'ff&e': 'FF&E',
+  ffe: 'FF&E',
+  maintenance: 'Maintenance',
+  marcomm: 'MarComm',
+  'mar comm': 'MarComm',
+};
+
+/**
+ * Resolve an import/UI category to the canonical built-in label when known.
+ * Unknown categories keep their trimmed original text.
+ */
+export function resolveSiCategoryName(raw: string, extras: string[] = []): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  const key = trimmed.toLowerCase();
+  const alias = SI_CATEGORY_ALIASES[key];
+  if (alias) return alias;
+  const fromBuiltin = SI_CATEGORY_CANONICAL.find(category => category.toLowerCase() === key);
+  if (fromBuiltin) return fromBuiltin;
+  const fromExtra = extras.find(category => category.trim().toLowerCase() === key);
+  return fromExtra?.trim() || trimmed;
 }
 
 /**
  * Category filter options: company hierarchy + static fallbacks + caller extras.
  * Always includes "All" so dropdowns never look blank on cloud.
+ * Dedupes case-insensitively so FOOD / Food collapse to Food.
  */
 export function getSiCategoryFilterOptions(extra: string[] = []): string[] {
   const hierarchyNames = loadComponentHierarchy().categories.map(category => category.name);
-  return ['All', ...uniqueSortedLabels([
-    ...hierarchyNames,
-    ...siCategories.filter(category => category !== 'All'),
-    ...extra,
-  ])];
+  return ['All', ...uniqueLabelsPreferCanonical(
+    [...hierarchyNames, ...SI_CATEGORY_CANONICAL, ...extra],
+    SI_CATEGORY_CANONICAL,
+  )];
 }
 
 /**
  * Group filter options: company hierarchy groups + static fallbacks + caller extras.
+ * Dedupes case-insensitively so DRY GOODS / Dry Goods collapse to Dry Goods.
+ * When `categoryFilter` is a specific category (not "All"), only groups under that
+ * category are returned so the Group dropdown stays scoped to the selected Category.
  */
-export function getSiGroupFilterOptions(extra: string[] = []): string[] {
-  const hierarchyNames = loadComponentHierarchy().groups.map(group => group.name);
-  return ['All', ...uniqueSortedLabels([
-    ...hierarchyNames,
-    ...siGroups.filter(group => group !== 'All'),
-    ...extra,
-  ])];
+export function getSiGroupFilterOptions(extra: string[] = [], categoryFilter = 'All'): string[] {
+  const hierarchy = loadComponentHierarchy();
+  const scopedCategory = categoryFilter.trim();
+  const scopedToCategory = Boolean(scopedCategory) && scopedCategory.toLowerCase() !== 'all';
+
+  const hierarchyNames = scopedToCategory
+    ? getHierarchyGroupOptions(hierarchy, scopedCategory, '', [])
+    : hierarchy.groups.map(group => group.name);
+
+  // Avoid re-injecting every built-in group when a category is selected.
+  const canonicalFallback = scopedToCategory ? [] : SI_GROUP_CANONICAL;
+
+  return ['All', ...uniqueLabelsPreferCanonical(
+    [...hierarchyNames, ...canonicalFallback, ...extra],
+    SI_GROUP_CANONICAL,
+  )];
 }
 
 export type IngredientRow = {

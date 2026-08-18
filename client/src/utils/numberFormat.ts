@@ -121,6 +121,117 @@ export function formatCountryCurrency(
   return `${prefix} ${formatCountryNumber(value, countryCode)}`;
 }
 
+/** Default principal Component UOM unit-price decimals (platform setting may override). */
+export const PRINCIPAL_UOM_PRICE_DECIMALS = 4;
+/** Default alternate Component UOM unit-price decimals. */
+export const ALTERNATE_UOM_PRICE_DECIMALS = 2;
+/** Default vendor delivery unit-price decimals. */
+export const VENDOR_DELIVERY_PRICE_DECIMALS = 2;
+
+export type PriceDisplayDecimals = {
+  principalUomPriceDecimals: number;
+  alternateUomPriceDecimals: number;
+  vendorDeliveryPriceDecimals: number;
+};
+
+const DEFAULT_PRICE_DISPLAY: PriceDisplayDecimals = {
+  principalUomPriceDecimals: PRINCIPAL_UOM_PRICE_DECIMALS,
+  alternateUomPriceDecimals: ALTERNATE_UOM_PRICE_DECIMALS,
+  vendorDeliveryPriceDecimals: VENDOR_DELIVERY_PRICE_DECIMALS,
+};
+
+let priceDisplayDecimals: PriceDisplayDecimals = { ...DEFAULT_PRICE_DISPLAY };
+
+function clampDecimals(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(6, Math.max(0, Math.round(value)));
+}
+
+/** Apply platform price-display settings (loaded from API). */
+export function setPriceDisplayDecimals(next: Partial<PriceDisplayDecimals> | null | undefined) {
+  priceDisplayDecimals = {
+    principalUomPriceDecimals: clampDecimals(
+      next?.principalUomPriceDecimals ?? DEFAULT_PRICE_DISPLAY.principalUomPriceDecimals,
+      PRINCIPAL_UOM_PRICE_DECIMALS,
+    ),
+    alternateUomPriceDecimals: clampDecimals(
+      next?.alternateUomPriceDecimals ?? DEFAULT_PRICE_DISPLAY.alternateUomPriceDecimals,
+      ALTERNATE_UOM_PRICE_DECIMALS,
+    ),
+    vendorDeliveryPriceDecimals: clampDecimals(
+      next?.vendorDeliveryPriceDecimals ?? DEFAULT_PRICE_DISPLAY.vendorDeliveryPriceDecimals,
+      VENDOR_DELIVERY_PRICE_DECIMALS,
+    ),
+  };
+}
+
+export function getPriceDisplayDecimals(): PriceDisplayDecimals {
+  return priceDisplayDecimals;
+}
+
+export function formatFixedDecimals(value: number, decimals: number): string {
+  const places = clampDecimals(decimals, 2);
+  if (!Number.isFinite(value)) return (0).toFixed(places);
+  return value.toFixed(places);
+}
+
+export function formatPrincipalUomPriceNumber(value: number): string {
+  return formatFixedDecimals(value, priceDisplayDecimals.principalUomPriceDecimals);
+}
+
+export function formatAlternateUomPriceNumber(value: number): string {
+  return formatFixedDecimals(value, priceDisplayDecimals.alternateUomPriceDecimals);
+}
+
+export function formatVendorDeliveryPriceNumber(value: number): string {
+  return formatFixedDecimals(value, priceDisplayDecimals.vendorDeliveryPriceDecimals);
+}
+
+/**
+ * Currency display for Principal Component Unit price (and stock UOM price).
+ * Default 4 decimal places so values like 0.0330 are not collapsed to 0.03.
+ */
+export function formatPrincipalUomPrice(
+  value: number,
+  countryCode = 'MY',
+  symbol?: string,
+): string {
+  const prefix = symbol ?? getCurrencySymbol(countryCode);
+  return `${prefix} ${formatPrincipalUomPriceNumber(value)}`;
+}
+
+/** Currency display for alternate / non-principal Component UOM prices (default 2 dp). */
+export function formatAlternateUomPrice(
+  value: number,
+  countryCode = 'MY',
+  symbol?: string,
+): string {
+  const prefix = symbol ?? getCurrencySymbol(countryCode);
+  return `${prefix} ${formatAlternateUomPriceNumber(value)}`;
+}
+
+/** Currency display for Vendor Delivery unit price (default 2 dp). */
+export function formatVendorDeliveryPrice(
+  value: number,
+  countryCode = 'MY',
+  symbol?: string,
+): string {
+  const prefix = symbol ?? getCurrencySymbol(countryCode);
+  return `${prefix} ${formatVendorDeliveryPriceNumber(value)}`;
+}
+
+/** Pick principal vs alternate Component UOM price formatting. */
+export function formatComponentUomPrice(
+  value: number,
+  isPrincipal: boolean,
+  countryCode = 'MY',
+  symbol?: string,
+): string {
+  return isPrincipal
+    ? formatPrincipalUomPrice(value, countryCode, symbol)
+    : formatAlternateUomPrice(value, countryCode, symbol);
+}
+
 /** Compact money for dashboard KPIs (e.g. RM 1.2k, S$ 2.50M). */
 export function formatCompactCurrency(value: number, countryCode = 'MY'): string {
   const symbol = getCurrencySymbol(countryCode);

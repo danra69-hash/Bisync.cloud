@@ -125,6 +125,8 @@ public class DevConsoleAuthController(
             position = user.Position,
             teamType = user.TeamType,
             isRoot = user.IsRoot,
+            canManageTeam = DevConsoleControlPanelAccess.CanManageTeam(user.Email),
+            mustChangePassword = user.MustChangePassword,
             accessTabs = user.IsRoot
                 ? DevConsoleTabAccess.AllTabs.ToList()
                 : DevConsoleTabAccess.ParseTabs(user.AccessJson),
@@ -272,7 +274,7 @@ public class DevConsoleAuthController(
     [HttpGet("team")]
     public async Task<ActionResult<object>> ListTeam(CancellationToken ct)
     {
-        var (err, actor) = await RequireRootAsync(ct);
+        var (err, actor) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var rows = await db.DevTeamUsers.AsNoTracking()
@@ -296,6 +298,7 @@ public class DevConsoleAuthController(
                 u.IsRoot,
                 hasPassword = u.HasPassword,
                 invitePending = u.InvitePending,
+                mustChangePassword = u.MustChangePassword,
                 hasGoogle = !string.IsNullOrWhiteSpace(u.GoogleSubject),
                 u.CreatedAt,
                 u.CreatedByEmail,
@@ -319,7 +322,7 @@ public class DevConsoleAuthController(
     [HttpPost("team")]
     public async Task<ActionResult<object>> CreateTeamUser([FromBody] UpsertTeamUserRequest request, CancellationToken ct)
     {
-        var (err, actor) = await RequireRootAsync(ct);
+        var (err, actor) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var email = (request.Email ?? "").Trim().ToLowerInvariant();
@@ -340,52 +343,56 @@ public class DevConsoleAuthController(
             TeamType = DevConsoleTabAccess.NormalizeTeamType(request.TeamType),
             AccessJson = DevConsoleTabAccess.BuildAccessJson(request.AccessTabs),
             PasswordHash = "",
-            Active = false,
+            Active = true,
+            MustChangePassword = true,
             IsRoot = false,
             CreatedAt = DateTime.UtcNow,
             CreatedByEmail = actor!.Email,
         };
 
-        // Optional direct password (legacy / emergency). Prefer invite flow.
+        // Default team password Pass@123 — member must change it after first login.
+        // Optional request.Password still allowed for emergency overrides.
         if (!string.IsNullOrWhiteSpace(request.Password))
         {
             if (request.Password.Length < 8)
                 return BadRequest(new { message = "Password must be at least 8 characters." });
             user.PasswordHash = AppPasswordHasher.Hash(request.Password);
+            user.MustChangePassword = string.Equals(
+                request.Password,
+                DevConsoleAuthService.DefaultTeamPassword,
+                StringComparison.Ordinal);
             user.Active = true;
         }
         else
         {
-            auth.IssueInviteToken(user);
+            auth.ApplyDefaultTeamPassword(user);
         }
 
         db.DevTeamUsers.Add(user);
         await db.SaveChangesAsync(ct);
 
-        string? inviteUrl = null;
-        if (user.InvitePending && !string.IsNullOrWhiteSpace(user.InviteToken))
-        {
-            inviteUrl = BuildDevConsoleUrl($"invite/{user.InviteToken}");
-            await emailSender.SendAsync(
-                user.Email,
-                "Invitation to Bisync Dev Console",
-                $"Hello {user.FullName},\n\n" +
-                $"You have been invited to the Bisync Dev Console as {user.TeamType}" +
-                (string.IsNullOrWhiteSpace(user.Position) ? "" : $" ({user.Position})") +
-                $".\n\n" +
-                $"Create your password and activate access here:\n{inviteUrl}\n\n" +
-                $"This link expires in 72 hours.\n\n" +
-                $"This account is for Dev Console only and is separate from the main Bisync platform.",
-                ct);
-        }
+        var loginUrl = BuildDevConsoleUrl("");
+        await emailSender.SendAsync(
+            user.Email,
+            "Your Bisync Dev Console access",
+            $"Hello {user.FullName},\n\n" +
+            $"You have been added to the Bisync Dev Console as {user.TeamType}" +
+            (string.IsNullOrWhiteSpace(user.Position) ? "" : $" ({user.Position})") +
+            $".\n\n" +
+            $"Sign in at:\n{loginUrl}\n\n" +
+            $"Email: {user.Email}\n" +
+            $"Temporary password: {DevConsoleAuthService.DefaultTeamPassword}\n\n" +
+            $"You will be asked to change this password after your first login.\n\n" +
+            $"This account is for Dev Console only and is separate from the main Bisync platform.",
+            ct);
 
-        return Ok(TeamUserPayload(user, inviteUrl));
+        return Ok(TeamUserPayload(user));
     }
 
     [HttpPut("team/{id:int}")]
     public async Task<ActionResult<object>> UpdateTeamUser(int id, [FromBody] UpsertTeamUserRequest request, CancellationToken ct)
     {
-        var (err, actor) = await RequireRootAsync(ct);
+        var (err, actor) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -408,6 +415,10 @@ public class DevConsoleAuthController(
             if (request.Password.Length < 8)
                 return BadRequest(new { message = "Password must be at least 8 characters." });
             user.PasswordHash = AppPasswordHasher.Hash(request.Password);
+            user.MustChangePassword = string.Equals(
+                request.Password,
+                DevConsoleAuthService.DefaultTeamPassword,
+                StringComparison.Ordinal);
             user.InviteToken = null;
             user.InviteTokenExpiresAt = null;
             user.Active = true;
@@ -418,7 +429,7 @@ public class DevConsoleAuthController(
             if (user.IsRoot && !active)
                 return BadRequest(new { message = "Root account cannot be deactivated." });
             if (active && !user.HasPassword)
-                return BadRequest(new { message = "User must accept the invitation and set a password before activation." });
+                auth.ApplyDefaultTeamPassword(user);
             user.Active = active;
         }
 
@@ -444,36 +455,41 @@ public class DevConsoleAuthController(
     [HttpPost("team/{id:int}/resend-invite")]
     public async Task<ActionResult<object>> ResendInvite(int id, CancellationToken ct)
     {
-        var (err, _) = await RequireRootAsync(ct);
+        var (err, _) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
         if (user is null) return NotFound();
         if (user.IsRoot)
-            return BadRequest(new { message = "Root account does not use invitations." });
-        if (user.HasPassword && user.Active)
-            return BadRequest(new { message = "User already has an active password. Use password reset instead." });
+            return BadRequest(new { message = "Root account does not use the default team password reset." });
 
-        var token = auth.IssueInviteToken(user);
-        user.Active = false;
+        auth.ApplyDefaultTeamPassword(user);
         await db.SaveChangesAsync(ct);
 
-        var inviteUrl = BuildDevConsoleUrl($"invite/{token}");
+        var loginUrl = BuildDevConsoleUrl("");
         await emailSender.SendAsync(
             user.Email,
-            "Invitation to Bisync Dev Console",
+            "Your Bisync Dev Console password was reset",
             $"Hello {user.FullName},\n\n" +
-            $"Create your password and activate Dev Console access here:\n{inviteUrl}\n\n" +
-            $"This link expires in 72 hours.",
+            $"Your Dev Console password was reset to the temporary default.\n\n" +
+            $"Sign in at:\n{loginUrl}\n\n" +
+            $"Email: {user.Email}\n" +
+            $"Temporary password: {DevConsoleAuthService.DefaultTeamPassword}\n\n" +
+            $"You will be asked to change this password after you sign in.",
             ct);
 
-        return Ok(new { message = "Invitation resent.", inviteUrl, email = user.Email });
+        return Ok(new
+        {
+            message = $"Password reset to {DevConsoleAuthService.DefaultTeamPassword}. Member must change it after login.",
+            email = user.Email,
+            defaultPassword = DevConsoleAuthService.DefaultTeamPassword,
+        });
     }
 
     [HttpDelete("team/{id:int}")]
     public async Task<ActionResult> DeleteTeamUser(int id, CancellationToken ct)
     {
-        var (err, _) = await RequireRootAsync(ct);
+        var (err, _) = await RequireControlPanelAsync(ct);
         if (err is not null) return err;
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -556,7 +572,8 @@ public class DevConsoleAuthController(
             },
             LocationId: location.Id,
             LocationExternalId: location.ExternalId,
-            LocationName: location.Name), ct);
+            LocationName: location.Name,
+            DatabaseBucket: null), ct);
 
         return Ok(new
         {
@@ -614,6 +631,24 @@ public class DevConsoleAuthController(
         return (null, user);
     }
 
+    /// <summary>
+    /// Team create/edit is limited to the control-panel allowlist — not every root/session user.
+    /// </summary>
+    async Task<(ActionResult? Error, DevTeamUser? Actor)> RequireControlPanelAsync(CancellationToken ct)
+    {
+        var (err, user) = await RequireDevSessionAsync(ct);
+        if (err is not null) return (err, null);
+        if (!DevConsoleControlPanelAccess.CanManageTeam(user!.Email))
+        {
+            return (StatusCode(403, new
+            {
+                message = "Control panel access is limited to authorized operators only.",
+                code = "control_panel_forbidden",
+            }), null);
+        }
+        return (null, user);
+    }
+
     static List<int> ParseLocationIds(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return [];
@@ -636,6 +671,8 @@ public class DevConsoleAuthController(
         position = user.Position,
         teamType = user.TeamType,
         isRoot = user.IsRoot,
+        canManageTeam = DevConsoleControlPanelAccess.CanManageTeam(user.Email),
+        mustChangePassword = user.MustChangePassword,
         accessTabs = user.IsRoot
             ? DevConsoleTabAccess.AllTabs.ToList()
             : DevConsoleTabAccess.ParseTabs(user.AccessJson),
@@ -655,6 +692,7 @@ public class DevConsoleAuthController(
         isRoot = user.IsRoot,
         hasPassword = user.HasPassword,
         invitePending = user.InvitePending,
+        mustChangePassword = user.MustChangePassword,
         inviteUrl,
     };
 

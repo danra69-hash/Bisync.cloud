@@ -34,6 +34,7 @@ import {
 import { resolveComponentUomQty } from '../../data/vendorProductCatalog';
 
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { labelsEqual } from '../../utils/labelMatch';
 
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
 
@@ -93,7 +94,7 @@ export function VendorProductTagModal({
 
 }: Props) {
 
-  const { rm } = useCountryFormatters();
+  const { deliveryPrice } = useCountryFormatters();
   const [loading, setLoading] = useState(true);
 
   const [saving, setSaving] = useState(false);
@@ -115,8 +116,6 @@ export function VendorProductTagModal({
 
 
   const [recipeUnit, setRecipeUnit] = useState('');
-
-  const [inventoryUnit, setInventoryUnit] = useState('');
 
   const [componentUom, setComponentUom] = useState('');
 
@@ -218,9 +217,9 @@ export function VendorProductTagModal({
 
     return available.filter(row => {
 
-      const matchCat = catFilter === 'All' || row.category === catFilter;
+      const matchCat = catFilter === 'All' || labelsEqual(row.category, catFilter);
 
-      const matchGrp = grpFilter === 'All' || row.group === grpFilter;
+      const matchGrp = grpFilter === 'All' || labelsEqual(row.group, grpFilter);
 
       const matchQ = !q
 
@@ -242,7 +241,6 @@ export function VendorProductTagModal({
 
   const componentDetail = selectedRow ? resolveDetailConfigForRow(selectedRow) : null;
   const altRecipeUnits = componentDetail?.altRecipeUnits ?? [];
-  const altInventoryUnits = componentDetail?.altInventoryUnits ?? [];
 
 
 
@@ -288,8 +286,6 @@ export function VendorProductTagModal({
 
     const recipe = fromApiUom(row.recipeUOM);
 
-    const inventory = fromApiUom(row.inventoryUOM);
-
     const detail = row.detailConfig;
 
     const choices = getComponentUomChoices(recipe, detail?.altRecipeUnits ?? []);
@@ -301,8 +297,6 @@ export function VendorProductTagModal({
     setSelectedRow(row);
 
     setRecipeUnit(recipe);
-
-    setInventoryUnit(inventory);
 
     setComponentUom(uom);
 
@@ -382,7 +376,7 @@ export function VendorProductTagModal({
 
       recipeUnit,
 
-      inventoryUnit,
+      inventoryUnit: recipeUnit,
 
       componentUom: componentUom || recipeUnit,
 
@@ -447,7 +441,7 @@ export function VendorProductTagModal({
 
       <div
 
-        className={`${MODAL_SHELL_CLS} w-full max-w-6xl bg-card border border-border rounded-lg shadow-xl max-h-[90vh] flex flex-col`}
+        className={`${MODAL_SHELL_CLS} w-full max-w-6xl bg-card border border-border rounded-lg shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col`}
 
         onClick={e => e.stopPropagation()}
 
@@ -465,7 +459,7 @@ export function VendorProductTagModal({
 
             <h3 className="text-sm font-semibold text-foreground mt-0.5">{product.productName}</h3>
 
-            <p className="text-xs text-muted-foreground mt-0.5 font-sans">{product.id} · {rm(product.deliveryPrice)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 font-sans">{product.id} · {deliveryPrice(product.deliveryPrice)}</p>
 
           </div>
 
@@ -497,9 +491,16 @@ export function VendorProductTagModal({
 
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Category</label>
 
-                  <select className={selectCls} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                  <select
+                    className={selectCls}
+                    value={catFilter}
+                    onChange={e => {
+                      setCatFilter(e.target.value);
+                      setGrpFilter('All');
+                    }}
+                  >
 
-                    {getSiCategoryFilterOptions().map(c => <option key={c}>{c}</option>)}
+                    {getSiCategoryFilterOptions(available.map(row => row.category)).map(c => <option key={c}>{c}</option>)}
 
                   </select>
 
@@ -511,7 +512,13 @@ export function VendorProductTagModal({
 
                   <select className={selectCls} value={grpFilter} onChange={e => setGrpFilter(e.target.value)}>
 
-                    {getSiGroupFilterOptions().map(g => <option key={g}>{g}</option>)}
+                    {getSiGroupFilterOptions(
+                      (catFilter === 'All'
+                        ? available
+                        : available.filter(row => labelsEqual(row.category, catFilter))
+                      ).map(row => row.group),
+                      catFilter,
+                    ).map(g => <option key={g}>{g}</option>)}
 
                   </select>
 
@@ -577,7 +584,7 @@ export function VendorProductTagModal({
 
                         <p className="text-xs text-muted-foreground font-sans mt-0.5">
 
-                          {row.componentId} · {row.category} · {row.group} · {fromApiUom(row.recipeUOM)} / {fromApiUom(row.inventoryUOM)}
+                          {row.componentId} · {row.category} · {row.group} · {fromApiUom(row.recipeUOM)}
 
                         </p>
 
@@ -673,25 +680,11 @@ export function VendorProductTagModal({
 
                 </Field>
 
-                <Field label="Principal Inventory UOM">
-
-                  <select className={selectCls} value={inventoryUnit} onChange={e => setInventoryUnit(e.target.value)}>
-
-                    {RECIPE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-
-                  </select>
-
-                </Field>
-
               </div>
 
               <ComponentUomSummary
                 recipeUnit={recipeUnit}
-                inventoryUnit={inventoryUnit}
                 altRecipeUnits={altRecipeUnits}
-                altInventoryUnits={altInventoryUnits}
-                convertFromInventoryQty={componentDetail?.convertFromInventoryQty}
-                convertToRecipeQty={componentDetail?.convertToRecipeQty}
               />
 
 

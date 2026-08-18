@@ -1,6 +1,8 @@
 using Bisync.Api.Data;
+using Bisync.Api.Serialization;
 using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using System.Text.Json;
@@ -28,7 +30,13 @@ static string ResolveOperationalConnection(IServiceProvider sp)
         || path.StartsWith("/api/companies", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/locations", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/users", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/api/access-control", StringComparison.OrdinalIgnoreCase))
+        || path.StartsWith("/api/access-control", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/platform-price-display", StringComparison.OrdinalIgnoreCase)
+        // Floor plan layout is control-plane (shared), like locations registry.
+        || path.StartsWith("/api/pos/floor-plan", StringComparison.OrdinalIgnoreCase)
+        // Customer waitlist / QR order must hit the shared control-plane DB.
+        || path.StartsWith("/api/pos/waitlist", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/pos/qr-order", StringComparison.OrdinalIgnoreCase))
         return resolver.DefaultOperationalConnection;
 
     int? companyId = null;
@@ -67,6 +75,12 @@ static string ResolveAuditConnection(IServiceProvider sp)
         config["DB_PASSWORD"]);
 }
 
+static string ResolveTagSuggestionConnection(IServiceProvider sp)
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    return TagSuggestionStartup.ResolveConnection(config);
+}
+
 builder.Services.Configure<TenancyOptions>(builder.Configuration.GetSection(TenancyOptions.SectionName));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
@@ -83,6 +97,11 @@ builder.Services.AddHttpClient<PublicHolidayCatalogService>();
 builder.Services.AddScoped<PublicHolidaySyncService>();
 builder.Services.AddScoped<PayrollCalculationService>();
 builder.Services.AddScoped<IncomeTaxService>();
+builder.Services.AddScoped<LedgerPostingService>();
+builder.Services.AddScoped<MalaysiaAccountingPackService>();
+builder.Services.AddScoped<AccountingSubledgerService>();
+builder.Services.AddScoped<AccountingInternalBooksService>();
+builder.Services.AddScoped<AccountingBridgeService>();
 builder.Services.AddScoped<ReplacementPublicHolidayService>();
 builder.Services.AddScoped<ComponentFifoCostingService>();
 builder.Services.AddScoped<FifoBatchIssueService>();
@@ -91,18 +110,24 @@ builder.Services.AddScoped<ComponentStockService>();
 builder.Services.AddScoped<SplitUseService>();
 builder.Services.AddScoped<ProductSaleInventoryService>();
 builder.Services.AddScoped<ProductionInventoryService>();
-builder.Services.AddScoped<StockCardService>();
-builder.Services.AddScoped<IngredientUsageMetricsService>();
+    builder.Services.AddScoped<StockCardService>();
+    builder.Services.AddScoped<ReceivedPurchaseStockHealer>();
+    builder.Services.AddScoped<IngredientUsageMetricsService>();
 builder.Services.AddScoped<InventoryAlertComputationService>();
 builder.Services.AddScoped<CogsAuditService>();
 builder.Services.AddSingleton<SystemCogsAuditHistoryStore>();
 builder.Services.AddScoped<SystemCogsAuditSnapshotService>();
 builder.Services.AddScoped<SalesDataService>();
+builder.Services.AddScoped<ReportsService>();
 builder.Services.AddScoped<B2bSalesOrderService>();
+builder.Services.AddScoped<PurchaseOrderAcceptExpiryService>();
 builder.Services.AddScoped<InventoryCountService>();
 builder.Services.AddScoped<WastageService>();
 builder.Services.AddScoped<TransferService>();
+builder.Services.AddScoped<CreditNoteService>();
+builder.Services.AddScoped<CentralStoreService>();
 builder.Services.AddScoped<LocationPartitionService>();
+builder.Services.AddScoped<LocationCatalogInheritanceService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
 builder.Services.AddScoped<TenantRollupService>();
 builder.Services.AddScoped<LocationSubscriptionService>();
@@ -126,6 +151,7 @@ builder.Services.Configure<NutritionLibraryOptions>(
 builder.Services.AddHttpClient("nutrition-library");
 builder.Services.AddScoped<NutritionLibrarySyncService>();
 builder.Services.AddScoped<ProductNutrientEstimateService>();
+builder.Services.AddHostedService<DeferredDbStartupHostedService>();
 builder.Services.AddHostedService<NutritionLibrarySyncHostedService>();
 builder.Services.AddDbContext<StockCardArchiveDbContext>((sp, options) =>
     options.UseNpgsql(ResolveArchiveConnection(sp)));
@@ -135,8 +161,13 @@ builder.Services.AddDbContext<SystemAuditDbContext>((sp, options) =>
     options.UseNpgsql(ResolveAuditConnection(sp)));
 builder.Services.AddScoped<ISystemAuditService, SystemAuditService>();
 builder.Services.AddHostedService<SystemAuditArchiveHostedService>();
+builder.Services.AddDbContext<TagSuggestionDbContext>((sp, options) =>
+    options.UseNpgsql(ResolveTagSuggestionConnection(sp)));
+builder.Services.AddScoped<ComponentVendorTagSuggestionService>();
+builder.Services.AddHostedService<ComponentVendorTagSuggestionHostedService>();
 builder.Services.AddHostedService<InventoryCountAutoConfirmHostedService>();
 builder.Services.AddHostedService<SalesOrderLockExpiryHostedService>();
+builder.Services.AddHostedService<PurchaseOrderAcceptExpiryHostedService>();
 
 builder.Services.AddCors(options =>
 {
@@ -161,43 +192,16 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new NullableDateOnlyJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new DateOnlyJsonConverter());
     });
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    // Startup always patches the shared control-plane database.
-    var resolver = scope.ServiceProvider.GetRequiredService<ITenantConnectionResolver>();
-    var controlOptions = new DbContextOptionsBuilder<BisyncDbContext>()
-        .UseNpgsql(resolver.DefaultOperationalConnection)
-        .Options;
-    await using var db = new BisyncDbContext(controlOptions);
-    // Create missing DBs with a clear error before EF EnsureCreated tries CREATE DATABASE.
-    await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultOperationalConnection);
-    await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultArchiveConnection);
-    await db.Database.EnsureCreatedAsync();
-    await SchemaPatcher.ApplyAsync(db);
-    await RevMgmtStartup.InitializeAsync(db);
-    await DataSeeder.SeedAsync(db);
-    await ConfigurationSeeder.SeedAsync(db);
-    await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
-    await ConfigurationSeeder.PatchSuperAdminPasswordAsync(db);
-    await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
-    await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
-    await SchemaPatcher.EnsureTenantRegistryAsync(db);
-    await scope.ServiceProvider.GetRequiredService<LocationSubscriptionService>().EnsureSchemaAsync();
-    await HrStartup.InitializeAsync(db);
-    await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
-    await SystemAuditStartup.InitializeAsync(scope.ServiceProvider);
-    await scope.ServiceProvider.GetRequiredService<DevConsoleAuthService>().EnsureRootUserAsync();
-    await scope.ServiceProvider.GetRequiredService<SalesModuleClientUpdateService>().SeedBundledIfEmptyAsync();
-
-    var partitions = scope.ServiceProvider.GetRequiredService<LocationPartitionService>();
-    await partitions.EnsureLocationListPartitionsAsync();
-    await partitions.EnsurePartitionsForAllLocationsAsync();
-}
+// Do NOT block PORT bind on Cloud SQL bootstrap. EnsureCreated/SchemaPatcher
+// run in DeferredDbStartupHostedService (with retries) after Kestrel listens,
+// so Cloud Run startup probes succeed even when the socket is slow to appear.
 
 if (app.Environment.IsDevelopment())
 {
@@ -219,16 +223,27 @@ else
 
     // Never cache the SPA shell — stale index.html keeps old JS without Dev Console routing.
     app.UseDefaultFiles();
+    var staticContentTypes = new FileExtensionContentTypeProvider();
+    // Keep large installers unmapped so StaticFiles skips them; MapGet streams them.
+    staticContentTypes.Mappings.Remove(".exe");
+    staticContentTypes.Mappings.Remove(".appimage");
     app.UseStaticFiles(new StaticFileOptions
     {
+        ContentTypeProvider = staticContentTypes,
         OnPrepareResponse = ctx =>
         {
             var path = ctx.File.Name;
+            // Service workers / web manifests must revalidate or browsers keep a year-old SW
+            // (immutable) and portal modules like Human Resources fail to load new chunks.
             if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase)
                 || path.Equals("favicon.svg", StringComparison.OrdinalIgnoreCase)
-                || path.Equals("favicon.ico", StringComparison.OrdinalIgnoreCase))
+                || path.Equals("favicon.ico", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("sw.js", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("manifest.webmanifest", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("manifest.json", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("workbox-", StringComparison.OrdinalIgnoreCase))
             {
-                // Shell + favicon must not stick after a mark change or stale image rollback.
+                // Shell + favicon + SW must not stick after a mark change or stale image rollback.
                 ctx.Context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
                 ctx.Context.Response.Headers.Pragma = "no-cache";
                 ctx.Context.Response.Headers.Expires = "0";
@@ -238,6 +253,14 @@ else
             {
                 // Hashed Vite assets are immutable.
                 ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            }
+            else if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".dmg", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".deb", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".command", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Context.Response.Headers.CacheControl = "public, max-age=3600";
             }
         },
     });
@@ -307,16 +330,74 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
+        var logger = context.RequestServices.GetService<ILoggerFactory>()
+            ?.CreateLogger("UnhandledApiException");
+        logger?.LogError(ex, "Unhandled error on {Method} {Path}", context.Request.Method, context.Request.Path);
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json";
-        var message = app.Environment.IsDevelopment()
+        var debug = context.Request.Headers.TryGetValue("X-Bisync-Debug", out var debugHeader)
+            && string.Equals(debugHeader.ToString(), "1", StringComparison.Ordinal);
+        var message = app.Environment.IsDevelopment() || debug
             ? ex.Message
             : "An unexpected error occurred. Please try again.";
-        await context.Response.WriteAsJsonAsync(new { message });
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message,
+            detail = debug ? ex.ToString() : null,
+        });
     }
 });
 
 app.MapControllers();
+
+// Stream large desktop installers (Home page public downloads). Registered as an
+// endpoint so StaticFiles does not short-circuit ~80MB .exe / .AppImage responses.
+app.MapGet("/downloads/bisync-desktop/{*filePath}", async (string filePath, IWebHostEnvironment env, HttpContext http) =>
+{
+    var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
+    var root = Path.GetFullPath(Path.Combine(webRoot, "downloads", "bisync-desktop"));
+    var safeRelative = (filePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+    if (string.IsNullOrWhiteSpace(safeRelative)
+        || safeRelative.Contains("..", StringComparison.Ordinal)
+        || Path.IsPathRooted(safeRelative))
+    {
+        return Results.NotFound();
+    }
+
+    var fullPath = Path.GetFullPath(Path.Combine(root, safeRelative));
+    if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        && !string.Equals(fullPath, root, StringComparison.Ordinal))
+    {
+        return Results.NotFound();
+    }
+
+    if (!System.IO.File.Exists(fullPath))
+        return Results.NotFound();
+
+    var downloadName = Path.GetFileName(fullPath);
+    var contentType = downloadName.EndsWith(".appimage", StringComparison.OrdinalIgnoreCase)
+        ? "application/octet-stream"
+        : downloadName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? "application/vnd.microsoft.portable-executable"
+            : downloadName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                ? "application/zip"
+                : "application/octet-stream";
+
+    var stream = new FileStream(
+        fullPath,
+        FileMode.Open,
+        FileAccess.Read,
+        FileShare.Read,
+        bufferSize: 64 * 1024,
+        options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    http.Response.Headers.CacheControl = "public, max-age=3600";
+    return Results.File(
+        stream,
+        contentType: contentType,
+        fileDownloadName: downloadName,
+        enableRangeProcessing: true);
+});
 
 if (app.Environment.IsDevelopment())
 {

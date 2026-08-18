@@ -6,6 +6,40 @@ namespace Bisync.Api.Data;
 /// <summary>PostgreSQL schema helpers shared by startup patchers.</summary>
 public static class DatabaseSchemaHelper
 {
+    public static async Task<bool> TableExistsAsync(DbContext db, string table)
+    {
+        var connection = db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync();
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                      AND lower(table_name) = lower(@table)
+                )
+                """;
+
+            var tableParam = command.CreateParameter();
+            tableParam.ParameterName = "@table";
+            tableParam.Value = table;
+            command.Parameters.Add(tableParam);
+
+            var result = await command.ExecuteScalarAsync();
+            return result is bool exists && exists;
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
+    }
+
     public static async Task<bool> ColumnExistsAsync(DbContext db, string table, string column)
     {
         var connection = db.Database.GetDbConnection();

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accounting Platform — Developer Documentation</title>
+<style>
+:root{
+  --bg:#fbfbfa; --panel:#fff; --ink:#1f1f1d; --muted:#6b6b66; --line:#e4e4df;
+  --a1:#2f6f6a; --a2:#8a5a2b; --a3:#4a5a86; --a4:#7a4060; --warn:#9a5b12; --ok:#2f6f4a;
+  --chip:#f2f2ee;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#141414;--panel:#1c1c1b;--ink:#eceae5;--muted:#9b9b94;--line:#2e2e2c;
+        --a1:#6fb3ac;--a2:#c99a5e;--a3:#8b9bd0;--a4:#c58aa8;--warn:#d9a04a;--ok:#7ec498;--chip:#252523;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+ font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:29px;letter-spacing:-.02em;margin:0 0 6px;line-height:1.2}
+.sub{color:var(--muted);margin:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 0}
+.chip{background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--muted)}
+.chip b{color:var(--ink);font-weight:600}
+nav{display:flex;gap:4px;margin:32px 0 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+nav button{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);
+ font:inherit;font-size:14px;padding:10px 14px;cursor:pointer;margin-bottom:-1px}
+nav button:hover{color:var(--ink)}
+nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--a1);font-weight:600}
+section[hidden]{display:none}
+h2{font-size:18px;margin:34px 0 10px;letter-spacing:-.01em}
+h2:first-child{margin-top:0}
+p{margin:0 0 14px;max-width:76ch}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:14px 0}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+tbody tr:last-child td{border-bottom:none}
+code{font:12px ui-monospace,Menlo,monospace;background:var(--chip);padding:1.5px 5px;border-radius:4px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
+.kv{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.kv:last-child{border-bottom:none}
+.kv .n{color:var(--a1);font-weight:700;min-width:20px;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:5px;font-weight:600;white-space:nowrap}
+.hi{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.md{background:color-mix(in srgb,var(--a3) 18%,transparent);color:var(--a3)}
+.lo{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.doc{display:flex;gap:12px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}
+.doc:last-child{border-bottom:none}
+.doc .num{font:700 13px ui-monospace,monospace;color:var(--muted);min-width:26px}
+.doc .t{font-weight:600;font-size:14px}
+.doc .d{color:var(--muted);font-size:13px}
+svg{display:block;width:100%;height:auto}
+footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Multi-Tenant SaaS Accounting Platform</h1>
+<p class="sub">Developer documentation · 17 August 2026 · Ready to develop</p>
+<div class="chips">
+  <span class="chip"><b>Markets</b> MY · SG · AU · ID · TH · US</span>
+  <span class="chip"><b>Phase 0</b> shipped, 72 tests green</span>
+  <span class="chip"><b>Stack</b> Django 6.1 · PostgreSQL 18</span>
+  <span class="chip"><b>Tenancy</b> Shared DB + RLS</span>
+</div>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-t="markets">Markets</button>
+  <button role="tab" aria-selected="false" data-t="plan">Plan</button>
+  <button role="tab" aria-selected="false" data-t="framework">Framework</button>
+  <button role="tab" aria-selected="false" data-t="docs">Documents</button>
+</nav>
+
+<!-- ═══════ MARKETS ═══════ -->
+<section id="markets">
+  <h2>Six markets, six different shapes</h2>
+  <p>The table below is the argument for the whole localisation-pack design. No two columns agree on e-invoicing model, tax recoverability, who assigns the document number, or whether records may leave the country.</p>
+  <div class="card" style="overflow-x:auto">
+  <table>
+    <thead><tr><th></th><th>Malaysia</th><th>Singapore</th><th>Australia</th><th>Indonesia</th><th>Thailand</th><th>United States</th></tr></thead>
+    <tbody>
+      <tr><th>E-invoicing</th><td><b>Clearance</b><br>MyInvois</td><td>Peppol<br><b>5-corner</b></td><td>Peppol,<br>voluntary</td><td><b>Clearance</b><br>Coretax</td><td>Voluntary<br>ETDA</td><td>None</td></tr>
+      <tr><th>Mandate live?</th><td>Yes, ≥RM1m</td><td>Phasing → 2031</td><td>B2G only</td><td>Yes</td><td>No</td><td>No</td></tr>
+      <tr><th>Indirect tax</th><td>SST 5/10%<br>+ 6/8%</td><td>GST 9%</td><td>GST 10%</td><td>PPN 12%<br>(11% eff.)</td><td>VAT 7%</td><td>~13,000<br>jurisdictions</td></tr>
+      <tr><th>Input credit</th><td><span class="tag hi">None</span></td><td>Full</td><td>Full</td><td>Full</td><td>Full</td><td>n/a</td></tr>
+      <tr><th>Doc number</th><td>Yours</td><td>Yours</td><td>Yours</td><td><span class="tag hi">DJP assigns</span></td><td>Yours</td><td>Yours</td></tr>
+      <tr><th>Gapless</th><td>Practical</td><td>No</td><td>No</td><td>n/a</td><td>Practical</td><td><b>No</b></td></tr>
+      <tr><th>Tax point</th><td>Invoice</td><td>Invoice</td><td>Invoice or cash</td><td>Delivery</td><td><span class="tag hi">Payment (svcs)</span></td><td>Invoice</td></tr>
+      <tr><th>B2B withholding</th><td>Non-res</td><td>Non-res</td><td>No-ABN 47%</td><td><span class="tag md">Routine</span></td><td><span class="tag md">Routine</span></td><td>Backup only</td></tr>
+      <tr><th>Records in-country</th><td><span class="tag hi">Yes, s82(8)</span></td><td>No</td><td>No</td><td>Verify</td><td>Verify</td><td>No</td></tr>
+      <tr><th>Language</th><td>EN / BM</td><td>EN</td><td>EN</td><td><b>Bahasa</b></td><td><b>Thai</b></td><td>EN</td></tr>
+      <tr><th>Books currency</th><td>MYR</td><td>Any</td><td>AUD</td><td><b>IDR</b></td><td><b>THB</b></td><td>USD</td></tr>
+      <tr><th>Annual e-filing</th><td>MBRS 2.0</td><td>BizFinx 4.0</td><td>ASIC (large)</td><td>SPT Tahunan</td><td>DBD XBRL</td><td>IRS forms</td></tr>
+      <tr><th>Pack estimate</th><td>7 wks</td><td>5 wks</td><td>6 wks</td><td><b>9 wks</b></td><td>8 wks</td><td>5 wks</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>The traps, one per market</h2>
+  <div class="grid">
+    <div class="card"><b>Malaysia</b> — SST has <b>no input tax credit</b>. Purchase tax is a cost, not a receivable. And ITA s82(8) requires records kept in Malaysia, which is an infrastructure decision, not a config flag.</div>
+    <div class="card"><b>Singapore</b> — "Quarterly" is not the calendar quarter. IRAS assigns one of three cycles at registration. Assume calendar and you produce wrong periods for two-thirds of customers.</div>
+    <div class="card"><b>Australia</b> — <code>N-T</code> and <code>FRE</code> are not the same code. Map wages to "GST-free" and an Australian bookkeeper will reject the product in the demo. Also: BAS truncates cents, never rounds.</div>
+    <div class="card"><b>Indonesia</b> — the tax invoice number is assigned by DJP <b>after</b> you submit, and the faktur must print <b>12%</b> with an 11/12 base. A product printing "PPN 11%" is non-compliant.</div>
+    <div class="card"><b>Thailand</b> — the XML is <b>CII, not UBL</b> (a second serializer), and the VAT tax point for services is <b>payment receipt</b>. Without undue-VAT accounts you overstate the liability every month.</div>
+    <div class="card"><b>United States</b> — nexus monitoring, not rate lookup, is where bugs create customer liability. Buy the rates. And 1099 thresholds just changed: NEC <b>$2,000</b>, 1099-K back to <b>$20,000 + 200</b>.</div>
+  </div>
+</section>
+
+<!-- ═══════ PLAN ═══════ -->
+<section id="plan" hidden>
+  <h2>Sequence</h2>
+  <p>Malaysia first because it exercises every hard part of the framework. Singapore second because it is the architectural opposite — that pairing is what proves the abstraction rather than merely accommodating one regime. <b>Do not start markets 4–6 until 1–3 are live with paying customers.</b></p>
+
+  <div class="card">
+  <svg viewBox="0 0 1000 250" role="img" aria-label="Delivery timeline">
+    <style>
+      .b{rx:7;fill-opacity:.16;stroke-width:1.5}
+      .t{font:600 12.5px ui-sans-serif,sans-serif;fill:var(--ink)}
+      .d{font:10.5px ui-sans-serif,sans-serif;fill:var(--muted)}
+      .ax{stroke:var(--line);stroke-width:1}
+      .at{font:10.5px ui-sans-serif,sans-serif;fill:var(--muted)}
+    </style>
+    <line class="ax" x1="20" y1="212" x2="980" y2="212"/>
+    <text class="at" x="20" y="230">Q4 2026</text>
+    <text class="at" x="270" y="230">Q1 2027</text>
+    <text class="at" x="520" y="230">Q2 2027</text>
+    <text class="at" x="770" y="230">Q3 2027</text>
+
+    <rect class="b" x="20" y="14" width="245" height="44" style="fill:var(--a1);stroke:var(--a1)"/>
+    <text class="t" x="34" y="34">Phase 1 · Core accounting</text>
+    <text class="d" x="34" y="50">SLA · AR · AP · banking · reports · app shell</text>
+
+    <rect class="b" x="272" y="66" width="245" height="44" style="fill:var(--a2);stroke:var(--a2)"/>
+    <text class="t" x="286" y="86">Phase 2a · MY · SG · AU</text>
+    <text class="d" x="286" y="102">framework + 3 packs + importers</text>
+
+    <rect class="b" x="524" y="118" width="245" height="44" style="fill:var(--a4);stroke:var(--a4)"/>
+    <text class="t" x="538" y="138">Phase 2b · TH · ID · US</text>
+    <text class="d" x="538" y="154">only after 1–3 are live</text>
+
+    <rect class="b" x="640" y="14" width="340" height="44" style="fill:var(--a3);stroke:var(--a3)"/>
+    <text class="t" x="654" y="34">Phase 3 · Depth</text>
+    <text class="d" x="654" y="50">fixed assets · consolidation · revrec · analytics</text>
+
+    <rect class="b" x="20" y="170" width="960" height="30" style="fill:var(--muted);stroke:var(--muted);fill-opacity:.08"/>
+    <text class="d" x="34" y="190">SOC 2 evidence collection — continuous from Phase 1 week 1 · ATO DSP accreditation — 6–12 months calendar, start Phase 2 week 1</text>
+  </svg>
+  </div>
+
+  <h2>Milestones</h2>
+  <table>
+    <thead><tr><th style="width:120px">When</th><th>Milestone</th></tr></thead>
+    <tbody>
+      <tr><td>End Q4 2026</td><td>A real business can keep its books, one country, no manual workarounds</td></tr>
+      <tr><td>~Feb 2027</td><td>Malaysia live — first paying customer on a clearance regime</td></tr>
+      <tr><td>~Apr 2027</td><td>Singapore + Australia live; framework proven across three regimes</td></tr>
+      <tr><td>~Jul 2027</td><td>Thailand, Indonesia, US live — six markets</td></tr>
+      <tr><td>~Q3 2027</td><td>Consolidation shipped; SOC 2 Type II window closes</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Start these before any code</h2>
+  <div class="card">
+    <div class="kv"><span class="n">1</span><span><b>ATO DSP accreditation</b> — 6–12 months of pure calendar. Gates all Australian lodgment and costs zero engineering. The single longest lead time in the programme.</span></div>
+    <div class="kv"><span class="n">2</span><span><b>Malaysia s82A legal advice</b> — what satisfies "records kept in Malaysia" for cloud-hosted books. Gating for the whole market.</span></div>
+    <div class="kv"><span class="n">3</span><span><b>MyInvois intermediary registration</b> — customers authorise your platform in the LHDN portal; onboarding UX depends on it.</span></div>
+    <div class="kv"><span class="n">4</span><span><b>SOC 2 evidence collection</b> — retrofitting a year of evidence is impossible, and US buyers ask before signing.</span></div>
+    <div class="kv"><span class="n">5</span><span><b>A qualified accountant per market</b> — one per pack, before that pack starts. Their sign-off is recorded against the pack version.</span></div>
+  </div>
+
+  <h2>Risks specific to this scope</h2>
+  <table>
+    <thead><tr><th style="width:44px">#</th><th>Risk</th><th style="width:70px">Likely</th><th style="width:70px">Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td>R20</td><td>Six markets in one year dilutes all six</td><td><span class="tag hi">High</span></td><td><span class="tag hi">High</span></td><td>Hard gate: no market 4–6 until 1–3 have paying customers</td></tr>
+      <tr><td>R26</td><td>Migration importers deprioritised as "not product"</td><td><span class="tag hi">High</span></td><td><span class="tag hi">High</span></td><td>They close deals in all six markets. Fund the epic explicitly</td></tr>
+      <tr><td>R25</td><td>Withholding treated as an ID/TH edge case</td><td><span class="tag md">Med</span></td><td><span class="tag hi">High</span></td><td>Built once in core AR/AP, not in the packs</td></tr>
+      <tr><td>R22</td><td>Indonesian Coretax API instability</td><td><span class="tag hi">High</span></td><td><span class="tag md">Med</span></td><td>Portal fallback; host-to-host is not the only route</td></tr>
+      <tr><td>R27</td><td>Pack §9 open items never resolved</td><td><span class="tag hi">High</span></td><td><span class="tag md">Med</span></td><td>Each is a ticket with a named owner before its pack starts</td></tr>
+      <tr><td>R23</td><td>Thai CII serializer underestimated</td><td><span class="tag md">Med</span></td><td><span class="tag md">Med</span></td><td>Spike it before committing the TH estimate</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════ FRAMEWORK ═══════ -->
+<section id="framework" hidden>
+  <h2>Eleven capabilities, zero conditionals</h2>
+  <p>A pack is a versioned, effective-dated bundle of data and adapters for one jurisdiction, loaded <b>per legal entity</b> — a tenant with a Malaysian Sdn Bhd and a Singaporean Pte Ltd runs two packs at once without interference.</p>
+  <table>
+    <thead><tr><th style="width:210px">Capability</th><th>Question it answers</th></tr></thead>
+    <tbody>
+      <tr><td><code>chart_of_accounts</code></td><td>Is a statutory chart prescribed, and how does the internal chart map to it?</td></tr>
+      <tr><td><code>tax_determination</code></td><td>Which tax code, rate and base apply to this transaction?</td></tr>
+      <tr><td><code>tax_point</code></td><td><i>When</i> does the liability arise — invoice, payment, delivery?</td></tr>
+      <tr><td><code>rounding_policy</code></td><td>Line, tax-category or invoice level? Which mode? Which unit?</td></tr>
+      <tr><td><code>numbering_rules</code></td><td>Gapless? Chronological? Externally assigned? Format? Reset cadence?</td></tr>
+      <tr><td><code>document_content</code></td><td>Which fields are mandatory, in which language?</td></tr>
+      <tr><td><code>transmission</code></td><td>Clearance, Peppol, e-mail, or nothing?</td></tr>
+      <tr><td><code>withholding</code></td><td>Which payments withhold, at what rate, with what certificate?</td></tr>
+      <tr><td><code>returns</code></td><td>Which periodic returns exist, and how do they aggregate?</td></tr>
+      <tr><td><code>statutory_exports</code></td><td>Annual filing formats — XBRL taxonomies, return-line maps</td></tr>
+      <tr><td><code>archive_policy</code></td><td>Retention years, residency, which artefact must be kept</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Returns are YAML, not code</h2>
+  <p>Every return in all six markets is an aggregation over tagged transactions. Every tax code carries its return-box tags, so adding a country's return is a data file rather than a sprint.</p>
+  <div class="card" style="font:12px ui-monospace,Menlo,monospace;white-space:pre;overflow-x:auto">boxes:
+  - { id: "1", label: "Standard-rated supplies", source: sum(net) where tax_code.group == "SR" }
+  - { id: "6", label: "Output tax due",          source: balance("GST Output Tax") }
+  - { id: "8", label: "Net GST",                 source: box(6) - box(7), posts_to: "GST Control" }</div>
+
+  <h2>Five gates — a pack is not done until all pass</h2>
+  <table>
+    <thead><tr><th style="width:170px">Gate</th><th>Checks</th></tr></thead>
+    <tbody>
+      <tr><td><b>G1</b> Golden documents</td><td>Fixtures render byte-comparable to expected output, sourced from the authority's own samples where they exist</td></tr>
+      <tr><td><b>G2</b> Schema</td><td>Output validates against the official XSD/schematron — vendored and versioned, never fetched at runtime</td></tr>
+      <tr><td><b>G3</b> Sandbox round-trip</td><td>Submit to the authority's sandbox; assert the expected acceptance or error code. Nightly, not per-PR</td></tr>
+      <tr><td><b>G4</b> Return reconciliation</td><td>Every return box equals an independently computed value from <code>journal_line</code></td></tr>
+      <tr><td><b>G5</b> Determination coverage</td><td>Every tax code exercised, every rule reachable. Uncovered rules fail the build</td></tr>
+    </tbody>
+  </table>
+  <p style="color:var(--muted);font-size:13.5px">Plus one cross-cutting gate: no pack may import from <code>ledger.*</code> internals. Enforced with an import-linter contract in CI.</p>
+</section>
+
+<!-- ═══════ DOCS ═══════ -->
+<section id="docs" hidden>
+  <h2>The set</h2>
+  <div class="card">
+    <div class="doc"><span class="num">01</span><span><span class="t">Phase 1: Core Accounting</span><br><span class="d">SLA rule engine, AR, AP, banking, reporting — models, APIs, acceptance criteria</span></span></div>
+    <div class="doc"><span class="num">02</span><span><span class="t">Localisation Pack Framework</span> <span class="tag md">read first</span><br><span class="d">Pack interface, capability matrix, transmission adapters, five test gates</span></span></div>
+    <div class="doc"><span class="num">03</span><span><span class="t">Pack: Malaysia</span><br><span class="d">MyInvois clearance, self-billed, 72-hour window, SST without input credit, s82A</span></span></div>
+    <div class="doc"><span class="num">04</span><span><span class="t">Pack: Singapore</span><br><span class="d">InvoiceNow/PINT-SG, IRAS C5, GST F5 box map, BizFinx 4.0</span></span></div>
+    <div class="doc"><span class="num">05</span><span><span class="t">Pack: Australia</span><br><span class="d">Full BAS label map, PAYG, Payday Super, ABA files, TPAR, DSP accreditation</span></span></div>
+    <div class="doc"><span class="num">06</span><span><span class="t">Pack: Indonesia</span><br><span class="d">Coretax state machine, 17-digit NSFP, PPN 12%/11-12ths, PPh service list, bukti potong</span></span></div>
+    <div class="doc"><span class="num">07</span><span><span class="t">Pack: Thailand</span><br><span class="d">CII serializer, payment-based tax point, PND forms, DBD e-Filing, Thai localisation</span></span></div>
+    <div class="doc"><span class="num">08</span><span><span class="t">Pack: United States</span><br><span class="d">Nexus monitoring, SaaS taxability incl. California 2027, 1099 at new thresholds</span></span></div>
+    <div class="doc"><span class="num">09</span><span><span class="t">Phase 3: Depth and Scale</span><br><span class="d">Fixed assets, revrec, inventory, consolidation, analytics, tenant promotion, SOC 2</span></span></div>
+    <div class="doc"><span class="num">10</span><span><span class="t">Delivery Backlog</span><br><span class="d">16 epics, stories with estimates, timeline, critical path, risks</span></span></div>
+    <div class="doc"><span class="num">A</span><span><span class="t">appendix/</span><br><span class="d">Raw research briefs, ~38,000 words with a source URL for every non-obvious claim</span></span></div>
+  </div>
+
+  <h2>Open items that gate estimates</h2>
+  <p>Every country document ends with a §9 list of what could not be verified against a primary source, or where sources conflicted. These are not padding — four of them carry ±2 weeks of estimate risk each.</p>
+  <div class="card">
+    <div class="kv"><span class="n">1</span><span><b>Malaysia</b> — Service Tax Regulations 2018 First Schedule: the Group A–L list and per-group thresholds. Blocks the tax-code taxonomy.</span></div>
+    <div class="kv"><span class="n">2</span><span><b>Indonesia</b> — PMK 141/PMK.03/2015 annex: the enumerated PPh 23 service list. Blocks withholding determination.</span></div>
+    <div class="kv"><span class="n">3</span><span><b>Indonesia</b> — e-Faktur Desktop / host-to-host status in 2026 after the Coretax rollout. The single most consequential unknown in the set.</span></div>
+    <div class="kv"><span class="n">4</span><span><b>Thailand</b> — DBD XBRL taxonomy version and submission mechanism (Excel template vs raw XBRL).</span></div>
+  </div>
+  <p style="color:var(--muted);font-size:13.5px">This set was fact-checked against primary sources after drafting, and <b>ten material errors were corrected</b> — a Malaysian service-tax group that does not exist, two thresholds that had doubled, a Singaporean withholding rate that would have under-withheld on every non-resident director fee, and an Indonesian MSME regime rewritten by PP 20/2026 in April. Four open items were closed in the same pass.</p>
+  <p style="color:var(--muted);font-size:13.5px">Compliance facts decay. Re-verify each pack's rates and dates at every version bump, and record the qualified accountant's sign-off against that version — it is what you show an auditor and what protects you when a rule changes.</p>
+</section>
+
+<footer>
+Prepared 17 August 2026. Regulatory positions reflect sources current at that date and several carry live execution risk. Verify against primary sources before making commercial commitments or filing on a customer's behalf.
+</footer>
+
+</div>
+<script>
+const tabs=[...document.querySelectorAll('nav button')];
+tabs.forEach(b=>b.onclick=()=>{
+  tabs.forEach(x=>x.setAttribute('aria-selected',x===b));
+  document.querySelectorAll('section').forEach(s=>s.hidden = s.id!==b.dataset.t);
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+</script>
+</body></html>

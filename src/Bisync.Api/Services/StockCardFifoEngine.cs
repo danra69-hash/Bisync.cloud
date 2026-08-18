@@ -34,9 +34,9 @@ public static class StockCardFifoEngine
 
         var remaining = quantity;
         var totalCost = 0m;
-        var parts = new List<(decimal Qty, decimal UnitPrice, bool IsShortage)>();
+        var parts = new List<(decimal Qty, decimal UnitPrice, int SourceId, int InboundSequenceNo, bool IsShortage)>();
 
-        foreach (var layer in layers.OrderBy(l => l.ReceivedAt).ThenBy(l => l.SourceId))
+        foreach (var layer in layers.OrderBy(l => l.ReceivedAt).ThenBy(l => l.SourceId).ThenBy(l => l.InboundSequenceNo))
         {
             if (remaining <= QtyEpsilon)
                 break;
@@ -47,12 +47,12 @@ public static class StockCardFifoEngine
             totalCost += take * layer.UnitPrice;
             layer.Quantity -= take;
             remaining -= take;
-            parts.Add((take, layer.UnitPrice, IsShortage: false));
+            parts.Add((take, layer.UnitPrice, layer.SourceId, layer.InboundSequenceNo, IsShortage: false));
         }
 
         var consumed = quantity - remaining;
         if (remaining > QtyEpsilon)
-            parts.Add((remaining, 0m, IsShortage: true));
+            parts.Add((remaining, 0m, 0, 0, IsShortage: true));
         else
             remaining = 0;
 
@@ -65,7 +65,9 @@ public static class StockCardFifoEngine
         var detailParts = parts
             .Select(p => p.IsShortage
                 ? $"{FormatQty(p.Qty)} @ RM 0.0000 (short)"
-                : $"{FormatQty(p.Qty)} @ RM {p.UnitPrice:F4}")
+                : p.InboundSequenceNo > 0
+                    ? $"{FormatQty(p.Qty)} @ RM {p.UnitPrice:F4} (IN#{p.InboundSequenceNo})"
+                    : $"{FormatQty(p.Qty)} @ RM {p.UnitPrice:F4}")
             .ToList();
 
         layers.RemoveAll(l => l.Quantity <= QtyEpsilon);
@@ -82,6 +84,8 @@ public static class StockCardFifoEngine
                 {
                     Quantity = p.Qty,
                     UnitPrice = RoundUnitPrice(p.UnitPrice),
+                    SourceId = p.SourceId,
+                    InboundSequenceNo = p.InboundSequenceNo,
                     IsShortage = p.IsShortage,
                 })
                 .ToList(),
@@ -94,7 +98,8 @@ public static class StockCardFifoEngine
         int sourceId,
         decimal quantity,
         decimal unitPrice,
-        string sourceLabel)
+        string sourceLabel,
+        int inboundSequenceNo = 0)
     {
         if (quantity <= QtyEpsilon)
             return;
@@ -104,8 +109,10 @@ public static class StockCardFifoEngine
             ReceivedAt = receivedAt,
             SourceId = sourceId,
             Quantity = quantity,
+            OriginalQuantity = quantity,
             UnitPrice = RoundUnitPrice(unitPrice),
             SourceLabel = sourceLabel,
+            InboundSequenceNo = inboundSequenceNo,
         });
     }
 
@@ -124,6 +131,7 @@ public static class StockCardFifoEngine
         decimal runningQty = 0;
         DateTime? currentMonth = null;
         decimal? lastAdjustmentOutUnitPrice = null;
+        var nextInboundSequenceNo = 0;
 
         foreach (var evt in events.OrderBy(e => e.OccurredAt).ThenBy(e => e.Id))
         {
@@ -165,17 +173,22 @@ public static class StockCardFifoEngine
                     evt.Id,
                     evt.Quantity,
                     layerPrice,
-                    evt.SourceLabel);
+                    evt.SourceLabel,
+                    ref nextInboundSequenceNo);
 
                 runningQty += evt.SignedQty;
                 enriched.Add(new FifoEnrichedEvent
                 {
                     Event = evt,
                     UnitPrice = unitPrice,
-                    FifoDetail = fifoDetail,
+                    FifoDetail = string.IsNullOrEmpty(fifoDetail)
+                        ? $"IN#{nextInboundSequenceNo}"
+                        : $"{fifoDetail} · IN#{nextInboundSequenceNo}",
                     RunningBalance = runningQty,
                     AverageCogsAfter = ComputeAverageCogs(layers),
                     IsNegativeBalance = runningQty < 0,
+                    InboundSequenceNo = nextInboundSequenceNo,
+                    OriginalQuantity = evt.Quantity,
                 });
             }
             else if (IsOutboundConsume(entryType))
@@ -202,6 +215,8 @@ public static class StockCardFifoEngine
             }
         }
 
+        ApplyInboundDepletionTotals(enriched, layers);
+
         return new FifoSimulationResult
         {
             Events = enriched,
@@ -210,6 +225,23 @@ public static class StockCardFifoEngine
             OnHandQty = runningQty,
             HasNegativeStock = runningQty < 0 || enriched.Any(e => e.IsNegativeBalance || e.IsShortage),
         };
+    }
+
+    static void ApplyInboundDepletionTotals(
+        List<FifoEnrichedEvent> enriched,
+        IReadOnlyList<FifoLayer> remainingLayers)
+    {
+        var remainingBySeq = remainingLayers
+            .Where(l => l.InboundSequenceNo > 0)
+            .GroupBy(l => l.InboundSequenceNo)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
+
+        foreach (var row in enriched.Where(e => e.InboundSequenceNo > 0 && e.OriginalQuantity > 0))
+        {
+            remainingBySeq.TryGetValue(row.InboundSequenceNo, out var remaining);
+            var depleted = row.OriginalQuantity - remaining;
+            row.DepletedQuantity = depleted < 0 ? 0 : depleted;
+        }
     }
 
     /// <summary>
@@ -226,6 +258,7 @@ public static class StockCardFifoEngine
         var layers = new List<FifoLayer>();
         decimal? lastAdjustmentOutUnitPrice = null;
         DateTime? currentMonth = null;
+        var nextInboundSequenceNo = 0;
         var sink = new List<FifoEnrichedEvent>();
 
         foreach (var evt in events
@@ -256,7 +289,8 @@ public static class StockCardFifoEngine
                     evt.Id,
                     evt.Quantity,
                     layerPrice,
-                    evt.SourceLabel);
+                    evt.SourceLabel,
+                    ref nextInboundSequenceNo);
                 if (entryType == "adjustment_in")
                     lastAdjustmentOutUnitPrice = null;
                 continue;
@@ -420,13 +454,15 @@ public static class StockCardFifoEngine
         int sourceId,
         decimal quantity,
         decimal unitPrice,
-        string sourceLabel)
+        string sourceLabel,
+        ref int nextInboundSequenceNo)
     {
         if (quantity <= QtyEpsilon)
             return;
 
         var price = RoundUnitPrice(unitPrice);
         var remainingInbound = quantity;
+        var inboundSequenceNo = ++nextInboundSequenceNo;
 
         for (var i = 0; i < enriched.Count && remainingInbound > QtyEpsilon; i++)
         {
@@ -451,13 +487,14 @@ public static class StockCardFifoEngine
             {
                 Event = CloneEvent(row.Event, take, -take),
                 UnitPrice = price,
-                FifoDetail = $"FIFO backfill: {FormatQty(take)} @ RM {price:F4}",
+                FifoDetail = $"FIFO backfill: {FormatQty(take)} @ RM {price:F4} (IN#{inboundSequenceNo})",
                 RunningBalance = progressiveBalance,
                 AverageCogsAfter = avgAfter,
                 SplitIndex = row.SplitIndex,
                 IsShortage = false,
                 IsCogsBackfilled = true,
                 IsNegativeBalance = progressiveBalance < 0,
+                SourceInboundSequenceNo = inboundSequenceNo,
             });
 
             if (remainShort > QtyEpsilon)
@@ -482,7 +519,7 @@ public static class StockCardFifoEngine
 
         if (remainingInbound > QtyEpsilon)
         {
-            AddLayer(layers, receivedAt, sourceId, remainingInbound, price, sourceLabel);
+            AddLayer(layers, receivedAt, sourceId, remainingInbound, price, sourceLabel, inboundSequenceNo);
         }
     }
 
@@ -536,6 +573,7 @@ public static class StockCardFifoEngine
                 AverageCogsAfter = ComputeAverageCogs(layers),
                 IsShortage = part.IsShortage,
                 IsNegativeBalance = runningQty < 0,
+                SourceInboundSequenceNo = part.InboundSequenceNo,
             });
             return primaryUnitPrice;
         }
@@ -550,12 +588,15 @@ public static class StockCardFifoEngine
                 UnitPrice = part.UnitPrice,
                 FifoDetail = part.IsShortage
                     ? $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM 0.0000 (short — negative stock)"
-                    : $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM {part.UnitPrice:F4}",
+                    : part.InboundSequenceNo > 0
+                        ? $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM {part.UnitPrice:F4} (IN#{part.InboundSequenceNo})"
+                        : $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM {part.UnitPrice:F4}",
                 RunningBalance = runningQty,
                 AverageCogsAfter = ComputeAverageCogs(layers),
                 SplitIndex = i,
                 IsShortage = part.IsShortage,
                 IsNegativeBalance = runningQty < 0,
+                SourceInboundSequenceNo = part.InboundSequenceNo,
             });
         }
 
@@ -572,13 +613,17 @@ public static class StockCardFifoEngine
 
             if (merged.Count > 0
                 && merged[^1].UnitPrice == part.UnitPrice
-                && merged[^1].IsShortage == part.IsShortage)
+                && merged[^1].IsShortage == part.IsShortage
+                && merged[^1].InboundSequenceNo == part.InboundSequenceNo
+                && merged[^1].SourceId == part.SourceId)
             {
                 var last = merged[^1];
                 merged[^1] = new FifoConsumePart
                 {
                     Quantity = last.Quantity + part.Quantity,
                     UnitPrice = last.UnitPrice,
+                    SourceId = last.SourceId,
+                    InboundSequenceNo = last.InboundSequenceNo,
                     IsShortage = last.IsShortage,
                 };
             }
@@ -588,6 +633,8 @@ public static class StockCardFifoEngine
                 {
                     Quantity = part.Quantity,
                     UnitPrice = part.UnitPrice,
+                    SourceId = part.SourceId,
+                    InboundSequenceNo = part.InboundSequenceNo,
                     IsShortage = part.IsShortage,
                 });
             }
@@ -622,19 +669,31 @@ public static class StockCardFifoEngine
         }
 
         var avg = ComputeAverageCogs(layers);
+        var seq = layers.Where(l => l.InboundSequenceNo > 0).Select(l => l.InboundSequenceNo).DefaultIfEmpty(0).Min();
         layers.Clear();
-        AddLayer(layers, monthStart, 0, totalQty, avg, "B/F");
+        AddLayer(layers, monthStart, 0, totalQty, avg, "B/F", seq > 0 ? seq : 1);
     }
 
-    static DateTime MonthStartUtc(DateTime value) =>
-        new(value.Year, value.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    static DateTime MonthStartUtc(DateTime value)
+    {
+        // Unspecified / Local timestamps from SQLite legacy rows must not throw on Kind convert.
+        var utc = value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        };
+        return new DateTime(utc.Year, utc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    }
 
     static bool IsInboundLayer(string entryType) =>
         entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "balance_forward" or "split_use_in";
 
     static bool IsOutboundConsume(string entryType) =>
         // split_use reduces parent on-hand to Component Nett after composition (not a sale).
-        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "outbound" or "split_use";
+        // credit_note / store_issue are confirmed stock leaves and must appear on the ledger.
+        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage"
+            or "transfer_out" or "outbound" or "split_use" or "credit_note" or "store_issue";
 
     static string FormatQty(decimal qty)
     {
@@ -648,8 +707,10 @@ public sealed class FifoLayer
     public DateTime ReceivedAt { get; init; }
     public int SourceId { get; init; }
     public decimal Quantity { get; set; }
+    public decimal OriginalQuantity { get; init; }
     public decimal UnitPrice { get; init; }
     public string SourceLabel { get; init; } = string.Empty;
+    public int InboundSequenceNo { get; init; }
 }
 
 public sealed class FifoConsumeResult
@@ -666,6 +727,8 @@ public sealed class FifoConsumePart
 {
     public decimal Quantity { get; init; }
     public decimal UnitPrice { get; init; }
+    public int SourceId { get; init; }
+    public int InboundSequenceNo { get; init; }
     public bool IsShortage { get; init; }
 }
 
@@ -681,6 +744,10 @@ public sealed class FifoEvent
     public string Reason { get; init; } = string.Empty;
     public string ReferenceNumber { get; init; } = string.Empty;
     public string SourceLabel { get; init; } = string.Empty;
+    /// <summary>PO/cash document line amount (authority). 0 when unknown.</summary>
+    public decimal DocumentAmount { get; init; }
+    /// <summary>Extended@4dp − DocumentAmount (UOM conversion rounding).</summary>
+    public decimal RoundingResidual { get; init; }
 }
 
 public sealed class FifoEnrichedEvent
@@ -697,6 +764,14 @@ public sealed class FifoEnrichedEvent
     public bool IsCogsBackfilled { get; init; }
     /// <summary>Running balance is negative after this row.</summary>
     public bool IsNegativeBalance { get; init; }
+    /// <summary>Inbound sequence for this receipt (IN#n).</summary>
+    public int InboundSequenceNo { get; init; }
+    /// <summary>Original inbound quantity when this receipt was created.</summary>
+    public decimal OriginalQuantity { get; init; }
+    /// <summary>Quantity depleted from this inbound by period end.</summary>
+    public decimal DepletedQuantity { get; set; }
+    /// <summary>Inbound sequence depleted by this outbound slice.</summary>
+    public int SourceInboundSequenceNo { get; init; }
 }
 
 public sealed class FifoSimulationResult

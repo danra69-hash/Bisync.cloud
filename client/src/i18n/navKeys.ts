@@ -28,16 +28,19 @@ export const REV_MGMT_SUBTITLE_I18N: Record<string, string> = {
 
 export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'My Order': 'revMgmt.items.myOrder',
+  'Returnable Goods': 'revMgmt.items.returnableGoods',
+  'Credit Note': 'revMgmt.items.creditNote',
   'Active Purchase': 'revMgmt.items.activePurchase',
   'Active Sales': 'revMgmt.items.activeSales',
   'Cash Purchase': 'revMgmt.items.cashPurchase',
   'Order Template': 'revMgmt.items.orderTemplate',
   Production: 'revMgmt.items.production',
+  'Central Store': 'revMgmt.items.centralStore',
+  'Stock Hold': 'revMgmt.items.stockHold',
   'Stock Card': 'revMgmt.items.stockCard',
   Inventory: 'revMgmt.items.inventory',
   Wastage: 'revMgmt.items.wastage',
   Transfer: 'revMgmt.items.transfer',
-  'Inventory Config': 'revMgmt.items.inventoryConfig',
   'My Component (ingredient)': 'revMgmt.items.smartComponent',
   'Smart Component': 'revMgmt.items.smartComponent',
   'Component Config': 'revMgmt.items.componentConfig',
@@ -58,14 +61,17 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'Detailed Purchase Summary': 'revMgmt.items.detailedPurchaseSummary',
   'Production Report': 'revMgmt.items.productionReport',
   'Wastage Report': 'revMgmt.items.wastageReport',
+  'BCG Matrix': 'revMgmt.items.bcgMatrix',
   'COGS Audit': 'revMgmt.items.cogsAudit',
+  'Ops Expenses Analysis': 'revMgmt.items.opsExpensesAnalysis',
 };
 
 export const POS_ITEM_I18N: Record<string, string> = {
   'POS Menu': 'pos.items.menu',
   'POS Modifier Group': 'pos.items.modifierGroup',
   'Promotion Scheduler': 'pos.items.promotionScheduler',
-  'POS Test Tap': 'pos.items.testTap',
+  'POS Config': 'pos.items.config',
+  'POS Test': 'pos.items.testTap',
   'Device Management': 'pos.items.deviceManagement',
   'E-Invoice': 'pos.items.eInvoice',
 };
@@ -78,6 +84,7 @@ export const HR_CONFIG_TAB_I18N: Record<string, string> = {
   Companies: 'systemConfig.companies',
   Locations: 'systemConfig.locations',
   'Access Control': 'systemConfig.accessControl',
+  'Price Display': 'systemConfig.priceDisplay',
   'Audit Trail': 'systemConfig.auditTrail',
 };
 

@@ -96,6 +96,7 @@ export function VendorProductsPanel({
             vendor={panelVendor}
             selectedCompanyId={selectedCompanyId}
             onVendorUpdated={handleVendorUpdated}
+            onSaved={onClose}
           />
 
           <VendorProductImportSection

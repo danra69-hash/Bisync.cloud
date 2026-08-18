@@ -10,6 +10,7 @@ import { formatRm } from '../data/createOrder';
 import { buildVendorOrderPortalUrl } from '../data/vendorOrderShare';
 import { PurchaseOrderPdfPreview } from '../components/revenue/PurchaseOrderPdfPreview';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
+import { ColGroup } from '../components/shared/SortableTableHead';
 
 type Props = {
   token: string;
@@ -317,6 +318,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
                 {lineDrafts.length > 0 ? (
                   <div className="overflow-x-auto rounded-md border border-border">
                     <table className="w-full text-xs">
+                      <ColGroup widths={['50%', '25%', '25%']} />
                       <thead className="bg-muted/40">
                         <tr className="text-left border-b border-border">
                           <th className="px-2 py-1.5 font-medium">Product</th>

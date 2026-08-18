@@ -13,7 +13,8 @@ namespace Bisync.Api.Controllers;
 public class ProductsController(
     BisyncDbContext db,
     ProductNutrientEstimateService nutrientEstimates,
-    NutritionLibrarySyncService nutritionLibrary) : ControllerBase
+    NutritionLibrarySyncService nutritionLibrary,
+    ILogger<ProductsController> logger) : ControllerBase
 {
     static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,6 +24,17 @@ public class ProductsController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List([FromQuery] int? companyId)
     {
+        // Opportunistic: remap Ginger Ale etc. Food/Specialties → Beverage/Soft Drinks
+        // so Product List Category filters (and deactivated Soft Drinks) find them.
+        try
+        {
+            await ProductCategoryHealer.ApplyAsync(db, logger);
+        }
+        catch
+        {
+            // Listing must still succeed even if heal fails.
+        }
+
         IQueryable<Product> query = db.Products
             .AsNoTracking()
             .Include(p => p.Items)
@@ -125,15 +137,30 @@ public class ProductsController(
         if (await db.Products.AnyAsync(p => p.ProductId == productId))
             return BadRequest(new { message = "Product ID already exists." });
 
+        var category = IngredientCatalogNormalizer.NormalizeCategory(request.Category);
+        var group = IngredientCatalogNormalizer.NormalizeGroup(request.Group);
+        var name = request.Name.Trim();
+        var duplicateName = await FindDuplicateProductNameAsync(db, request.CompanyId, category, group, name, excludeId: null);
+        if (duplicateName is not null)
+            return BadRequest(new { message = duplicateName });
+
         var items = MapItems(request.Items);
         var packagingItems = MapPackagingItems(request.PackagingItems);
+        var requestedYieldUom = request.YieldUom?.Trim() ?? string.Empty;
+        var isB2cProduct = !request.IsSubProduct && request.B2cEnabled;
+        var productYieldUom = request.IsSubProduct || request.B2bEnabled
+            ? requestedYieldUom
+            : isB2cProduct
+                ? (string.IsNullOrWhiteSpace(requestedYieldUom) ? "pcs" : requestedYieldUom)
+                : string.Empty;
         var product = new Product
         {
             ProductId = productId,
-            Name = request.Name.Trim(),
-            Category = request.Category?.Trim() ?? string.Empty,
-            Group = request.Group?.Trim() ?? string.Empty,
+            Name = name,
+            Category = category,
+            Group = group,
             IsSubProduct = request.IsSubProduct,
+            IsVariableProduct = !request.IsSubProduct && request.IsVariableProduct,
             B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled,
             B2bEnabled = request.IsSubProduct ? false : request.B2bEnabled,
             B2bPackageUnit = request.IsSubProduct
@@ -143,8 +170,12 @@ public class ProductsController(
                 ? "{}"
                 : (string.IsNullOrWhiteSpace(request.B2bSalesConfigJson) ? "{}" : request.B2bSalesConfigJson),
             Rrp = request.IsSubProduct ? 0 : (request.Rrp ?? 0),
-            YieldQuantity = request.IsSubProduct ? (request.YieldQuantity ?? 0) : 0,
-            YieldUom = request.IsSubProduct ? (request.YieldUom?.Trim() ?? string.Empty) : string.Empty,
+            YieldQuantity = request.IsSubProduct
+                ? (request.YieldQuantity ?? 0)
+                : isB2cProduct
+                    ? request.YieldQuantity is > 0 ? request.YieldQuantity.Value : 1
+                    : 0,
+            YieldUom = productYieldUom,
             YieldAltUnitsJson = request.IsSubProduct || request.B2bEnabled
                 ? (string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson)
                 : "[]",
@@ -163,6 +194,7 @@ public class ProductsController(
                 && (request.PosEnabled ?? true)
                 ? """[{"unitKey":"b2c-retail"}]"""
                 : "[]",
+            PosSalesUom = isB2cProduct ? productYieldUom : string.Empty,
             Active = request.Active ?? true,
             TotalCost = items.Sum(i => i.Subtotal),
             PackagingCost = packagingItems.Sum(i => i.Subtotal),
@@ -173,6 +205,9 @@ public class ProductsController(
             Items = items,
             PackagingItems = packagingItems,
         };
+        ApplyVariableFields(product, request);
+        if (product.IsVariableProduct && product.VariableMode == "combination" && items.Count == 0)
+            product.TotalCost = product.VariableMinCost;
 
         db.Products.Add(product);
         await db.SaveChangesAsync();
@@ -207,6 +242,10 @@ public class ProductsController(
         await db.SaveChangesAsync();
         await nutritionLibrary.EnsureReadyAsync();
         await nutrientEstimates.RecalculateForProductAsync(product.Id);
+        if (product.IsSubProduct)
+        {
+            await ProductCostRecalculator.RelinkParentsForSubProductAsync(db, product);
+        }
 
         product = await db.Products
             .AsNoTracking()
@@ -234,6 +273,20 @@ public class ProductsController(
         if (product is null)
             return NotFound();
 
+        var category = IngredientCatalogNormalizer.NormalizeCategory(request.Category);
+        var group = IngredientCatalogNormalizer.NormalizeGroup(request.Group);
+        var name = request.Name.Trim();
+        var duplicateName = await FindDuplicateProductNameAsync(
+            db, request.CompanyId ?? product.CompanyId, category, group, name, excludeId: id);
+        if (duplicateName is not null)
+            return BadRequest(new { message = duplicateName });
+
+        var previousProductId = product.ProductId;
+        var previousBatchLabel = product.IsSubProduct
+            ? ProductCostRecalculator.FormatSubProductBatchLabel(product)
+            : null;
+        var previousYieldUom = product.YieldUom;
+        var previousPosSalesUom = product.PosSalesUom;
         var beforeFields = ProductFieldChangeRecorder.Snapshot(product);
         var beforeRecipe = product.Items
             .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
@@ -252,12 +305,13 @@ public class ProductsController(
             return BadRequest(new { message = "Product ID already exists." });
 
         product.ProductId = productId;
-        product.Name = request.Name.Trim();
-        product.Category = request.Category?.Trim() ?? string.Empty;
-        product.Group = request.Group?.Trim() ?? string.Empty;
+        product.Name = name;
+        product.Category = category;
+        product.Group = group;
         product.IsSubProduct = request.IsSubProduct;
         product.B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled;
         product.B2bEnabled = request.IsSubProduct ? false : request.B2bEnabled;
+        ApplyVariableFields(product, request);
         if (!request.IsSubProduct)
         {
             product.B2bPackageUnit = string.IsNullOrWhiteSpace(request.B2bPackageUnit)
@@ -281,14 +335,29 @@ public class ProductsController(
         else if (request.B2bEnabled)
         {
             product.YieldQuantity = 0;
-            product.YieldUom = string.Empty;
+            if (request.YieldUom is not null)
+                product.YieldUom = request.YieldUom.Trim();
             product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
         }
         else
         {
-            product.YieldQuantity = 0;
-            product.YieldUom = string.Empty;
+            product.YieldQuantity = request.YieldQuantity is > 0 ? request.YieldQuantity.Value : 1;
+            product.YieldUom = string.IsNullOrWhiteSpace(request.YieldUom)
+                ? (string.IsNullOrWhiteSpace(previousYieldUom) ? "pcs" : previousYieldUom)
+                : request.YieldUom.Trim();
             product.YieldAltUnitsJson = "[]";
+            var yieldUomChanged = !string.Equals(
+                product.YieldUom,
+                previousYieldUom,
+                StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(previousPosSalesUom)
+                || (yieldUomChanged && string.Equals(
+                    previousPosSalesUom,
+                    previousYieldUom,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                product.PosSalesUom = product.YieldUom;
+            }
         }
         product.ExpiryPeriodDays = ResolveExpiryPeriodDays(request);
         product.ActivationPeriodHours = ResolveActivationPeriodHours(request);
@@ -309,6 +378,8 @@ public class ProductsController(
         db.ProductComponentItems.RemoveRange(product.Items);
         product.Items = MapItems(request.Items);
         var newTotalCost = product.Items.Sum(i => i.Subtotal);
+        if (product.IsVariableProduct && product.VariableMode == "combination" && product.Items.Count == 0)
+            newTotalCost = product.VariableMinCost;
 
         db.ProductPackagingItems.RemoveRange(product.PackagingItems);
         product.PackagingItems = MapPackagingItems(request.PackagingItems);
@@ -374,6 +445,14 @@ public class ProductsController(
         await db.SaveChangesAsync();
         await nutritionLibrary.EnsureReadyAsync();
         await nutrientEstimates.RecalculateForProductAsync(product.Id);
+        if (product.IsSubProduct)
+        {
+            await ProductCostRecalculator.RelinkParentsForSubProductAsync(
+                db,
+                product,
+                previousProductId,
+                previousBatchLabel);
+        }
 
         product = await db.Products
             .AsNoTracking()
@@ -425,9 +504,7 @@ public class ProductsController(
                     return BadRequest(new { message = "POS is not available for sub-products." });
                 if (!product.B2cEnabled)
                     return BadRequest(new { message = "POS requires a B2C product." });
-                var effectiveRrp = request.Rrp ?? product.Rrp;
-                if (effectiveRrp <= 0)
-                    return BadRequest(new { message = "Set an RRP before enabling POS." });
+                // RRP may be filled later — allow enabling POS sell units from the Product List.
             }
             product.PosEnabled = request.PosEnabled.Value;
         }
@@ -440,6 +517,8 @@ public class ProductsController(
                     .DistinctBy(unit => unit.unitKey),
                 JsonOptions);
         }
+        if (request.PosSalesUom is not null)
+            product.PosSalesUom = request.PosSalesUom.Trim();
         if (request.Active.HasValue && product.Active && !request.Active.Value)
         {
             var deactivateError = await DeactivationGuardService.ValidateB2bProductDeactivationAsync(db, product);
@@ -509,6 +588,33 @@ public class ProductsController(
         return NoContent();
     }
 
+    static async Task<string?> FindDuplicateProductNameAsync(
+        BisyncDbContext db,
+        int? companyId,
+        string category,
+        string group,
+        string name,
+        int? excludeId)
+    {
+        var nameKey = name.Trim().ToLowerInvariant();
+        var categoryKey = category.Trim().ToLowerInvariant();
+        var groupKey = group.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(nameKey)) return null;
+
+        var query = db.Products.AsNoTracking().Where(p => p.Active);
+        if (companyId is int cid && cid > 0)
+            query = query.Where(p => p.CompanyId == cid);
+        if (excludeId is int eid)
+            query = query.Where(p => p.Id != eid);
+
+        var exists = await query.AnyAsync(p =>
+            (p.Name ?? string.Empty).Trim().ToLower() == nameKey
+            && (p.Category ?? string.Empty).Trim().ToLower() == categoryKey
+            && (p.Group ?? string.Empty).Trim().ToLower() == groupKey);
+        if (!exists) return null;
+        return $"A product named '{name.Trim()}' already exists in {category.Trim()} / {group.Trim()}.";
+    }
+
     static string? ValidateRequest(UpsertProductRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -517,6 +623,10 @@ public class ProductsController(
             return "Category is required.";
         if (string.IsNullOrWhiteSpace(request.Group))
             return "Group is required.";
+        if (request.IsSubProduct && request.IsVariableProduct)
+            return "A product cannot be both a Sub-product and a Variable Product.";
+        if (request.IsSubProduct && request.IsVariableComponent)
+            return "A product cannot be both a Sub-product and a Variable Component.";
         if (request.IsSubProduct)
         {
             if (request.YieldQuantity is null or <= 0)
@@ -538,10 +648,57 @@ public class ProductsController(
         {
             return "B2B product expiry period (days) must be greater than zero.";
         }
-        if (request.Items is null || request.Items.Count == 0)
-            return "Add at least one smart component to the product.";
 
-        foreach (var item in request.Items)
+        if (request.IsVariableProduct)
+        {
+            var mode = (request.VariableMode ?? string.Empty).Trim();
+            if (!string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(mode, "weight", StringComparison.OrdinalIgnoreCase))
+                return "Variable Product mode must be Combination or Weight based.";
+            if (string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase))
+            {
+                if (request.VariableChoiceQty is null or <= 0)
+                    return "Enter the total package quantity for this combination.";
+                if (string.IsNullOrWhiteSpace(request.VariableOptionsJson)
+                    || request.VariableOptionsJson.Trim() is "{}" or "[]")
+                    return "Add at least two products to the combination choice list.";
+            }
+            else if (string.Equals(mode, "weight", StringComparison.OrdinalIgnoreCase))
+            {
+                if (request.VariableChoiceQty is null or <= 0)
+                    return "Enter the weight QTY for this weight-based product.";
+                if (string.IsNullOrWhiteSpace(request.VariableOptionsJson)
+                    || request.VariableOptionsJson.Trim() is "{}" or "[]")
+                    return "Select a Weight UOM for this weight-based product.";
+                if (request.Rrp is null or <= 0)
+                    return "Enter an RRP for the weight QTY (POS uses weight × unit RRP).";
+                // Recipe components optional — COGS can be filled later.
+            }
+        }
+
+        if (request.IsVariableComponent)
+        {
+            if (string.IsNullOrWhiteSpace(request.VariableComponentOptionsJson)
+                || request.VariableComponentOptionsJson.Trim() is "{}" or "[]")
+                return "Configure the original component and at least one alternate for Variable Component.";
+            if (!HasConfiguredVariableComponentSlot(request.VariableComponentOptionsJson))
+                return "Variable Component requires an original component (UOM, QTY) and at least one alternate with Addon RRP fields.";
+        }
+
+        var allowsEmptyRecipe = request.IsVariableComponent
+            || (
+                request.IsVariableProduct
+                && (
+                    string.Equals(request.VariableMode, "combination", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(request.VariableMode, "weight", StringComparison.OrdinalIgnoreCase)
+                )
+            );
+        if (!allowsEmptyRecipe && (request.Items is null || request.Items.Count == 0))
+        {
+            return "Add at least one smart component to the product.";
+        }
+
+        foreach (var item in request.Items ?? [])
         {
             if (string.IsNullOrWhiteSpace(item.ComponentId))
                 return "Each line requires a smart component.";
@@ -562,6 +719,86 @@ public class ProductsController(
         }
 
         return null;
+    }
+
+    static void ApplyVariableFields(Product product, UpsertProductRequest request)
+    {
+        if (request.IsSubProduct || !request.IsVariableProduct)
+        {
+            product.IsVariableProduct = false;
+            product.VariableMode = string.Empty;
+            product.VariableChoiceQty = 0;
+            product.VariableOptionsJson = "{}";
+            product.VariableMinCost = 0;
+            product.VariableMaxCost = 0;
+        }
+        else
+        {
+            var modeRaw = (request.VariableMode ?? string.Empty).Trim();
+            var mode = string.Equals(modeRaw, "weight", StringComparison.OrdinalIgnoreCase)
+                ? "weight"
+                : "combination";
+            product.IsVariableProduct = true;
+            product.VariableMode = mode;
+            product.VariableChoiceQty = mode is "combination" or "weight"
+                ? Math.Max(0, request.VariableChoiceQty ?? 0)
+                : 0;
+            product.VariableOptionsJson = string.IsNullOrWhiteSpace(request.VariableOptionsJson)
+                ? "{}"
+                : request.VariableOptionsJson.Trim();
+            product.VariableMinCost = Math.Max(0, request.VariableMinCost ?? 0);
+            product.VariableMaxCost = Math.Max(0, request.VariableMaxCost ?? 0);
+        }
+
+        if (request.IsSubProduct || !request.IsVariableComponent)
+        {
+            product.IsVariableComponent = false;
+            product.VariableComponentOptionsJson = "{}";
+        }
+        else
+        {
+            product.IsVariableComponent = true;
+            product.VariableComponentOptionsJson = string.IsNullOrWhiteSpace(request.VariableComponentOptionsJson)
+                ? "{}"
+                : request.VariableComponentOptionsJson.Trim();
+        }
+    }
+
+    static bool HasConfiguredVariableComponentSlot(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("slots", out var slots) || slots.ValueKind != JsonValueKind.Array)
+                return false;
+            foreach (var slot in slots.EnumerateArray())
+            {
+                var baseId = slot.TryGetProperty("baseComponentId", out var baseEl)
+                    ? baseEl.GetString()
+                    : null;
+                var qty = slot.TryGetProperty("quantity", out var qtyEl) && qtyEl.TryGetDecimal(out var q)
+                    ? q
+                    : 0m;
+                if (string.IsNullOrWhiteSpace(baseId) || qty <= 0) continue;
+                if (!slot.TryGetProperty("alternatives", out var alts) || alts.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var alt in alts.EnumerateArray())
+                {
+                    var altId = alt.TryGetProperty("componentId", out var altEl) ? altEl.GetString() : null;
+                    var altQty = alt.TryGetProperty("quantity", out var altQtyEl) && altQtyEl.TryGetDecimal(out var aq)
+                        ? aq
+                        : 0m;
+                    if (!string.IsNullOrWhiteSpace(altId) && altQty > 0)
+                        return true;
+                }
+            }
+            return false;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     static int ResolveExpiryPeriodDays(UpsertProductRequest request)
@@ -642,6 +879,17 @@ public class ProductsController(
         category = product.Category,
         group = product.Group,
         isSubProduct = product.IsSubProduct,
+        isBiProduct = product.IsBiProduct,
+        biOfProductId = product.BiOfProductId,
+        biSellable = product.BiSellable,
+        isVariableProduct = product.IsVariableProduct,
+        variableMode = product.VariableMode,
+        variableChoiceQty = product.VariableChoiceQty,
+        variableOptionsJson = product.VariableOptionsJson,
+        variableMinCost = product.VariableMinCost,
+        variableMaxCost = product.VariableMaxCost,
+        isVariableComponent = product.IsVariableComponent,
+        variableComponentOptionsJson = product.VariableComponentOptionsJson,
         b2cEnabled = product.B2cEnabled,
         b2bEnabled = product.B2bEnabled,
         b2bPackageUnit = product.B2bPackageUnit,
@@ -662,6 +910,7 @@ public class ProductsController(
         parStockUom = product.ParStockUom,
         posEnabled = product.PosEnabled,
         posDeliveryUnitsJson = product.PosDeliveryUnitsJson,
+        posSalesUom = product.PosSalesUom,
         active = product.Active,
         companyId = product.CompanyId,
         locationExternalIds = PurchaseOrderWorkflow.DeserializeLocationIds(product.LocationIdsJson),

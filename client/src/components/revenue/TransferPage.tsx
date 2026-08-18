@@ -11,6 +11,7 @@ import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import {
   currentStockCardMonth,
@@ -19,7 +20,12 @@ import {
 } from './stockCardPeriod';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
-import { fromApiUom } from '../../data/componentForm';
+import {
+  fromApiUom,
+  getComponentUomChoices,
+  migrateInventoryUomsIntoComponentAlts,
+  parseDetailConfigJson,
+} from '../../data/componentForm';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
@@ -29,6 +35,13 @@ import { TableLoadingRow } from '../shared/MillstoneLoader';
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  /**
+   * Team mobile actor (employee display name). When set and no AppUser is
+   * logged in, initiate / receive / reject use this name (standalone /TEAM).
+   */
+  teamActorName?: string;
+  /** Drop outer page padding when embedded in Team Stock. */
+  embedded?: boolean;
 };
 
 type ItemKind = 'component' | 'product' | 'sub-product';
@@ -101,9 +114,16 @@ function productUoms(p: Product): string[] {
 }
 
 function componentUoms(ing: Ingredient): string[] {
-  const inventory = fromApiUom(ing.inventoryUom || '');
-  const recipe = fromApiUom(ing.recipeUom || '');
-  return uniqueUoms([inventory], [recipe]);
+  const detail = parseDetailConfigJson(ing.detailConfigJson);
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: fromApiUom(ing.recipeUom || ''),
+    inventoryUnit: fromApiUom(ing.inventoryUom || ''),
+    altRecipeUnits: detail.altRecipeUnits,
+    altInventoryUnits: detail.altInventoryUnits,
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  return getComponentUomChoices(migrated.recipeUnit, migrated.altRecipeUnits);
 }
 
 function formatTransferDate(iso: string) {
@@ -137,8 +157,9 @@ const fieldCls =
   'w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary/40';
 const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted-foreground mb-1';
 
-export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) {
+export function TransferPage({ selectedCompanyId, selectedLocationIds, teamActorName, embedded = false }: Props) {
   const { currentUser } = useCurrentUser();
+  const actorName = (currentUser?.fullName?.trim() || teamActorName?.trim() || '');
   const hidePrices = useShouldHidePrices();
   const { rm } = useCountryFormatters();
   const formatMoney = (value: number | null | undefined) => {
@@ -147,6 +168,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
   };
   const money = (value: number | null | undefined) => formatMoneyMaybeHidden(hidePrices, value, formatMoney);
   const orgReady = !!selectedCompanyId;
+  const shellCls = pageShellClass({ embedded, spacing: 'loose' });
+  const emptyShellCls = pageShellClass({ embedded });
 
   const [month, setMonth] = useState(currentStockCardMonth);
   const [rows, setRows] = useState<TransferEntry[]>([]);
@@ -377,8 +400,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!currentUser?.fullName?.trim()) {
-      setError('Log in to initiate a transfer. Initiated by is set from your logged-in account.');
+    if (!actorName) {
+      setError('Log in (or open Team as an employee) to initiate a transfer. Initiated by is set from your account.');
       return;
     }
     if (!selectedCompanyId || !fromLocationId || !toLocationId || !selected) {
@@ -417,14 +440,14 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         quantity: qty,
         uom: uom.trim(),
         transferDate,
-        initiatedBy: currentUser.fullName.trim(),
+        initiatedBy: actorName,
       });
       setQuantity('');
       setSelected(null);
       setItemSearch('');
       setCatalogOpen(false);
       setInfo(
-        `Transfer XFR-${entry.id} initiated by ${currentUser.fullName.trim()}. ${locationNameById.get(toLocationId) ?? toLocationId} has been alerted to confirm receive.`,
+        `Transfer XFR-${entry.id} initiated by ${actorName}. ${locationNameById.get(toLocationId) ?? toLocationId} has been alerted to confirm receive.`,
       );
       await loadRows();
     } catch (err) {
@@ -449,8 +472,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
 
   async function confirmReceive() {
     if (!selectedCompanyId || !receiveTarget) return;
-    if (!currentUser?.fullName?.trim()) {
-      setError('Log in to confirm receive. Received by is set from your logged-in account.');
+    if (!actorName) {
+      setError('Log in (or open Team as an employee) to confirm receive. Received by is set from your account.');
       return;
     }
     const qty = Number(receiveQty);
@@ -469,12 +492,12 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
     try {
       await api.receiveTransfer(receiveTarget.id, {
         companyId: selectedCompanyId,
-        receivedBy: currentUser.fullName.trim(),
+        receivedBy: actorName,
         receivedQuantity: qty,
         receivedDate: toDateInputValue(new Date()),
       });
       setInfo(
-        `Received XFR-${receiveTarget.id}: ${qty} ${receiveTarget.uom} ${receiveTarget.itemName} by ${currentUser.fullName.trim()}. Source stock depleted; inbound reconciled.`,
+        `Received XFR-${receiveTarget.id}: ${qty} ${receiveTarget.uom} ${receiveTarget.itemName} by ${actorName}. Source stock depleted; inbound reconciled.`,
       );
       closeReceive();
       await loadRows();
@@ -487,8 +510,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
 
   async function rejectPending() {
     if (!selectedCompanyId || !receiveTarget) return;
-    if (!currentUser?.fullName?.trim()) {
-      setError('Log in to reject a transfer. Rejected by is set from your logged-in account.');
+    if (!actorName) {
+      setError('Log in (or open Team as an employee) to reject a transfer. Rejected by is set from your account.');
       return;
     }
 
@@ -498,10 +521,10 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
     try {
       await api.rejectTransfer(receiveTarget.id, {
         companyId: selectedCompanyId,
-        rejectedBy: currentUser.fullName.trim(),
+        rejectedBy: actorName,
       });
       setInfo(
-        `Rejected XFR-${receiveTarget.id} by ${currentUser.fullName.trim()}. Stock remains available at ${locationNameById.get(receiveTarget.fromLocationExternalId) ?? receiveTarget.fromLocationExternalId}.`,
+        `Rejected XFR-${receiveTarget.id} by ${actorName}. Stock remains available at ${locationNameById.get(receiveTarget.fromLocationExternalId) ?? receiveTarget.fromLocationExternalId}.`,
       );
       closeReceive();
       await loadRows();
@@ -514,14 +537,14 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
 
   if (!orgReady) {
     return (
-      <div className={pageShellClass()}>
+      <div className={emptyShellCls}>
         <p className="text-sm text-muted-foreground">Select a company to manage transfers.</p>
       </div>
     );
   }
 
   return (
-    <div className={pageShellClass({ spacing: 'loose' })}>
+    <div className={shellCls}>
       <PageStickyFilters opaque className="py-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -571,7 +594,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                 {receiveTarget.initiatedBy?.trim() ? ` · by ${receiveTarget.initiatedBy.trim()}` : ''}
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
-                Received by will be recorded as {currentUser?.fullName?.trim() || '(log in required)'}.
+                Received by will be recorded as {actorName || '(log in required)'}.
               </p>
             </div>
             <button
@@ -605,7 +628,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             <div className="flex items-center gap-2 ml-auto">
               <button
                 type="button"
-                disabled={receivingId === receiveTarget.id || !currentUser?.fullName?.trim()}
+                disabled={receivingId === receiveTarget.id || !actorName}
                 onClick={() => void rejectPending()}
                 className="inline-flex items-center gap-1 rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
               >
@@ -614,7 +637,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
               </button>
               <button
                 type="button"
-                disabled={receivingId === receiveTarget.id || !currentUser?.fullName?.trim()}
+                disabled={receivingId === receiveTarget.id || !actorName}
                 onClick={() => void confirmReceive()}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
@@ -635,18 +658,19 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed border-collapse text-sm">
+            <table className="w-full min-w-[1080px] border-collapse text-sm">
+              <ColGroup widths={[96, 140, 140, 220, 80, 56, 100, 100, 140]} />
               <thead>
                 <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="text-left px-2 py-1.5 w-24">Date</th>
-                  <th className="text-left px-2 py-1.5 w-28">From</th>
-                  <th className="text-left px-2 py-1.5 w-28">To</th>
-                  <th className="text-left px-2 py-1.5">Item</th>
-                  <th className="text-right px-2 py-1.5 w-[8.5rem]">Qty</th>
-                  <th className="text-left px-2 py-1.5 w-16">UOM</th>
-                  <th className="text-right px-2 py-1.5 w-[8.5rem]">Unit price</th>
-                  <th className="text-right px-2 py-1.5 w-[8.5rem]">Total value</th>
-                  <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">Date</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">From</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">To</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">Item</th>
+                  <th className="text-right px-2 py-1.5 whitespace-nowrap">Qty</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">UOM</th>
+                  <th className="text-right px-2 py-1.5 whitespace-nowrap">Unit price</th>
+                  <th className="text-right px-2 py-1.5 whitespace-nowrap">Total value</th>
+                  <th className="text-left px-2 py-1.5 whitespace-nowrap">Initiated by</th>
                 </tr>
               </thead>
               <tbody>
@@ -836,22 +860,40 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         <TableScrollContainer
           ref={historyScrollRef}
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
+          tableId="team.transfer.history"
         >
-          <table className="w-full table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[1360px] border-collapse text-sm">
+            <ColGroup
+              widths={[96, 140, 140, 200, 96, 80, 56, 100, 100, 120, 150, 96]}
+              columnKeys={[
+                'date',
+                'from',
+                'to',
+                'item',
+                'type',
+                'qty',
+                'uom',
+                'unitPrice',
+                'totalValue',
+                'initiatedBy',
+                'actedBy',
+                'status',
+              ]}
+            />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="text-left px-2 py-1.5 w-24">Date</th>
-                <th className="text-left px-2 py-1.5 w-28">From</th>
-                <th className="text-left px-2 py-1.5 w-28">To</th>
-                <th className="text-left px-2 py-1.5">Item</th>
-                <th className="text-left px-2 py-1.5 w-24">Type</th>
-                <th className="text-right px-2 py-1.5 w-[8.5rem]">Qty</th>
-                <th className="text-left px-2 py-1.5 w-14">UOM</th>
-                <th className="text-right px-2 py-1.5 w-[8.5rem]">Unit price</th>
-                <th className="text-right px-2 py-1.5 w-[8.5rem]">Total value</th>
-                <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
-                <th className="text-left px-2 py-1.5 w-28">Received / Rejected by</th>
-                <th className="text-left px-2 py-1.5 w-28">Status</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Date</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">From</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">To</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Item</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Type</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Qty</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">UOM</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Unit price</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Total value</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Initiated by</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Received / Rejected by</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Status</th>
               </tr>
             </thead>
             <tbody>

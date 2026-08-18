@@ -2,20 +2,26 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pencil, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import {
-  DEV_CONSOLE_TAB_IDS,
   DEV_CONSOLE_TAB_LABELS,
+  DEV_CONSOLE_ASSIGNABLE_TAB_IDS,
   DEV_CONSOLE_TEAM_TYPES,
+  normalizeDevConsoleAccessTabs,
   devConsoleAuthApi,
   type DevConsoleTabId,
   type DevConsoleTeamType,
   type DevTeamUserRow,
 } from '../../data/devConsoleAuthApi';
+import type { SalesModuleTeamMember } from '../../api';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
+import { SalesModuleTeamPanel } from './SalesModuleTeamPanel';
 
 type Props = {
   open: boolean;
   onClose: () => void;
 };
+
+type TeamSection = 'console' | 'sales';
 
 type FormState = {
   id: number | null;
@@ -36,9 +42,7 @@ const EMPTY_FORM: FormState = {
 };
 
 function toForm(row: DevTeamUserRow): FormState {
-  const tabs = (row.accessTabs ?? []).filter((t): t is DevConsoleTabId =>
-    (DEV_CONSOLE_TAB_IDS as readonly string[]).includes(t),
-  );
+  const tabs = normalizeDevConsoleAccessTabs(row.accessTabs);
   return {
     id: row.id,
     fullName: row.fullName,
@@ -52,6 +56,7 @@ function toForm(row: DevTeamUserRow): FormState {
 }
 
 export function DevTeamPanel({ open, onClose }: Props) {
+  const [section, setSection] = useState<TeamSection>('console');
   const [users, setUsers] = useState<DevTeamUserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -74,7 +79,11 @@ export function DevTeamPanel({ open, onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSection('console');
+      setFormOpen(false);
+      return;
+    }
     void load();
   }, [open, load]);
 
@@ -134,9 +143,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
           accessTabs: form.accessTabs,
         });
         setInfo(
-          created.inviteUrl
-            ? `Invitation sent to ${created.email}. They must set a password before signing in.`
-            : `Created ${created.email}.`,
+          `Created ${created.email}. Default password is Pass@123 — they must change it after first login.`,
         );
       } else {
         await devConsoleAuthApi.updateTeamUser(form.id, {
@@ -162,10 +169,10 @@ export function DevTeamPanel({ open, onClose }: Props) {
     setInfo(null);
     try {
       const result = await devConsoleAuthApi.resendInvite(row.id);
-      setInfo(result.message || `Invitation resent to ${row.email}.`);
+      setInfo(result.message || `Password for ${row.email} reset to Pass@123.`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend invite');
+      setError(err instanceof Error ? err.message : 'Failed to reset password');
     }
   }
 
@@ -195,22 +202,22 @@ export function DevTeamPanel({ open, onClose }: Props) {
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[80] flex items-stretch justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !saving && onClose()} aria-hidden />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="dev-team-title"
-        className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-xl border border-border bg-card shadow-xl flex flex-col"
+        className="relative flex h-full max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-none border border-border bg-card shadow-xl sm:h-[min(920px,100%)] sm:rounded-xl"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3">
           <div>
             <h2 id="dev-team-title" className="text-sm font-semibold inline-flex items-center gap-2">
               <UserPlus size={14} className="text-muted-foreground" />
-              Dev Console Team
+              Team
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Platform operators for Dev Console only — separate from main app users and Sales Module hunters/farmers.
+              Dev Console operators and Sales Module team (hunters / calendar sync).
             </p>
           </div>
           <button
@@ -224,7 +231,33 @@ export function DevTeamPanel({ open, onClose }: Props) {
           </button>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4 space-y-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
+          <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+            <button
+              type="button"
+              onClick={() => { setSection('console'); setFormOpen(false); }}
+              className={`px-3 py-1.5 font-semibold ${section === 'console' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            >
+              Console access
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSection('sales'); setFormOpen(false); setError(null); setInfo(null); }}
+              className={`px-3 py-1.5 font-semibold border-l border-border ${section === 'sales' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            >
+              Sales Module
+            </button>
+          </div>
+
+          {section === 'sales' ? (
+            <SalesModuleTeamPanel
+              open
+              embedded
+              onClose={onClose}
+              onChanged={(_members: SalesModuleTeamMember[]) => { /* Sales Module page reloads on visit */ }}
+            />
+          ) : (
+            <>
           {error && (
             <div className="px-3 py-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs">
               {error}
@@ -238,7 +271,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
 
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              Super User only. New members receive an email invitation to set their password.
+              Super User only. New members start with Pass@123 and must change it after first login.
             </p>
             <button
               type="button"
@@ -252,6 +285,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
 
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-sm">
+              <ColGroup widths={['22%', '12%', '28%', '12%', 88]} />
               <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Name</th>
@@ -288,11 +322,13 @@ export function DevTeamPanel({ open, onClose }: Props) {
                     <td className="px-3 py-2 text-xs">
                       {row.isRoot
                         ? 'Active'
-                        : row.invitePending
-                          ? 'Invite pending'
-                          : row.active
-                            ? 'Active'
-                            : 'Inactive'}
+                        : row.mustChangePassword
+                          ? 'Must change password'
+                          : row.invitePending
+                            ? 'Invite pending'
+                            : row.active
+                              ? 'Active'
+                              : 'Inactive'}
                     </td>
                     <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
                       {!row.isRoot && (
@@ -305,15 +341,13 @@ export function DevTeamPanel({ open, onClose }: Props) {
                             <Pencil size={11} />
                             Edit
                           </button>
-                          {row.invitePending && (
-                            <button
-                              type="button"
-                              onClick={() => void resendInvite(row)}
-                              className="text-xs text-primary hover:underline"
-                            >
-                              Resend invite
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => void resendInvite(row)}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Reset to Pass@123
+                          </button>
                           {row.hasPassword && (
                             <button
                               type="button"
@@ -339,15 +373,17 @@ export function DevTeamPanel({ open, onClose }: Props) {
               </tbody>
             </table>
           </div>
+            </>
+          )}
         </div>
 
-        {formOpen && (
-          <div className="absolute inset-0 z-10 flex items-end sm:items-center justify-center bg-black/30 p-4">
+        {formOpen && section === 'console' && (
+          <div className="absolute inset-0 z-10 flex items-stretch justify-center bg-black/30 p-0 sm:p-4">
             <form
               onSubmit={e => void handleSave(e)}
-              className="w-full max-w-lg rounded-xl border border-border bg-card p-5 space-y-4 shadow-lg"
+              className="flex h-full max-h-full w-full max-w-xl flex-col overflow-hidden rounded-none border border-border bg-card shadow-lg sm:rounded-xl"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
                 <h3 className="text-sm font-semibold">
                   {form.id == null ? 'Add team member' : 'Edit team member'}
                 </h3>
@@ -356,75 +392,82 @@ export function DevTeamPanel({ open, onClose }: Props) {
                 </button>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block space-y-1 sm:col-span-2">
-                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Name</span>
-                  <input
-                    required
-                    value={form.fullName}
-                    onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Position</span>
-                  <input
-                    value={form.position}
-                    onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    placeholder="e.g. Sales Lead"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
-                  <select
-                    value={form.teamType}
-                    onChange={e => setForm(f => ({ ...f, teamType: e.target.value as DevConsoleTeamType }))}
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  >
-                    {DEV_CONSOLE_TEAM_TYPES.map(t => (
-                      <option key={t} value={t}>{t}</option>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1 sm:col-span-2">
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Name</span>
+                    <input
+                      required
+                      value={form.fullName}
+                      onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Position</span>
+                    <input
+                      value={form.position}
+                      onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      placeholder="e.g. Sales Lead"
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
+                    <select
+                      value={form.teamType}
+                      onChange={e => setForm(f => ({ ...f, teamType: e.target.value as DevConsoleTeamType }))}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    >
+                      {DEV_CONSOLE_TEAM_TYPES.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block space-y-1 sm:col-span-2">
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                      Email address for user login
+                    </span>
+                    <input
+                      type="email"
+                      required
+                      value={form.email}
+                      onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      placeholder="name@cubevalue.com"
+                    />
+                  </label>
+                </div>
+
+                <fieldset className="space-y-2">
+                  <legend className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Access permission
+                  </legend>
+                  <p className="text-[11px] text-muted-foreground">
+                    Choose which Dev Console tabs this member can open. Automated QA includes the QA History table.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border border-border bg-muted/20 p-3">
+                    {DEV_CONSOLE_ASSIGNABLE_TAB_IDS.map(tab => (
+                      <label key={tab} className="inline-flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={form.accessTabs.includes(tab)}
+                          onChange={() => toggleTab(tab)}
+                        />
+                        {DEV_CONSOLE_TAB_LABELS[tab]}
+                      </label>
                     ))}
-                  </select>
-                </label>
-                <label className="block space-y-1 sm:col-span-2">
-                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                    Email address for user login
-                  </span>
-                  <input
-                    type="email"
-                    required
-                    value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                    placeholder="name@cubevalue.com"
-                  />
-                </label>
+                  </div>
+                </fieldset>
+
+                {form.id == null && (
+                  <p className="text-[11px] text-muted-foreground">
+                    They can sign in immediately with Pass@123, then must set a personal password on first login.
+                  </p>
+                )}
               </div>
 
-              <fieldset className="space-y-2">
-                <legend className="text-[11px] uppercase tracking-wider text-muted-foreground">Access</legend>
-                <div className="grid grid-cols-2 gap-2">
-                  {DEV_CONSOLE_TAB_IDS.map(tab => (
-                    <label key={tab} className="inline-flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={form.accessTabs.includes(tab)}
-                        onChange={() => toggleTab(tab)}
-                      />
-                      {DEV_CONSOLE_TAB_LABELS[tab]}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              {form.id == null && (
-                <p className="text-[11px] text-muted-foreground">
-                  An invitation email will be sent. Access is enabled only after they set a password.
-                </p>
-              )}
-
-              <div className="flex justify-end gap-2 pt-1">
+              <div className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-3">
                 <button
                   type="button"
                   onClick={() => setFormOpen(false)}
@@ -438,7 +481,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
                   disabled={saving}
                   className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                 >
-                  {saving ? 'Saving…' : form.id == null ? 'Create & invite' : 'Save changes'}
+                  {saving ? 'Saving…' : form.id == null ? 'Create member' : 'Save changes'}
                 </button>
               </div>
             </form>

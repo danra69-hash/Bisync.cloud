@@ -115,8 +115,22 @@ public static class ConfigurationSeeder
         new("au-southbank", "Southbank", "Bisync Eats Australia Pty Ltd", "3 Southgate Ave", "Southbank", "Victoria", "3006", "olivia.brooks@bisync.cloud"),
     ];
 
+    static bool IsDemoSandboxCompanyName(string name) =>
+        name.StartsWith("Bisync", StringComparison.OrdinalIgnoreCase)
+        || name.StartsWith("QA ", StringComparison.OrdinalIgnoreCase);
+
     public static async Task SeedAsync(BisyncDbContext db)
     {
+        // Once a real customer tenant exists (e.g. Weissbrau), never recreate the
+        // Bisync demo companies/users/locations that were intentionally wiped.
+        var hasCustomerCompany = await db.Companies.AsNoTracking()
+            .AnyAsync(c => !IsDemoSandboxCompanyName(c.Name));
+        if (hasCustomerCompany)
+        {
+            await EnsureSuperAdminAsync(db);
+            return;
+        }
+
         foreach (var seed in Companies)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => c.Name == seed.Name);
@@ -235,10 +249,16 @@ public static class ConfigurationSeeder
     public static async Task EnsureSuperAdminAsync(BisyncDbContext db)
     {
         var email = SuperAdminAccess.SuperAdminEmail.ToLowerInvariant();
-        var company = await db.Companies.OrderBy(c => c.Id).FirstOrDefaultAsync();
+        var company = await ResolvePlatformOwnerCompanyAsync(db);
         if (company is null) return;
 
-        var allLocationIds = await db.Locations.Select(l => l.Id).ToListAsync();
+        var locationIds = await db.Locations
+            .Where(l => l.CompanyId == company.Id)
+            .Select(l => l.Id)
+            .ToListAsync();
+        if (locationIds.Count == 0)
+            locationIds = await db.Locations.Select(l => l.Id).ToListAsync();
+
         var accessJson = SuperAdminAccess.BuildJson();
         var passwordHash = AppPasswordHasher.Hash(SuperAdminAccess.SuperAdminPassword);
 
@@ -254,7 +274,7 @@ public static class ConfigurationSeeder
                 Active = true,
                 AccessJson = accessJson,
                 CompanyId = company.Id,
-                LocationIdsJson = JsonSerializer.Serialize(allLocationIds),
+                LocationIdsJson = JsonSerializer.Serialize(locationIds),
                 PasswordHash = passwordHash,
             });
         }
@@ -265,12 +285,37 @@ public static class ConfigurationSeeder
             user.Active = true;
             user.AccessJson = accessJson;
             user.CompanyId = company.Id;
-            user.LocationIdsJson = JsonSerializer.Serialize(allLocationIds);
+            user.LocationIdsJson = JsonSerializer.Serialize(locationIds);
             if (string.IsNullOrWhiteSpace(user.PasswordHash))
                 user.PasswordHash = passwordHash;
         }
 
         await db.SaveChangesAsync();
+        try
+        {
+            await PlatformOwnerIdentityMigrator.ApplyAsync(db);
+        }
+        catch
+        {
+            // Deferred startup retries with logging; do not block seed bootstrap.
+        }
+    }
+
+    static async Task<Company?> ResolvePlatformOwnerCompanyAsync(BisyncDbContext db)
+    {
+        var weissbrau = await db.Companies
+            .Where(c => c.Name.ToLower().Contains("weissbrau"))
+            .OrderBy(c => c.Id)
+            .FirstOrDefaultAsync();
+        if (weissbrau is not null) return weissbrau;
+
+        var customer = await db.Companies
+            .Where(c => !c.Name.ToLower().StartsWith("bisync") && !c.Name.ToLower().StartsWith("qa "))
+            .OrderBy(c => c.Id)
+            .FirstOrDefaultAsync();
+        if (customer is not null) return customer;
+
+        return await db.Companies.OrderBy(c => c.Id).FirstOrDefaultAsync();
     }
 
     public static async Task PatchUserAssignmentsAsync(BisyncDbContext db)

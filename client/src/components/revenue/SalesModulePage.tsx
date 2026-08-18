@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GitMerge, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -7,6 +7,7 @@ import {
   type SalesModuleCompany,
   type SalesModuleCustomer,
   type SalesModuleOverview,
+  type SalesModuleOverviewHunterRow,
   type SalesModuleOverviewPeriods,
   type SalesModuleTeamCalendarEvent,
   type SalesModuleTeamMember,
@@ -14,13 +15,13 @@ import {
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
-import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 import { SalesDiaryPanel } from './SalesDiaryPanel';
 import { ClientUpdateFollowupPanel } from './ClientUpdateFollowupPanel';
 
-type TabId = 'overview' | 'client-update' | 'sales-diary' | 'calendar';
+type TabId = 'overview' | 'client-update' | 'sales-diary';
 type OverviewView = 'week' | 'month';
 
 type CalendarItem =
@@ -31,7 +32,6 @@ const TABS = [
   { id: 'overview' as const, label: 'Overview' },
   { id: 'client-update' as const, label: 'Client Update' },
   { id: 'sales-diary' as const, label: 'Sales Diary' },
-  { id: 'calendar' as const, label: 'Appointment Calendar' },
 ];
 
 function formatOptionalDate(value?: string | null): string {
@@ -70,6 +70,95 @@ function isInClientUpdatePeriod(
 function isBlankText(value?: string | null): boolean {
   return !value || !value.trim();
 }
+
+/** Sort key for Overview hunter detail — interaction date, else created date. */
+function overviewDetailSortMs(row: Pick<SalesModuleClientUpdate, 'lastContactDate' | 'dateCreated'>): number {
+  const raw = row.lastContactDate || row.dateCreated;
+  if (!raw) return 0;
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function overviewClientKey(row: SalesModuleClientUpdate): string | null {
+  const company = row.company?.trim().toLowerCase();
+  if (company) return company;
+  const brand = row.brand?.trim().toLowerCase();
+  return brand || null;
+}
+
+/** Same Sales Team member (or hunter) + same company/brand → duplicate group. */
+function clientUpdateDuplicateGroupKey(row: SalesModuleClientUpdate): string | null {
+  const client = overviewClientKey(row);
+  if (!client) return null;
+  const member = row.salesTeamMemberId && row.salesTeamMemberId > 0
+    ? `m:${row.salesTeamMemberId}`
+    : `h:${(row.hunter ?? '').trim().toLowerCase()}`;
+  return `${member}|${client}`;
+}
+
+function normalizeOverviewToken(value: string | null | undefined): string {
+  return (value ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function isOverviewStatusChange(row: SalesModuleClientUpdate): boolean {
+  const status = normalizeOverviewToken(row.status);
+  const contact = normalizeOverviewToken(row.contactType);
+  return status === 'UPDATED' || contact === 'STATUS UPDATE' || contact.includes('STATUS UPDATE');
+}
+
+function isOverviewInteraction(row: SalesModuleClientUpdate): boolean {
+  return Boolean(row.contactType?.trim());
+}
+
+function isOverviewNewLead(row: SalesModuleClientUpdate): boolean {
+  return normalizeOverviewToken(row.status) === 'LEAD';
+}
+
+/** 0 = status change, 1 = interaction, 2 = new lead, 3 = other. */
+function overviewDetailSortPriority(row: SalesModuleClientUpdate): number {
+  if (isOverviewStatusChange(row)) return 0;
+  if (isOverviewInteraction(row)) return 1;
+  if (isOverviewNewLead(row)) return 2;
+  return 3;
+}
+
+/**
+ * Full Overview client list: one row per client.
+ * Sorted by latest status change → latest interaction → new leads → other (then date desc).
+ */
+function sortOverviewClientDetails(rows: SalesModuleClientUpdate[]): SalesModuleClientUpdate[] {
+  const best = new Map<string, SalesModuleClientUpdate>();
+  const orphans: SalesModuleClientUpdate[] = [];
+  for (const row of rows) {
+    const key = overviewClientKey(row);
+    if (!key) {
+      orphans.push(row);
+      continue;
+    }
+    const prev = best.get(key);
+    if (!prev) {
+      best.set(key, row);
+      continue;
+    }
+    const pri = overviewDetailSortPriority(row) - overviewDetailSortPriority(prev);
+    if (pri < 0
+      || (pri === 0 && overviewDetailSortMs(row) > overviewDetailSortMs(prev))
+      || (pri === 0 && overviewDetailSortMs(row) === overviewDetailSortMs(prev) && row.id > prev.id)) {
+      best.set(key, row);
+    }
+  }
+  return [...best.values(), ...orphans].sort(
+    (a, b) =>
+      overviewDetailSortPriority(a) - overviewDetailSortPriority(b)
+      || overviewDetailSortMs(b) - overviewDetailSortMs(a)
+      || b.id - a.id,
+  );
+}
+
+type OverviewHunterDetail = {
+  hunter: string;
+  salesTeamMemberId?: number | null;
+};
 
 type Props = {
   /** Dev Console session identity used when creating engaged records. */
@@ -112,9 +201,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [overview, setOverview] = useState<SalesModuleOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewSalesTeamId, setOverviewSalesTeamId] = useState<number | ''>('');
-  const [overviewCompanyId, setOverviewCompanyId] = useState<number | ''>('');
-  const [overviewCompanies, setOverviewCompanies] = useState<SalesModuleCompany[]>([]);
   const [overviewHasSearched, setOverviewHasSearched] = useState(false);
+  const [overviewDetailHunter, setOverviewDetailHunter] = useState<OverviewHunterDetail | null>(null);
+  const [overviewDetailRows, setOverviewDetailRows] = useState<SalesModuleClientUpdate[]>([]);
+  const [overviewDetailLoading, setOverviewDetailLoading] = useState(false);
   const [clientUpdateView, setClientUpdateView] = useState<OverviewView>('week');
   const [clientUpdateWeekStart, setClientUpdateWeekStart] = useState('');
   const [clientUpdateMonthValue, setClientUpdateMonthValue] = useState('');
@@ -122,6 +212,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
+  const [clientUpdateImporting, setClientUpdateImporting] = useState(false);
+  const clientUpdateFileRef = useRef<HTMLInputElement>(null);
   const [followupRow, setFollowupRow] = useState<SalesModuleClientUpdate | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +227,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [apptStart, setApptStart] = useState('');
   const [apptEnd, setApptEnd] = useState('');
   const [saving, setSaving] = useState(false);
-  const [teamOpen, setTeamOpen] = useState(false);
   const [teamMembers, setTeamMembers] = useState<SalesModuleTeamMember[]>([]);
   const [teamEvents, setTeamEvents] = useState<SalesModuleTeamCalendarEvent[]>([]);
   const [teamSyncMessage, setTeamSyncMessage] = useState<string | null>(null);
@@ -169,10 +260,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       ? await api.salesModuleCompanies({ salesTeamMemberId: memberId })
       : await api.salesModuleCompanies({});
     setCompanies(rows);
-    // Keep "All companies" unless the current selection is still valid for this hunter.
+    // Prefer an existing valid selection; otherwise default to the first tagged company
+    // (used by Appointment Calendar on Sales Diary — no separate top Company filter).
     setSelectedCompanyId(prev => {
       if (prev && rows.some(c => c.id === prev)) return prev;
-      return null;
+      return rows[0]?.id ?? null;
     });
   }, []);
 
@@ -220,6 +312,24 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   }, []);
 
   const loadClientUpdates = useCallback(async () => {
+    // Member selected → all attached clients (no week/month / company filter).
+    // Top Company sticky filter was removed; company is chosen per diary/appointment action.
+    if (selectedTeamMemberId) {
+      setClientUpdatesLoading(true);
+      try {
+        await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
+        // Sync company tags from rematched Client Update rows before listing attached clients.
+        await api.salesModuleCompanies({ salesTeamMemberId: selectedTeamMemberId }).catch(() => undefined);
+        const rows = await api.salesModuleClientUpdates({
+          salesTeamMemberId: selectedTeamMemberId,
+        });
+        setClientUpdates(rows);
+      } finally {
+        setClientUpdatesLoading(false);
+      }
+      return;
+    }
+
     if (clientUpdateView === 'week' && !clientUpdateWeekStart) return;
     if (clientUpdateView === 'month' && !clientUpdateMonthValue) return;
 
@@ -227,12 +337,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     try {
       // Rematch uploaded Hunter free-text to Sales Team list, then load period rows with changes.
       await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
-      const base = selectedTeamMemberId
-        ? { salesTeamMemberId: selectedTeamMemberId }
-        : {};
       if (clientUpdateView === 'week') {
         const rows = await api.salesModuleClientUpdates({
-          ...base,
           view: 'week',
           weekStart: clientUpdateWeekStart,
         });
@@ -245,7 +351,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         return;
       }
       const rows = await api.salesModuleClientUpdates({
-        ...base,
         view: 'month',
         year: month.year,
         month: month.month,
@@ -275,27 +380,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     });
   }, []);
 
-  const loadOverviewCompanies = useCallback(async (memberId: number | '') => {
-    const rows = memberId
-      ? await api.salesModuleCompanies({ salesTeamMemberId: memberId })
-      : await api.salesModuleCompanies({});
-    setOverviewCompanies(rows);
-    setOverviewCompanyId(prev => {
-      if (prev && rows.some(c => c.id === prev)) return prev;
-      return '';
-    });
-  }, []);
-
-  useEffect(() => {
-    if (tab !== 'overview') return;
-    let cancelled = false;
-    loadOverviewCompanies(overviewSalesTeamId)
-      .catch(err => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load companies');
-      });
-    return () => { cancelled = true; };
-  }, [tab, overviewSalesTeamId, loadOverviewCompanies]);
-
   const runOverviewSearch = useCallback(async () => {
     if (overviewView === 'week' && !overviewWeekStart) {
       setError('Select a week to search.');
@@ -309,10 +393,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     setOverviewLoading(true);
     setError(null);
     setOverviewHasSearched(true);
+    setOverviewDetailHunter(null);
+    setOverviewDetailRows([]);
     try {
       const scope = {
         salesTeamMemberId: overviewSalesTeamId || undefined,
-        companyId: overviewCompanyId || undefined,
       };
       if (overviewView === 'week') {
         const data = await api.salesModuleOverview({
@@ -321,20 +406,18 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           ...scope,
         });
         setOverview(data);
-        return;
+      } else {
+        const [yearStr, monthStr] = overviewMonthValue.split('-');
+        const year = Number(yearStr);
+        const month = Number(monthStr);
+        const data = await api.salesModuleOverview({
+          view: 'month',
+          year,
+          month,
+          ...scope,
+        });
+        setOverview(data);
       }
-      const month = overviewPeriods?.months.find(m => m.value === overviewMonthValue);
-      if (!month) {
-        setOverview(null);
-        return;
-      }
-      const data = await api.salesModuleOverview({
-        view: 'month',
-        year: month.year,
-        month: month.month,
-        ...scope,
-      });
-      setOverview(data);
     } catch (err) {
       setOverview(null);
       setError(err instanceof Error ? err.message : 'Failed to load Overview');
@@ -347,8 +430,39 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     overviewMonthValue,
     overviewPeriods,
     overviewSalesTeamId,
-    overviewCompanyId,
   ]);
+
+  const openOverviewHunterDetail = useCallback(async (row: SalesModuleOverviewHunterRow) => {
+    const isUnassigned = !row.hunter.trim()
+      || row.hunter.trim().toLowerCase() === '(unassigned)'
+      || row.hunter.trim().toLowerCase() === 'unassigned';
+    const memberId = isUnassigned
+      ? undefined
+      : (row.salesTeamMemberId
+        || activeHunters.find(m => m.name.trim().toLowerCase() === row.hunter.trim().toLowerCase())?.id
+        || undefined);
+    setOverviewDetailHunter({ hunter: row.hunter, salesTeamMemberId: memberId ?? null });
+    setOverviewDetailLoading(true);
+    setError(null);
+    try {
+      // Full attached client book for this team member (not week/month period filter).
+      if (!isUnassigned) {
+        await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
+        if (memberId) {
+          await api.salesModuleCompanies({ salesTeamMemberId: memberId }).catch(() => undefined);
+        }
+      }
+      const rows = await api.salesModuleClientUpdates(
+        memberId ? { salesTeamMemberId: memberId } : { hunter: isUnassigned ? '(Unassigned)' : row.hunter },
+      );
+      setOverviewDetailRows(sortOverviewClientDetails(rows));
+    } catch (err) {
+      setOverviewDetailRows([]);
+      setError(err instanceof Error ? err.message : 'Failed to load team member clients');
+    } finally {
+      setOverviewDetailLoading(false);
+    }
+  }, [activeHunters]);
 
   const loadAppointments = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -418,9 +532,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     runOverviewSearch,
   ]);
 
-  // Calendar sync is only needed on the Appointment Calendar tab (and can be slow via Graph).
+  // Calendar sync when Sales Diary is open (Appointment Calendar lives at the top of that tab).
   useEffect(() => {
-    if (tab !== 'calendar') return;
+    if (tab !== 'sales-diary') return;
     let cancelled = false;
     void loadTeamCalendars().catch(err => {
       if (!cancelled) setTeamSyncMessage(err instanceof Error ? err.message : 'Failed to sync calendars');
@@ -441,9 +555,12 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   // Lazy-load Client Update when tab, hunter, or week/month selection changes.
   useEffect(() => {
     if (tab !== 'client-update') return;
-    if (clientUpdateView === 'week' && !clientUpdateWeekStart) return;
-    if (clientUpdateView === 'month' && !clientUpdateMonthValue) return;
-    if (clientUpdateView === 'month' && !clientUpdatePeriods) return;
+    // Member scope lists all attached clients — period selectors are not required.
+    if (!selectedTeamMemberId) {
+      if (clientUpdateView === 'week' && !clientUpdateWeekStart) return;
+      if (clientUpdateView === 'month' && !clientUpdateMonthValue) return;
+      if (clientUpdateView === 'month' && !clientUpdatePeriods) return;
+    }
     let cancelled = false;
     void loadClientUpdates().catch(err => {
       if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Client Update');
@@ -452,11 +569,41 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   }, [
     tab,
     loadClientUpdates,
+    selectedTeamMemberId,
     clientUpdateView,
     clientUpdateWeekStart,
     clientUpdateMonthValue,
     clientUpdatePeriods,
   ]);
+
+  async function handleImportClientUpdates(file: File | null) {
+    if (!file) return;
+    setClientUpdateImporting(true);
+    setClientUpdateMessage(null);
+    setError(null);
+    try {
+      const result = await api.importSalesModuleClientUpdates(file);
+      const lines = [
+        ...(result.messages ?? []),
+        result.clientDbWired != null
+          ? `Client DB wired: ${result.clientDbWired}`
+          : null,
+        result.hunterRematch
+          ? `Hunter rematch tagged ${result.hunterRematch.matched ?? 0} / unmatched ${result.hunterRematch.unmatched ?? 0}`
+          : null,
+      ].filter(Boolean);
+      setClientUpdateMessage(lines.join('\n'));
+      await loadClientUpdates();
+      if (selectedTeamMemberId) {
+        await loadSalesCompanies(selectedTeamMemberId).catch(() => undefined);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import Instant Sales Update workbook');
+    } finally {
+      setClientUpdateImporting(false);
+      if (clientUpdateFileRef.current) clientUpdateFileRef.current.value = '';
+    }
+  }
 
   async function handleCreateCompany() {
     if (!selectedTeamMemberId || !companyDraft.trim()) return;
@@ -470,6 +617,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       setCompanyDraft('');
       setCompanies(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedCompanyId(created.id);
+      if (tab === 'client-update') {
+        await loadClientUpdates().catch(() => undefined);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create company');
     } finally {
@@ -517,6 +667,68 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save Client Update field');
       throw err;
+    }
+  }
+
+  const clientUpdateDuplicateCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of clientUpdates) {
+      const key = clientUpdateDuplicateGroupKey(row);
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [clientUpdates]);
+
+  async function removeClientUpdateRow(row: SalesModuleClientUpdate) {
+    const label = row.company?.trim() || row.brand?.trim() || `#${row.id}`;
+    if (!window.confirm(`Remove Client Update row for “${label}”? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await api.deleteSalesModuleClientUpdate(row.id);
+      setClientUpdates(prev => prev.filter(r => r.id !== row.id));
+      setOverviewDetailRows(prev => prev.filter(r => r.id !== row.id));
+      if (followupRow?.id === row.id) setFollowupRow(null);
+      setClientUpdateMessage(`Removed “${label}”.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove Client Update row');
+    }
+  }
+
+  async function mergeClientUpdateDuplicates(row: SalesModuleClientUpdate) {
+    const key = clientUpdateDuplicateGroupKey(row);
+    const dupCount = key ? (clientUpdateDuplicateCounts.get(key) ?? 1) : 1;
+    if (dupCount < 2) {
+      setError('No duplicate rows found for this client in the current list.');
+      return;
+    }
+    const label = row.company?.trim() || row.brand?.trim() || `#${row.id}`;
+    if (!window.confirm(
+      `Merge ${dupCount - 1} duplicate row${dupCount - 1 === 1 ? '' : 's'} into “${label}”? Other matching rows will be removed.`,
+    )) return;
+    setError(null);
+    try {
+      const result = await api.mergeSalesModuleClientUpdateDuplicates(row.id);
+      const deleted = new Set(result.deletedIds ?? []);
+      setClientUpdates(prev => {
+        const next = prev
+          .filter(r => !deleted.has(r.id))
+          .map(r => (r.id === result.keeper.id ? result.keeper : r));
+        return next;
+      });
+      setOverviewDetailRows(prev => {
+        const next = prev
+          .filter(r => !deleted.has(r.id))
+          .map(r => (r.id === result.keeper.id ? result.keeper : r));
+        return sortOverviewClientDetails(next);
+      });
+      if (followupRow && deleted.has(followupRow.id)) setFollowupRow(null);
+      setClientUpdateMessage(
+        `Merged ${result.mergedCount} duplicate${result.mergedCount === 1 ? '' : 's'} into “${label}”.`,
+      );
+      await loadClientUpdates().catch(() => undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to merge duplicates');
     }
   }
 
@@ -629,55 +841,26 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   if (activeTeamMembers.length === 0) {
     return (
       <div className={pageShellClass({ spacing: 'loose' })}>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTeamOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-          >
-            <Users size={12} />
-            Sales Team
-          </button>
-        </div>
         <p className="text-sm text-muted-foreground">
-          Create a Sales Team member first (include Office 365 Graph credentials), then add companies.
+          Add Sales Module team members under Control Panel → Team (include Office 365 Graph credentials), then return here.
         </p>
-        <SalesModuleTeamPanel
-          open={teamOpen}
-          onClose={() => {
-            setTeamOpen(false);
-            void loadTeamMembers().then(() => loadTeamCalendars());
-          }}
-          onChanged={setTeamMembers}
-        />
+        <button
+          type="button"
+          onClick={() => void loadTeamMembers().then(() => loadTeamCalendars())}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted w-fit"
+        >
+          Refresh team list
+        </button>
       </div>
     );
   }
 
-  if (!selectedTeamMemberId && tab !== 'client-update' && tab !== 'overview') {
+  if (!selectedTeamMemberId && tab !== 'client-update' && tab !== 'overview' && tab !== 'sales-diary') {
     return (
       <div className={pageShellClass({ spacing: 'loose' })}>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTeamOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-          >
-            <Users size={12} />
-            Sales Team
-          </button>
-        </div>
         <p className="text-sm text-muted-foreground">
-          Select a Sales Team member to continue.
+          Select a team member from the filters above to continue. Manage team members under Control Panel → Team.
         </p>
-        <SalesModuleTeamPanel
-          open={teamOpen}
-          onClose={() => {
-            setTeamOpen(false);
-            void loadTeamMembers().then(() => loadTeamCalendars());
-          }}
-          onChanged={setTeamMembers}
-        />
       </div>
     );
   }
@@ -697,7 +880,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         {tab === 'overview' ? (
           <div className="flex flex-wrap items-end gap-2">
             <label className="inline-flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+              <span className="text-muted-foreground uppercase tracking-wide">Team</span>
               <select
                 value={overviewSalesTeamId}
                 onChange={e => {
@@ -707,26 +890,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 }}
                 className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
               >
-                <option value="">All hunters</option>
+                <option value="">All team</option>
                 {activeHunters.map(m => (
                   <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="inline-flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-              <select
-                value={overviewCompanyId}
-                onChange={e => {
-                  setOverviewCompanyId(e.target.value ? Number(e.target.value) : '');
-                  setOverviewHasSearched(false);
-                  setOverview(null);
-                }}
-                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-              >
-                <option value="">All companies</option>
-                {overviewCompanies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </label>
@@ -806,93 +972,17 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               <Search size={12} />
               {overviewLoading ? 'Searching…' : 'Search'}
             </button>
-            <button
-              type="button"
-              onClick={() => setTeamOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-            >
-              <Users size={12} />
-              Sales Team
-              {teamMembers.length > 0 ? (
-                <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
-              ) : null}
-            </button>
             {overviewHasSearched && overview?.periodLabel ? (
               <p className="text-xs text-muted-foreground self-center">
-                Summary by Hunter · {overview.periodLabel}
-                {overview.companyName ? ` · ${overview.companyName}` : ''}
+                Summary by Team · {overview.periodLabel}
               </p>
             ) : null}
           </div>
         ) : (
           <>
             <div className="flex flex-wrap items-end gap-2">
-              {tab === 'client-update' ? (
-                <>
-                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs self-end">
-                    <button
-                      type="button"
-                      onClick={() => setClientUpdateView('week')}
-                      className={`px-3 py-1.5 font-semibold ${clientUpdateView === 'week' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                    >
-                      Week
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setClientUpdateView('month')}
-                      className={`px-3 py-1.5 font-semibold border-l border-border ${clientUpdateView === 'month' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                    >
-                      Month
-                    </button>
-                  </div>
-                  {clientUpdateView === 'week' ? (
-                    <label className="inline-flex flex-col gap-1 text-xs min-w-[14rem]">
-                      <span className="text-muted-foreground uppercase tracking-wide">Week</span>
-                      <select
-                        required
-                        value={clientUpdateWeekStart}
-                        onChange={e => setClientUpdateWeekStart(e.target.value)}
-                        className="rounded-md border border-border bg-background px-2 py-1.5"
-                      >
-                        <option value="" disabled>
-                          Select week…
-                        </option>
-                        {(clientUpdatePeriods?.weeks ?? []).map(w => (
-                          <option key={w.value} value={w.value}>{w.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : (
-                    <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem]">
-                      <span className="text-muted-foreground uppercase tracking-wide">Month</span>
-                      <select
-                        required
-                        value={clientUpdateMonthValue}
-                        onChange={e => setClientUpdateMonthValue(e.target.value)}
-                        className="rounded-md border border-border bg-background px-2 py-1.5"
-                      >
-                        <option value="" disabled>
-                          Select month…
-                        </option>
-                        {(clientUpdatePeriods?.months ?? []).map(m => (
-                          <option key={m.value} value={m.value}>{m.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  <button
-                    type="button"
-                    disabled={clientUpdatesLoading}
-                    onClick={() => void loadClientUpdates()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
-                  >
-                    <Search size={12} />
-                    {clientUpdatesLoading ? 'Loading…' : 'Refresh'}
-                  </button>
-                </>
-              ) : null}
               <label className="inline-flex flex-col gap-1 text-xs">
-                <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+                <span className="text-muted-foreground uppercase tracking-wide">Team</span>
                 <select
                   value={selectedTeamMemberId ?? ''}
                   onChange={e => setSelectedTeamMemberId(e.target.value ? Number(e.target.value) : null)}
@@ -906,30 +996,91 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   ))}
                 </select>
               </label>
-              <label className="inline-flex flex-col gap-1 text-xs">
-                <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-                <select
-                  value={selectedCompanyId ?? ''}
-                  onChange={e => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
-                  className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-                >
-                  <option value="">All companies</option>
-                  {companies.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                onClick={() => setTeamOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-              >
-                <Users size={12} />
-                Sales Team
-                {teamMembers.length > 0 ? (
-                  <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
-                ) : null}
-              </button>
+              {tab === 'client-update' ? (
+                <>
+                  {!selectedTeamMemberId ? (
+                    <>
+                      <div className="inline-flex rounded-md border border-border overflow-hidden text-xs self-end">
+                        <button
+                          type="button"
+                          onClick={() => setClientUpdateView('week')}
+                          className={`px-3 py-1.5 font-semibold ${clientUpdateView === 'week' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                        >
+                          Week
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setClientUpdateView('month')}
+                          className={`px-3 py-1.5 font-semibold border-l border-border ${clientUpdateView === 'month' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                        >
+                          Month
+                        </button>
+                      </div>
+                      {clientUpdateView === 'week' ? (
+                        <label className="inline-flex flex-col gap-1 text-xs min-w-[14rem]">
+                          <span className="text-muted-foreground uppercase tracking-wide">Week</span>
+                          <select
+                            required
+                            value={clientUpdateWeekStart}
+                            onChange={e => setClientUpdateWeekStart(e.target.value)}
+                            className="rounded-md border border-border bg-background px-2 py-1.5"
+                          >
+                            <option value="" disabled>
+                              Select week…
+                            </option>
+                            {(clientUpdatePeriods?.weeks ?? []).map(w => (
+                              <option key={w.value} value={w.value}>{w.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem]">
+                          <span className="text-muted-foreground uppercase tracking-wide">Month</span>
+                          <select
+                            required
+                            value={clientUpdateMonthValue}
+                            onChange={e => setClientUpdateMonthValue(e.target.value)}
+                            className="rounded-md border border-border bg-background px-2 py-1.5"
+                          >
+                            <option value="" disabled>
+                              Select month…
+                            </option>
+                            {(clientUpdatePeriods?.months ?? []).map(m => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={clientUpdatesLoading}
+                    onClick={() => void loadClientUpdates()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
+                  >
+                    <Search size={12} />
+                    {clientUpdatesLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                  <input
+                    ref={clientUpdateFileRef}
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={e => void handleImportClientUpdates(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    disabled={clientUpdateImporting}
+                    onClick={() => clientUpdateFileRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+                    title="Import Instant Sales Update.xlsx (Weekly Update + Client DB)"
+                  >
+                    <Upload size={12} />
+                    {clientUpdateImporting ? 'Importing…' : 'Import Excel'}
+                  </button>
+                </>
+              ) : null}
             </div>
             {tab === 'client-update' && !selectedTeamMemberId ? null : (
               <div className="flex flex-wrap items-end gap-2">
@@ -961,6 +1112,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           active={tab}
           onChange={next => {
             setTab(next);
+            if (next !== 'overview') {
+              setOverviewDetailHunter(null);
+              setOverviewDetailRows([]);
+            }
             if (next !== 'client-update' && next !== 'overview' && !selectedTeamMemberId) {
               setSelectedTeamMemberId(activeTeamMembers[0]?.id ?? null);
             }
@@ -970,61 +1125,71 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">
               Client Update ·{' '}
-              {clientUpdateView === 'week'
-                ? (clientUpdatePeriods?.weeks.find(w => w.value === clientUpdateWeekStart)?.label
-                  ?? 'select week')
-                : (clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue)?.label
-                  ?? 'select month')}
-              {' · changes only · '}
-              {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
-              {selectedTeamMember
-                ? ` · hunter ${selectedTeamMember.name}`
-                : ' · all hunters'}
+              {selectedTeamMember ? (
+                <>
+                  all clients attached to {selectedTeamMember.name}
+                  {' · '}
+                  {clientUpdatesLoading ? '…' : `${clientUpdates.length} client${clientUpdates.length === 1 ? '' : 's'}`}
+                </>
+              ) : (
+                <>
+                  {clientUpdateView === 'week'
+                    ? (clientUpdatePeriods?.weeks.find(w => w.value === clientUpdateWeekStart)?.label
+                      ?? 'select week')
+                    : (clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue)?.label
+                      ?? 'select month')}
+                  {' · changes only · '}
+                  {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
+                  {' · all hunters'}
+                </>
+              )}
               {' · '}use Followup on each row to send appointments or change status
+              {' · '}Import Excel wires Instant Sales Update (Weekly Update + Client DB) to Sales Team members
             </p>
             {clientUpdateMessage ? (
               <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{clientUpdateMessage}</p>
             ) : null}
           </div>
         ) : tab === 'sales-diary' ? (
-          <p className="text-xs text-muted-foreground">
-            Log Status Change and Sales Call activity for hunter{' '}
-            {selectedTeamMember?.name ?? '—'}. Company list is limited to accounts tagged to this hunter.
-          </p>
-        ) : (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="inline-flex items-center gap-2">
-              <button
-                type="button"
-                className="p-1.5 rounded-md border border-border hover:bg-muted"
-                onClick={() => setMonthCursor(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-                aria-label="Previous month"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <p className="text-sm font-semibold min-w-[10rem] text-center">{monthLabel}</p>
-              <button
-                type="button"
-                className="p-1.5 rounded-md border border-border hover:bg-muted"
-                onClick={() => setMonthCursor(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-                aria-label="Next month"
-              >
-                <ChevronRight size={14} />
-              </button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Appointment Calendar on top · log Status Change and Sales Call below for hunter{' '}
+                {selectedTeamMember?.name ?? '—'}. Company list is limited to accounts tagged to this hunter.
+              </p>
+              <div className="inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  className="p-1.5 rounded-md border border-border hover:bg-muted"
+                  onClick={() => setMonthCursor(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                  aria-label="Previous month"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <p className="text-sm font-semibold min-w-[10rem] text-center">{monthLabel}</p>
+                <button
+                  type="button"
+                  className="p-1.5 rounded-md border border-border hover:bg-muted"
+                  onClick={() => setMonthCursor(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                  aria-label="Next month"
+                >
+                  <ChevronRight size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openNewAppointment()}
+                  disabled={!selectedCompanyId}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
+                >
+                  <Plus size={12} />
+                  New appointment
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => openNewAppointment()}
-              disabled={!selectedCompanyId}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
-            >
-              <Plus size={12} />
-              New appointment
-            </button>
+            {teamSyncMessage ? (
+              <p className="text-[11px] text-muted-foreground">{teamSyncMessage}</p>
+            ) : null}
           </div>
-        )}
-        {tab === 'calendar' && teamSyncMessage ? (
-          <p className="text-[11px] text-muted-foreground">{teamSyncMessage}</p>
         ) : null}
       </PageStickyFilters>
 
@@ -1035,63 +1200,171 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       ) : null}
 
       {tab === 'overview' ? (
-        <TableScrollContainer ref={scrollRootRef}>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="px-2 py-1.5 text-left">Hunter</th>
-                <th className="px-2 py-1.5 text-right">Client status change</th>
-                <th className="px-2 py-1.5 text-right">Client interaction (contact)</th>
-                <th className="px-2 py-1.5 text-right">New Lead</th>
-              </tr>
-            </thead>
-            <tbody>
-              {overviewLoading ? (
-                <TableLoadingRow colSpan={4} label="Loading overview…" />
-              ) : !overviewHasSearched ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    Select a week or month to view Sales Team activity.
-                  </td>
+        <div className="space-y-4">
+          <TableScrollContainer ref={scrollRootRef}>
+            <table className="w-full text-xs">
+              <ColGroup widths={['18%', '12%', '22%', '28%', '20%']} />
+              <thead>
+                <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-2 py-1.5 text-left">Team</th>
+                  <th className="px-2 py-1.5 text-right">Total Client</th>
+                  <th className="px-2 py-1.5 text-right">Client status change</th>
+                  <th className="px-2 py-1.5 text-right">Client interaction (contact)</th>
+                  <th className="px-2 py-1.5 text-right">New Lead</th>
                 </tr>
-              ) : (overviewView === 'week' && !overviewWeekStart) || (overviewView === 'month' && !overviewMonthValue) ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    {overviewView === 'week'
-                      ? 'Select a week to view Sales Team activity.'
-                      : 'Select a month to view Sales Team activity.'}
-                  </td>
-                </tr>
-              ) : !overview || overview.hunters.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    No Sales Team hunters yet. Add hunters in Sales Team first.
-                  </td>
-                </tr>
-              ) : (
-                <>
-                  {overview.hunters.map(row => (
-                    <tr key={row.hunter} className="border-b border-border/60 hover:bg-muted/30">
-                      <td className="px-2 py-1.5 font-medium whitespace-nowrap">{row.hunter}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{row.statusChanges}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{row.interactions}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{row.newLeads}</td>
-                    </tr>
-                  ))}
-                  <tr className="border-t border-border bg-muted/20 font-semibold">
-                    <td className="px-2 py-1.5">Total</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.statusChanges}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.interactions}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.newLeads}</td>
+              </thead>
+              <tbody>
+                {overviewLoading ? (
+                  <TableLoadingRow colSpan={5} label="Loading overview…" />
+                ) : !overviewHasSearched ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                      Select a week or month to view Sales Team activity.
+                    </td>
                   </tr>
-                </>
-              )}
-            </tbody>
-          </table>
-        </TableScrollContainer>
+                ) : (overviewView === 'week' && !overviewWeekStart) || (overviewView === 'month' && !overviewMonthValue) ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                      {overviewView === 'week'
+                        ? 'Select a week to view Sales Team activity.'
+                        : 'Select a month to view Sales Team activity.'}
+                    </td>
+                  </tr>
+                ) : !overview || overview.hunters.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                      No team members yet. Add them under Control Panel → Team.
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {overview.hunters.map(row => {
+                      const selected = overviewDetailHunter?.hunter === row.hunter;
+                      return (
+                        <tr
+                          key={row.hunter}
+                          className={`border-b border-border/60 hover:bg-muted/30${selected ? ' bg-muted/40' : ''}`}
+                        >
+                          <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="text-left font-medium text-primary underline-offset-2 hover:underline"
+                              onClick={() => void openOverviewHunterDetail(row)}
+                            >
+                              {row.hunter}
+                            </button>
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.totalClients ?? 0}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.statusChanges}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.interactions}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.newLeads}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t border-border bg-muted/20 font-semibold">
+                      <td className="px-2 py-1.5">Total</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.totalClients ?? 0}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.statusChanges}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.interactions}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.newLeads}</td>
+                    </tr>
+                  </>
+                )}
+              </tbody>
+            </table>
+          </TableScrollContainer>
+
+          {overviewDetailHunter ? (
+            <div className="rounded-md border border-border overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/20">
+                <div>
+                  <p className="text-sm font-semibold">{overviewDetailHunter.hunter}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Full client list
+                    {' · '}
+                    {overviewDetailLoading
+                      ? '…'
+                      : `${overviewDetailRows.length} client${overviewDetailRows.length === 1 ? '' : 's'}`}
+                    {' · '}status change → interaction → new leads
+                    {' · '}click client name to update
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border border-border hover:bg-muted"
+                  onClick={() => {
+                    setOverviewDetailHunter(null);
+                    setOverviewDetailRows([]);
+                  }}
+                >
+                  <X size={12} />
+                  Close
+                </button>
+              </div>
+              <TableScrollContainer>
+                <table className="w-full text-xs">
+                  <ColGroup widths={['14%', '10%', '12%', '8%', '10%', '10%', '12%', '24%']} />
+                  <thead>
+                    <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-2 py-1.5 text-left">Client name</th>
+                      <th className="px-2 py-1.5 text-left">Created Date</th>
+                      <th className="px-2 py-1.5 text-left">Brand</th>
+                      <th className="px-2 py-1.5 text-right">Number of Location</th>
+                      <th className="px-2 py-1.5 text-left">Current Status</th>
+                      <th className="px-2 py-1.5 text-left">Interaction Date</th>
+                      <th className="px-2 py-1.5 text-left">Interaction Type</th>
+                      <th className="px-2 py-1.5 text-left">Interaction Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overviewDetailLoading ? (
+                      <TableLoadingRow colSpan={8} label="Loading clients…" />
+                    ) : overviewDetailRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                          {overviewDetailHunter.hunter.trim().toLowerCase() === '(unassigned)'
+                            || overviewDetailHunter.hunter.trim().toLowerCase() === 'unassigned'
+                            ? 'No unassigned clients found. They may have been tagged to a team member.'
+                            : 'No clients attached to this team member yet. Import Excel on Client Update or tag a company.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      overviewDetailRows.map(row => (
+                        <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
+                          <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="text-left font-medium text-primary underline-offset-2 hover:underline"
+                              title="Open Client Update followup"
+                              onClick={() => setFollowupRow(row)}
+                            >
+                              {row.company?.trim() || row.brand?.trim() || '—'}
+                            </button>
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.dateCreated)}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.brand?.trim() || '—'}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {row.locationCount != null ? row.locationCount : '—'}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.status?.trim() || '—'}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.lastContactDate)}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.contactType?.trim() || '—'}</td>
+                          <td className="px-2 py-1.5 max-w-[18rem] truncate" title={row.note || undefined}>
+                            {row.note?.trim() || '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </TableScrollContainer>
+            </div>
+          ) : null}
+        </div>
       ) : tab === 'client-update' ? (
         <TableScrollContainer ref={scrollRootRef}>
           <table className="w-full text-xs">
+            <ColGroup widths={['7%', '7%', '9%', '7%', '6%', '6%', '7%', '7%', '6%', '9%', '7%', '7%', '15%']} />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="px-2 py-1.5 text-left">Date Created</th>
@@ -1115,8 +1388,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               ) : clientUpdates.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="px-3 py-8 text-center text-muted-foreground">
-                    No Client Update rows with changes for the selected{' '}
-                    {clientUpdateView === 'week' ? 'week' : 'month'}.
+                    {selectedTeamMemberId
+                      ? 'No clients attached to this Sales Team member yet. Add a company above or import Client Update rows.'
+                      : `No Client Update rows with changes for the selected ${clientUpdateView === 'week' ? 'week' : 'month'}.`}
                   </td>
                 </tr>
               ) : (
@@ -1180,13 +1454,37 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.followUpReminder)}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{row.appointment || '—'}</td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => setFollowupRow(row)}
-                        className="px-2 py-1 rounded-md text-[11px] font-semibold border border-border hover:bg-muted"
-                      >
-                        Followup
-                      </button>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setFollowupRow(row)}
+                          className="px-2 py-1 rounded-md text-[11px] font-semibold border border-border hover:bg-muted"
+                        >
+                          Followup
+                        </button>
+                        {((clientUpdateDuplicateGroupKey(row)
+                          && (clientUpdateDuplicateCounts.get(clientUpdateDuplicateGroupKey(row)!) ?? 0) > 1)
+                        ) ? (
+                          <button
+                            type="button"
+                            onClick={() => void mergeClientUpdateDuplicates(row)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-border hover:bg-muted"
+                            title="Merge duplicate rows for this client"
+                          >
+                            <GitMerge size={11} />
+                            Merge
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void removeClientUpdateRow(row)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-destructive/40 text-destructive hover:bg-destructive/10"
+                          title="Remove this Client Update row"
+                        >
+                          <Trash2 size={11} />
+                          Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -1194,180 +1492,183 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
             </tbody>
           </table>
         </TableScrollContainer>
-      ) : tab === 'sales-diary' && selectedTeamMemberId ? (
-        <SalesDiaryPanel
-          salesTeamMemberId={selectedTeamMemberId}
-          hunterName={selectedTeamMember?.name ?? ''}
-          companies={companies}
-          createdByEmail={engagedUserEmail}
-          onCompanyCreated={created => {
-            setCompanies(prev => {
-              if (prev.some(c => c.id === created.id)) return prev;
-              return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
-            });
-            setSelectedCompanyId(created.id);
-          }}
-        />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4">
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="grid grid-cols-7 border-b border-border bg-muted/30 text-[11px] uppercase tracking-wide text-muted-foreground">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                <div key={d} className="px-2 py-2 text-center font-semibold">{d}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7">
-              {cells.map((day, idx) => {
-                if (!day) return <div key={`empty-${idx}`} className="min-h-[5.5rem] border-b border-r border-border/50 bg-muted/10" />;
-                const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
-                const dayItems = calendarItemsByDay.get(key) ?? [];
-                const selected = selectedDay ? sameDay(day, selectedDay) : false;
-                const isToday = sameDay(day, new Date());
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setSelectedDay(day)}
-                    className={`min-h-[5.5rem] border-b border-r border-border/50 p-1.5 text-left align-top hover:bg-muted/40 ${
-                      selected ? 'bg-primary/10' : ''
-                    }`}
-                  >
-                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                      isToday ? 'bg-primary text-primary-foreground font-bold' : 'text-foreground'
-                    }`}>
-                      {day.getDate()}
-                    </span>
-                    <div className="mt-1 space-y-0.5">
-                      {dayItems.slice(0, 3).map(item => (
-                        <p
-                          key={item.key}
-                          className={`text-[10px] truncate rounded px-1 py-0.5 ${
-                            item.kind === 'o365' ? 'bg-sky-500/15 text-sky-900 dark:text-sky-200' : 'bg-muted'
-                          }`}
-                          title={item.kind === 'o365'
-                            ? `${item.title} · ${item.event.salesTeamMemberName}`
-                            : item.title}
-                        >
-                          {item.title}
-                        </p>
-                      ))}
-                      {dayItems.length > 3 ? (
-                        <p className="text-[10px] text-muted-foreground">+{dayItems.length - 3} more</p>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border bg-card p-3 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">
-                {selectedDay
-                  ? selectedDay.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-                  : 'Select a day'}
-              </h3>
-              {selectedDay ? (
-                <button
-                  type="button"
-                  onClick={() => openNewAppointment(selectedDay)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary"
-                >
-                  <Plus size={12} /> Add
-                </button>
-              ) : null}
-            </div>
-            {selectedDayItems.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No appointments.</p>
-            ) : (
-              <ul className="space-y-2">
-                {selectedDayItems.map(item => (
-                  <li key={item.key} className="rounded-md border border-border px-2 py-2 space-y-1">
-                    {item.kind === 'local' ? (
-                      <>
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-semibold">{item.appointment.title}</p>
-                          <button
-                            type="button"
-                            onClick={() => void removeAppointment(item.appointment.id)}
-                            className="text-muted-foreground hover:text-destructive"
-                            aria-label="Delete appointment"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+      ) : tab === 'sales-diary' ? (
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Appointment Calendar</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4">
+              <div className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="grid grid-cols-7 border-b border-border bg-muted/30 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                    <div key={d} className="px-2 py-2 text-center font-semibold">{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {cells.map((day, idx) => {
+                    if (!day) return <div key={`empty-${idx}`} className="min-h-[5.5rem] border-b border-r border-border/50 bg-muted/10" />;
+                    const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+                    const dayItems = calendarItemsByDay.get(key) ?? [];
+                    const selected = selectedDay ? sameDay(day, selectedDay) : false;
+                    const isToday = sameDay(day, new Date());
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSelectedDay(day)}
+                        className={`min-h-[5.5rem] border-b border-r border-border/50 p-1.5 text-left align-top hover:bg-muted/40 ${
+                          selected ? 'bg-primary/10' : ''
+                        }`}
+                      >
+                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                          isToday ? 'bg-primary text-primary-foreground font-bold' : 'text-foreground'
+                        }`}>
+                          {day.getDate()}
+                        </span>
+                        <div className="mt-1 space-y-0.5">
+                          {dayItems.slice(0, 3).map(item => (
+                            <p
+                              key={item.key}
+                              className={`text-[10px] truncate rounded px-1 py-0.5 ${
+                                item.kind === 'o365' ? 'bg-sky-500/15 text-sky-900 dark:text-sky-200' : 'bg-muted'
+                              }`}
+                              title={item.kind === 'o365'
+                                ? `${item.title} · ${item.event.salesTeamMemberName}`
+                                : item.title}
+                            >
+                              {item.title}
+                            </p>
+                          ))}
+                          {dayItems.length > 3 ? (
+                            <p className="text-[10px] text-muted-foreground">+{dayItems.length - 3} more</p>
+                          ) : null}
                         </div>
-                        <p className="text-[11px] text-muted-foreground">{item.appointment.customerName}</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {new Date(item.appointment.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          {' – '}
-                          {new Date(item.appointment.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                        {item.appointment.location ? (
-                          <p className="text-[11px] text-muted-foreground">{item.appointment.location}</p>
-                        ) : null}
-                        {item.appointment.outlookSynced ? (
-                          <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
-                            Synced to Office 365
-                            {item.appointment.outlookWebLink ? (
-                              <>
-                                {' · '}
-                                <a href={item.appointment.outlookWebLink} target="_blank" rel="noreferrer" className="underline">
-                                  Open
-                                </a>
-                              </>
-                            ) : null}
-                          </p>
-                        ) : item.appointment.outlookSyncError ? (
-                          <p className="text-[10px] text-destructive" title={item.appointment.outlookSyncError}>
-                            Office 365 sync failed
-                          </p>
-                        ) : null}
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-xs font-semibold">{item.event.title}</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {item.event.salesTeamMemberName} · Office 365
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {item.event.isAllDay
-                            ? 'All day'
-                            : `${new Date(item.event.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${new Date(item.event.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-                        </p>
-                        {item.event.location ? (
-                          <p className="text-[11px] text-muted-foreground">{item.event.location}</p>
-                        ) : null}
-                        {item.event.outlookWebLink ? (
-                          <a
-                            href={item.event.outlookWebLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[10px] text-sky-700 dark:text-sky-300 underline"
-                          >
-                            Open in Outlook
-                          </a>
-                        ) : null}
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-      <SalesModuleTeamPanel
-        open={teamOpen}
-        onClose={() => {
-          setTeamOpen(false);
-          void loadTeamMembers()
-            .then(() => loadSalesCompanies(selectedTeamMemberId))
-            .then(() => loadTeamCalendars());
-        }}
-        onChanged={setTeamMembers}
-      />
+              <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">
+                    {selectedDay
+                      ? selectedDay.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                      : 'Select a day'}
+                  </h3>
+                  {selectedDay ? (
+                    <button
+                      type="button"
+                      onClick={() => openNewAppointment(selectedDay)}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary"
+                    >
+                      <Plus size={12} /> Add
+                    </button>
+                  ) : null}
+                </div>
+                {selectedDayItems.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No appointments.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {selectedDayItems.map(item => (
+                      <li key={item.key} className="rounded-md border border-border px-2 py-2 space-y-1">
+                        {item.kind === 'local' ? (
+                          <>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs font-semibold">{item.appointment.title}</p>
+                              <button
+                                type="button"
+                                onClick={() => void removeAppointment(item.appointment.id)}
+                                className="text-muted-foreground hover:text-destructive"
+                                aria-label="Delete appointment"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">{item.appointment.customerName}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {new Date(item.appointment.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {' – '}
+                              {new Date(item.appointment.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            {item.appointment.location ? (
+                              <p className="text-[11px] text-muted-foreground">{item.appointment.location}</p>
+                            ) : null}
+                            {item.appointment.outlookSynced ? (
+                              <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                                Synced to Office 365
+                                {item.appointment.outlookWebLink ? (
+                                  <>
+                                    {' · '}
+                                    <a href={item.appointment.outlookWebLink} target="_blank" rel="noreferrer" className="underline">
+                                      Open
+                                    </a>
+                                  </>
+                                ) : null}
+                              </p>
+                            ) : item.appointment.outlookSyncError ? (
+                              <p className="text-[10px] text-destructive" title={item.appointment.outlookSyncError}>
+                                Office 365 sync failed
+                              </p>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs font-semibold">{item.event.title}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {item.event.salesTeamMemberName} · Office 365
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {item.event.isAllDay
+                                ? 'All day'
+                                : `${new Date(item.event.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${new Date(item.event.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                            </p>
+                            {item.event.location ? (
+                              <p className="text-[11px] text-muted-foreground">{item.event.location}</p>
+                            ) : null}
+                            {item.event.outlookWebLink ? (
+                              <a
+                                href={item.event.outlookWebLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] text-sky-700 dark:text-sky-300 underline"
+                              >
+                                Open in Outlook
+                              </a>
+                            ) : null}
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {selectedTeamMemberId ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Sales Diary</h3>
+              <SalesDiaryPanel
+                salesTeamMemberId={selectedTeamMemberId}
+                hunterName={selectedTeamMember?.name ?? ''}
+                companies={companies}
+                createdByEmail={engagedUserEmail}
+                onCompanyCreated={created => {
+                  setCompanies(prev => {
+                    if (prev.some(c => c.id === created.id)) return prev;
+                    return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+                  });
+                  setSelectedCompanyId(created.id);
+                }}
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Select a team member above to log Sales Diary activity.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {followupRow ? (
         <ClientUpdateFollowupPanel
@@ -1375,8 +1676,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           createdByEmail={engagedUserEmail}
           onClose={() => setFollowupRow(null)}
           onSaved={result => {
+            const saved = result.clientUpdate;
             setClientUpdates(prev => {
-              const saved = result.clientUpdate;
               const activity = saved.lastContactDate || saved.dateCreated;
               if (
                 activity
@@ -1391,6 +1692,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               }
               return prev.map(r => (r.id === saved.id ? saved : r));
             });
+            setOverviewDetailRows(prev => {
+              const next = prev.map(r => (r.id === saved.id ? saved : r));
+              return sortOverviewClientDetails(next);
+            });
             setClientUpdateMessage(
               result.outlookSynced
                 ? 'Followup saved · Outlook appointment synced.'
@@ -1399,7 +1704,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   : 'Followup saved.',
             );
             setFollowupRow(null);
-            void loadClientUpdates();
+            if (tab === 'client-update') void loadClientUpdates();
           }}
         />
       ) : null}

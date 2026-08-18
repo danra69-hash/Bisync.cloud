@@ -13,5 +13,9 @@ export function RevMgmtLandingPage({
   onOpenTransfer: _onOpenTransfer,
   ...dashboardProps
 }: Props) {
-  return <OverviewDashboard {...dashboardProps} />;
+  return (
+    <div className="w-full min-w-0">
+      <OverviewDashboard {...dashboardProps} />
+    </div>
+  );
 }

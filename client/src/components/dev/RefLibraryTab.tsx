@@ -24,9 +24,48 @@ import {
   PRIVACY_POLICY_INTRO,
   PRIVACY_POLICY_TITLE,
 } from '../../data/privacyPolicy';
+import {
+  DANTSU_PRINTER_SDK_DOWNLOAD_PATH,
+  DANTSU_PRINTER_SDK_JITPACK,
+  DANTSU_PRINTER_SDK_REVISED_DATE,
+  DANTSU_PRINTER_SDK_STEPS,
+  DANTSU_PRINTER_SDK_SUMMARY,
+  DANTSU_PRINTER_SDK_TITLE,
+  DANTSU_PRINTER_SDK_UPSTREAM,
+  DANTSU_PRINTER_SDK_VERSION,
+} from '../../data/dantsuPrinterSdk';
+import {
+  WINDOWS_ESCPOS_SDK_DOWNLOAD_PATH,
+  WINDOWS_ESCPOS_SDK_REVISED_DATE,
+  WINDOWS_ESCPOS_SDK_STEPS,
+  WINDOWS_ESCPOS_SDK_SUMMARY,
+  WINDOWS_ESCPOS_SDK_TITLE,
+  WINDOWS_ESCPOS_SDK_VERSION,
+} from '../../data/windowsEscposSdk';
+import {
+  PLATFORM_GLOSSARY_MODULES,
+  PLATFORM_GLOSSARY_REVISED_DATE,
+  PLATFORM_GLOSSARY_SUMMARY,
+  PLATFORM_GLOSSARY_TITLE,
+  type GlossaryModule,
+} from '../../data/platformGlossary';
+import {
+  ACCOUNTING_PACKS_LIBRARY_TITLE,
+  ACCOUNTING_PACKS_REVISED_DATE,
+  ACCOUNTING_PACK_REFS,
+} from '../../data/accountingPackLibrary';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
-type LibraryEntryId = 'eula' | 'privacy' | 'dpa' | 'fifo' | 'nutrition';
+type LibraryEntryId =
+  | 'eula'
+  | 'privacy'
+  | 'dpa'
+  | 'platform-glossary'
+  | 'fifo'
+  | 'nutrition'
+  | 'dantsu-printer'
+  | 'windows-escpos'
+  | 'accounting-packs';
 
 type LibraryEntry = {
   id: LibraryEntryId;
@@ -131,6 +170,237 @@ function FifoDetails({
           {FIFO_ISSUE_STOCK_SQL}
         </pre>
       </div>
+    </div>
+  );
+}
+
+function AccountingPacksLibraryDetails() {
+  const [openId, setOpenId] = useState<string | null>('acc-my');
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Upstream Accounting package localisation packs. <strong>Malaysia is active in Books</strong>;
+        SG / AU / ID / TH / US remain reference here until wired.
+      </p>
+      <ul className="space-y-2">
+        {ACCOUNTING_PACK_REFS.map(pack => {
+          const open = openId === pack.id;
+          return (
+            <li key={pack.id} className="border border-border/60 rounded-md overflow-hidden">
+              <button
+                type="button"
+                className="w-full flex items-start justify-between gap-2 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setOpenId(open ? null : pack.id)}
+              >
+                <span className="min-w-0">
+                  <span className="text-xs font-semibold block">{pack.title}</span>
+                  <span className="text-[11px] text-muted-foreground">{pack.summary}</span>
+                </span>
+                <span className={`shrink-0 text-[10px] uppercase tracking-wide font-semibold ${
+                  pack.status === 'active' ? 'text-primary' : 'text-muted-foreground'
+                }`}>
+                  {pack.status}
+                </span>
+              </button>
+              {open && (
+                <pre className="max-h-96 overflow-auto border-t border-border/60 bg-background/80 p-3 text-[10px] leading-relaxed font-mono whitespace-pre-wrap">
+                  {pack.markdown}
+                </pre>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function DantsuPrinterSdkDetails({
+  downloading,
+  onDownload,
+}: {
+  downloading: boolean;
+  onDownload: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground leading-relaxed">{DANTSU_PRINTER_SDK_SUMMARY}</p>
+      <p className="text-[11px] text-muted-foreground">
+        Version {DANTSU_PRINTER_SDK_VERSION} · Android POS printer SDK · Bluetooth / TCP / USB
+      </p>
+
+      <ol className="space-y-3 border-t border-border/60 pt-3">
+        {DANTSU_PRINTER_SDK_STEPS.map(step => (
+          <li key={step.id} className="grid gap-1 sm:grid-cols-[2.5rem_1fr]">
+            <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+              {step.number}.
+            </span>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-semibold">{step.title}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+        <button
+          type="button"
+          disabled={downloading}
+          onClick={onDownload}
+          className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+        >
+          {downloading ? 'Downloading…' : 'Download Android SDK package'}
+        </button>
+        <a
+          href={DANTSU_PRINTER_SDK_UPSTREAM}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+        >
+          Upstream on GitHub
+          <ExternalLink size={12} />
+        </a>
+      </div>
+
+      <p className="text-[10px] font-mono text-muted-foreground break-all">
+        JitPack · {DANTSU_PRINTER_SDK_JITPACK}
+      </p>
+      <p className="text-[10px] font-mono text-muted-foreground break-all">
+        API · {DANTSU_PRINTER_SDK_DOWNLOAD_PATH}
+      </p>
+    </div>
+  );
+}
+
+function WindowsEscposSdkDetails({
+  downloading,
+  onDownload,
+}: {
+  downloading: boolean;
+  onDownload: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground leading-relaxed">{WINDOWS_ESCPOS_SDK_SUMMARY}</p>
+      <p className="text-[11px] text-muted-foreground">
+        Version {WINDOWS_ESCPOS_SDK_VERSION} · Windows LAN test · ESC/POS TCP 9100
+      </p>
+
+      <ol className="space-y-3 border-t border-border/60 pt-3">
+        {WINDOWS_ESCPOS_SDK_STEPS.map(step => (
+          <li key={step.id} className="grid gap-1 sm:grid-cols-[2.5rem_1fr]">
+            <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+              {step.number}.
+            </span>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-semibold">{step.title}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+        <button
+          type="button"
+          disabled={downloading}
+          onClick={onDownload}
+          className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+        >
+          {downloading ? 'Downloading…' : 'Download Windows LAN test package'}
+        </button>
+      </div>
+
+      <p className="text-[10px] font-mono text-muted-foreground break-all">
+        API · {WINDOWS_ESCPOS_SDK_DOWNLOAD_PATH}
+      </p>
+    </div>
+  );
+}
+
+function PlatformGlossaryDetails() {
+  const [query, setQuery] = useState('');
+
+  const filteredModules = useMemo((): GlossaryModule[] => {
+    const q = query.trim().toLowerCase();
+    if (!q) return PLATFORM_GLOSSARY_MODULES;
+    return PLATFORM_GLOSSARY_MODULES
+      .map(mod => ({
+        ...mod,
+        entries: mod.entries.filter(entry =>
+          [entry.term, entry.meaning, entry.dbName, mod.module]
+            .join(' ')
+            .toLowerCase()
+            .includes(q),
+        ),
+      }))
+      .filter(mod => mod.entries.length > 0);
+  }, [query]);
+
+  const matchCount = filteredModules.reduce((n, mod) => n + mod.entries.length, 0);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground leading-relaxed">{PLATFORM_GLOSSARY_SUMMARY}</p>
+      <p className="text-[11px] text-muted-foreground">
+        Columns: Term (business name) · Meaning · DB / API name
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search terms, meanings, or DB names…"
+          className="min-w-[12rem] flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+          aria-label="Search platform definitions"
+        />
+        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+          {matchCount} term{matchCount === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {filteredModules.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No definitions match “{query.trim()}”.</p>
+      ) : (
+        <div className="space-y-5">
+          {filteredModules.map(mod => (
+            <section key={mod.id} className="space-y-2">
+              <h3 className="text-xs font-semibold border-b border-border/60 pb-1.5">
+                {mod.module}
+                <span className="ml-2 text-[10px] font-normal text-muted-foreground tabular-nums">
+                  {mod.entries.length}
+                </span>
+              </h3>
+              <div className="overflow-x-auto rounded-md border border-border/50">
+                <table className="w-full min-w-[36rem] text-left text-[11px]">
+                  <thead>
+                    <tr className="bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-2.5 py-1.5 font-semibold w-[22%]">Term</th>
+                      <th className="px-2.5 py-1.5 font-semibold w-[48%]">Meaning</th>
+                      <th className="px-2.5 py-1.5 font-semibold w-[30%]">DB / API</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {mod.entries.map(entry => (
+                      <tr key={`${mod.id}:${entry.term}`} className="align-top">
+                        <td className="px-2.5 py-2 font-medium text-foreground">{entry.term}</td>
+                        <td className="px-2.5 py-2 text-muted-foreground leading-relaxed">
+                          {entry.meaning}
+                        </td>
+                        <td className="px-2.5 py-2 font-mono text-[10px] text-foreground/90 break-all">
+                          {entry.dbName}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -241,6 +511,8 @@ export function RefLibraryTab() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [sdkDownloading, setSdkDownloading] = useState(false);
+  const [windowsSdkDownloading, setWindowsSdkDownloading] = useState(false);
   const [expandedId, setExpandedId] = useState<LibraryEntryId | null>(null);
 
   const load = useCallback(async () => {
@@ -272,6 +544,46 @@ export function RefLibraryTab() {
     }
   }
 
+  async function handleDownloadDantsuSdk() {
+    setSdkDownloading(true);
+    setError(null);
+    try {
+      const pack = await api.downloadPosPrinterSdkPackage('dantsu-escpos-android');
+      const url = URL.createObjectURL(pack.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = pack.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download printer SDK package.');
+    } finally {
+      setSdkDownloading(false);
+    }
+  }
+
+  async function handleDownloadWindowsSdk() {
+    setWindowsSdkDownloading(true);
+    setError(null);
+    try {
+      const pack = await api.downloadPosPrinterSdkPackage('escpos-lan-windows');
+      const url = URL.createObjectURL(pack.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = pack.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download Windows printer test package.');
+    } finally {
+      setWindowsSdkDownloading(false);
+    }
+  }
+
   const portalUrl = status?.portalUrl || 'https://fdc.nal.usda.gov/';
   const nutritionRevised = status?.lastSyncedAt ?? status?.lastCheckedAt;
 
@@ -293,9 +605,29 @@ export function RefLibraryTab() {
         revisedLabel: LEGAL_EFFECTIVE_DATE,
       },
       {
+        id: 'platform-glossary',
+        title: PLATFORM_GLOSSARY_TITLE,
+        revisedLabel: PLATFORM_GLOSSARY_REVISED_DATE,
+      },
+      {
         id: 'fifo',
         title: FIFO_GUIDE_TITLE,
         revisedLabel: FIFO_GUIDE_REVISED_DATE,
+      },
+      {
+        id: 'dantsu-printer',
+        title: DANTSU_PRINTER_SDK_TITLE,
+        revisedLabel: DANTSU_PRINTER_SDK_REVISED_DATE,
+      },
+      {
+        id: 'windows-escpos',
+        title: WINDOWS_ESCPOS_SDK_TITLE,
+        revisedLabel: WINDOWS_ESCPOS_SDK_REVISED_DATE,
+      },
+      {
+        id: 'accounting-packs',
+        title: ACCOUNTING_PACKS_LIBRARY_TITLE,
+        revisedLabel: ACCOUNTING_PACKS_REVISED_DATE,
       },
       {
         id: 'nutrition',
@@ -328,6 +660,8 @@ export function RefLibraryTab() {
         return (
           <LegalDetails intro={DPA_INTRO} version={CURRENT_DPA_VERSION} path="/legal/dpa" />
         );
+      case 'platform-glossary':
+        return <PlatformGlossaryDetails />;
       case 'fifo':
         return (
           <FifoDetails
@@ -342,6 +676,22 @@ export function RefLibraryTab() {
             }}
           />
         );
+      case 'dantsu-printer':
+        return (
+          <DantsuPrinterSdkDetails
+            downloading={sdkDownloading}
+            onDownload={() => void handleDownloadDantsuSdk()}
+          />
+        );
+      case 'windows-escpos':
+        return (
+          <WindowsEscposSdkDetails
+            downloading={windowsSdkDownloading}
+            onDownload={() => void handleDownloadWindowsSdk()}
+          />
+        );
+      case 'accounting-packs':
+        return <AccountingPacksLibraryDetails />;
       case 'nutrition':
         return (
           <NutritionDetails status={status} loading={loading} portalUrl={portalUrl} />
@@ -360,7 +710,7 @@ export function RefLibraryTab() {
             Ref &amp; Library
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Click a title to expand details. List shows title and created or revised date.
+            Click a title to expand details. Includes platform definitions by module, legal docs, FIFO guide, DantSu Android + Windows ESC/POS printer packages, and nutrition library.
           </p>
         </div>
         <div className="flex items-center gap-2">

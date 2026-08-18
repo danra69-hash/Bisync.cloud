@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { inputCls, selectCls } from '../../data/componentForm';
 import {
   categoryDeleteBlocked,
@@ -11,24 +11,45 @@ import {
   type ComponentHierarchyState,
   type HierarchyAttachmentCounts,
 } from '../../data/componentHierarchy';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   state: ComponentHierarchyState;
   onChange: (next: ComponentHierarchyState) => void;
   /** Live component attachment counts (from ingredients). */
   attachmentCounts?: HierarchyAttachmentCounts;
+  /** When set, category/group renames remount products + POS via API. */
+  companyId?: number | null;
+  onRenameLabel?: (args: {
+    kind: 'category' | 'group';
+    from: string;
+    to: string;
+  }) => Promise<void>;
+  renameBusy?: boolean;
+  renameError?: string | null;
+  renameInfo?: string | null;
 };
 
 export function ComponentHierarchyPanel({
   state,
   onChange,
   attachmentCounts = emptyHierarchyAttachmentCounts(),
+  companyId = null,
+  onRenameLabel,
+  renameBusy = false,
+  renameError = null,
+  renameInfo = null,
 }: Props) {
   const [categoryNameInput, setCategoryNameInput] = useState('');
   const [groupCategoryId, setGroupCategoryId] = useState<number | ''>('');
   const [groupNameInput, setGroupNameInput] = useState('');
   const [subGroupGroupId, setSubGroupGroupId] = useState<number | ''>('');
   const [subGroupNameInput, setSubGroupNameInput] = useState('');
+  const [renamingCategoryId, setRenamingCategoryId] = useState<number | null>(null);
+  const [renamingGroupId, setRenamingGroupId] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
+  const canRemount = Boolean(companyId && onRenameLabel);
 
   const hierarchyRows = useMemo(
     () => state.subGroups
@@ -90,7 +111,9 @@ export function ComponentHierarchyPanel({
   function addCategory() {
     const name = categoryNameInput.trim();
     if (!name) return;
-    if (state.categories.some(item => item.name.toLowerCase() === name.toLowerCase())) return;
+    if (state.categories.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+      return; // Duplicate category names are not allowed (case-insensitive).
+    }
     const id = state.nextCategoryId;
     onChange({
       ...state,
@@ -144,13 +167,96 @@ export function ComponentHierarchyPanel({
     if (typeof subGroupGroupId === 'number' && groupIds.includes(subGroupGroupId)) setSubGroupGroupId('');
   }
 
+  function beginRenameCategory(categoryId: number, currentName: string) {
+    setRenamingGroupId(null);
+    setRenamingCategoryId(categoryId);
+    setRenameDraft(currentName);
+  }
+
+  function beginRenameGroup(groupId: number, currentName: string) {
+    setRenamingCategoryId(null);
+    setRenamingGroupId(groupId);
+    setRenameDraft(currentName);
+  }
+
+  function cancelRename() {
+    setRenamingCategoryId(null);
+    setRenamingGroupId(null);
+    setRenameDraft('');
+  }
+
+  async function commitRename() {
+    const nextName = renameDraft.trim();
+    if (!nextName) return;
+
+    if (renamingCategoryId != null) {
+      const current = state.categories.find(item => item.id === renamingCategoryId);
+      if (!current) return;
+      if (current.name === nextName) {
+        cancelRename();
+        return;
+      }
+      if (state.categories.some(item => item.id !== renamingCategoryId && item.name.toLowerCase() === nextName.toLowerCase())) {
+        return;
+      }
+      if (canRemount && onRenameLabel) {
+        await onRenameLabel({ kind: 'category', from: current.name, to: nextName });
+        cancelRename();
+        return;
+      }
+      onChange({
+        ...state,
+        categories: state.categories.map(item => (
+          item.id === renamingCategoryId ? { ...item, name: nextName } : item
+        )),
+      });
+      cancelRename();
+      return;
+    }
+
+    if (renamingGroupId != null) {
+      const current = state.groups.find(item => item.id === renamingGroupId);
+      if (!current) return;
+      if (current.name === nextName) {
+        cancelRename();
+        return;
+      }
+      if (state.groups.some(item => (
+        item.id !== renamingGroupId
+        && item.categoryId === current.categoryId
+        && item.name.toLowerCase() === nextName.toLowerCase()
+      ))) {
+        return;
+      }
+      if (canRemount && onRenameLabel) {
+        await onRenameLabel({ kind: 'group', from: current.name, to: nextName });
+        cancelRename();
+        return;
+      }
+      onChange({
+        ...state,
+        groups: state.groups.map(item => (
+          item.id === renamingGroupId ? { ...item, name: nextName } : item
+        )),
+      });
+      cancelRename();
+    }
+  }
+
   return (
     <div className="space-y-4">
+      {(renameError || renameInfo) && (
+        <p className={`text-xs ${renameError ? 'text-red-500' : 'text-muted-foreground'}`}>
+          {renameError || renameInfo}
+        </p>
+      )}
       <div className="grid gap-3 lg:grid-cols-3">
         <div className="bg-card border border-border rounded-lg p-4 space-y-3">
           <div>
             <p className="text-xs font-semibold">Category</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Top level of the component hierarchy</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Top level of the component hierarchy. Rename remounts products and POS.
+            </p>
           </div>
           <input
             className={inputCls}
@@ -162,7 +268,7 @@ export function ComponentHierarchyPanel({
           <button
             type="button"
             onClick={addCategory}
-            disabled={!categoryNameInput.trim()}
+            disabled={!categoryNameInput.trim() || renameBusy}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
           >
             <Plus size={11} /> Add Category
@@ -170,18 +276,67 @@ export function ComponentHierarchyPanel({
           <div className="space-y-1.5 pt-1">
             {state.categories.map(category => {
               const gate = categoryDeleteBlocked(state, category.id, attachmentCounts);
+              const editing = renamingCategoryId === category.id;
               return (
                 <div key={category.id} className="flex items-center justify-between gap-2 text-xs border border-border rounded-md px-2.5 py-1.5">
-                  <span className="font-medium">{category.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => deleteCategory(category.id)}
-                    disabled={gate.blocked}
-                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-not-allowed"
-                    title={gate.reason}
-                  >
-                    <Trash2 size={12} />
-                  </button>
+                  {editing ? (
+                    <input
+                      className={`${inputCls} py-1`}
+                      value={renameDraft}
+                      disabled={renameBusy}
+                      onChange={e => setRenameDraft(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') void commitRename();
+                        if (e.key === 'Escape') cancelRename();
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="font-medium">{category.name}</span>
+                  )}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {editing ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void commitRename()}
+                          disabled={renameBusy || !renameDraft.trim()}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-primary-foreground disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelRename}
+                          disabled={renameBusy}
+                          className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => beginRenameCategory(category.id, category.name)}
+                          disabled={renameBusy}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40"
+                          title="Rename category (updates products + POS)"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteCategory(category.id)}
+                          disabled={gate.blocked || renameBusy}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-not-allowed"
+                          title={gate.reason}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -191,7 +346,9 @@ export function ComponentHierarchyPanel({
         <div className="bg-card border border-border rounded-lg p-4 space-y-3">
           <div>
             <p className="text-xs font-semibold">Group</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Belongs to a category</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Belongs to a category. Rename remounts products and POS (e.g. Beer Draft → Draught Beer).
+            </p>
           </div>
           <select
             className={selectCls}
@@ -213,11 +370,89 @@ export function ComponentHierarchyPanel({
           <button
             type="button"
             onClick={addGroup}
-            disabled={!groupNameInput.trim() || groupCategoryId === ''}
+            disabled={!groupNameInput.trim() || groupCategoryId === '' || renameBusy}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
           >
             <Plus size={11} /> Add Group
           </button>
+          <div className="space-y-1.5 pt-1 max-h-48 overflow-y-auto">
+            {state.groups.map(group => {
+              const editing = renamingGroupId === group.id;
+              const gate = groupDeleteBlocked(state, group.id, attachmentCounts);
+              return (
+                <div key={group.id} className="flex items-center justify-between gap-2 text-xs border border-border rounded-md px-2.5 py-1.5">
+                  {editing ? (
+                    <input
+                      className={`${inputCls} py-1`}
+                      value={renameDraft}
+                      disabled={renameBusy}
+                      onChange={e => setRenameDraft(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') void commitRename();
+                        if (e.key === 'Escape') cancelRename();
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="font-medium truncate" title={groupLabel(state, group.id)}>
+                      {groupLabel(state, group.id)}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {editing ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void commitRename()}
+                          disabled={renameBusy || !renameDraft.trim()}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-primary-foreground disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelRename}
+                          disabled={renameBusy}
+                          className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => beginRenameGroup(group.id, group.name)}
+                          disabled={renameBusy}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40"
+                          title="Rename group (updates products + POS)"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (gate.blocked) return;
+                            onChange({
+                              ...state,
+                              groups: state.groups.filter(item => item.id !== group.id),
+                              subGroups: state.subGroups.filter(item => item.groupId !== group.id),
+                            });
+                            if (subGroupGroupId === group.id) setSubGroupGroupId('');
+                          }}
+                          disabled={gate.blocked || renameBusy}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-not-allowed"
+                          title={gate.reason}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="bg-card border border-border rounded-lg p-4 space-y-3">
@@ -257,10 +492,12 @@ export function ComponentHierarchyPanel({
         <div className="px-3 py-2 border-b border-border bg-muted/30">
           <p className="text-xs font-semibold">Hierarchy</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Category → Group → Sub-Group. Delete is available only when nothing is attached.
+            Category → Group → Sub-Group. Rename remounts components, products, and POS attachments.
+            Delete is available only when nothing is attached.
           </p>
         </div>
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
+          <ColGroup widths={['22%', '22%', '22%', '18%', 88]} />
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {['Category', 'Group', 'Sub-Group', 'Components', ''].map(label => (

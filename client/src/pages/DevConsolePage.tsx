@@ -6,7 +6,6 @@ import { UsageDashboard } from '../components/dev/UsageDashboard';
 import { TenantRollupsPanel } from '../components/dev/TenantRollupsPanel';
 import { DemoLaunchPanel } from '../components/dev/DemoLaunchPanel';
 import { AutomatedQaPanel } from '../components/dev/AutomatedQaPanel';
-import { AuditTrailPanel } from '../components/dev/AuditTrailPanel';
 import { SystemAuditTrailTab } from '../components/admin/SystemAuditTrailTab';
 import { GhostSupportTab } from '../components/admin/GhostSupportTab';
 import { RefLibraryTab } from '../components/dev/RefLibraryTab';
@@ -17,9 +16,11 @@ import { DEV_CONSOLE_PATH } from '../config/devConsole';
 import { clearDevConsoleSession, getDevConsoleToken } from '../data/devConsoleSession';
 import {
   DEV_CONSOLE_TAB_IDS,
+  normalizeDevConsoleAccessTabs,
   type DevConsoleTabId,
   devConsoleAuthApi,
 } from '../data/devConsoleAuthApi';
+import { canManageDevConsoleTeam } from '../data/devConsoleControlPanel';
 import {
   DevConsoleForbidden,
   DevConsoleLoginGate,
@@ -37,10 +38,10 @@ const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'tenant-rollups', label: 'Tenant Rollups' },
   { id: 'sales-module', label: 'Sales Module' },
   { id: 'automated-qa', label: 'Automated QA' },
-  { id: 'qa-history', label: 'QA History' },
   { id: 'audit-trail', label: 'Audit Trail' },
   { id: 'ghost-support', label: 'Ghost Support' },
   { id: 'ref-library', label: 'Ref & Library' },
+  { id: 'control-panel', label: 'Control Panel' },
 ];
 
 type DevSessionUser = {
@@ -49,8 +50,10 @@ type DevSessionUser = {
   position: string;
   teamType: string;
   isRoot: boolean;
+  canManageTeam: boolean;
   accessTabs: string[];
   expiresAt: string;
+  mustChangePassword: boolean;
 };
 
 export function DevConsolePage() {
@@ -72,17 +75,26 @@ export function DevConsolePage() {
         return;
       }
       const me = await devConsoleAuthApi.me();
-      setSessionUser({
+      const nextUser: DevSessionUser = {
         email: me.email,
         fullName: me.fullName,
         position: me.position ?? '',
         teamType: me.teamType ?? '',
         isRoot: me.isRoot,
+        canManageTeam: me.canManageTeam === true || canManageDevConsoleTeam(me.email),
         accessTabs: me.isRoot
           ? [...DEV_CONSOLE_TAB_IDS]
-          : (me.accessTabs?.length ? me.accessTabs : ['overview']),
+          : (() => {
+              const normalized = normalizeDevConsoleAccessTabs(me.accessTabs);
+              return normalized.length > 0 ? normalized : ['overview'];
+            })(),
         expiresAt: me.expiresAt,
-      });
+        mustChangePassword: me.mustChangePassword === true,
+      };
+      setSessionUser(nextUser);
+      if (nextUser.mustChangePassword) {
+        setChangePasswordOpen(true);
+      }
     } catch {
       clearDevConsoleSession();
       setSessionUser(null);
@@ -97,9 +109,13 @@ export function DevConsolePage() {
 
   const visibleTabs = useMemo(() => {
     if (!sessionUser) return [];
-    if (sessionUser.isRoot) return DEV_CONSOLE_TABS;
     const allowed = new Set(sessionUser.accessTabs.map(t => t.toLowerCase()));
-    return DEV_CONSOLE_TABS.filter(t => allowed.has(t.id));
+    return DEV_CONSOLE_TABS.filter(t => {
+      // Control Panel is hard-gated by email allowlist (not AccessJson tabs).
+      if (t.id === 'control-panel') return sessionUser.canManageTeam;
+      if (sessionUser.isRoot) return true;
+      return allowed.has(t.id);
+    });
   }, [sessionUser]);
 
   useEffect(() => {
@@ -257,28 +273,7 @@ export function DevConsolePage() {
       <main className={contentFrameClass('py-6 space-y-10')}>
         <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
-          <>
-            {sessionUser.isRoot && (
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold">Team</p>
-                  <p className="text-xs text-muted-foreground">
-                    Create Dev Console operators with tab access. Invitations are emailed separately from the main platform.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTeamOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium px-3 py-2 shrink-0"
-                >
-                  <Users size={13} />
-                  Team
-                </button>
-              </div>
-            )}
-            <DemoLaunchPanel isRoot={sessionUser.isRoot} />
-            <UsageDashboard />
-          </>
+          <UsageDashboard />
         )}
         {tab === 'tenant-rollups' && (
           <TenantRollupsPanel />
@@ -291,9 +286,6 @@ export function DevConsolePage() {
         )}
         {tab === 'automated-qa' && (
           <AutomatedQaPanel triggeredBy={triggeredBy} />
-        )}
-        {tab === 'qa-history' && (
-          <AuditTrailPanel />
         )}
         {tab === 'audit-trail' && (
           <SystemAuditTrailTab allowDevConsoleAccess />
@@ -308,12 +300,45 @@ export function DevConsolePage() {
         {tab === 'ref-library' && (
           <RefLibraryTab />
         )}
+        {tab === 'control-panel' && sessionUser.canManageTeam && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold">Team</p>
+                <p className="text-xs text-muted-foreground">
+                  Create Dev Console operators and Sales Module team members (hunters, Graph calendar sync). Default password is Pass@123; console members must change it after first login.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTeamOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium px-3 py-2 shrink-0"
+              >
+                <Users size={13} />
+                Team
+              </button>
+            </div>
+            <DemoLaunchPanel canEdit={sessionUser.canManageTeam} />
+          </div>
+        )}
       </main>
 
-      <DevTeamPanel open={teamOpen} onClose={() => setTeamOpen(false)} />
+      <DevTeamPanel
+        open={teamOpen && sessionUser.canManageTeam}
+        onClose={() => setTeamOpen(false)}
+      />
       <DevConsoleChangePasswordModal
         open={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
+        required={sessionUser.mustChangePassword}
+        onClose={() => {
+          if (sessionUser.mustChangePassword) return;
+          setChangePasswordOpen(false);
+        }}
+        onSuccess={() => {
+          setSessionUser(prev => (prev ? { ...prev, mustChangePassword: false } : prev));
+          setChangePasswordOpen(false);
+          void refreshSession();
+        }}
       />
     </div>
   );

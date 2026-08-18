@@ -50,6 +50,15 @@ public static class SystemAuditStartup
             await DatabaseSchemaHelper.TryAddColumnAsync(auditDb, table, "LocationExternalId", "character varying(64) NULL");
             await DatabaseSchemaHelper.TryAddColumnAsync(auditDb, table, "LocationName", "character varying(256) NULL");
             await DatabaseSchemaHelper.TryAddColumnAsync(auditDb, table, "DatabaseBucket", "character varying(128) NULL");
+            try
+            {
+                await auditDb.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE \"" + table + "\" ALTER COLUMN \"Category\" TYPE character varying(64);");
+            }
+            catch
+            {
+                // ignore — already widened or table missing
+            }
         }
 
         try

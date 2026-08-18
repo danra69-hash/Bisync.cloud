@@ -5,21 +5,40 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/stock-cards")]
-public class StockCardController(StockCardService stockCardService) : ControllerBase
+public class StockCardController(
+    StockCardService stockCardService,
+    ReceivedPurchaseStockHealer receivedStockHealer) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List(
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? itemType = "all",
-        [FromQuery] string? uomMode = "inventory",
-        [FromQuery] string? period = null)
+        [FromQuery] string? uomMode = "recipe",
+        [FromQuery] string? period = null,
+        CancellationToken cancellationToken = default)
     {
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
             return Ok(Array.Empty<object>());
 
-        var rows = await stockCardService.ListAsync(companyId, locationIdList, itemType, uomMode ?? "inventory", period);
+        // Opportunistic heal: Received POs from before receive-posts-stock still get on-hand rows.
+        try
+        {
+            await receivedStockHealer.HealMissingReceivedStockAsync(cancellationToken);
+        }
+        catch
+        {
+            // Listing must still succeed even if heal fails.
+        }
+
+        var rows = await stockCardService.ListAsync(
+            companyId,
+            locationIdList,
+            itemType,
+            uomMode ?? "recipe",
+            period,
+            cancellationToken);
         return Ok(rows.Select(r => new
         {
             r.ItemType,
@@ -35,6 +54,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
             uom = r.Uom,
             recipeUom = r.RecipeUom,
             inventoryUom = r.InventoryUom,
+            lastChangedAt = r.LastChangedAt,
         }));
     }
 
@@ -44,76 +64,50 @@ public class StockCardController(StockCardService stockCardService) : Controller
         string itemKey,
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
-        [FromQuery] string? uomMode = "inventory",
-        [FromQuery] string? period = null)
+        [FromQuery] string? uomMode = "recipe",
+        [FromQuery] string? period = null,
+        CancellationToken cancellationToken = default)
     {
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
             return BadRequest(new { message = "Select at least one location." });
 
-        var detail = await stockCardService.GetDetailAsync(
-            itemType,
-            itemKey,
-            companyId,
-            locationIdList,
-            uomMode ?? "inventory",
-            period);
-
-        if (detail is null)
-            return NotFound();
-
-        return Ok(new
+        // Heal under-converted delivery packages → PCU for this component before rendering.
+        try
         {
-            detail.ItemType,
-            detail.ItemKey,
-            detail.Group,
-            detail.Name,
-            uom = detail.Uom,
-            recipeUom = detail.RecipeUom,
-            inventoryUom = detail.InventoryUom,
-            balanceForward = detail.BalanceForward,
-            inboundQty = detail.InboundQty,
-            outboundQty = detail.OutboundQty,
-            adjustmentQty = detail.AdjustmentQty,
-            onHandQty = detail.OnHandQty,
-            averageCogs = detail.AverageCogs,
-            onHandAverageCogs = detail.OnHandAverageCogs,
-            onHandLayers = detail.OnHandLayers.Select(l => new
+            await receivedStockHealer.HealMissingReceivedStockAsync(
+                cancellationToken,
+                fullScan: false,
+                componentId: itemKey);
+        }
+        catch
+        {
+            // Detail must still succeed even if heal fails.
+        }
+
+        try
+        {
+            var detail = await stockCardService.GetDetailAsync(
+                itemType,
+                itemKey,
+                companyId,
+                locationIdList,
+                uomMode ?? "recipe",
+                period,
+                cancellationToken);
+
+            if (detail is null)
+                return NotFound(new { message = $"Stock card not found for {itemType}/{itemKey}." });
+
+            return Ok(MapDetail(detail));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
             {
-                quantity = l.Quantity,
-                unitPrice = l.UnitPrice,
-            }),
-            fifoPolicy = detail.FifoPolicy,
-            periodMonth = detail.PeriodMonth,
-            periodStart = detail.PeriodStart,
-            periodEnd = detail.PeriodEnd,
-            archiveCutoff = detail.ArchiveCutoff,
-            isCurrentMonth = detail.IsCurrentMonth,
-            historyRetentionYears = detail.HistoryRetentionYears,
-            hasNegativeStock = detail.HasNegativeStock,
-            inventoryCarryForwardDate = detail.InventoryCarryForwardDate,
-            entries = detail.Entries.Select(e => new
-            {
-                e.Id,
-                occurredAt = e.OccurredAt,
-                entryType = e.EntryType,
-                quantity = e.Quantity,
-                signedQty = e.SignedQty,
-                uom = e.Uom,
-                unitPrice = e.UnitPrice,
-                subtotal = e.Subtotal,
-                reason = e.Reason,
-                referenceNumber = e.ReferenceNumber,
-                fifoDetail = e.FifoDetail,
-                runningBalance = e.RunningBalance,
-                averageCogsAfter = e.AverageCogsAfter,
-                fifoPolicy = e.FifoPolicy,
-                splitIndex = e.SplitIndex,
-                isShortage = e.IsShortage,
-                isCogsBackfilled = e.IsCogsBackfilled,
-                isNegativeBalance = e.IsNegativeBalance,
-            }),
-        });
+                message = $"Failed to load stock card for {itemType}/{itemKey}: {ex.Message}",
+            });
+        }
     }
 
     [HttpGet("{itemType}/{itemKey}/as-of")]
@@ -123,7 +117,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string locationExternalId,
-        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? uomMode = "recipe",
         [FromQuery] string? asOfDate = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
@@ -140,7 +134,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
             companyId,
             locationExternalId,
             locationIdList,
-            uomMode ?? "inventory",
+            uomMode ?? "recipe",
             parsedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
 
         if (snapshot is null)
@@ -219,4 +213,64 @@ public class StockCardController(StockCardService stockCardService) : Controller
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+    static object MapDetail(StockCardDetail detail) => new
+    {
+        detail.ItemType,
+        detail.ItemKey,
+        detail.Group,
+        detail.Name,
+        uom = detail.Uom,
+        recipeUom = detail.RecipeUom,
+        inventoryUom = detail.InventoryUom,
+        balanceForward = detail.BalanceForward,
+        inboundQty = detail.InboundQty,
+        outboundQty = detail.OutboundQty,
+        adjustmentQty = detail.AdjustmentQty,
+        onHandQty = detail.OnHandQty,
+        averageCogs = detail.AverageCogs,
+        onHandAverageCogs = detail.OnHandAverageCogs,
+        onHandLayers = detail.OnHandLayers.Select(l => new
+        {
+            quantity = l.Quantity,
+            unitPrice = l.UnitPrice,
+        }),
+        fifoPolicy = detail.FifoPolicy,
+        periodMonth = detail.PeriodMonth,
+        periodStart = detail.PeriodStart,
+        periodEnd = detail.PeriodEnd,
+        archiveCutoff = detail.ArchiveCutoff,
+        isCurrentMonth = detail.IsCurrentMonth,
+        historyRetentionYears = detail.HistoryRetentionYears,
+        hasNegativeStock = detail.HasNegativeStock,
+        inventoryCarryForwardDate = detail.InventoryCarryForwardDate,
+        entries = detail.Entries.Select(e => new
+        {
+            e.Id,
+            occurredAt = e.OccurredAt,
+            entryType = e.EntryType,
+            quantity = e.Quantity,
+            signedQty = e.SignedQty,
+            uom = e.Uom,
+            unitPrice = e.UnitPrice,
+            subtotal = e.Subtotal,
+            documentAmount = e.DocumentAmount,
+            roundingResidual = e.RoundingResidual,
+            extendedAtUnitPrice = e.ExtendedAtUnitPrice,
+            reason = e.Reason,
+            referenceNumber = e.ReferenceNumber,
+            fifoDetail = e.FifoDetail,
+            runningBalance = e.RunningBalance,
+            averageCogsAfter = e.AverageCogsAfter,
+            fifoPolicy = e.FifoPolicy,
+            splitIndex = e.SplitIndex,
+            isShortage = e.IsShortage,
+            isCogsBackfilled = e.IsCogsBackfilled,
+            isNegativeBalance = e.IsNegativeBalance,
+            inboundSequenceNo = e.InboundSequenceNo,
+            originalQuantity = e.OriginalQuantity,
+            depletedQuantity = e.DepletedQuantity,
+            sourceInboundSequenceNo = e.SourceInboundSequenceNo,
+        }),
+    };
 }

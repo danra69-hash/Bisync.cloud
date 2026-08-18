@@ -1,0 +1,3 @@
+Vendored from https://github.com/danra69-hash/BisyncPOS
+commit: afaf39a
+Embedded in POS Test Tap — API wiring TBD.

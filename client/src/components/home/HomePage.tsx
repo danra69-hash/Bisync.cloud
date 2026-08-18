@@ -2,7 +2,6 @@ import {
   Calculator,
   CheckSquare,
   ChevronRight,
-  MessageSquare,
   ShoppingBag,
   TrendingUp,
   Users,
@@ -13,12 +12,29 @@ import type { AccessModule } from '../../data/userAccess';
 import type { NavItem } from '../../data/revenueManagement';
 import { isNavItemPlatformLive, type ModulesGoLiveMap } from '../../data/platformGoLiveModules';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import type { DropdownLocation } from '../../utils/orgFilters';
+import { PlatformTeamChatPanel } from '../chat/PlatformTeamChatPanel';
+import { PlatformTeamChatReopenFab } from '../chat/PlatformTeamChatReopenFab';
+import { usePlatformTeamChatHidden } from '../chat/platformTeamChatVisibility';
+import { LocationDropdown } from '../overview/LocationDropdown';
+import { DesktopUpdateNotice } from './DesktopUpdateNotice';
+import { HomeDesktopDownloadCard } from './HomeDesktopDownloadCard';
+import { HomeDeviceUnlockCard } from './HomeDeviceUnlockCard';
+import { HomeLocationPosList } from './HomeLocationPosList';
 
 type Props = {
   enabledModules: AccessModule[];
   modulesGoLive: ModulesGoLiveMap | null;
   onOpenModule: (item: NavItem) => void;
+  selectedCompanyId: number | null;
+  locations: DropdownLocation[];
+  selectedLocationIds: string[];
+  onLocationChange: (externalIds: string[]) => void;
+  orgLoading?: boolean;
 };
+
+/** Show a dedicated Locations control when the operator manages several outlets. */
+const MANY_LOCATIONS_THRESHOLD = 3;
 
 const MODULE_VISUAL: Record<
   AccessModule,
@@ -119,92 +135,128 @@ const MODULE_BLURB_KEY: Record<AccessModule, string> = {
   Accounting: 'home.modules.accounting',
 };
 
-export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props) {
+export function HomePage({
+  enabledModules,
+  modulesGoLive,
+  onOpenModule,
+  selectedCompanyId,
+  locations,
+  selectedLocationIds,
+  onLocationChange,
+  orgLoading = false,
+}: Props) {
   const { t, navLabel } = useAppTranslation();
+  const showLocationsButton = locations.length >= MANY_LOCATIONS_THRESHOLD;
+  const { hidden: chatHidden } = usePlatformTeamChatHidden();
+
+  const secondaryCards = (
+    <>
+      <DesktopUpdateNotice downloadAnchorId="desktop-download" />
+      <HomeDeviceUnlockCard />
+      <div id="desktop-download">
+        <HomeDesktopDownloadCard compact />
+      </div>
+    </>
+  );
 
   return (
-    <div className="w-full min-w-0 space-y-3">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground leading-tight">{t('nav.home')}</h1>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('home.subtitle')}</p>
-      </div>
+    <div
+      className={`w-full min-w-0 flex flex-col gap-3 items-stretch ${
+        chatHidden ? '' : 'lg:flex-row'
+      }`}
+    >
+      {!chatHidden ? (
+        <div className="w-full lg:w-[min(20rem,32%)] shrink-0 flex flex-col gap-3">
+          <PlatformTeamChatPanel compact collapsible />
+          {secondaryCards}
+        </div>
+      ) : null}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {PLATFORM_MODULES.map(module => {
-          const visual = MODULE_VISUAL[module.id];
-          const Icon = visual.icon;
-          const enabled =
-            isNavItemEnabled(module.navItem, enabledModules)
-            && isNavItemPlatformLive(module.navItem, modulesGoLive);
-          const title = navLabel(module.navItem);
+      <div className="flex-1 min-w-0 space-y-3">
+        {chatHidden ? <PlatformTeamChatReopenFab /> : null}
 
-          return (
-            <button
-              key={module.id}
-              type="button"
-              disabled={!enabled}
-              onClick={() => {
-                if (enabled) onOpenModule(module.navItem);
-              }}
-              title={!enabled ? t('common.moduleNotEnabled') : title}
-              className={`group relative overflow-hidden rounded-xl border text-left transition-all ${
-                enabled
-                  ? 'border-border bg-card hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-                  : 'border-border/60 bg-muted/30 opacity-55 cursor-not-allowed'
-              }`}
-            >
-              <div className={`absolute inset-0 bg-gradient-to-br ${visual.wash}`} />
-              <div className="relative grid grid-cols-[1fr_7.5rem] gap-2 p-3 sm:p-4">
-                <div className="min-w-0 flex flex-col justify-between gap-2 py-0.5">
-                  <div>
-                    <div className={`inline-flex items-center gap-1.5 ${visual.accent}`}>
-                      <Icon size={15} />
-                      <span className="text-[10px] font-sans uppercase tracking-wider opacity-80">
-                        {module.id}
-                      </span>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-foreground leading-tight">{t('nav.home')}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('home.subtitle')}</p>
+          </div>
+          {showLocationsButton ? (
+            <div className="shrink-0">
+              <LocationDropdown
+                locations={locations}
+                selected={selectedLocationIds}
+                onChange={onLocationChange}
+                disabled={!selectedCompanyId}
+                loading={orgLoading}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <HomeLocationPosList
+          companyId={selectedCompanyId}
+          locations={locations}
+          selectedLocationIds={selectedLocationIds}
+        />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {PLATFORM_MODULES.map(module => {
+            const visual = MODULE_VISUAL[module.id];
+            const Icon = visual.icon;
+            const enabled =
+              isNavItemEnabled(module.navItem, enabledModules)
+              && isNavItemPlatformLive(module.navItem, modulesGoLive);
+            const title = navLabel(module.navItem);
+
+            return (
+              <button
+                key={module.id}
+                type="button"
+                disabled={!enabled}
+                onClick={() => {
+                  if (enabled) onOpenModule(module.navItem);
+                }}
+                title={!enabled ? t('common.moduleNotEnabled') : title}
+                className={`group relative overflow-hidden rounded-lg border text-left transition-all ${
+                  enabled
+                    ? 'border-border bg-card hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+                    : 'border-border/60 bg-muted/30 opacity-55 cursor-not-allowed'
+                }`}
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${visual.wash}`} />
+                <div className="relative grid grid-cols-[1fr_5rem] gap-1.5 p-2.5 sm:p-3">
+                  <div className="min-w-0 flex flex-col justify-between gap-1.5 py-0.5">
+                    <div>
+                      <div className={`inline-flex items-center gap-1 ${visual.accent}`}>
+                        <Icon size={13} />
+                        <span className="text-[9px] font-sans uppercase tracking-wider opacity-80">
+                          {module.id}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-foreground mt-0.5 leading-tight">{title}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+                        {t(MODULE_BLURB_KEY[module.id])}
+                      </p>
                     </div>
-                    <p className="text-sm font-semibold text-foreground mt-1 leading-tight">{title}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
-                      {t(MODULE_BLURB_KEY[module.id])}
-                    </p>
+                    <span
+                      className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${
+                        enabled ? 'text-primary' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {enabled ? t('home.openModule') : t('common.moduleNotEnabled')}
+                      {enabled ? <ChevronRight size={11} className="transition-transform group-hover:translate-x-0.5" /> : null}
+                    </span>
                   </div>
-                  <span
-                    className={`inline-flex items-center gap-1 text-[11px] font-medium ${
-                      enabled ? 'text-primary' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {enabled ? t('home.openModule') : t('common.moduleNotEnabled')}
-                    {enabled ? <ChevronRight size={12} className="transition-transform group-hover:translate-x-0.5" /> : null}
-                  </span>
+                  <div className={`h-16 sm:h-[4.5rem] self-end ${visual.accent}`}>
+                    <ModuleGraphic kind={visual.graphic} />
+                  </div>
                 </div>
-                <div className={`h-24 sm:h-28 self-end ${visual.accent}`}>
-                  <ModuleGraphic kind={visual.graphic} />
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+              </button>
+            );
+          })}
+        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <section className="bg-card border border-border rounded-xl overflow-hidden flex flex-col min-h-[10.5rem]">
-          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-            <div className="p-1.5 rounded-md bg-primary/10">
-              <MessageSquare size={13} className="text-primary" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold leading-tight">{t('home.messages.title')}</h2>
-              <p className="text-[11px] text-muted-foreground leading-snug">{t('home.messages.subtitle')}</p>
-            </div>
-          </div>
-          <div className="flex-1 px-3 py-3 flex items-center justify-center">
-            <p className="text-xs text-muted-foreground text-center leading-snug">
-              {t('home.messages.empty')}
-            </p>
-          </div>
-        </section>
-
-        <section className="bg-card border border-border rounded-xl overflow-hidden flex flex-col min-h-[10.5rem]">
+        <section className="bg-card border border-border rounded-xl overflow-hidden flex flex-col min-h-[8rem]">
           <div className="px-3 py-2 border-b border-border flex items-center gap-2">
             <div className="p-1.5 rounded-md bg-primary/10">
               <CheckSquare size={13} className="text-primary" />
@@ -220,6 +272,12 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
             </p>
           </div>
         </section>
+
+        {chatHidden ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {secondaryCards}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -2,6 +2,11 @@ import { fromApiUom } from './componentForm';
 import type { ComponentRow } from './componentForm';
 import type { Product } from '../api';
 import { formatCountryPercent } from '../utils/numberFormat';
+import {
+  findSimilarCatalogNames,
+  type CatalogNameCandidate,
+  type SimilarNameMatch,
+} from '../utils/catalogNameMatch';
 import type { B2bSalesConfig } from './productB2bSales';
 import { blankB2bSalesConfig } from './productB2bSales';
 import { parseYieldAltUnitsJson } from './productBatchUom';
@@ -160,6 +165,8 @@ export function getSubProductBatchSize(product: { yieldQuantity: number }): numb
 export function resolveManagementBatchUnit(
   product: {
     isSubProduct: boolean;
+    b2cEnabled: boolean;
+    b2bEnabled: boolean;
     yieldQuantity: number;
     yieldUom: string;
     b2bPackageUnit?: string;
@@ -169,6 +176,9 @@ export function resolveManagementBatchUnit(
   if (product.isSubProduct) {
     const batchLabel = formatSubProductBatchPackageUnit(product);
     if (batchLabel !== '—') return batchLabel;
+  }
+  if (product.b2cEnabled && !product.b2bEnabled && product.yieldUom.trim()) {
+    return fromApiUom(product.yieldUom) || product.yieldUom.trim();
   }
   return storedUnit?.trim() || product.b2bPackageUnit?.trim() || 'pcs';
 }
@@ -283,6 +293,24 @@ export function productLineFromComponent(component: ComponentRow): ProductLine {
   };
 }
 
+/** Principal UOM + unit COGS for using a sub-product inside another recipe. */
+export function resolveSubProductRecipeUnit(product: {
+  totalCost: number;
+  packagingCost?: number;
+  yieldQuantity: number;
+  yieldUom: string;
+}): { uom: string; unitCost: number } {
+  const batchCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, {
+    isSubProduct: true,
+    b2bEnabled: false,
+    b2cEnabled: false,
+  });
+  const yieldQty = product.yieldQuantity > 0 ? product.yieldQuantity : 0;
+  const uom = fromApiUom(product.yieldUom) || product.yieldUom.trim();
+  const unitCost = yieldQty > 0 ? batchCogs / yieldQty : 0;
+  return { uom, unitCost };
+}
+
 export function productLineFromSubProduct(product: {
   id?: number;
   productId: string;
@@ -293,18 +321,14 @@ export function productLineFromSubProduct(product: {
   yieldUom: string;
   isSubProduct: boolean;
 }): ProductLine {
-  const batchCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, {
-    isSubProduct: true,
-    b2bEnabled: false,
-    b2cEnabled: false,
-  });
-  const batchLabel = formatSubProductPrimaryBatchUnit(product);
+  // Recipe usage follows Batch Produce UOM as principal component UOM (not whole-batch labels like 2000gr).
+  const { uom, unitCost } = resolveSubProductRecipeUnit(product);
   return {
     key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     componentId: product.productId,
     componentName: product.name,
-    componentUom: batchLabel !== '—' ? batchLabel : fromApiUom(product.yieldUom),
-    componentUomPrice: batchCogs > 0 ? String(batchCogs) : '',
+    componentUom: uom,
+    componentUomPrice: unitCost > 0 ? String(unitCost) : '',
     quantity: '1',
     sourceProductId: product.id,
   };
@@ -366,4 +390,46 @@ export function filterSubProductsForPicker(
   return scored
     .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
     .map(row => row.product);
+}
+
+function productNameCandidates(products: Product[]): CatalogNameCandidate[] {
+  const candidates: CatalogNameCandidate[] = [];
+  for (const product of products) {
+    const kindLabel = product.isSubProduct
+      ? 'Sub-Product'
+      : product.isVariableProduct
+        ? 'Variable Product'
+        : 'Product';
+    candidates.push({
+      id: product.id,
+      name: product.name,
+      active: product.active,
+      code: product.productId,
+      kindLabel,
+    });
+    for (const alias of product.aliases ?? []) {
+      if (!alias.name?.trim()) continue;
+      candidates.push({
+        id: product.id,
+        name: alias.name,
+        active: product.active,
+        code: product.productId,
+        kindLabel: 'Alias',
+      });
+    }
+  }
+  return candidates;
+}
+
+/** Exact + similar product/alias names (includes inactive) for create/edit duplicate warnings. */
+export function findSimilarProductNames(
+  name: string,
+  products: Product[],
+  excludeId?: number,
+): SimilarNameMatch[] {
+  return findSimilarCatalogNames(name, productNameCandidates(products), {
+    excludeId,
+    limit: 8,
+    minInputLength: 3,
+  });
 }

@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { inputCls } from '../../data/countries';
@@ -15,12 +15,12 @@ const cellInputCls = `${inputCls} py-1.5 min-w-0`;
 type EpfSortColumn = 'minAge' | 'maxAge' | 'minSalary' | 'maxSalary' | 'companyPct' | 'employeePct';
 
 const EPF_TABLE_COLUMNS: SortableColumnDef<EpfSortColumn>[] = [
-  { key: 'minAge', label: 'Min Age' },
-  { key: 'maxAge', label: 'Max Age' },
-  { key: 'minSalary', label: 'Min Salary (RM)' },
-  { key: 'maxSalary', label: 'Max Salary (RM)' },
-  { key: 'companyPct', label: 'Company %' },
-  { key: 'employeePct', label: 'Employee %' },
+  { key: 'minAge', label: 'Min Age', ...tableColWidth('10%') },
+  { key: 'maxAge', label: 'Max Age', ...tableColWidth('10%') },
+  { key: 'minSalary', label: 'Min Salary (RM)', ...tableColWidth('22%') },
+  { key: 'maxSalary', label: 'Max Salary (RM)', ...tableColWidth('22%') },
+  { key: 'companyPct', label: 'Company %', ...tableColWidth('18%') },
+  { key: 'employeePct', label: 'Employee %', ...tableColWidth('18%') },
 ];
 
 const EPF_FOREIGN_TABLE_COLUMNS: SortableColumnDef<EpfSortColumn>[] = EPF_TABLE_COLUMNS.map(c => ({ ...c, sortable: false }));
@@ -108,7 +108,8 @@ export function MalaysiaProvidentFundSection({
         </div>
 
         <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
+            <TableColGroup columns={EPF_TABLE_COLUMNS} />
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={EPF_TABLE_COLUMNS}
@@ -211,8 +212,9 @@ export function MalaysiaProvidentFundSection({
           </p>
         </div>
 
-        <div className="border border-border rounded-lg ">
-          <table className="w-full table-fixed text-xs">
+        <div className="border border-border rounded-lg">
+          <table className="w-full text-xs">
+            <TableColGroup columns={EPF_FOREIGN_TABLE_COLUMNS} />
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={EPF_FOREIGN_TABLE_COLUMNS}

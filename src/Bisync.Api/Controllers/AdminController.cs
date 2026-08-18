@@ -116,12 +116,16 @@ public class PublicHolidaysController(BisyncDbContext db, PublicHolidaySyncServi
 public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<IEnumerable<EmployeeLevel>> GetAll() =>
-        await db.EmployeeLevels.AsNoTracking().OrderBy(l => l.Id).ToListAsync();
+    public async Task<IEnumerable<EmployeeLevel>> GetAll()
+    {
+        await EnsureLeaveIncludeColumnsAsync();
+        return await db.EmployeeLevels.AsNoTracking().OrderBy(l => l.Id).ToListAsync();
+    }
 
     [HttpPost]
     public async Task<ActionResult<EmployeeLevel>> Create(EmployeeLevelRequest request)
     {
+        await EnsureLeaveIncludeColumnsAsync();
         if (await db.EmployeeLevels.AnyAsync(l => l.LevelName == request.LevelName))
             return Conflict($"Level '{request.LevelName}' already exists.");
         var level = new EmployeeLevel();
@@ -134,6 +138,7 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<ActionResult<EmployeeLevel>> Update(int id, EmployeeLevelRequest request)
     {
+        await EnsureLeaveIncludeColumnsAsync();
         var level = await db.EmployeeLevels.FindAsync(id);
         if (level is null) return NotFound();
         if (await db.EmployeeLevels.AnyAsync(l => l.LevelName == request.LevelName && l.Id != id))
@@ -142,6 +147,15 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         await SyncEmployeesToLevel(level);
         return level;
+    }
+
+    /// <summary>
+    /// Self-heal for DBs that missed deferred HrStartup (e.g. startup race / tenant DB).
+    /// </summary>
+    async Task EnsureLeaveIncludeColumnsAsync()
+    {
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
     }
 
     [HttpDelete("{id:int}")]
@@ -157,12 +171,32 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
     private static void Apply(EmployeeLevel level, EmployeeLevelRequest request)
     {
         level.LevelName = request.LevelName;
-        var annualRules = LeaveTenureRules.Parse(request.AnnualLeaveRulesJson);
-        var sickRules = LeaveTenureRules.Parse(request.SickLeaveRulesJson);
-        level.AnnualLeaveRulesJson = LeaveTenureRules.Serialize(annualRules);
-        level.SickLeaveRulesJson = LeaveTenureRules.Serialize(sickRules);
-        level.AnnualLeaveDays = annualRules[0].Days;
-        level.SickLeaveDays = sickRules[0].Days;
+        level.AnnualLeaveEnabled = request.AnnualLeaveEnabled;
+        level.SickLeaveEnabled = request.SickLeaveEnabled;
+        if (request.AnnualLeaveEnabled)
+        {
+            var annualRules = LeaveTenureRules.Parse(request.AnnualLeaveRulesJson);
+            level.AnnualLeaveRulesJson = LeaveTenureRules.Serialize(annualRules);
+            level.AnnualLeaveDays = annualRules[0].Days;
+        }
+        else
+        {
+            level.AnnualLeaveRulesJson = "[]";
+            level.AnnualLeaveDays = 0;
+        }
+
+        if (request.SickLeaveEnabled)
+        {
+            var sickRules = LeaveTenureRules.Parse(request.SickLeaveRulesJson);
+            level.SickLeaveRulesJson = LeaveTenureRules.Serialize(sickRules);
+            level.SickLeaveDays = sickRules[0].Days;
+        }
+        else
+        {
+            level.SickLeaveRulesJson = "[]";
+            level.SickLeaveDays = 0;
+        }
+
         level.OvertimeEligible = request.OvertimeEligible;
         level.WorkingHoursPerDay = request.WorkingHoursPerDay;
         level.DayOffPerWeek = Math.Clamp(request.DayOffPerWeek, 0, 7);

@@ -72,10 +72,10 @@ export function StockAdjustmentModal({
   onSaved,
 }: Props) {
   const countryCode = useOrgCountryCode();
-  const { rm } = useCountryFormatters();
+  const { uomPrice } = useCountryFormatters();
   const uomOptions = useMemo(
-    () => [...new Set([inventoryUom, recipeUom].map(u => u.trim()).filter(Boolean))],
-    [inventoryUom, recipeUom],
+    () => [...new Set([recipeUom, inventoryUom].map(u => u.trim()).filter(Boolean))],
+    [recipeUom, inventoryUom],
   );
   const canChooseUom = uomOptions.length > 1;
 
@@ -167,7 +167,7 @@ export function StockAdjustmentModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="stock-adjustment-title"
-        className={`${MODAL_SHELL_CLS} w-full max-w-lg rounded-lg border border-border bg-card shadow-xl flex flex-col max-h-[90vh]`}
+        className={`${MODAL_SHELL_CLS} w-full max-w-lg rounded-lg border border-border bg-card shadow-xl flex flex-col max-h-[var(--app-modal-max-h)]`}
         onClick={e => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border shrink-0">
@@ -237,7 +237,7 @@ export function StockAdjustmentModal({
                         key={`${layer.unitPrice}-${layer.quantity}`}
                         className="text-xs tabular-nums text-muted-foreground"
                       >
-                        {fmtQty(layer.quantity, countryCode)} @ {rm(layer.unitPrice)}
+                        {fmtQty(layer.quantity, countryCode)} @ {uomPrice(layer.unitPrice)}
                       </li>
                     ))}
                   </ul>
@@ -311,7 +311,7 @@ export function StockAdjustmentModal({
                   <span className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM price (FIFO)</span>
                   <div className="h-9 flex items-center rounded-md border border-border bg-muted/20 px-3 text-sm tabular-nums">
                     {snapshot?.suggestedAdjustmentInUnitPrice && snapshot.suggestedAdjustmentInUnitPrice > 0
-                      ? rm(snapshot.suggestedAdjustmentInUnitPrice)
+                      ? uomPrice(snapshot.suggestedAdjustmentInUnitPrice)
                       : '—'}
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-snug">

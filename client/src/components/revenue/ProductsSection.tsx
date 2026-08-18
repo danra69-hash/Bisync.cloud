@@ -6,7 +6,8 @@ import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
 type ProductEditorRequest =
   | { mode: 'new' }
-  | { mode: 'edit'; id: number };
+  | { mode: 'edit'; id: number }
+  | { mode: 'copy'; id: number };
 
 type Props = {
   selectedCompanyId: number | null;
@@ -47,15 +48,17 @@ export function ProductsSection({ selectedCompanyId, selectedLocationIds }: Prop
         ))}
       </div>
 
-      {tab === 'list' ? (
+      {/* Keep Product List mounted so filters/scroll survive popup edit + tab switches. */}
+      <div className={tab === 'list' ? 'contents' : 'hidden'} aria-hidden={tab !== 'list'}>
         <ProductListPage
           embedded
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
           onCreateProduct={() => openEditor({ mode: 'new' })}
-          onEditProduct={id => openEditor({ mode: 'edit', id })}
         />
-      ) : (
+      </div>
+
+      {tab === 'editor' ? (
         <ProductsPage
           embedded
           selectedCompanyId={selectedCompanyId}
@@ -63,8 +66,9 @@ export function ProductsSection({ selectedCompanyId, selectedLocationIds }: Prop
           editorRequest={editorRequest}
           onEditorRequestConsumed={() => setEditorRequest(null)}
           onClose={() => setTab('list')}
+          onSaved={() => setTab('list')}
         />
-      )}
+      ) : null}
     </div>
   );
 }

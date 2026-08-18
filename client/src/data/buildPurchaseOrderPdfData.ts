@@ -1,4 +1,4 @@
-import type { Company, LocationConfig, Vendor } from '../api';
+import type { Company, DeliveryLocation, LocationConfig, Vendor } from '../api';
 import type { OrderCartItem, OrderCartVendorGroup } from './createOrder';
 import {
   DEFAULT_TAX_RATE,
@@ -10,15 +10,23 @@ import {
 import type { PurchaseOrderPdfData } from './generatePurchaseOrderPdf';
 import type { PurchaseDocumentKind } from './purchaseOrderSignatories';
 
+type PdfShipToLocation =
+  | LocationConfig
+  | (Pick<DeliveryLocation, 'name' | 'addressLine1' | 'addressLine2' | 'city' | 'stateProvince' | 'postcode'> & {
+      logoBase64?: string;
+      logoContentType?: string;
+    });
+
 export function buildPurchaseOrderPdfData(params: {
   poNumber: string;
   group: OrderCartVendorGroup;
   company: Company;
-  deliveryLocations: LocationConfig[];
+  deliveryLocations: PdfShipToLocation[];
   vendor: Vendor | null;
   orderDateLabel: string;
   deliveryDateLabel: string;
   deliveryDateHeading?: string;
+  isPreCommitted?: boolean;
   initiatedBy: string;
   approvedBy: string;
   documentKind?: PurchaseDocumentKind;
@@ -26,6 +34,7 @@ export function buildPurchaseOrderPdfData(params: {
 }): PurchaseOrderPdfData {
   const taxRate = params.taxRate ?? DEFAULT_TAX_RATE;
   const documentKind = params.documentKind ?? 'purchase_order';
+  const isPreCommitted = Boolean(params.isPreCommitted);
   const items = params.group.items.map(item => {
     const lineSubtotal = item.lineTotal;
     const taxAmount = lineSubtotal * taxRate;
@@ -45,9 +54,12 @@ export function buildPurchaseOrderPdfData(params: {
   return {
     poNumber: params.poNumber,
     documentKind,
+    isPreCommitted,
     orderDate: params.orderDateLabel,
     deliveryDate: params.deliveryDateLabel,
-    deliveryDateHeading: params.deliveryDateHeading,
+    deliveryDateHeading: isPreCommitted
+      ? (params.deliveryDateHeading ?? 'Commitment Period')
+      : params.deliveryDateHeading,
     countryCode: params.company.countryCode,
     company: {
       name: params.company.name,
@@ -57,9 +69,21 @@ export function buildPurchaseOrderPdfData(params: {
       phone: params.company.phone,
       email: params.company.email,
     },
+    companyLogo: params.company.logoBase64
+      ? {
+          contentType: params.company.logoContentType,
+          base64: params.company.logoBase64,
+        }
+      : null,
     deliveryLocations: params.deliveryLocations.map(loc => ({
       name: loc.name,
       address: formatLocationAddress(loc),
+      logo: loc.logoBase64
+        ? {
+            contentType: loc.logoContentType,
+            base64: loc.logoBase64,
+          }
+        : null,
     })),
     vendor: {
       name: params.vendor?.name ?? params.group.vendorName,

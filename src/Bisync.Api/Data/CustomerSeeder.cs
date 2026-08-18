@@ -13,6 +13,9 @@ public static class CustomerSeeder
 
     public static async Task EnsureDemoCustomersAsync(BisyncDbContext db)
     {
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+            return;
+
         if (await db.B2bCustomers.AnyAsync()) return;
 
         var companyId = await db.Companies.Select(c => c.Id).FirstOrDefaultAsync();

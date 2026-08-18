@@ -1,0 +1,103 @@
+{
+  "name": "bisync-desktop",
+  "productName": "Bisync.cloud",
+  "desktopName": "bisync-cloud.desktop",
+  "version": "1.0.0",
+  "description": "Bisync.cloud desktop app — hospitality operations for Windows, macOS, and Linux",
+  "private": true,
+  "main": "src/main.js",
+  "homepage": "https://bisync-cloud-389272498937.asia-southeast1.run.app",
+  "author": {
+    "name": "Bisync",
+    "email": "support@bisync.cloud"
+  },
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env BISYNC_DESKTOP_URL=http://localhost:5173 electron .",
+    "dev:cloud": "electron .",
+    "smoke": "node scripts/smoke-main.mjs",
+    "publish:downloads": "node ../scripts/publish-desktop-downloads.mjs",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win portable",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux AppImage"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "cloud.bisync.desktop",
+    "productName": "Bisync.cloud",
+    "copyright": "Copyright © Bisync",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/main.js"
+    },
+    "asar": true,
+    "icon": "assets/icon.png",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Bisync.cloud-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bisync.cloud"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "artifactName": "Bisync.cloud-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office",
+      "syncDesktopName": true,
+      "artifactName": "Bisync.cloud-${version}.${ext}",
+      "synopsis": "Bisync.cloud hospitality operations desktop app",
+      "executableName": "bisync-cloud"
+    },
+    "deb": {
+      "packageName": "bisync-cloud"
+    },
+    "publish": null,
+    "compression": "maximum"
+  }
+}

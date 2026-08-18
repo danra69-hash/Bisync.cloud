@@ -16,6 +16,8 @@ export type NutritionalFactorRow = {
 
 export type ProductProductionMethod = {
   methodText: string;
+  /** Finished-dish / presentation photo for recipe card. */
+  presentationDataUrl: string | null;
   images: ProductionMethodImage[];
 };
 
@@ -31,6 +33,7 @@ function defaultImages(): ProductionMethodImage[] {
 export function defaultProductionMethod(): ProductProductionMethod {
   return {
     methodText: '',
+    presentationDataUrl: null,
     images: defaultImages(),
   };
 }
@@ -51,6 +54,7 @@ export function loadProductionMethod(productKey: string): ProductProductionMetho
     }));
     return {
       methodText: parsed.methodText ?? '',
+      presentationDataUrl: parsed.presentationDataUrl ?? null,
       images,
     };
   } catch {

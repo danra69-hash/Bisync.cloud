@@ -25,7 +25,7 @@ function Ensure-LocalPostgres {
         return
     }
 
-    Write-Host "Ensuring Docker Postgres (bisync / bisync_archive / bisync_audit) ..." -ForegroundColor Cyan
+    Write-Host "Ensuring Docker Postgres (bisync / bisync_archive / bisync_audit / bisync_tag_suggestions) ..." -ForegroundColor Cyan
     Push-Location $root
     try {
         docker compose up -d 2>&1 | Out-Host
@@ -49,7 +49,7 @@ function Ensure-LocalPostgres {
             return
         }
 
-        foreach ($dbName in @("bisync", "bisync_archive", "bisync_audit")) {
+        foreach ($dbName in @("bisync", "bisync_archive", "bisync_audit", "bisync_tag_suggestions")) {
             $exists = docker compose exec -T postgres psql -U bisync -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$dbName'" 2>$null
             if ($exists -match "1") {
                 Write-Host "  database $dbName OK" -ForegroundColor DarkGray

@@ -12,15 +12,23 @@ import { filterSelectCls } from '../layout/formControls';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
-import { fromApiUom } from '../../data/componentForm';
+import {
+  fromApiUom,
+  getComponentUomChoices,
+  migrateInventoryUomsIntoComponentAlts,
+  parseDetailConfigJson,
+} from '../../data/componentForm';
 
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  /** Drop outer page padding when embedded in Team Stock. */
+  embedded?: boolean;
 };
 
 type ItemKind = 'component' | 'product' | 'sub-product';
@@ -96,10 +104,16 @@ function productUoms(p: Product): string[] {
 }
 
 function componentUoms(ing: Ingredient): string[] {
-  const inventory = fromApiUom(ing.inventoryUom || '');
-  const recipe = fromApiUom(ing.recipeUom || '');
-  // Prefer inventory UOM first — stock cards default to inventory units.
-  return uniqueUoms([inventory], [recipe]);
+  const detail = parseDetailConfigJson(ing.detailConfigJson);
+  const migrated = migrateInventoryUomsIntoComponentAlts({
+    recipeUnit: fromApiUom(ing.recipeUom || ''),
+    inventoryUnit: fromApiUom(ing.inventoryUom || ''),
+    altRecipeUnits: detail.altRecipeUnits,
+    altInventoryUnits: detail.altInventoryUnits,
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  return getComponentUomChoices(migrated.recipeUnit, migrated.altRecipeUnits);
 }
 
 function formatWastedDate(iso: string) {
@@ -147,7 +161,7 @@ const fieldCls =
   'w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary/40';
 const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted-foreground mb-1';
 
-export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
+export function WastagePage({ selectedCompanyId, selectedLocationIds, embedded = false }: Props) {
   const orgReady = !!selectedCompanyId && selectedLocationIds.length > 0;
   const primaryLocation = selectedLocationIds[0] ?? '';
   const { rm } = useCountryFormatters();
@@ -419,7 +433,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
 
   if (!orgReady) {
     return (
-      <div className={pageShellClass()}>
+      <div className={pageShellClass({ embedded })}>
         <p className="text-sm text-muted-foreground">Select a company and location to manage wastage.</p>
       </div>
     );
@@ -431,7 +445,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
       : wasteTypeFilter;
 
   return (
-    <div className={pageShellClass({ spacing: 'loose' })}>
+    <div className={pageShellClass({ embedded, spacing: 'loose' })}>
       <PageStickyFilters opaque className="py-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -647,19 +661,21 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
         <TableScrollContainer
           ref={historyScrollRef}
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
+          tableId="revenue.wastage.summary"
         >
-          <table className="w-full table-fixed border-collapse text-sm">
+          <table className="w-full min-w-[1080px] border-collapse text-sm">
+            <ColGroup widths={[64, 96, 200, 112, 80, 56, 100, 180, 112]} />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="text-left px-2 py-1.5 w-16">Source</th>
-                <th className="text-left px-2 py-1.5 w-24">Date</th>
-                <th className="text-left px-2 py-1.5">Item</th>
-                <th className="text-left px-2 py-1.5 w-28">Type</th>
-                <th className="text-right px-2 py-1.5 w-[8.5rem]">Qty</th>
-                <th className="text-left px-2 py-1.5 w-16">UOM</th>
-                <th className="text-right px-2 py-1.5 w-[8.5rem]">Value</th>
-                <th className="text-left px-2 py-1.5">Reason</th>
-                <th className="text-left px-2 py-1.5 w-28">Check no.</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Source</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Date</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Item</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Type</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Qty</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">UOM</th>
+                <th className="text-right px-2 py-1.5 whitespace-nowrap">Value</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Reason</th>
+                <th className="text-left px-2 py-1.5 whitespace-nowrap">Check no.</th>
               </tr>
             </thead>
             <tbody>

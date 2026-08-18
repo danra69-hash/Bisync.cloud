@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Tenant Accounting SaaS — Architecture</title>
+<style>
+:root{
+  --bg:#fbfbfa; --panel:#ffffff; --ink:#1f1f1d; --muted:#6b6b66; --line:#e4e4df;
+  --accent:#2f6f6a; --accent2:#8a5a2b; --accent3:#4a5a86; --accent4:#7a4060;
+  --warn:#9a5b12; --ok:#2f6f4a;
+  --chip:#f2f2ee;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141414; --panel:#1c1c1b; --ink:#eceae5; --muted:#9b9b94; --line:#2e2e2c;
+    --accent:#6fb3ac; --accent2:#c99a5e; --accent3:#8b9bd0; --accent4:#c58aa8;
+    --warn:#d9a04a; --ok:#7ec498; --chip:#252523;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
+header h1{font-size:30px;line-height:1.2;margin:0 0 8px;letter-spacing:-.02em}
+header p.sub{color:var(--muted);margin:0 0 4px;font-size:15px}
+.params{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+.chip{background:var(--chip);border:1px solid var(--line);border-radius:999px;
+  padding:4px 12px;font-size:12.5px;color:var(--muted)}
+.chip b{color:var(--ink);font-weight:600}
+nav{display:flex;gap:4px;margin:32px 0 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+nav button{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);
+  font:inherit;font-size:14px;padding:10px 14px;cursor:pointer;margin-bottom:-1px}
+nav button:hover{color:var(--ink)}
+nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+section[hidden]{display:none}
+h2{font-size:19px;margin:36px 0 10px;letter-spacing:-.01em}
+h2:first-child{margin-top:0}
+p{margin:0 0 14px;max-width:74ch}
+.note{color:var(--muted);font-size:13.5px;max-width:74ch}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin:16px 0}
+svg{display:block;width:100%;height:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:14px 0}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+tbody tr:last-child td{border-bottom:none}
+code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--chip);
+  padding:1.5px 5px;border-radius:4px}
+pre{background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:16px;
+  overflow-x:auto;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;margin:14px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.kv{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.kv:last-child{border-bottom:none}
+.kv .n{color:var(--muted);min-width:22px;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:5px;font-weight:600;
+  letter-spacing:.02em;white-space:nowrap}
+.t-hi{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.t-md{background:color-mix(in srgb,var(--accent3) 18%,transparent);color:var(--accent3)}
+.t-lo{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:7px}
+.sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Multi-Tenant SaaS Accounting Platform</h1>
+  <p class="sub">Architecture blueprint · 17 August 2026 · Draft for review</p>
+  <div class="params">
+    <span class="chip"><b>Tenancy</b> Shared DB + Postgres RLS</span>
+    <span class="chip"><b>Stack</b> Python / Django 6.1 + PostgreSQL 18</span>
+    <span class="chip"><b>Market</b> Global / multi-country</span>
+    <span class="chip"><b>Ledger</b> Immutable double-entry in Postgres</span>
+  </div>
+</header>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-t="arch">System architecture</button>
+  <button role="tab" aria-selected="false" data-t="data">Data model</button>
+  <button role="tab" aria-selected="false" data-t="tenancy">Tenancy &amp; isolation</button>
+  <button role="tab" aria-selected="false" data-t="decisions">Decisions</button>
+  <button role="tab" aria-selected="false" data-t="roadmap">Roadmap &amp; risk</button>
+</nav>
+
+<!-- ══════════════════ ARCHITECTURE ══════════════════ -->
+<section id="arch">
+  <h2>Four planes</h2>
+  <p>The control plane holds no financial data. The compliance plane holds no business logic that isn’t country-specific. Everything between the subledgers and the ledger core passes through one rule engine, and nothing except the ledger core may write a journal line.</p>
+
+  <div class="card">
+  <svg viewBox="0 0 1000 620" role="img" aria-label="System architecture diagram">
+    <defs>
+      <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 z" fill="var(--muted)"/>
+      </marker>
+      <style>
+        .bx{fill:var(--panel);stroke:var(--line);stroke-width:1.5;rx:9}
+        .plane{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:5 4;rx:12}
+        .lbl{font:600 11px ui-sans-serif,sans-serif;fill:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+        .t{font:13px ui-sans-serif,sans-serif;fill:var(--ink)}
+        .ts{font:11px ui-sans-serif,sans-serif;fill:var(--muted)}
+        .ln{stroke:var(--muted);stroke-width:1.4;fill:none;marker-end:url(#a)}
+      </style>
+    </defs>
+
+    <!-- control plane -->
+    <rect class="plane" x="20" y="16" width="960" height="78"/>
+    <text class="lbl" x="34" y="38">Control plane · no tenant financial data</text>
+    <rect class="bx" x="40" y="46" width="168" height="34" style="stroke:var(--accent3)"/>
+    <text class="t" x="124" y="68" text-anchor="middle">Tenants &amp; routing</text>
+    <rect class="bx" x="222" y="46" width="168" height="34" style="stroke:var(--accent3)"/>
+    <text class="t" x="306" y="68" text-anchor="middle">Identity · SSO · roles</text>
+    <rect class="bx" x="404" y="46" width="168" height="34" style="stroke:var(--accent3)"/>
+    <text class="t" x="488" y="68" text-anchor="middle">Plans &amp; billing</text>
+    <rect class="bx" x="586" y="46" width="168" height="34" style="stroke:var(--accent3)"/>
+    <text class="t" x="670" y="68" text-anchor="middle">Audit index</text>
+    <rect class="bx" x="768" y="46" width="192" height="34" style="stroke:var(--accent3)"/>
+    <text class="t" x="864" y="68" text-anchor="middle">Entitlements</text>
+
+    <!-- application plane -->
+    <rect class="plane" x="20" y="110" width="700" height="380"/>
+    <text class="lbl" x="34" y="132">Application plane</text>
+
+    <!-- subledgers -->
+    <rect class="bx" x="42" y="146" width="152" height="58" style="stroke:var(--accent2)"/>
+    <text class="t" x="118" y="170" text-anchor="middle">AR</text>
+    <text class="ts" x="118" y="188" text-anchor="middle">invoices · open items</text>
+    <rect class="bx" x="206" y="146" width="152" height="58" style="stroke:var(--accent2)"/>
+    <text class="t" x="282" y="170" text-anchor="middle">AP</text>
+    <text class="ts" x="282" y="188" text-anchor="middle">bills · payment runs</text>
+    <rect class="bx" x="370" y="146" width="152" height="58" style="stroke:var(--accent2)"/>
+    <text class="t" x="446" y="170" text-anchor="middle">Banking</text>
+    <text class="ts" x="446" y="188" text-anchor="middle">feeds · match groups</text>
+    <rect class="bx" x="534" y="146" width="164" height="58" style="stroke:var(--accent2)"/>
+    <text class="t" x="616" y="170" text-anchor="middle">Inventory · FA · RevRec</text>
+    <text class="ts" x="616" y="188" text-anchor="middle">layers · books · POBs</text>
+
+    <path class="ln" d="M118 204 L118 232"/><path class="ln" d="M282 204 L282 232"/>
+    <path class="ln" d="M446 204 L446 232"/><path class="ln" d="M616 204 L616 232"/>
+
+    <!-- SLA -->
+    <rect class="bx" x="42" y="236" width="656" height="52" style="stroke:var(--accent);stroke-width:2"/>
+    <text class="t" x="370" y="259" text-anchor="middle" style="font-weight:600">Subledger Accounting (SLA) rule engine</text>
+    <text class="ts" x="370" y="277" text-anchor="middle">business event + versioned rule set → balanced journal draft · rules are data, not code</text>
+
+    <path class="ln" d="M370 288 L370 316"/>
+
+    <!-- ledger core -->
+    <rect class="bx" x="42" y="320" width="656" height="76" style="stroke:var(--accent);stroke-width:2"/>
+    <text class="t" x="370" y="344" text-anchor="middle" style="font-weight:600">Ledger core — the only writer of journal lines</text>
+    <text class="ts" x="370" y="363" text-anchor="middle">journal · journal_line · fiscal_period · period_balance · doc_counter</text>
+    <text class="ts" x="370" y="380" text-anchor="middle">deferred Σdr=Σcr trigger · hash chain · period locks · FX · gapless numbering</text>
+
+    <path class="ln" d="M370 396 L370 424"/>
+
+    <!-- reporting -->
+    <rect class="bx" x="42" y="428" width="204" height="46"/>
+    <text class="t" x="144" y="450" text-anchor="middle">Reporting</text>
+    <text class="ts" x="144" y="466" text-anchor="middle">TB · P&amp;L · BS · CF</text>
+    <rect class="bx" x="258" y="428" width="204" height="46"/>
+    <text class="t" x="360" y="450" text-anchor="middle">Consolidation</text>
+    <text class="ts" x="360" y="466" text-anchor="middle">translate · eliminate</text>
+    <rect class="bx" x="474" y="428" width="224" height="46"/>
+    <text class="t" x="586" y="450" text-anchor="middle">Close &amp; workflows</text>
+    <text class="ts" x="586" y="466" text-anchor="middle">Temporal · approvals</text>
+
+    <!-- compliance plane -->
+    <rect class="plane" x="736" y="110" width="244" height="380" style="stroke:var(--accent4)"/>
+    <text class="lbl" x="750" y="132">Compliance plane</text>
+    <rect class="bx" x="752" y="146" width="212" height="46" style="stroke:var(--accent4)"/>
+    <text class="t" x="858" y="168" text-anchor="middle">Localisation packs</text>
+    <text class="ts" x="858" y="184" text-anchor="middle">versioned · effective-dated</text>
+    <rect class="bx" x="752" y="200" width="212" height="46" style="stroke:var(--accent4)"/>
+    <text class="t" x="858" y="222" text-anchor="middle">Tax determination</text>
+    <text class="ts" x="858" y="238" text-anchor="middle">vendor behind a port</text>
+    <rect class="bx" x="752" y="254" width="212" height="60" style="stroke:var(--accent4)"/>
+    <text class="t" x="858" y="277" text-anchor="middle">E-invoicing gateway</text>
+    <text class="ts" x="858" y="293" text-anchor="middle">FastAPI · aggregator API</text>
+    <text class="ts" x="858" y="307" text-anchor="middle">durable submission workflow</text>
+    <rect class="bx" x="752" y="322" width="212" height="46" style="stroke:var(--accent4)"/>
+    <text class="t" x="858" y="344" text-anchor="middle">Statutory exports</text>
+    <text class="ts" x="858" y="360" text-anchor="middle">FEC · SAF-T · JPK · VAT</text>
+    <rect class="bx" x="752" y="376" width="212" height="46" style="stroke:var(--accent4)"/>
+    <text class="t" x="858" y="398" text-anchor="middle">Archive</text>
+    <text class="ts" x="858" y="414" text-anchor="middle">original XML + schemas</text>
+
+    <path class="ln" d="M752 262 L706 300 " transform="translate(0,0)"/>
+    <path class="ln" d="M698 358 L750 344"/>
+
+    <!-- data plane -->
+    <rect class="plane" x="20" y="506" width="960" height="96"/>
+    <text class="lbl" x="34" y="528">Data plane</text>
+    <rect class="bx" x="40" y="538" width="300" height="46" style="stroke:var(--accent)"/>
+    <text class="t" x="190" y="560" text-anchor="middle">PostgreSQL 18 — primary</text>
+    <text class="ts" x="190" y="576" text-anchor="middle">RLS · LIST partitions · outbox</text>
+    <rect class="bx" x="354" y="538" width="300" height="46"/>
+    <text class="t" x="504" y="560" text-anchor="middle">Read replica</text>
+    <text class="ts" x="504" y="576" text-anchor="middle">reports · exports · never statutory</text>
+    <rect class="bx" x="668" y="538" width="292" height="46"/>
+    <text class="t" x="814" y="560" text-anchor="middle">Object store + DuckDB</text>
+    <text class="ts" x="814" y="576" text-anchor="middle">per-tenant Parquet · archive</text>
+  </svg>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--accent3)"></i>Control plane</span>
+    <span><i class="sw" style="background:var(--accent2)"></i>Subledgers</span>
+    <span><i class="sw" style="background:var(--accent)"></i>Ledger path</span>
+    <span><i class="sw" style="background:var(--accent4)"></i>Compliance</span>
+  </div>
+  </div>
+
+  <h2>Module boundaries</h2>
+  <table>
+    <thead><tr><th>Module</th><th>Owns</th><th>Must not</th></tr></thead>
+    <tbody>
+      <tr><td>Ledger core</td><td>Journals, lines, periods, balances, numbering, FX posting</td><td>Know what an invoice is</td></tr>
+      <tr><td>SLA engine</td><td>Event → account derivation rules, versioned</td><td>Write to the ledger (it emits drafts)</td></tr>
+      <tr><td>AR / AP</td><td>Open items, applications, aging, dunning</td><td>Compute GL account codes itself</td></tr>
+      <tr><td>Banking</td><td>Statement import, match groups, scoring</td><td>Post directly — it raises events</td></tr>
+      <tr><td>Localisation packs</td><td>Tax, formats, numbering, archive, exports per country</td><td>Hold logic that isn’t country-specific</td></tr>
+      <tr><td>E-invoicing gateway</td><td>Transmission, retries, clearance state</td><td>Assign legal document numbers</td></tr>
+      <tr><td>Control plane</td><td>Tenants, routing, roles, entitlements</td><td>Hold any tenant financial data</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════════ DATA MODEL ══════════════════ -->
+<section id="data" hidden>
+  <h2>Ledger core — entity relationships</h2>
+  <p>The wide <code>journal_line</code> with dimensions denormalised onto it is the single most important schema decision for reporting. Reports must never join through documents to find a cost centre.</p>
+
+  <div class="card">
+  <svg viewBox="0 0 1000 560" role="img" aria-label="Entity relationship diagram">
+    <defs>
+      <marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 z" fill="var(--muted)"/></marker>
+      <style>
+        .e{fill:var(--panel);stroke:var(--line);stroke-width:1.5;rx:8}
+        .eh{font:600 12.5px ui-sans-serif,sans-serif;fill:var(--ink)}
+        .ef{font:10.5px ui-monospace,monospace;fill:var(--muted)}
+        .pk{font:10.5px ui-monospace,monospace;fill:var(--accent);font-weight:700}
+        .rel{stroke:var(--muted);stroke-width:1.3;fill:none;marker-end:url(#b)}
+        .rl{font:10px ui-sans-serif,sans-serif;fill:var(--muted)}
+      </style>
+    </defs>
+
+    <!-- journal -->
+    <rect class="e" x="330" y="20" width="230" height="150" style="stroke:var(--accent);stroke-width:2"/>
+    <text class="eh" x="344" y="42">journal</text>
+    <text class="pk" x="344" y="60">PK tenant_id, id</text>
+    <text class="ef" x="344" y="76">entity_id · ledger_id · period_id</text>
+    <text class="ef" x="344" y="91">journal_type · doc_series</text>
+    <text class="ef" x="344" y="106">doc_number   ← assigned at POST</text>
+    <text class="ef" x="344" y="121">effective_date · document_date</text>
+    <text class="ef" x="344" y="136">posted_at   ← NULL = draft</text>
+    <text class="ef" x="344" y="151">reverses_id · idempotency_key</text>
+    <text class="ef" x="344" y="166">prev_hash · row_hash</text>
+
+    <!-- journal_line -->
+    <rect class="e" x="330" y="200" width="230" height="200" style="stroke:var(--accent);stroke-width:2"/>
+    <text class="eh" x="344" y="222">journal_line</text>
+    <text class="pk" x="344" y="240">PK tenant_id, journal_id, line_no</text>
+    <text class="ef" x="344" y="256">account_id · direction (D|C)</text>
+    <text class="ef" x="344" y="271">txn_currency · txn_amount_minor</text>
+    <text class="ef" x="344" y="286">func_currency · func_amount_minor</text>
+    <text class="ef" x="344" y="301">fx_rate · fx_rate_date · rate_type</text>
+    <text class="ef" x="344" y="316">entity_id · cost_centre_id</text>
+    <text class="ef" x="344" y="331">project_id · department_id</text>
+    <text class="ef" x="344" y="346">partner_entity_id   ← IC elimination</text>
+    <text class="ef" x="344" y="361">dimensions jsonb</text>
+    <text class="ef" x="344" y="376">cashflow_category · narration</text>
+    <text class="ef" x="344" y="391">effective_date · period_id</text>
+
+    <path class="rel" d="M445 170 L445 198"/>
+    <text class="rl" x="452" y="188">1 : N</text>
+
+    <!-- account -->
+    <rect class="e" x="40" y="200" width="220" height="112"/>
+    <text class="eh" x="54" y="222">account</text>
+    <text class="pk" x="54" y="240">PK tenant_id, id</text>
+    <text class="ef" x="54" y="256">code · type · normal_balance</text>
+    <text class="ef" x="54" y="271">currency_policy</text>
+    <text class="ef" x="54" y="286">is_control_account</text>
+    <text class="ef" x="54" y="301">parent_id (hierarchy, versioned)</text>
+    <path class="rel" d="M260 256 L328 262"/>
+
+    <!-- statutory map -->
+    <rect class="e" x="40" y="332" width="220" height="88" style="stroke:var(--accent4)"/>
+    <text class="eh" x="54" y="354">statutory_map</text>
+    <text class="pk" x="54" y="372">PK tenant_id, country, account_id</text>
+    <text class="ef" x="54" y="388">statutory_code · effective_from</text>
+    <text class="ef" x="54" y="403">version</text>
+    <path class="rel" d="M150 332 L150 314"/>
+
+    <!-- ledger -->
+    <rect class="e" x="40" y="20" width="220" height="88"/>
+    <text class="eh" x="54" y="42">ledger</text>
+    <text class="pk" x="54" y="60">PK tenant_id, id</text>
+    <text class="ef" x="54" y="76">kind: primary | tax | ifrs</text>
+    <text class="ef" x="54" y="91">     | local_gaap | consolidation</text>
+    <path class="rel" d="M260 64 L328 70"/>
+
+    <!-- fiscal period -->
+    <rect class="e" x="620" y="20" width="230" height="112"/>
+    <text class="eh" x="634" y="42">fiscal_period</text>
+    <text class="pk" x="634" y="60">PK tenant_id, id</text>
+    <text class="ef" x="634" y="76">entity_id · year · period_no</text>
+    <text class="ef" x="634" y="91">start_date · end_date</text>
+    <text class="ef" x="634" y="106">status: future | open | closing</text>
+    <text class="ef" x="634" y="121">      | closed | hard_closed</text>
+    <path class="rel" d="M618 76 L562 82"/>
+
+    <!-- doc counter -->
+    <rect class="e" x="620" y="162" width="230" height="76" style="stroke:var(--accent2)"/>
+    <text class="eh" x="634" y="184">doc_counter</text>
+    <text class="pk" x="634" y="202">PK tenant_id, series, fiscal_year</text>
+    <text class="ef" x="634" y="218">next_value   ← locked in txn</text>
+    <text class="ef" x="634" y="233">gapless, assigned last</text>
+    <path class="rel" d="M618 190 L562 130"/>
+
+    <!-- period balance -->
+    <rect class="e" x="620" y="268" width="230" height="132" style="stroke:var(--accent)"/>
+    <text class="eh" x="634" y="290">period_balance   (TB cube)</text>
+    <text class="pk" x="634" y="308">PK tenant, entity, ledger, account,</text>
+    <text class="pk" x="634" y="322">   period, txn_currency</text>
+    <text class="ef" x="634" y="338">opening/period × dr/cr × txn+func</text>
+    <text class="ef" x="634" y="353">is_frozen · recompute_after</text>
+    <text class="ef" x="634" y="368">+ period_balance_dim (drilldown)</text>
+    <text class="ef" x="634" y="385">rebuildable from lines · drift-checked</text>
+    <path class="rel" d="M562 300 L618 306"/>
+    <text class="rl" x="566" y="294">derived</text>
+
+    <!-- open items -->
+    <rect class="e" x="40" y="440" width="290" height="96" style="stroke:var(--accent2)"/>
+    <text class="eh" x="54" y="462">open_item  (AR / AP)</text>
+    <text class="pk" x="54" y="480">PK tenant_id, id</text>
+    <text class="ef" x="54" y="496">kind: invoice | credit_note | payment</text>
+    <text class="ef" x="54" y="511">counterparty_id · due_date · currency</text>
+    <text class="ef" x="54" y="526">journal_id → GL control account</text>
+    <path class="rel" d="M240 440 L330 400"/>
+
+    <rect class="e" x="360" y="440" width="290" height="96" style="stroke:var(--accent2)"/>
+    <text class="eh" x="374" y="462">item_application  (clearing)</text>
+    <text class="pk" x="374" y="480">PK tenant_id, id</text>
+    <text class="ef" x="374" y="496">applied_from_id · applied_to_id</text>
+    <text class="ef" x="374" y="511">amount · applied_at · effective_at</text>
+    <text class="ef" x="374" y="526">emits realised FX · never deleted</text>
+    <path class="rel" d="M358 488 L332 488"/>
+
+    <rect class="e" x="680" y="440" width="270" height="96"/>
+    <text class="eh" x="694" y="462">match_group  (bank rec)</text>
+    <text class="pk" x="694" y="480">PK tenant_id, id</text>
+    <text class="ef" x="694" y="496">N statement lines : M ledger items</text>
+    <text class="ef" x="694" y="511">rule_id · score · matched_by</text>
+    <text class="ef" x="694" y="526">never a nullable FK on the line</text>
+    <path class="rel" d="M678 488 L652 488"/>
+  </svg>
+  </div>
+
+  <h2>The invariants, enforced in the database</h2>
+  <pre>-- DELETE is included deliberately: without it, deleting a line from an unposted
+-- journal in a later transaction leaves it permanently unbalanced, silently.
+CREATE CONSTRAINT TRIGGER journal_balanced
+  AFTER INSERT OR UPDATE OR DELETE ON journal_line
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION assert_journal_balanced();
+
+-- TWO invariants, both required:
+--   (a) per transaction currency:  GROUP BY txn_currency, SUM(±txn_amount) = 0
+--   (b) whole journal, functional:                        SUM(±func_amount) = 0
+-- Grouping by func_currency would be a no-op — it is constant per entity.
+-- Caveats: a zero-line journal never fires a FOR EACH ROW trigger (check at post),
+-- and constraint triggers cannot be FOR EACH STATEMENT (N lines = N aggregates).</pre>
+  <div class="grid2">
+    <div class="card">
+      <strong style="font-size:13.5px">Also enforced in the DB</strong>
+      <div class="kv"><span class="n">1</span><span>Reject UPDATE/DELETE on lines where <code>posted_at IS NOT NULL</code></span></div>
+      <div class="kv"><span class="n">2</span><span>Reject inserts whose <code>effective_date</code> lands in a closed period</span></div>
+      <div class="kv"><span class="n">3</span><span>Line currency must be permitted for its account; <code>func_currency</code> = entity’s functional currency</span></div>
+      <div class="kv"><span class="n">4</span><span>Hash chain per (tenant, series, fiscal year) — makes immutability demonstrable to an auditor</span></div>
+      <div class="kv"><span class="n">5</span><span>Every unique index and FK is tenant-scoped (constraints bypass RLS by design)</span></div>
+    </div>
+    <div class="card">
+      <strong style="font-size:13.5px">Money representation</strong>
+      <div class="kv"><span class="n">·</span><span>Integer minor units (<code>bigint</code>) + explicit ISO 4217 currency. Never floats, never Postgres <code>money</code></span></div>
+      <div class="kv"><span class="n">·</span><span>0-decimal (JPY, KRW, VND), 3-decimal (KWD, BHD, OMR) currencies are real — carry <code>minor_unit</code> in a currency table</span></div>
+      <div class="kv"><span class="n">·</span><span><code>Decimal</code> for quantities, unit prices, tax rates, FX rates. Rates at <code>numeric(20,10)</code> with explicit direction</span></div>
+      <div class="kv"><span class="n">·</span><span>Round once, last, with an explicit mode — Python defaults to <code>ROUND_HALF_EVEN</code>, which surprises accountants</span></div>
+      <div class="kv"><span class="n">·</span><span>Allocation must be exhaustive — never <code>round(total/n)</code> per part. Fowler’s <code>allocate()</code> and largest-remainder give the same total but different distributions; pick one and use it everywhere</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ TENANCY ══════════════════ -->
+<section id="tenancy" hidden>
+  <h2>Four layers of isolation</h2>
+  <p>RLS is the right <em>second</em> layer, not the only one. It turns an application bug into zero rows instead of a breach — but it fails <em>silently</em>, so the application layer must fail loudly.</p>
+
+  <div class="card">
+  <svg viewBox="0 0 1000 300" role="img" aria-label="Defence in depth layers">
+    <style>
+      .lyr{fill:var(--panel);stroke-width:2;rx:9}
+      .lt{font:600 13px ui-sans-serif,sans-serif;fill:var(--ink)}
+      .ld{font:11.5px ui-sans-serif,sans-serif;fill:var(--muted)}
+      .num{font:700 22px ui-sans-serif,sans-serif;fill:var(--line)}
+    </style>
+    <rect class="lyr" x="20" y="20" width="960" height="56" style="stroke:var(--accent3)"/>
+    <text class="num" x="946" y="56" text-anchor="end">1</text>
+    <text class="lt" x="42" y="45">Auth — tenant_id derived only from verified token claims</text>
+    <text class="ld" x="42" y="64">A tenant_id arriving in a request body or query string and used for scoping is a finding, not a design choice</text>
+
+    <rect class="lyr" x="20" y="84" width="960" height="56" style="stroke:var(--accent3)"/>
+    <text class="num" x="946" y="120" text-anchor="end">2</text>
+    <text class="lt" x="42" y="109">App — every query through the tenant session wrapper, plus an explicit WHERE tenant_id</text>
+    <text class="ld" x="42" y="128">The explicit filter also gives the planner an indexable literal (measured 171 ms → 9 ms). Raise loudly when context is missing</text>
+
+    <rect class="lyr" x="20" y="148" width="960" height="56" style="stroke:var(--accent)"/>
+    <text class="num" x="946" y="184" text-anchor="end">3</text>
+    <text class="lt" x="42" y="173">DB — RESTRICTIVE RLS policy, FORCE ROW LEVEL SECURITY, non-owner runtime role</text>
+    <text class="ld" x="42" y="192">RESTRICTIVE survives a future engineer adding a permissive USING (true) policy. Bare column-vs-GUC comparison only — no joins</text>
+
+    <rect class="lyr" x="20" y="212" width="960" height="56" style="stroke:var(--accent)"/>
+    <text class="num" x="946" y="248" text-anchor="end">4</text>
+    <text class="lt" x="42" y="237">CI &amp; runtime — schema gate, policy-diff gate, cross-tenant fuzzer, divergence alerting</text>
+    <text class="ld" x="42" y="256">Fail the build if any table with a tenant_id column lacks enabled+forced RLS and ≥1 policy. Log auth tenant vs app.tenant_id and alert on mismatch</text>
+  </svg>
+  </div>
+
+  <h2>The three things most likely to bite you</h2>
+  <table>
+    <thead><tr><th>Failure</th><th>Symptom</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Plain <code>SET</code> instead of transaction-scoped <code>set_config</code></strong> <span class="tag t-hi">breach</span></td>
+        <td>Under PgBouncer transaction pooling the connection is handed to the next client at COMMIT — tenant A’s context becomes tenant B’s</td>
+        <td><code>set_config('app.tenant_id', :tid, true)</code> inside an explicit transaction. It also takes a bind parameter, which <code>SET LOCAL</code> cannot</td>
+      </tr>
+      <tr>
+        <td><strong>Missing <code>NULLIF</code> on the GUC</strong> <span class="tag t-md">3am page</span></td>
+        <td>Zero rows on cold backends, 500s on recycled ones — <code>''::uuid</code> raises, and an unset GUC is <code>NULL</code> only until the session has ever defined it</td>
+        <td><code>NULLIF(current_setting('app.tenant_id', true), '')::uuid</code> — normalises both cases to NULL, fails closed consistently</td>
+      </tr>
+      <tr>
+        <td><strong>Cross-tenant cached plan reuse</strong> <span class="tag t-md">3am page</span></td>
+        <td>Nondeterministic latency — a plan built while a whale was current gets reused by a small tenant (orders of magnitude slower) and vice versa (row estimate off by 10⁴ → nested loop over 600k rows)</td>
+        <td><code>ALTER ROLE app_rw SET plan_cache_mode='force_custom_plan'</code>, and disable client statement caching. Note this does <em>not</em> rescue parameterless prepared statements</td>
+      </tr>
+      <tr>
+        <td><strong>RESTRICTIVE policy with only one permissive policy</strong> <span class="tag t-hi">silent</span></td>
+        <td>Restrictive policies only subtract. A role with no permissive policy of its own — <code>app_reports</code>, or the owner under <code>FORCE</code> — sees <strong>zero rows on every table</strong>. Reports come back empty and <code>RunPython</code> data migrations silently no-op</td>
+        <td>One permissive policy per role that needs access; maintenance paths use <code>SET row_security = off</code>, which errors rather than truncating. The “≥1 policy exists” CI gate passes this — assert reachability per role</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Tiers and promotion</h2>
+  <table>
+    <thead><tr><th>Tier</th><th>Isolation</th><th>Who</th><th>Path in</th></tr></thead>
+    <tbody>
+      <tr><td>Standard</td><td>Shared DB, shared schema, RLS</td><td>Default</td><td>—</td></tr>
+      <tr><td>Dedicated</td><td>Own database, identical schema and RLS</td><td>Whales; contractual isolation; anyone whose restore RTO matters</td><td>Row-filtered logical replication → freeze → flip routing row</td></tr>
+      <tr><td>Regional</td><td>Own database in a specific region</td><td>Saudi (hard localisation); Germany (notification required)</td><td>Same mechanism, different region</td></tr>
+    </tbody>
+  </table>
+  <p class="note">The enabling piece is a <code>tenant_routing</code> table consulted at connection acquisition, built in Phase 0 even while there is one cluster. Roughly 50 lines. Retrofitting it means touching every connection site in the codebase. Note that row-filtered logical replication does not copy sequences — reset the document counters on the target before cutover or invoice numbering collides.</p>
+</section>
+
+<!-- ══════════════════ DECISIONS ══════════════════ -->
+<section id="decisions" hidden>
+  <h2>The ten decisions</h2>
+  <table>
+    <thead><tr><th style="width:34px">#</th><th>Decision</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Shared Postgres, <code>tenant_id</code> everywhere, RESTRICTIVE RLS + app-layer scoping</td><td>Cheapest to operate; RLS turns an application bug into zero rows instead of a breach</td></tr>
+      <tr><td>2</td><td>Promotable tenancy via a routing table from day one</td><td>~50 lines now; the difference between promoting a whale and rewriting the app</td></tr>
+      <tr><td>3</td><td>Postgres is the ledger — no TigerBeetle, no event bus</td><td>Σdr = Σcr is a cross-row invariant; keep it in one ACID transaction</td></tr>
+      <tr><td>4</td><td>Immutable journal + wide line, dimensions denormalised, dual currency</td><td>The SAP Universal Journal shape; reports must never join through documents</td></tr>
+      <tr><td>5</td><td>SLA rule engine — posting rules are tenant data, not code</td><td>The only way one codebase serves 20 countries’ posting conventions</td></tr>
+      <tr><td>6</td><td>Localisation Packs — country behaviour as versioned plugins</td><td>~8 regimes in year one, ~30 in year three. No <code>if country == 'FR'</code> anywhere</td></tr>
+      <tr><td>7</td><td>Buy e-invoicing transmission behind your own abstraction</td><td>Becoming a Peppol AP is a business, not a feature — but never let a vendor’s model be your model</td></tr>
+      <tr><td>8</td><td>Django 6.1 → 6.2 LTS modular monolith + one FastAPI gateway</td><td>Migrations, admin and constraint modelling decide it — not async throughput</td></tr>
+      <tr><td>9</td><td>Transactional outbox for every side effect of a posting</td><td>“Journal committed, task lost” is unacceptable in a ledger</td></tr>
+      <tr><td>10</td><td>Statutory reports from Postgres; analytics only from replica/DuckDB</td><td>Never show an auditor a number from an eventually-consistent copy</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Explicitly rejected</h2>
+  <div class="grid2">
+    <div class="card">
+      <strong style="font-size:13.5px">Schema-per-tenant</strong>
+      <p class="note" style="margin-top:8px">Catalog bloat degrades the planner past a few hundred tenants; migrations serialise per schema (a 30-second migration × 800 tenants = 6.5 hours of deploy with an inconsistent schema throughout); and <code>search_path</code> provides <em>no</em> database-level enforcement — a wrong path is a full cross-tenant read with no backstop.</p>
+    </div>
+    <div class="card">
+      <strong style="font-size:13.5px">TigerBeetle as the GL</strong>
+      <p class="note" style="margin-top:8px">Excellent and Jepsen-verified, but a data plane for high-volume transfers — fixed 128-byte records, no strings, no ad-hoc query. An accounting posting path is drenched in metadata lookups. Revisit only for a high-volume money-movement subledger, with Postgres remaining the GL.</p>
+    </div>
+    <div class="card">
+      <strong style="font-size:13.5px">Event sourcing over a message broker</strong>
+      <p class="note" style="margin-top:8px">Buys replay and derived views; costs transactional cross-aggregate invariants — and Σdr = Σcr is exactly such an invariant. Use event-sourcing-<em>shaped</em> storage inside one ACID database instead.</p>
+    </div>
+    <div class="card">
+      <strong style="font-size:13.5px">ClickHouse at seed stage</strong>
+      <p class="note" style="margin-top:8px">Warranted only for cross-tenant, always-on, sub-second dashboards over billions of rows. For a ledger product, primary Postgres → read replica → DuckDB over per-tenant Parquet is where you should stop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ ROADMAP ══════════════════ -->
+<section id="roadmap" hidden>
+  <h2>Phasing</h2>
+  <p>Each phase produces something sellable, and Phase 0 contains only things that cannot be added later.</p>
+
+  <div class="card">
+  <svg viewBox="0 0 1000 250" role="img" aria-label="Roadmap timeline">
+    <style>
+      .ph{rx:8;fill-opacity:.14;stroke-width:1.5}
+      .pt{font:600 13px ui-sans-serif,sans-serif;fill:var(--ink)}
+      .pd{font:11px ui-sans-serif,sans-serif;fill:var(--muted)}
+      .ax{stroke:var(--line);stroke-width:1}
+      .axt{font:10.5px ui-sans-serif,sans-serif;fill:var(--muted)}
+    </style>
+    <line class="ax" x1="20" y1="222" x2="980" y2="222"/>
+    <text class="axt" x="20" y="240">week 1</text>
+    <text class="axt" x="240" y="240">8</text>
+    <text class="axt" x="480" y="240">20</text>
+    <text class="axt" x="740" y="240">36</text>
+    <text class="axt" x="980" y="240" text-anchor="end">37+</text>
+
+    <rect class="ph" x="20" y="20" width="220" height="52" style="fill:var(--accent);stroke:var(--accent)"/>
+    <text class="pt" x="34" y="42">Phase 0 · Foundations</text>
+    <text class="pd" x="34" y="60">RLS, ledger core, numbering, periods, outbox, PII split</text>
+
+    <rect class="ph" x="248" y="80" width="232" height="52" style="fill:var(--accent2);stroke:var(--accent2)"/>
+    <text class="pt" x="262" y="102">Phase 1 · Core accounting</text>
+    <text class="pd" x="262" y="120">COA, SLA engine, AR, AP, bank rec, reports, 1 country</text>
+
+    <rect class="ph" x="488" y="140" width="252" height="52" style="fill:var(--accent4);stroke:var(--accent4)"/>
+    <text class="pt" x="502" y="162">Phase 2 · Compliance surface</text>
+    <text class="pd" x="502" y="180">3 localisation packs, e-invoicing, archive, FEC/SAF-T, tax</text>
+
+    <rect class="ph" x="748" y="20" width="232" height="52" style="fill:var(--accent3);stroke:var(--accent3)"/>
+    <text class="pt" x="762" y="42">Phase 3 · Depth &amp; scale</text>
+    <text class="pd" x="762" y="60">FA, RevRec, inventory, consolidation, SOC 2</text>
+
+    <path d="M240 46 L248 46 L248 106" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+    <path d="M480 106 L488 106 L488 166" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+    <path d="M740 166 L748 166 L748 46" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+  </svg>
+  </div>
+
+  <h2>Exit criteria</h2>
+  <table>
+    <thead><tr><th>Phase</th><th>Done when</th></tr></thead>
+    <tbody>
+      <tr><td>0 · Foundations</td><td>You can post, reverse, close a period, produce a trial balance, and <em>prove isolation in CI</em>. No UI required.</td></tr>
+      <tr><td>1 · Core accounting</td><td>A real business could keep its books on it, for one country.</td></tr>
+      <tr><td>2 · Compliance</td><td>You can sell into France, Belgium and Germany with no manual workarounds.</td></tr>
+      <tr><td>3 · Depth</td><td>Multi-entity groups consolidate; SOC 2 Type II window open.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Risk register</h2>
+  <table>
+    <thead><tr><th style="width:36px">#</th><th>Risk</th><th style="width:88px">Likelihood</th><th style="width:88px">Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td>R1</td><td>Cross-tenant data leak</td><td><span class="tag t-lo">Low</span></td><td><span class="tag t-hi">Existential</span></td><td>Four defence layers, CI gates, fuzzer, runtime divergence alerting</td></tr>
+      <tr><td>R2</td><td>Silent balance drift vs <code>period_balance</code></td><td><span class="tag t-md">Medium</span></td><td><span class="tag t-hi">High</span></td><td>Nightly drift job that auto-disables cache reads for divergent accounts</td></tr>
+      <tr><td>R3</td><td>Cached-plan tenant skew → nondeterministic latency</td><td><span class="tag t-hi">High</span></td><td><span class="tag t-md">Medium</span></td><td><code>force_custom_plan</code> on the runtime role; disable client statement caching</td></tr>
+      <tr><td>R4</td><td>Compliance scope creep — a quarter per country</td><td><span class="tag t-hi">High</span></td><td><span class="tag t-hi">High</span></td><td>Prove the Localisation Pack abstraction across three countries before selling more</td></tr>
+      <tr><td>R5</td><td>E-invoicing vendor lock-in or failure</td><td><span class="tag t-md">Medium</span></td><td><span class="tag t-hi">High</span></td><td>Own the semantic model; contractual raw-document export; abstraction port</td></tr>
+      <tr><td>R6</td><td>France Sep 2026 market unreadiness</td><td><span class="tag t-hi">High</span></td><td><span class="tag t-md">Medium</span></td><td>~40 of 158 accredited PDPs were operational in July 2026. Assume partial readiness; law permits slipping to 1 Dec 2026</td></tr>
+      <tr><td>R8</td><td>GDPR erasure vs statutory retention</td><td><span class="tag t-md">Medium</span></td><td><span class="tag t-hi">High</span></td><td>PII/ledger-fact separation + crypto-shredding, designed in Phase 0</td></tr>
+      <tr><td>R9</td><td>Retrofitting multi-book fixed assets or dual COA</td><td><span class="tag t-md">Medium</span></td><td><span class="tag t-hi">Very high</span></td><td><code>book_id</code> and <code>ledger_id</code> in the model from day one</td></tr>
+      <tr><td>R10</td><td>Building without a qualified accountant on the team</td><td><span class="tag t-md">Medium</span></td><td><span class="tag t-hi">High</span></td><td>Hire one before Phase 1. Every wrong assumption here is a rewrite</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Open questions</h2>
+  <div class="card">
+    <div class="kv"><span class="n">1</span><span><strong>Which three countries first?</strong> The pack abstraction needs three genuinely different regimes to be proven — suggest France (PDP + FEC + PCG), Germany (decentralised, no central platform) and Malaysia or Singapore (Peppol 5-corner).</span></div>
+    <div class="kv"><span class="n">2</span><span><strong>Who is the buyer?</strong> SMB self-serve, mid-market with an in-house accountant, or accounting practices managing many client books? Practice management changes the identity model and the entire UX.</span></div>
+    <div class="kv"><span class="n">3</span><span><strong>Does v1 include inventory?</strong> Costing is roughly a quarter of engineering on its own.</span></div>
+    <div class="kv"><span class="n">4</span><span><strong>Is money movement in scope</strong>, or integrate-and-reconcile only? This is the TigerBeetle decision and the licensing question behind it.</span></div>
+    <div class="kv"><span class="n">5</span><span><strong>Migration from Xero / QuickBooks / Sage / Tally?</strong> Often the actual sales blocker, and it constrains the COA model.</span></div>
+    <div class="kv"><span class="n">6</span><span><strong>Target scale in 24 months</strong> — 500 tenants or 50,000? Above ~2,000, partitioning and promotion tooling move from Phase 3 into Phase 1.</span></div>
+  </div>
+</section>
+
+<footer>
+  Prepared 17 August 2026. Regulatory positions reflect sources current at that date; e-invoicing mandates move and several dates carry live execution risk. Verify against primary sources before making commercial commitments.
+</footer>
+
+</div>
+<script>
+const tabs=[...document.querySelectorAll('nav button')];
+tabs.forEach(b=>b.onclick=()=>{
+  tabs.forEach(x=>x.setAttribute('aria-selected',x===b));
+  document.querySelectorAll('section').forEach(s=>s.hidden = s.id!==b.dataset.t);
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+</script>
+</body>
+</html>

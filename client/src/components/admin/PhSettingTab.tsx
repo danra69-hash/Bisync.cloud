@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
@@ -16,10 +16,10 @@ import { ToggleSwitch } from './ToggleSwitch';
 type HolidaySortColumn = 'holiday' | 'date' | 'gazetted' | 'recognized';
 
 const HOLIDAY_TABLE_COLUMNS: SortableColumnDef<HolidaySortColumn>[] = [
-  { key: 'holiday', label: 'Holiday' },
-  { key: 'date', label: 'Date' },
-  { key: 'gazetted', label: 'Gazetted', align: 'center', className: 'px-2 py-2 font-sans font-normal' },
-  { key: 'recognized', label: 'Recognized', align: 'center', className: 'px-2 py-2 font-sans font-normal' },
+  { key: 'holiday', label: 'Holiday', ...tableColWidth('40%') },
+  { key: 'date', label: 'Date', ...tableColWidth('28%') },
+  { key: 'gazetted', label: 'Gazetted', align: 'center', className: 'px-2 py-2 font-sans font-normal', ...tableColWidth('16%') },
+  { key: 'recognized', label: 'Recognized', align: 'center', className: 'px-2 py-2 font-sans font-normal', ...tableColWidth('16%') },
 ];
 
 type Props = {
@@ -290,7 +290,8 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
           <section className="min-w-0 p-5">
             <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground mb-3">Public Holidays</p>
             <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
+                <TableColGroup columns={HOLIDAY_TABLE_COLUMNS} />
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={HOLIDAY_TABLE_COLUMNS}

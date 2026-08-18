@@ -40,8 +40,162 @@ public static class RevMgmtStartup
                 JsonSerializer.Serialize(RevMgmtDefaults.ComponentCatalog(), JsonOptions));
         }
 
+        // Replace demo Food/Proteins/Beef hierarchy residue with live component categories/groups.
+        await RebuildSeededComponentHierarchiesAsync(db);
+
         // Backfill My Storage for company locations that only have the old downtown/midtown/westend seed.
         await BackfillMissingLocationStorageAsync(db);
+    }
+
+    /// <summary>
+    /// Legacy Component Hierarchy seeded Food/Beverage + sample groups with fake item counts.
+    /// Rebuild those rows from each company's real Ingredients so Config matches user data.
+    /// </summary>
+    static async Task RebuildSeededComponentHierarchiesAsync(BisyncDbContext db)
+    {
+        var configs = await db.RevMgmtCompanyConfigs
+            .Where(c => c.ConfigKey == RevMgmtConfigController.ComponentHierarchyKey)
+            .ToListAsync();
+        if (configs.Count == 0) return;
+
+        var ingredients = await db.Ingredients.AsNoTracking()
+            .Select(i => new { i.CompanyId, i.Category, i.Group })
+            .ToListAsync();
+
+        var changed = false;
+        foreach (var config in configs)
+        {
+            if (!LooksLikeLegacySeedHierarchy(config.StateJson))
+                continue;
+
+            var companyIngredients = ingredients
+                .Where(i => i.CompanyId == config.CompanyId)
+                .Select(i => (Category: i.Category ?? "", Group: i.Group ?? ""))
+                .ToList();
+
+            config.StateJson = JsonSerializer.Serialize(
+                BuildHierarchyFromComponents(companyIngredients),
+                JsonOptions);
+            config.UpdatedAt = DateTime.UtcNow;
+            changed = true;
+        }
+
+        if (changed)
+            await db.SaveChangesAsync();
+    }
+
+    static readonly HashSet<string> LegacySeedGroupNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Proteins", "Dairy", "Produce", "Spirits", "Dry Goods",
+    };
+
+    static readonly HashSet<string> LegacySeedSubGroupNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Beef", "Poultry", "Cheese", "Whisky",
+    };
+
+    static bool LooksLikeLegacySeedHierarchy(string? stateJson)
+    {
+        if (string.IsNullOrWhiteSpace(stateJson)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(stateJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("groups", out var groupsEl) || groupsEl.ValueKind != JsonValueKind.Array)
+                return false;
+            if (!root.TryGetProperty("subGroups", out var subsEl) || subsEl.ValueKind != JsonValueKind.Array)
+                return false;
+
+            var groupNames = groupsEl.EnumerateArray()
+                .Select(g => g.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "")
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .ToList();
+            var subNames = subsEl.EnumerateArray()
+                .Select(g => g.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "")
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .ToList();
+
+            // Only treat as disposable seed when every group/sub-group is from the demo tree
+            // (user-created categories/groups are preserved and cleaned client-side).
+            if (groupNames.Any(n => !LegacySeedGroupNames.Contains(n))) return false;
+            if (subNames.Any(n => !LegacySeedSubGroupNames.Contains(n))) return false;
+
+            var seedGroups = groupNames.Count(n => LegacySeedGroupNames.Contains(n));
+            var seedSubs = subNames.Count(n => LegacySeedSubGroupNames.Contains(n));
+            var fakeItems = groupsEl.EnumerateArray().Any(g =>
+                g.TryGetProperty("items", out var items) && items.TryGetInt32(out var n) && n > 0)
+                || subsEl.EnumerateArray().Any(g =>
+                    g.TryGetProperty("items", out var items) && items.TryGetInt32(out var n) && n > 0);
+
+            return (seedGroups >= 3 && seedSubs >= 2) || (seedGroups >= 4 && fakeItems);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static object BuildHierarchyFromComponents(IReadOnlyList<(string Category, string Group)> components)
+    {
+        var categoryIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var groupCounts = new Dictionary<(int CategoryId, string GroupName), int>(
+            new CategoryGroupComparer());
+        var nextCategoryId = 1;
+
+        foreach (var (rawCategory, rawGroup) in components)
+        {
+            var category = (rawCategory ?? "").Trim();
+            var group = (rawGroup ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(category)) continue;
+
+            if (!categoryIds.TryGetValue(category, out var categoryId))
+            {
+                categoryId = nextCategoryId++;
+                categoryIds[category] = categoryId;
+            }
+
+            if (string.IsNullOrWhiteSpace(group)) continue;
+            var key = (categoryId, group);
+            groupCounts[key] = groupCounts.TryGetValue(key, out var count) ? count + 1 : 1;
+        }
+
+        var categories = categoryIds
+            .OrderBy(kv => kv.Value)
+            .Select(kv => new { id = kv.Value, name = kv.Key })
+            .ToList();
+
+        var nextGroupId = 1;
+        var groups = groupCounts
+            .OrderBy(kv => kv.Key.CategoryId)
+            .ThenBy(kv => kv.Key.GroupName, StringComparer.OrdinalIgnoreCase)
+            .Select(kv => new
+            {
+                id = nextGroupId++,
+                categoryId = kv.Key.CategoryId,
+                name = kv.Key.GroupName,
+                items = kv.Value,
+            })
+            .ToList();
+
+        return new
+        {
+            categories,
+            groups,
+            subGroups = Array.Empty<object>(),
+            nextCategoryId,
+            nextGroupId,
+            nextSubGroupId = 1,
+        };
+    }
+
+    sealed class CategoryGroupComparer : IEqualityComparer<(int CategoryId, string GroupName)>
+    {
+        public bool Equals((int CategoryId, string GroupName) x, (int CategoryId, string GroupName) y) =>
+            x.CategoryId == y.CategoryId
+            && string.Equals(x.GroupName, y.GroupName, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((int CategoryId, string GroupName) obj) =>
+            HashCode.Combine(obj.CategoryId, StringComparer.OrdinalIgnoreCase.GetHashCode(obj.GroupName));
     }
 
     static async Task BackfillMissingLocationStorageAsync(BisyncDbContext db)
@@ -153,6 +307,10 @@ public static class RevMgmtStartup
 
     static async Task SeedVendorProductsAsync(BisyncDbContext db)
     {
+        // Bundled vendor-products.seed.json is demo catalog — never load onto customer tenants.
+        if (!await DemoSeedGates.AllowDemoCatalogSeedAsync(db))
+            return;
+
         if (await db.VendorProducts.AnyAsync())
             return;
 

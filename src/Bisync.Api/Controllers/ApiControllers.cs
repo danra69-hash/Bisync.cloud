@@ -6,13 +6,18 @@ using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class LocationsController(BisyncDbContext db, LocationSubscriptionService locationSubscriptions) : ControllerBase
+public class LocationsController(
+    BisyncDbContext db,
+    LocationSubscriptionService locationSubscriptions,
+    LocationCatalogInheritanceService catalogInheritance,
+    LocationPartitionService locationPartitions) : ControllerBase
 {
     static object MapLocationConfig(Location l)
     {
@@ -20,6 +25,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         var timeZoneId = string.IsNullOrWhiteSpace(l.TimeZoneId)
             ? OrgClock.ResolveTimeZoneId(countryCode, l.StateProvince)
             : l.TimeZoneId;
+        var hasLogo = !string.IsNullOrWhiteSpace(l.LogoBase64);
         return new
         {
             l.Id,
@@ -30,6 +36,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             countryCode,
             timeZoneId,
             l.Active,
+            companyActive = l.Company != null && l.Company.Active,
             l.AddressLine1,
             l.AddressLine2,
             l.City,
@@ -45,6 +52,15 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             modulesOverridden = CompanyModuleRules.LocationModulesOverridden(l.ModulesJson),
             profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
             openingHoursJson = string.IsNullOrWhiteSpace(l.OpeningHoursJson) ? "{}" : l.OpeningHoursJson,
+            deliveryAllowTimeEnabled = l.DeliveryAllowTimeEnabled,
+            deliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(l.DeliveryAllowPeriodsJson) ? "[]" : l.DeliveryAllowPeriodsJson,
+            physicalSiteKey = l.PhysicalSiteKey ?? string.Empty,
+            conceptLabel = string.IsNullOrWhiteSpace(l.ConceptLabel) ? l.Name : l.ConceptLabel,
+            conceptSortOrder = l.ConceptSortOrder,
+            logoFileName = l.LogoFileName ?? string.Empty,
+            logoContentType = l.LogoContentType ?? string.Empty,
+            logoBase64 = hasLogo ? (l.LogoBase64 ?? string.Empty) : string.Empty,
+            logoSet = hasLogo,
         };
     }
 
@@ -57,9 +73,21 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             .FirstOrDefaultAsync(l => l.Id == id);
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetAll() =>
-        Ok(await db.Locations
+    public async Task<ActionResult<IEnumerable<object>>> GetAll([FromQuery] bool includeInactive = false)
+    {
+        var query = db.Locations
             .AsNoTracking()
+            .Include(l => l.Company)
+            .AsQueryable();
+
+        if (!includeInactive)
+        {
+            query = query.Where(l =>
+                l.Active
+                && (l.Company == null || l.Company.Active));
+        }
+
+        return Ok(await query
             .OrderBy(l => l.Name)
             .Select(l => new
             {
@@ -68,6 +96,8 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
                 l.Name,
                 l.Address,
                 l.CompanyId,
+                l.Active,
+                companyActive = l.Company != null && l.Company.Active,
                 l.AddressLine1,
                 l.AddressLine2,
                 l.City,
@@ -90,17 +120,31 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
                 l.CoversPrevWtd,
                 l.CoversPrevMtd,
                 l.CoversPrevYtd,
+                physicalSiteKey = l.PhysicalSiteKey,
+                conceptLabel = string.IsNullOrWhiteSpace(l.ConceptLabel) ? l.Name : l.ConceptLabel,
+                conceptSortOrder = l.ConceptSortOrder,
             })
             .ToListAsync());
+    }
 
     [HttpGet("config")]
-    public async Task<ActionResult<IEnumerable<object>>> GetConfig()
+    public async Task<ActionResult<IEnumerable<object>>> GetConfig([FromQuery] bool includeInactive = false)
     {
-        var locations = await db.Locations
+        var query = db.Locations
             .AsNoTracking()
             .Include(l => l.Company)
             .Include(l => l.PrincipalContact)
             .Include(l => l.SecondaryContact)
+            .AsQueryable();
+
+        if (!includeInactive)
+        {
+            query = query.Where(l =>
+                l.Active
+                && (l.Company == null || l.Company.Active));
+        }
+
+        var locations = await query
             .OrderBy(l => l.Name)
             .ToListAsync();
 
@@ -133,6 +177,40 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (modulesError is not null)
             return BadRequest(new { message = modulesError });
 
+        var logoError = LogoUploadRules.NormalizeAndValidate(
+            body.LogoFileName,
+            body.LogoContentType,
+            body.LogoBase64,
+            "Location",
+            out var logoFileName,
+            out var logoContentType,
+            out var logoBase64);
+        if (logoError is not null)
+            return BadRequest(new { message = logoError });
+
+        var inheritRequested = body.CopyComponents
+            || body.CopyVendorsAndVendorProducts
+            || body.CopyProducts;
+        int? inheritSourceCompanyId = null;
+        string? inheritSourceLocationExternalId = null;
+        if (inheritRequested)
+        {
+            if (body.InheritFromCompanyId is not int sourceCompanyId || sourceCompanyId <= 0)
+                return BadRequest(new { message = "Inheritance requires a source company." });
+            if (string.IsNullOrWhiteSpace(body.InheritFromLocationExternalId))
+                return BadRequest(new { message = "Inheritance requires a source location." });
+
+            var sourceLocId = body.InheritFromLocationExternalId.Trim();
+            var sourceOk = await db.Locations.AsNoTracking().AnyAsync(l =>
+                l.CompanyId == sourceCompanyId
+                && l.ExternalId.ToLower() == sourceLocId.ToLower());
+            if (!sourceOk)
+                return BadRequest(new { message = "Source location was not found for the selected company." });
+
+            inheritSourceCompanyId = sourceCompanyId;
+            inheritSourceLocationExternalId = sourceLocId;
+        }
+
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Locations");
 
         var externalId = await GenerateUniqueExternalIdAsync(body.Name);
@@ -153,12 +231,52 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             VendorPolicyTagsJson = vendorPolicyTagsJson,
             ModulesJson = modulesJson,
             OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim(),
+            DeliveryAllowTimeEnabled = body.DeliveryAllowTimeEnabled,
+            DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(body.DeliveryAllowPeriodsJson) ? "[]" : body.DeliveryAllowPeriodsJson.Trim(),
+            PhysicalSiteKey = (body.PhysicalSiteKey ?? string.Empty).Trim(),
+            ConceptLabel = (body.ConceptLabel ?? string.Empty).Trim(),
+            ConceptSortOrder = body.ConceptSortOrder ?? 0,
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
+            LogoFileName = logoFileName,
+            LogoContentType = logoContentType,
+            LogoBase64 = logoBase64,
         };
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
 
         db.Locations.Add(loc);
         await db.SaveChangesAsync();
+
+        try
+        {
+            await locationPartitions.EnsurePartitionsForLocationAsync(loc.ExternalId);
+        }
+        catch
+        {
+            // Best-effort: inventory writes also ensure partitions.
+        }
+
+        LocationCatalogInheritanceResult? inheritanceResult = null;
+        string? inheritanceError = null;
+        if (inheritRequested
+            && inheritSourceCompanyId is int validatedSourceCompanyId
+            && !string.IsNullOrWhiteSpace(inheritSourceLocationExternalId))
+        {
+            try
+            {
+                inheritanceResult = await catalogInheritance.ApplyAsync(
+                    loc,
+                    new LocationCatalogInheritanceRequest(
+                        validatedSourceCompanyId,
+                        inheritSourceLocationExternalId,
+                        body.CopyComponents,
+                        body.CopyVendorsAndVendorProducts,
+                        body.CopyProducts));
+            }
+            catch (Exception ex)
+            {
+                inheritanceError = ex.Message;
+            }
+        }
 
         try
         {
@@ -171,7 +289,39 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         }
 
         var saved = await LoadLocationConfigAsync(loc.Id);
-        return saved is null ? Ok(new { loc.Id, loc.ExternalId, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
+        if (saved is null)
+        {
+            return Ok(new
+            {
+                loc.Id,
+                loc.ExternalId,
+                loc.Name,
+                loc.CompanyId,
+                inheritance = inheritanceResult,
+                inheritanceError,
+            });
+        }
+
+        var mapped = MapLocationConfig(saved);
+        if (inheritanceResult is null && inheritanceError is null)
+            return Ok(mapped);
+
+        // Attach inheritance summary without changing the core LocationConfig shape for clients.
+        var json = JsonSerializer.SerializeToNode(mapped) as JsonObject ?? new JsonObject();
+        if (inheritanceResult is not null)
+        {
+            json["inheritance"] = JsonSerializer.SerializeToNode(new
+            {
+                componentsCopied = inheritanceResult.ComponentsCopied,
+                vendorsCopied = inheritanceResult.VendorsCopied,
+                vendorProductsCopied = inheritanceResult.VendorProductsCopied,
+                productsCopied = inheritanceResult.ProductsCopied,
+                mode = inheritanceResult.Mode,
+            });
+        }
+        if (inheritanceError is not null)
+            json["inheritanceError"] = inheritanceError;
+        return Ok(json);
     }
 
     [HttpPut("{id:int}/config")]
@@ -200,8 +350,33 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (modulesError is not null)
             return BadRequest(new { message = modulesError });
 
+        // Logo fields are optional on update: omit to keep the existing logo; send empty to clear.
+        var logoProvided = body.LogoFileName is not null
+            || body.LogoContentType is not null
+            || body.LogoBase64 is not null;
+        string? logoFileName = null;
+        string? logoContentType = null;
+        string? logoBase64 = null;
+        if (logoProvided)
+        {
+            var logoError = LogoUploadRules.NormalizeAndValidate(
+                body.LogoFileName,
+                body.LogoContentType,
+                body.LogoBase64,
+                "Location",
+                out var normalizedFileName,
+                out var normalizedContentType,
+                out var normalizedBase64);
+            if (logoError is not null)
+                return BadRequest(new { message = logoError });
+            logoFileName = normalizedFileName;
+            logoContentType = normalizedContentType;
+            logoBase64 = normalizedBase64;
+        }
+
         var loc = await db.Locations.FindAsync(id);
         if (loc is null) return NotFound();
+        var previousActive = loc.Active;
         loc.CompanyId = body.CompanyId;
         loc.Name = body.Name;
         loc.Active = body.Active;
@@ -217,9 +392,41 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         loc.ModulesJson = modulesJson;
         if (body.OpeningHoursJson is not null)
             loc.OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim();
+        loc.DeliveryAllowTimeEnabled = body.DeliveryAllowTimeEnabled;
+        if (body.DeliveryAllowPeriodsJson is not null)
+            loc.DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(body.DeliveryAllowPeriodsJson) ? "[]" : body.DeliveryAllowPeriodsJson.Trim();
+        if (body.PhysicalSiteKey is not null)
+            loc.PhysicalSiteKey = body.PhysicalSiteKey.Trim();
+        if (body.ConceptLabel is not null)
+            loc.ConceptLabel = body.ConceptLabel.Trim();
+        if (body.ConceptSortOrder is not null)
+            loc.ConceptSortOrder = body.ConceptSortOrder.Value;
+        if (logoProvided)
+        {
+            loc.LogoFileName = logoFileName ?? string.Empty;
+            loc.LogoContentType = logoContentType ?? string.Empty;
+            loc.LogoBase64 = logoBase64 ?? string.Empty;
+        }
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
         await db.SaveChangesAsync();
+
+        // Keep Tenant Rollups Current status aligned with Platform Config Active.
+        if (previousActive != body.Active || !body.Active)
+        {
+            try
+            {
+                await locationSubscriptions.SyncLocationActiveStatusAsync(
+                    body.CompanyId.Value,
+                    loc.ExternalId,
+                    body.Active);
+            }
+            catch
+            {
+                // Best-effort: rollup refresh also backfills deactivated status.
+            }
+        }
+
         var saved = await LoadLocationConfigAsync(loc.Id);
         return saved is null ? Ok(new { loc.Id, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
     }
@@ -254,6 +461,166 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         var loc = await db.Locations.FirstOrDefaultAsync(l => l.ExternalId == externalId);
         return loc is null ? NotFound() : Ok(loc);
     }
+
+    static object MapDeliveryLocation(DeliveryLocation d) => new
+    {
+        d.Id,
+        externalId = d.ExternalId,
+        locationExternalId = d.LocationExternalId,
+        companyId = d.CompanyId,
+        name = d.Name,
+        addressLine1 = d.AddressLine1,
+        addressLine2 = d.AddressLine2,
+        city = d.City,
+        stateProvince = d.StateProvince,
+        postcode = d.Postcode,
+        active = d.Active,
+        createdAt = d.CreatedAt,
+        updatedAt = d.UpdatedAt,
+    };
+
+    async Task<string> GenerateUniqueDeliveryExternalIdAsync(string locationExternalId, string name)
+    {
+        var baseSlug = $"{locationExternalId}-dl-{SlugifyLocationName(name)}";
+        var candidate = baseSlug;
+        var suffix = 2;
+        while (await db.DeliveryLocations.AnyAsync(d => d.ExternalId == candidate))
+        {
+            candidate = $"{baseSlug}-{suffix}";
+            suffix++;
+        }
+        return candidate;
+    }
+
+    static string? ValidateDeliveryLocationRequest(DeliveryLocationUpsertRequest body)
+    {
+        if (string.IsNullOrWhiteSpace(body.Name))
+            return "Name of Delivery Location is required.";
+        if (string.IsNullOrWhiteSpace(body.AddressLine1))
+            return "Address Line 1 is required.";
+        if (string.IsNullOrWhiteSpace(body.City))
+            return "City is required.";
+        if (string.IsNullOrWhiteSpace(body.StateProvince))
+            return "State is required.";
+        if (string.IsNullOrWhiteSpace(body.Postcode))
+            return "PostCode is required.";
+        return null;
+    }
+
+    /// <summary>List delivery locations for a company and/or parent outlet(s) — used by PO filters.</summary>
+    [HttpGet("delivery-locations")]
+    public async Task<ActionResult<IEnumerable<object>>> ListDeliveryLocations(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalIds = null,
+        [FromQuery] bool includeInactive = false)
+    {
+        var query = db.DeliveryLocations.AsNoTracking().AsQueryable();
+        if (companyId is int cid)
+            query = query.Where(d => d.CompanyId == cid);
+        var outletIds = (locationExternalIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (outletIds.Count > 0)
+            query = query.Where(d => outletIds.Contains(d.LocationExternalId));
+        if (!includeInactive)
+            query = query.Where(d => d.Active);
+
+        var rows = await query
+            .OrderBy(d => d.Name)
+            .ThenBy(d => d.Id)
+            .ToListAsync();
+        return Ok(rows.Select(MapDeliveryLocation));
+    }
+
+    [HttpGet("{externalId}/delivery-locations")]
+    public async Task<ActionResult<IEnumerable<object>>> ListDeliveryLocationsForOutlet(
+        string externalId,
+        [FromQuery] bool includeInactive = false)
+    {
+        var outlet = await db.Locations.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.ExternalId == externalId);
+        if (outlet is null) return NotFound(new { message = "Location not found." });
+
+        var query = db.DeliveryLocations.AsNoTracking()
+            .Where(d => d.LocationExternalId == outlet.ExternalId);
+        if (!includeInactive)
+            query = query.Where(d => d.Active);
+
+        var rows = await query.OrderBy(d => d.Name).ThenBy(d => d.Id).ToListAsync();
+        return Ok(rows.Select(MapDeliveryLocation));
+    }
+
+    [HttpPost("{externalId}/delivery-locations")]
+    public async Task<ActionResult<object>> CreateDeliveryLocation(
+        string externalId,
+        [FromBody] DeliveryLocationUpsertRequest body)
+    {
+        var outlet = await db.Locations.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.ExternalId == externalId);
+        if (outlet is null) return NotFound(new { message = "Location not found." });
+
+        var validationError = ValidateDeliveryLocationRequest(body);
+        if (validationError is not null)
+            return BadRequest(new { message = validationError });
+
+        var now = DateTime.UtcNow;
+        var row = new DeliveryLocation
+        {
+            ExternalId = await GenerateUniqueDeliveryExternalIdAsync(outlet.ExternalId, body.Name),
+            LocationExternalId = outlet.ExternalId,
+            CompanyId = outlet.CompanyId,
+            Name = body.Name.Trim(),
+            AddressLine1 = body.AddressLine1.Trim(),
+            AddressLine2 = (body.AddressLine2 ?? string.Empty).Trim(),
+            City = body.City.Trim(),
+            StateProvince = body.StateProvince.Trim(),
+            Postcode = body.Postcode.Trim(),
+            Active = body.Active ?? true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.DeliveryLocations.Add(row);
+        await db.SaveChangesAsync();
+        return Ok(MapDeliveryLocation(row));
+    }
+
+    [HttpPut("delivery-locations/{id:int}")]
+    public async Task<ActionResult<object>> UpdateDeliveryLocation(
+        int id,
+        [FromBody] DeliveryLocationUpsertRequest body)
+    {
+        var row = await db.DeliveryLocations.FirstOrDefaultAsync(d => d.Id == id);
+        if (row is null) return NotFound(new { message = "Delivery location not found." });
+
+        var validationError = ValidateDeliveryLocationRequest(body);
+        if (validationError is not null)
+            return BadRequest(new { message = validationError });
+
+        row.Name = body.Name.Trim();
+        row.AddressLine1 = body.AddressLine1.Trim();
+        row.AddressLine2 = (body.AddressLine2 ?? string.Empty).Trim();
+        row.City = body.City.Trim();
+        row.StateProvince = body.StateProvince.Trim();
+        row.Postcode = body.Postcode.Trim();
+        if (body.Active is bool active)
+            row.Active = active;
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Ok(MapDeliveryLocation(row));
+    }
+
+    [HttpDelete("delivery-locations/{id:int}")]
+    public async Task<IActionResult> DeleteDeliveryLocation(int id)
+    {
+        var row = await db.DeliveryLocations.FirstOrDefaultAsync(d => d.Id == id);
+        if (row is null) return NotFound(new { message = "Delivery location not found." });
+        row.Active = false;
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
 }
 
 [ApiController]
@@ -279,6 +646,11 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    static readonly HashSet<string> AllowedDeliveryDays = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    };
+
     static string SerializeEngagedLocationIds(IEnumerable<string>? locationIds)
     {
         var normalized = (locationIds ?? Enumerable.Empty<string>())
@@ -289,12 +661,34 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         return JsonSerializer.Serialize(normalized);
     }
 
+    static string SerializeDeliveryDays(IEnumerable<string>? days)
+    {
+        var order = new[] { "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday" };
+        var selected = new HashSet<string>(
+            (days ?? Enumerable.Empty<string>())
+                .Select(d => d?.Trim().ToLowerInvariant() ?? string.Empty)
+                .Where(d => AllowedDeliveryDays.Contains(d)),
+            StringComparer.OrdinalIgnoreCase);
+        return JsonSerializer.Serialize(order.Where(selected.Contains).ToList());
+    }
+
+    static string? ValidateMinOrderAmount(decimal? amount)
+    {
+        if (amount is null) return null;
+        if (amount < 0) return "Min order amount cannot be negative.";
+        return null;
+    }
+
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Vendor>>> GetAll([FromQuery] bool? engaged = null)
+    public async Task<ActionResult<IEnumerable<Vendor>>> GetAll(
+        [FromQuery] bool? engaged = null,
+        [FromQuery] int? companyId = null)
     {
         var q = db.Vendors.AsQueryable();
         if (engaged.HasValue)
             q = q.Where(v => v.Engaged == engaged.Value);
+        if (companyId is int cid && cid > 0)
+            q = q.Where(v => v.CompanyId == null || v.CompanyId == cid);
         return Ok(await q.OrderByDescending(v => v.Engaged).ThenBy(v => v.Name).ToListAsync());
     }
 
@@ -320,8 +714,23 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         if (policyError is not null)
             return BadRequest(new { message = policyError });
 
+        var minOrderError = ValidateMinOrderAmount(request.MinOrderAmount);
+        if (minOrderError is not null)
+            return BadRequest(new { message = minOrderError });
+
+        int? companyId = null;
+        if (request.CompanyId is int requestedCompanyId && requestedCompanyId > 0)
+        {
+            var companyExists = await db.Companies.AsNoTracking()
+                .AnyAsync(c => c.Id == requestedCompanyId);
+            if (!companyExists)
+                return BadRequest(new { message = "Company not found." });
+            companyId = requestedCompanyId;
+        }
+
         var vendor = new Vendor
         {
+            CompanyId = companyId,
             ExternalId = externalId,
             Name = name,
             Type = string.IsNullOrWhiteSpace(request.Type) ? "offline" : request.Type.Trim().ToLowerInvariant(),
@@ -329,6 +738,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             Products = request.Products.Trim(),
             City = request.City.Trim(),
             State = request.State.Trim(),
+            Postcode = request.Postcode.Trim(),
             Address = request.Address.Trim(),
             ContactPerson = request.ContactPerson.Trim(),
             ContactPosition = request.ContactPosition.Trim(),
@@ -337,6 +747,8 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant(),
             AllowPartialDelivery = request.AllowPartialDelivery,
             EngagedLocationIdsJson = SerializeEngagedLocationIds(request.EngagedLocationIds),
+            MinOrderAmount = request.MinOrderAmount,
+            DeliveryDaysJson = SerializeDeliveryDays(request.DeliveryDays),
             ContactsJson = JsonSerializer.Serialize(new[]
             {
                 new VendorContactRequest
@@ -375,12 +787,17 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         if (policyError is not null)
             return BadRequest(new { message = policyError });
 
+        var minOrderError = ValidateMinOrderAmount(request.MinOrderAmount);
+        if (minOrderError is not null)
+            return BadRequest(new { message = minOrderError });
+
         vendor.Name = name;
         vendor.Type = string.IsNullOrWhiteSpace(request.Type) ? "offline" : request.Type.Trim().ToLowerInvariant();
         vendor.Brn = request.Brn.Trim();
         vendor.Products = request.Products.Trim();
         vendor.City = request.City.Trim();
         vendor.State = request.State.Trim();
+        vendor.Postcode = request.Postcode.Trim();
         vendor.Address = request.Address.Trim();
         vendor.ContactPerson = request.ContactPerson.Trim();
         vendor.ContactPosition = request.ContactPosition.Trim();
@@ -388,8 +805,11 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         vendor.Email = request.Email.Trim();
         vendor.ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant();
         vendor.AllowPartialDelivery = request.AllowPartialDelivery;
+        vendor.MinOrderAmount = request.MinOrderAmount;
         if (request.EngagedLocationIds is not null)
             vendor.EngagedLocationIdsJson = SerializeEngagedLocationIds(request.EngagedLocationIds);
+        if (request.DeliveryDays is not null)
+            vendor.DeliveryDaysJson = SerializeDeliveryDays(request.DeliveryDays);
         vendor.ContactsJson = JsonSerializer.Serialize(
             SyncDefaultContact(vendor),
             ContactJsonOptions);
@@ -729,7 +1149,8 @@ public class IngredientsController(
     ITenantContext tenant,
     SplitUseService splitUse,
     IngredientUsageMetricsService usageMetrics,
-    StockCardService stockCardService) : ControllerBase
+    StockCardService stockCardService,
+    ILogger<IngredientsController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll(
@@ -761,35 +1182,88 @@ public class IngredientsController(
                 .ToListAsync(cancellationToken);
         }
 
-        var metrics = cid is int companyForMetrics
-            ? await usageMetrics.ComputeAsync(companyForMetrics, locationIdList, cancellationToken)
-            : new IngredientUsageMetricsResult(
+        IngredientUsageMetricsResult metrics;
+        try
+        {
+            metrics = cid is int companyForMetrics
+                ? await usageMetrics.ComputeAsync(companyForMetrics, locationIdList, cancellationToken)
+                : new IngredientUsageMetricsResult(
+                    new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase),
+                    new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    IngredientUsageMetricsService.LookbackDays);
+        }
+        catch (Exception ex)
+        {
+            // Component list must still render when usage enrichment fails (legacy dupes / sales data).
+            logger.LogError(ex, "Ingredient usage metrics failed for company {CompanyId}", cid);
+            metrics = new IngredientUsageMetricsResult(
                 new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                 IngredientUsageMetricsService.LookbackDays);
+        }
 
         var onHandByKey = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         if (locationIdList.Count > 0)
         {
-            var stockRows = await stockCardService.ListAsync(
-                cid,
-                locationIdList,
-                "component",
-                "recipe",
-                period: null,
-                cancellationToken);
-            foreach (var row in stockRows)
+            try
             {
-                onHandByKey.TryGetValue(row.ItemKey, out var existing);
-                onHandByKey[row.ItemKey] = existing + row.OnHandQty;
+                var stockRows = await stockCardService.ListAsync(
+                    cid,
+                    locationIdList,
+                    "component",
+                    "recipe",
+                    period: null,
+                    cancellationToken);
+                foreach (var row in stockRows)
+                {
+                    if (string.IsNullOrWhiteSpace(row.ItemKey))
+                        continue;
+                    onHandByKey.TryGetValue(row.ItemKey, out var existing);
+                    onHandByKey[row.ItemKey] = existing + row.OnHandQty;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Ingredient on-hand enrichment failed for company {CompanyId}", cid);
+            }
+        }
+
+        var componentIds = ingredients
+            .Select(i => i.ComponentId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var purchasedComponentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (componentIds.Count > 0)
+        {
+            try
+            {
+                IQueryable<InventoryPurchase> purchaseQuery = db.InventoryPurchases.AsNoTracking()
+                    .Where(p => componentIds.Contains(p.ComponentId));
+                if (cid is int purchaseCompanyId)
+                    purchaseQuery = purchaseQuery.Where(p => p.CompanyId == null || p.CompanyId == purchaseCompanyId);
+                var purchased = await purchaseQuery
+                    .Select(p => p.ComponentId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+                foreach (var purchasedId in purchased)
+                {
+                    if (!string.IsNullOrWhiteSpace(purchasedId))
+                        purchasedComponentIds.Add(purchasedId);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Ingredient purchase-record enrichment failed for company {CompanyId}", cid);
             }
         }
 
         return Ok(ingredients.Select(i =>
         {
-            metrics.DailyUsageByComponentId.TryGetValue(i.ComponentId, out var computedUsage);
-            metrics.OrderFreqDaysByComponentId.TryGetValue(i.ComponentId, out var computedFreq);
-            onHandByKey.TryGetValue(i.ComponentId, out var onHand);
+            var componentId = i.ComponentId ?? string.Empty;
+            metrics.DailyUsageByComponentId.TryGetValue(componentId, out var computedUsage);
+            metrics.OrderFreqDaysByComponentId.TryGetValue(componentId, out var computedFreq);
+            onHandByKey.TryGetValue(componentId, out var onHand);
             var dailyUsage = computedUsage > 0 ? computedUsage : i.DailyUsage;
             var orderFreq = computedFreq > 0 ? computedFreq : i.OrderFreqDays;
             var parStock = i.ParStock > 0
@@ -816,6 +1290,8 @@ public class IngredientsController(
                 parStock,
                 parStockUom,
                 onHandQty = onHand,
+                hasPurchaseRecord = !string.IsNullOrWhiteSpace(componentId)
+                    && purchasedComponentIds.Contains(componentId),
                 metricsLookbackDays = metrics.LookbackDays,
                 dailyUsageAuto = computedUsage > 0,
                 orderFreqAuto = computedFreq > 0,
@@ -856,8 +1332,8 @@ public class IngredientsController(
 
         item.CompanyId = companyId;
         item.Name = name;
-        item.Category = updated.Category;
-        item.Group = updated.Group;
+        item.Category = IngredientCatalogNormalizer.NormalizeCategory(updated.Category);
+        item.Group = IngredientCatalogNormalizer.NormalizeGroup(updated.Group);
         item.RecipeUom = updated.RecipeUom;
         item.InventoryUom = updated.InventoryUom;
         if (item.Active && !updated.Active)
@@ -925,6 +1401,7 @@ public class IngredientsController(
         var code = await CompanyCodeService.ResolveCodeAsync(db, companyId.Value);
         ingredient.CompanyId = companyId;
         ingredient.Name = name;
+        IngredientCatalogNormalizer.ApplyTo(ingredient);
         ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId);
         if (string.IsNullOrWhiteSpace(ingredient.ParStockUom))
             ingredient.ParStockUom = ingredient.RecipeUom ?? string.Empty;
@@ -964,11 +1441,15 @@ public class PurchaseOrdersController(
     LocationPartitionService locationPartitions,
     SplitUseService splitUse,
     FifoBatchIssueService fifoBatches,
-    PreCommittedPoDrawdownService preCommittedDrawdown) : ControllerBase
+    PreCommittedPoDrawdownService preCommittedDrawdown,
+    CreditNoteService creditNotes,
+    PurchaseOrderAcceptExpiryService purchaseOrderAcceptExpiry,
+    AccountingBridgeService accountingBridge) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
     {
+        await SchemaPatcher.MigrateVendorAcceptExpiryDateToDateAsync(db);
         var orders = await BaseQuery().ToListAsync();
         return Ok(await MapPurchaseOrdersAsync(orders));
     }
@@ -976,9 +1457,13 @@ public class PurchaseOrdersController(
     [HttpGet("active")]
     public async Task<ActionResult<IEnumerable<object>>> GetActive([FromQuery] int? companyId)
     {
+        // Include Reconciled / Expired so Active Purchase KPIs can bucket PR / accepted / received / reconciled / expired.
+        // Commitment Closed masters stay out of this queue.
+        await SchemaPatcher.MigrateVendorAcceptExpiryDateToDateAsync(db);
+        await purchaseOrderAcceptExpiry.ExpireOverdueAsync();
+
         var query = BaseQuery()
-            .Where(p => p.Status != PurchaseOrderWorkflow.StatusReconciled
-                && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed);
+            .Where(p => p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed);
 
         if (companyId is int id)
             query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
@@ -1008,7 +1493,7 @@ public class PurchaseOrdersController(
         }
         var today = OrgClock.TodayLocal(countryCode);
         var query = BaseQuery()
-            .Where(p => p.IsPreCommitted && p.Status == PurchaseOrderWorkflow.StatusCommitted)
+            .Where(p => p.IsPreCommitted && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed)
             .Where(p =>
                 (p.CommitmentStartDate == null || p.CommitmentStartDate <= today)
                 && (p.CommitmentEndDate == null || p.CommitmentEndDate >= today));
@@ -1017,8 +1502,9 @@ public class PurchaseOrdersController(
             query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
 
         var orders = await query.ToListAsync();
-        // Only those with remaining commitment qty.
+        // Only open commitments with remaining qty (tolerate legacy Accepted status until repair runs).
         orders = orders
+            .Where(o => PurchaseOrderWorkflow.IsOpenPreCommitmentStatus(o.Status))
             .Where(o => o.Items.Any(i => i.Quantity - i.DrawnQuantity > 0.0001m))
             .ToList();
 
@@ -1066,8 +1552,13 @@ public class PurchaseOrdersController(
         if (order.VendorAcceptedAt is not null)
             return Ok(await MapPurchaseOrderAsync(order));
 
-        if (!PurchaseOrderWorkflow.CanVendorAccept(order))
-            return Conflict(new { message = "This purchase order can no longer be accepted." });
+        var vendorApproveCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync() ?? "MY";
+        var vendorApproveToday = OrgClock.TodayLocal(vendorApproveCountry);
+        if (!PurchaseOrderWorkflow.CanVendorAccept(order, vendorApproveToday))
+            return Conflict(new { message = "This purchase order can no longer be accepted (vendor accept window expired)." });
 
         var acceptedBy = request?.AcceptedBy?.Trim();
         if (string.IsNullOrWhiteSpace(acceptedBy))
@@ -1095,7 +1586,9 @@ public class PurchaseOrdersController(
 
         order.VendorAcceptedAt = DateTime.UtcNow;
         order.VendorAcceptedBy = acceptedBy;
-        if (string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+        // Pre-committed masters stay Committed so drawdown matching continues after vendor accept.
+        if (!order.IsPreCommitted
+            && string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReceived, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
         {
@@ -1145,6 +1638,7 @@ public class PurchaseOrdersController(
     [HttpGet("{id:int}")]
     public async Task<ActionResult<object>> GetById(int id)
     {
+        await SchemaPatcher.MigrateVendorAcceptExpiryDateToDateAsync(db);
         await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, [id]);
         var order = await LoadOrderAsync(id);
         return order is null ? NotFound() : await MapPurchaseOrderAsync(order);
@@ -1192,6 +1686,25 @@ public class PurchaseOrdersController(
 
         var locationAbbr = PurchaseOrderNumberService.ResolveLocationAbbreviation(locationExternalIds, matchedLocations);
         var locationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(locationExternalIds);
+        var deliveryLocationExternalId = (request.DeliveryLocationExternalId ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(deliveryLocationExternalId))
+        {
+            var deliveryLoc = await db.DeliveryLocations.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.ExternalId == deliveryLocationExternalId && d.Active);
+            if (deliveryLoc is null)
+                return BadRequest(new { message = "Selected delivery location was not found." });
+            if (locationExternalIds.Count > 0
+                && !locationExternalIds.Contains(deliveryLoc.LocationExternalId, StringComparer.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = "Delivery location must belong to one of the selected outlets." });
+            }
+            if (request.CompanyId is int batchCompanyId
+                && deliveryLoc.CompanyId is int deliveryCompanyId
+                && deliveryCompanyId != batchCompanyId)
+            {
+                return BadRequest(new { message = "Delivery location does not belong to the selected company." });
+            }
+        }
         var initiatedBy = request.InitiatedBy?.Trim() ?? string.Empty;
         var approvedBy = request.ApprovedBy?.Trim() ?? string.Empty;
         var primaryLocationState = matchedLocations
@@ -1207,22 +1720,26 @@ public class PurchaseOrdersController(
             if (string.IsNullOrWhiteSpace(vendorName))
                 return BadRequest(new { message = "Vendor name is required for each purchase order." });
 
-            var items = (orderRequest.Items ?? [])
-                .Where(i => !string.IsNullOrWhiteSpace(i.Name) && i.Quantity > 0)
-                .Select(i => new PurchaseOrderItem
-                {
-                    ComponentId = i.ComponentId?.Trim() ?? string.Empty,
-                    ComponentName = string.IsNullOrWhiteSpace(i.ComponentName) ? i.Name.Trim() : i.ComponentName.Trim(),
-                    VendorProductId = i.VendorProductId?.Trim() ?? string.Empty,
-                    Name = i.Name.Trim(),
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice,
-                    IssuedUnitPrice = i.UnitPrice,
-                    Unit = i.Unit.Trim(),
-                    ComponentUom = i.ComponentUom?.Trim() ?? i.Unit.Trim(),
-                    DeliveryPackage = i.DeliveryPackage.Trim(),
-                })
-                .ToList();
+            var items = PurchaseOrderWorkflow.CombineReturnableDepositItems(
+                (orderRequest.Items ?? [])
+                    .Where(i => !string.IsNullOrWhiteSpace(i.Name) && i.Quantity > 0)
+                    .Select(i => new PurchaseOrderItem
+                    {
+                        ComponentId = i.ComponentId?.Trim() ?? string.Empty,
+                        ComponentName = string.IsNullOrWhiteSpace(i.ComponentName) ? i.Name.Trim() : i.ComponentName.Trim(),
+                        VendorProductId = i.VendorProductId?.Trim() ?? string.Empty,
+                        Name = i.Name.Trim(),
+                        Quantity = i.Quantity,
+                        UnitPrice = i.UnitPrice,
+                        IssuedUnitPrice = i.UnitPrice,
+                        Unit = i.Unit.Trim(),
+                        ComponentUom = i.ComponentUom?.Trim() ?? i.Unit.Trim(),
+                        DeliveryPackage = i.DeliveryPackage.Trim(),
+                        IsReturnableDeposit = i.IsReturnableDeposit,
+                        ReturnableItemName = i.IsReturnableDeposit
+                            ? (string.IsNullOrWhiteSpace(i.ReturnableItemName) ? i.Name.Trim() : i.ReturnableItemName.Trim())
+                            : string.Empty,
+                    }));
 
             if (items.Count == 0)
                 return BadRequest(new { message = $"Purchase order for {vendorName} has no valid items." });
@@ -1268,6 +1785,7 @@ public class PurchaseOrdersController(
                 Status = status,
                 CompanyId = request.CompanyId,
                 LocationIdsJson = locationIdsJson,
+                DeliveryLocationExternalId = deliveryLocationExternalId,
                 InitiatedBy = initiatedBy,
                 ApprovedBy = approvedBy,
                 ApprovedAt = documentType == PurchaseOrderWorkflow.DocumentTypePo
@@ -1282,6 +1800,9 @@ public class PurchaseOrdersController(
                 CommitmentEndDate = isPreCommitted ? orderRequest.CommitmentEndDate : null,
                 SourceCommittedPurchaseOrderId = isPreCommitted ? null : orderRequest.SourceCommittedPurchaseOrderId,
             };
+
+            if (PurchaseOrderWorkflow.NeedsVendorAcceptWindow(order))
+                PurchaseOrderWorkflow.AssignVendorAcceptExpiry(order, orderDate);
 
             foreach (var item in items)
                 order.Items.Add(item);
@@ -1327,6 +1848,12 @@ public class PurchaseOrdersController(
         order.ApprovedBy = string.IsNullOrWhiteSpace(request?.ApprovedBy) ? "Approved" : request.ApprovedBy.Trim();
         order.ApprovedAt = DateTime.UtcNow;
 
+        var approveCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync() ?? "MY";
+        PurchaseOrderWorkflow.AssignVendorAcceptExpiry(order, OrgClock.TodayLocal(approveCountry));
+
         await db.SaveChangesAsync();
         await UserNotificationService.NotifyPurchaseRequestApprovedAsync(db, order, order.ApprovedBy);
         await OnlineVendorOrderBridge.NotifyOnlineVendorOfPurchaseOrderAsync(db, order);
@@ -1358,21 +1885,29 @@ public class PurchaseOrdersController(
                 return BadRequest(new { message = "Product expiry date must be a valid calendar date (yyyy-MM-dd)." });
         }
 
-        // Halal certificate number is optional even under a halal org policy.
+        // Vendor rating (product quality / hygiene) is optional on receive.
         var quality = VendorRatingRules.NormalizeCustomerLevel(request.ProductQualityRating);
         var hygiene = VendorRatingRules.NormalizeCustomerLevel(request.HygieneRating);
-        if (quality is null)
-            return BadRequest(new { message = "Product quality rating is required (Satisfied, Acceptable, or Poor)." });
-        if (hygiene is null)
-            return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
+        if (!string.IsNullOrWhiteSpace(request.ProductQualityRating) && quality is null)
+            return BadRequest(new { message = "Product quality rating must be Satisfied, Acceptable, or Poor." });
+        if (!string.IsNullOrWhiteSpace(request.HygieneRating) && hygiene is null)
+            return BadRequest(new { message = "Hygiene & cleanliness rating must be Satisfied, Acceptable, or Poor." });
 
-        if (!allowPartial)
+        foreach (var line in request.Items.Where(l => l.ItemId <= 0))
         {
-            // Non-partial vendors: receiving short of ordered is still allowed, but consolidates as a full close later.
+            if (string.IsNullOrWhiteSpace(line.VendorProductId))
+                return BadRequest(new { message = "Unordered receive lines require a Vendor Product ID." });
+            if (string.IsNullOrWhiteSpace(line.ComponentId))
+                return BadRequest(new { message = "Unordered receive lines require a component id." });
+            if (string.IsNullOrWhiteSpace(line.Name))
+                return BadRequest(new { message = "Unordered receive lines require a product name." });
+            if (line.Quantity <= 0)
+                return BadRequest(new { message = "Unordered receive lines (freebies / replacements) must have quantity greater than zero." });
         }
-        else
+
+        if (allowPartial)
         {
-            foreach (var line in request.Items)
+            foreach (var line in request.Items.Where(l => l.ItemId > 0))
             {
                 var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
                 if (item is null) continue;
@@ -1385,18 +1920,176 @@ public class PurchaseOrdersController(
             }
         }
 
-        ApplyWorkflowLines(order, request.Items, workflow: "receive");
-        order.VendorDoNumber = vendorDoNumber;
-        order.VendorInvoiceNumber = vendorInvoiceNumber;
-        order.ProductQualityRating = quality;
-        order.HygieneRating = hygiene;
-        order.ProductQualityComment = request.ProductQualityComment?.Trim() ?? string.Empty;
-        order.HygieneComment = request.HygieneComment?.Trim() ?? string.Empty;
-        order.Status = PurchaseOrderWorkflow.StatusReceived;
-        order.ReceivedAt = DateTime.UtcNow;
+        var linkedCnLines = request.Items.Where(l => l.LinkedCreditNoteId is > 0).ToList();
+        if (linkedCnLines.Count > 0)
+        {
+            if (linkedCnLines.Any(l => l.ItemId > 0))
+            {
+                return BadRequest(new
+                {
+                    message = "Credit notes can only be linked on additional (unordered) receive lines."
+                });
+            }
 
-        await db.SaveChangesAsync();
-        return Ok(await MapPurchaseOrderAsync(order, allowPartial));
+            var duplicateCn = linkedCnLines
+                .GroupBy(l => l.LinkedCreditNoteId!.Value)
+                .FirstOrDefault(g => g.Count() > 1);
+            if (duplicateCn is not null)
+            {
+                return BadRequest(new
+                {
+                    message = $"Credit note #{duplicateCn.Key} is linked on more than one receive line."
+                });
+            }
+
+            var companyIdForCn = order.CompanyId ?? 0;
+            if (companyIdForCn <= 0)
+                return BadRequest(new { message = "Purchase order has no company — cannot settle credit notes." });
+
+            foreach (var line in linkedCnLines)
+            {
+                try
+                {
+                    await creditNotes.ValidateLinkedCreditNoteForReceiveAsync(
+                        line.LinkedCreditNoteId!.Value,
+                        companyIdForCn,
+                        line.VendorProductId ?? string.Empty);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return BadRequest(new { message = ex.Message });
+                }
+            }
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        try
+        {
+            var unorderedError = await EnsureUnorderedReceiveLinesAsync(order, request.Items);
+            if (unorderedError is not null)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new { message = unorderedError });
+            }
+
+            ApplyWorkflowLines(order, request.Items, workflow: "receive");
+            order.VendorDoNumber = vendorDoNumber;
+            order.VendorInvoiceNumber = vendorInvoiceNumber;
+            order.ProductQualityRating = quality ?? string.Empty;
+            order.HygieneRating = hygiene ?? string.Empty;
+            order.ProductQualityComment = request.ProductQualityComment?.Trim() ?? string.Empty;
+            order.HygieneComment = request.HygieneComment?.Trim() ?? string.Empty;
+            order.Status = PurchaseOrderWorkflow.StatusReceived;
+            order.ReceivedAt = DateTime.UtcNow;
+
+            var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
+            var locationIdsJson = locationIds.Count > 0
+                ? order.LocationIdsJson
+                : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+            // Keep original casing from the PO so stock-card location filters match ingredient/purchase ids.
+            var locationExternalId = locationIds.Count > 0
+                ? locationIds[0].Trim()
+                : string.Empty;
+
+            if (!string.IsNullOrEmpty(locationExternalId))
+                await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+
+            var receiptCreatedAt = DateTime.UtcNow;
+            var postError = await PostReceivedStockAsync(
+                order,
+                request.Items,
+                allowPartial,
+                locationIdsJson,
+                locationExternalId,
+                receiptCreatedAt,
+                remarks: PurchaseOrderWorkflow.StockRemarkReceivedPending);
+            if (postError is not null)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new { message = postError });
+            }
+
+            // Ensure drawdown progress can see receive qty even if a path skipped DeliveredQuantity bump.
+            foreach (var item in order.Items)
+            {
+                if (item.DeliveredQuantity > 0.0001m) continue;
+                if (item.ReceivedQuantity is decimal received && received > 0.0001m)
+                    item.DeliveredQuantity = DecimalRounding.ToDb(received);
+            }
+
+            await db.SaveChangesAsync();
+
+            var receiptPurchases = await db.InventoryPurchases
+                .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
+                .ToListAsync();
+
+            // A whole receive must not land as Received with missing stock rows — that is how
+            // purchased lines go missing from Stock Card while CN outbound can still post.
+            var expectedStockItemIds = request.Items
+                .Where(l => l.Quantity > 0)
+                .Select(l => order.Items.FirstOrDefault(i => i.Id == l.ItemId))
+                .Where(i => i is not null
+                    && !i!.IsReturnableDeposit
+                    && !string.IsNullOrWhiteSpace(i.ComponentId))
+                .Select(i => i!.Id)
+                .Distinct()
+                .ToList();
+            var postedItemIds = receiptPurchases
+                .Where(p => p.PurchaseOrderItemId > 0)
+                .Select(p => p.PurchaseOrderItemId)
+                .ToHashSet();
+            var missingStockLines = expectedStockItemIds.Count(id => !postedItemIds.Contains(id));
+            if (expectedStockItemIds.Count > 0 && (receiptPurchases.Count == 0 || missingStockLines > 0))
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new
+                {
+                    message = missingStockLines > 0 && receiptPurchases.Count > 0
+                        ? $"Receive posted stock for only {postedItemIds.Count} of {expectedStockItemIds.Count} delivered line(s). Check component IDs / delivery units and try again."
+                        : "Receive did not post any stock for the delivered lines. Check component IDs on each PO line and try again.",
+                });
+            }
+
+            foreach (var purchase in receiptPurchases)
+                await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
+
+            // Settle linked credit notes against freebie / replacement lines on this receive.
+            var companyId = order.CompanyId ?? 0;
+            if (companyId > 0)
+            {
+                foreach (var line in request.Items.Where(l => l.LinkedCreditNoteId is > 0).OrderBy(l => l.ItemId))
+                {
+                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                    var vendorProductId = !string.IsNullOrWhiteSpace(line.VendorProductId)
+                        ? line.VendorProductId
+                        : item?.VendorProductId;
+                    try
+                    {
+                        await creditNotes.SettleAgainstReplacementReceiveAsync(
+                            line.LinkedCreditNoteId!.Value,
+                            companyId,
+                            order,
+                            vendorProductId ?? string.Empty,
+                            line.Quantity,
+                            cancelledBy: null,
+                            replacementPurchaseOrderItemId: line.ItemId > 0 ? line.ItemId : item?.Id);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new { message = ex.Message });
+                    }
+                }
+            }
+
+            await transaction.CommitAsync();
+            return Ok(await MapPurchaseOrderAsync(order, allowPartial));
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     [HttpPost("{id:int}/reconcile")]
@@ -1412,20 +2105,21 @@ public class PurchaseOrdersController(
 
         var allowPartial = await ResolveAllowPartialAsync(order);
 
-        // Quality/hygiene can be updated at consolidate if provided; otherwise keep receive values.
+        // Quality/hygiene are optional; update at consolidate when provided, otherwise keep receive values.
         var quality = VendorRatingRules.NormalizeCustomerLevel(request.ProductQualityRating);
         var hygiene = VendorRatingRules.NormalizeCustomerLevel(request.HygieneRating);
-        if (quality is null && string.IsNullOrWhiteSpace(order.ProductQualityRating))
-            return BadRequest(new { message = "Product quality rating is required (Satisfied, Acceptable, or Poor)." });
-        if (hygiene is null && string.IsNullOrWhiteSpace(order.HygieneRating))
-            return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
+        if (!string.IsNullOrWhiteSpace(request.ProductQualityRating) && quality is null)
+            return BadRequest(new { message = "Product quality rating must be Satisfied, Acceptable, or Poor." });
+        if (!string.IsNullOrWhiteSpace(request.HygieneRating) && hygiene is null)
+            return BadRequest(new { message = "Hygiene & cleanliness rating must be Satisfied, Acceptable, or Poor." });
 
         await using var transaction = await db.Database.BeginTransactionAsync();
-        // Capture shipment qtys before cumulative update.
-        var shipmentByItemId = request.Items.ToDictionary(l => l.ItemId, l => l.Quantity);
         ApplyWorkflowLines(order, request.Items, workflow: "reconcile");
-        if (quality is not null) order.ProductQualityRating = quality;
-        if (hygiene is not null) order.HygieneRating = hygiene;
+        // null = omitted (keep prior); "" / valid level = update (optional rating may be cleared).
+        if (request.ProductQualityRating is not null)
+            order.ProductQualityRating = quality ?? string.Empty;
+        if (request.HygieneRating is not null)
+            order.HygieneRating = hygiene ?? string.Empty;
         if (request.ProductQualityComment is not null)
             order.ProductQualityComment = request.ProductQualityComment.Trim();
         if (request.HygieneComment is not null)
@@ -1434,51 +2128,226 @@ public class PurchaseOrdersController(
         var updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
             db, order.Items, order.Id);
 
-        var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
-        var locationIdsJson = locationIds.Count > 0
-            ? order.LocationIdsJson
-            : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
-        var locationExternalId = locationIds.Count > 0
-            ? locationIds[0].Trim().ToLowerInvariant()
-            : string.Empty;
+        // Accounting affirmation: clear "received" remarks on stock already posted at receive.
+        // Legacy POs received before this policy may have no pending stock — post without remarks.
+        var pendingPurchases = await db.InventoryPurchases
+            .Where(p => p.PurchaseOrderId == order.Id
+                && p.Remarks == PurchaseOrderWorkflow.StockRemarkReceivedPending)
+            .ToListAsync();
 
-        if (!string.IsNullOrEmpty(locationExternalId))
-            await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+        if (pendingPurchases.Count > 0)
+        {
+            foreach (var line in request.Items)
+            {
+                var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                if (item is null) continue;
+                var price = item.ReconciledUnitPrice ?? line.UnitPrice;
+                // Ops already posted on-hand at receive; consolidation affirms accounting cost only.
+                item.ReconciledQuantity = item.DeliveredQuantity;
 
-        var receiptCreatedAt = DateTime.UtcNow;
-        foreach (var line in request.Items)
+                var itemPending = pendingPurchases
+                    .Where(p => p.PurchaseOrderItemId == item.Id)
+                    .ToList();
+                if (itemPending.Count == 0) continue;
+
+                foreach (var purchase in itemPending)
+                {
+                    if (!item.IsReturnableDeposit && price > 0)
+                        purchase.UnitPrice = price;
+                    purchase.Remarks = string.Empty;
+                }
+            }
+
+            foreach (var purchase in pendingPurchases)
+                await fifoBatches.UpdateBatchUnitCostFromPurchaseAsync(purchase);
+        }
+        else
+        {
+            // Legacy path: stock was not posted at receive — post now as consolidated (no pending remarks).
+            var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
+            var locationIdsJson = locationIds.Count > 0
+                ? order.LocationIdsJson
+                : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+            var locationExternalId = locationIds.Count > 0
+                ? locationIds[0].Trim()
+                : string.Empty;
+
+            if (!string.IsNullOrEmpty(locationExternalId))
+                await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+
+            var receiptCreatedAt = DateTime.UtcNow;
+            var postError = await PostReceivedStockAsync(
+                order,
+                request.Items,
+                allowPartial,
+                locationIdsJson,
+                locationExternalId,
+                receiptCreatedAt,
+                remarks: string.Empty,
+                bumpDeliveredQuantity: true);
+            if (postError is not null)
+                return BadRequest(new { message = postError });
+
+            await db.SaveChangesAsync();
+            var receiptPurchases = await db.InventoryPurchases
+                .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
+                .ToListAsync();
+
+            var expectedStockItemIds = request.Items
+                .Where(l => l.Quantity > 0)
+                .Select(l => order.Items.FirstOrDefault(i => i.Id == l.ItemId))
+                .Where(i => i is not null
+                    && !i!.IsReturnableDeposit
+                    && !string.IsNullOrWhiteSpace(i.ComponentId))
+                .Select(i => i!.Id)
+                .Distinct()
+                .ToList();
+            var postedItemIds = receiptPurchases
+                .Where(p => p.PurchaseOrderItemId > 0)
+                .Select(p => p.PurchaseOrderItemId)
+                .ToHashSet();
+            if (expectedStockItemIds.Count > 0
+                && (receiptPurchases.Count == 0
+                    || expectedStockItemIds.Any(id => !postedItemIds.Contains(id))))
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new
+                {
+                    message = "Reconcile did not post stock for every delivered line. Check component IDs / delivery units and try again.",
+                });
+            }
+
+            foreach (var purchase in receiptPurchases)
+                await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
+        }
+
+        if (allowPartial)
+        {
+            // Stay active until Final delivery completed — rating not applied yet.
+            order.Status = PurchaseOrderWorkflow.StatusPartiallyDelivered;
+            order.ReconciledAt = null;
+        }
+        else
+        {
+            order.Status = PurchaseOrderWorkflow.StatusReconciled;
+            order.ReconciledAt = DateTime.UtcNow;
+            order.FinalDeliveryCompletedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        // Accounting affirmation → Books outbox + inventory/AP journal (best-effort).
+        await accountingBridge.OnPurchaseAffirmedAsync(order);
+
+        return Ok(new
+        {
+            order = await MapPurchaseOrderAsync(order, allowPartial),
+            updatedVendorProductPrices,
+        });
+    }
+
+    /// <summary>
+    /// Posts inbound stock for a receive (or legacy consolidate) shipment.
+    /// When <paramref name="remarks"/> is the pending-consolidation remark, ops on-hand is visible on the stock card until accounting consolidates.
+    /// </summary>
+    async Task<string?> PostReceivedStockAsync(
+        PurchaseOrder order,
+        List<PurchaseOrderLineWorkflowRequest> lines,
+        bool allowPartial,
+        string locationIdsJson,
+        string locationExternalId,
+        DateTime receiptCreatedAt,
+        string remarks,
+        bool bumpDeliveredQuantity = true)
+    {
+        foreach (var line in lines)
         {
             var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
-            if (item is null) continue;
-
-            var shipmentQty = shipmentByItemId.GetValueOrDefault(line.ItemId, line.Quantity);
-            if (allowPartial)
+            if (item is null)
             {
-                var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
-                if (shipmentQty > remaining + 0.0001m)
-                    return BadRequest(new
-                    {
-                        message = $"Consolidate qty for '{item.Name}' cannot exceed remaining {remaining:0.####}."
-                    });
-                item.DeliveredQuantity = DecimalRounding.ToDb(item.DeliveredQuantity + Math.Max(0m, shipmentQty));
-                item.ReconciledQuantity = item.DeliveredQuantity;
+                if (line.ItemId > 0)
+                    return $"Receive line item #{line.ItemId} was not found on this purchase order.";
+                continue;
             }
-            else
+
+            var shipmentQty = line.Quantity;
+            if (bumpDeliveredQuantity)
             {
-                item.DeliveredQuantity = DecimalRounding.ToDb(Math.Max(0m, shipmentQty));
-                item.ReconciledQuantity = item.DeliveredQuantity;
+                if (allowPartial)
+                {
+                    // Unordered freebie / CN-replacement lines have ordered qty 0 — no remaining cap.
+                    if (item.Quantity > 0)
+                    {
+                        var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
+                        if (shipmentQty > remaining + 0.0001m)
+                            return $"Received qty for '{item.Name}' cannot exceed remaining {remaining:0.####}.";
+                    }
+                    item.DeliveredQuantity = DecimalRounding.ToDb(item.DeliveredQuantity + Math.Max(0m, shipmentQty));
+                }
+                else
+                {
+                    item.DeliveredQuantity = DecimalRounding.ToDb(Math.Max(0m, shipmentQty));
+                }
             }
 
             var qty = shipmentQty;
-            var price = item.ReconciledUnitPrice ?? line.UnitPrice;
-            if (qty <= 0) continue; // out-of-stock / zero receipt — no inventory post
+            var price = item.ReceivedUnitPrice ?? item.ReconciledUnitPrice ?? line.UnitPrice;
+            if (qty <= 0) continue;
+            if (item.IsReturnableDeposit) continue;
+            if (string.IsNullOrWhiteSpace(item.ComponentId))
+                return $"Cannot post stock for '{item.Name}' — component id is missing on the PO line.";
+
             var uom = string.IsNullOrWhiteSpace(line.ComponentUom)
                 ? (string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom)
                 : line.ComponentUom.Trim();
 
             var parent = await db.Ingredients.FirstOrDefaultAsync(ingredient =>
                 ingredient.ComponentId == item.ComponentId
-                && (order.CompanyId == null || ingredient.CompanyId == order.CompanyId));
+                && (order.CompanyId == null
+                    || ingredient.CompanyId == null
+                    || ingredient.CompanyId == order.CompanyId));
+
+            // Step 1: delivery packages → Principal Component qty + unit price
+            // (PO line amount ÷ total principal qty, 4dp). Store UOM rounding residual.
+            // Quantity is always delivery packages; ComponentUom may be mislabeled as RecipeUom.
+            decimal documentAmount = 0m;
+            decimal roundingResidual = 0m;
+            if (parent is not null)
+            {
+                var deliveryBasis = string.IsNullOrWhiteSpace(item.Unit)
+                    ? item.DeliveryPackage
+                    : item.Unit;
+                var vendorProductId = (item.VendorProductId ?? string.Empty).Trim();
+                var (pathPrincipal, pathPrincipalUom) = await DeliveryPrincipalResolver.ResolvePathPrincipalAsync(
+                    db,
+                    parent,
+                    vendorProductId,
+                    deliveryBasis);
+
+                // Prefer delivery UOM as the quantity basis so recipe-labeled ComponentUom
+                // cannot short-circuit conversion when packages still need × principal.
+                var qtyBasisUom = !string.IsNullOrWhiteSpace(deliveryBasis) ? deliveryBasis : uom;
+                var inbound = IngredientUomBridge.ToInboundPrincipal(
+                    parent,
+                    qty,
+                    qtyBasisUom,
+                    price,
+                    vendorProductId,
+                    deliveryBasis,
+                    pathPrincipal,
+                    pathPrincipalUom);
+                qty = inbound.Quantity;
+                uom = inbound.Uom;
+                price = inbound.UnitPrice;
+                documentAmount = inbound.DocumentAmount;
+                roundingResidual = inbound.RoundingResidual;
+            }
+            else
+            {
+                documentAmount = DecimalRounding.ToDb(shipmentQty * (item.ReceivedUnitPrice ?? item.ReconciledUnitPrice ?? line.UnitPrice));
+            }
+
             try
             {
                 if (parent is not null && splitUse.ReadConfig(parent) is not null)
@@ -1499,7 +2368,10 @@ public class PurchaseOrdersController(
                             : locationIdsJson,
                         locationExternalId,
                         "purchase-order",
-                        item.Id);
+                        item.Id,
+                        remarks,
+                        documentAmount,
+                        roundingResidual);
                     continue;
                 }
 
@@ -1510,11 +2382,14 @@ public class PurchaseOrdersController(
                     Quantity = qty,
                     Uom = uom,
                     UnitPrice = price,
+                    DocumentAmount = documentAmount,
+                    RoundingResidual = roundingResidual,
                     DateOrdered = order.OrderDate,
                     DateCreatedInStock = receiptCreatedAt,
                     PurchaseOrderId = order.Id,
                     PurchaseOrderItemId = item.Id,
                     ProductExpiryDate = (item.ProductExpiryDate ?? string.Empty).Trim(),
+                    Remarks = remarks ?? string.Empty,
                     CompanyId = order.CompanyId,
                     LocationIdsJson = string.IsNullOrWhiteSpace(locationIdsJson)
                         ? PurchaseOrderWorkflow.SerializeLocationIds(
@@ -1525,39 +2400,11 @@ public class PurchaseOrdersController(
             }
             catch (InvalidOperationException ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return ex.Message;
             }
         }
 
-        if (allowPartial)
-        {
-            // Stay active until Final delivery completed — rating not applied yet.
-            order.Status = PurchaseOrderWorkflow.StatusPartiallyDelivered;
-            order.ReconciledAt = null;
-        }
-        else
-        {
-            order.Status = PurchaseOrderWorkflow.StatusReconciled;
-            order.ReconciledAt = DateTime.UtcNow;
-            order.FinalDeliveryCompletedAt = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync();
-
-        // Guide step 1: each reconciled inbound line becomes a distinct cost-segregated batch.
-        // Only register batches created in this shipment (avoid re-registering prior partial posts).
-        var receiptPurchases = await db.InventoryPurchases
-            .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
-            .ToListAsync();
-        foreach (var purchase in receiptPurchases)
-            await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
-
-        await transaction.CommitAsync();
-        return Ok(new
-        {
-            order = await MapPurchaseOrderAsync(order, allowPartial),
-            updatedVendorProductPrices,
-        });
+        return null;
     }
 
     /// <summary>
@@ -1585,6 +2432,202 @@ public class PurchaseOrdersController(
 
         await db.SaveChangesAsync();
         return Ok(await MapPurchaseOrderAsync(order, allowPartial));
+    }
+
+    /// <summary>
+    /// Correct a Received or Reconciled PO without changing status.
+    /// Rewrites linked InventoryPurchases + FIFO batches to match amended delivery qty/price.
+    /// </summary>
+    [HttpPost("{id:int}/amend")]
+    public async Task<ActionResult<object>> Amend(int id, [FromBody] PurchaseOrderWorkflowRequest request)
+    {
+        var order = await LoadOrderAsync(id, tracking: true);
+        if (order is null) return NotFound();
+
+        var phase = (request.Phase ?? string.Empty).Trim().ToLowerInvariant();
+        var isReceivedPhase = phase is "received" or "receive";
+        var isReconciledPhase = phase is "reconciled" or "reconcile";
+        if (!isReceivedPhase && !isReconciledPhase)
+            return BadRequest(new { message = "Amend phase must be 'received' or 'reconciled'." });
+
+        if (isReceivedPhase && !PurchaseOrderWorkflow.CanAmendReceived(order))
+            return Conflict(new { message = "Only Received / Partially Delivered purchase orders can be amended in the received phase." });
+        if (isReconciledPhase && !PurchaseOrderWorkflow.CanAmendReconciled(order))
+            return Conflict(new { message = "Only Reconciled purchase orders can be amended in the reconciled phase." });
+
+        if (request.Items is null || request.Items.Count == 0)
+            return BadRequest(new { message = "At least one line is required to amend." });
+        if (request.Items.Any(l => l.ItemId <= 0))
+            return BadRequest(new { message = "Amend cannot add new unordered lines. Correct existing lines only." });
+        if (request.Items.Any(l => l.Quantity < 0))
+            return BadRequest(new { message = "Amended quantity cannot be negative." });
+
+        var allowPartial = await ResolveAllowPartialAsync(order);
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        try
+        {
+            ApplyWorkflowLines(
+                order,
+                request.Items,
+                workflow: isReceivedPhase ? "receive" : "reconcile");
+
+            if (isReconciledPhase)
+            {
+                // Keep received snapshot aligned with the corrected consolidated truth.
+                foreach (var line in request.Items)
+                {
+                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                    if (item is null) continue;
+                    item.ReceivedQuantity = line.Quantity;
+                    item.ReceivedUnitPrice = line.UnitPrice;
+                    if (!allowPartial)
+                        item.DeliveredQuantity = DecimalRounding.ToDb(line.Quantity);
+                }
+            }
+            else if (!allowPartial)
+            {
+                foreach (var line in request.Items)
+                {
+                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                    if (item is null) continue;
+                    item.DeliveredQuantity = DecimalRounding.ToDb(line.Quantity);
+                }
+            }
+
+            if (request.VendorDoNumber is not null)
+                order.VendorDoNumber = request.VendorDoNumber.Trim();
+            if (request.VendorInvoiceNumber is not null)
+                order.VendorInvoiceNumber = request.VendorInvoiceNumber.Trim();
+            if (request.ProductQualityRating is not null)
+                order.ProductQualityRating = request.ProductQualityRating.Trim();
+            if (request.ProductQualityComment is not null)
+                order.ProductQualityComment = request.ProductQualityComment.Trim();
+            if (request.HygieneRating is not null)
+                order.HygieneRating = request.HygieneRating.Trim();
+            if (request.HygieneComment is not null)
+                order.HygieneComment = request.HygieneComment.Trim();
+
+            var stockError = await RewriteAmendedStockAsync(order, request.Items, isReconciledPhase);
+            if (stockError is not null)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new { message = stockError });
+            }
+
+            await db.SaveChangesAsync();
+
+            List<object>? updatedVendorProductPrices = null;
+            if (isReconciledPhase)
+            {
+                updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
+                    db, order.Items, order.Id);
+                await db.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+            var mapped = await MapPurchaseOrderAsync(order, allowPartial);
+            return Ok(new { order = mapped, updatedVendorProductPrices, phase });
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Recompute principal qty/price on InventoryPurchases for amended delivery packages.
+    /// </summary>
+    async Task<string?> RewriteAmendedStockAsync(
+        PurchaseOrder order,
+        List<PurchaseOrderLineWorkflowRequest> lines,
+        bool reconciledPhase)
+    {
+        foreach (var line in lines)
+        {
+            var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+            if (item is null)
+                return $"Amend line item #{line.ItemId} was not found on this purchase order.";
+            if (item.IsReturnableDeposit || string.IsNullOrWhiteSpace(item.ComponentId))
+                continue;
+
+            var packages = line.Quantity;
+            var packagePrice = line.UnitPrice;
+            var purchases = await db.InventoryPurchases
+                .Where(p => p.PurchaseOrderItemId == item.Id && p.PurchaseOrderId == order.Id)
+                .ToListAsync();
+            if (purchases.Count == 0)
+                continue;
+
+            var parent = await db.Ingredients.FirstOrDefaultAsync(ingredient =>
+                ingredient.ComponentId == item.ComponentId
+                && (order.CompanyId == null
+                    || ingredient.CompanyId == null
+                    || ingredient.CompanyId == order.CompanyId));
+
+            decimal stockQty = packages;
+            string stockUom = string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom;
+            decimal stockPrice = packagePrice;
+            decimal documentAmount = DecimalRounding.ToDb(packages * packagePrice);
+            decimal roundingResidual = 0m;
+
+            if (parent is not null)
+            {
+                var deliveryBasis = string.IsNullOrWhiteSpace(item.Unit)
+                    ? item.DeliveryPackage
+                    : item.Unit;
+                var (pathPrincipal, pathPrincipalUom) = await DeliveryPrincipalResolver.ResolvePathPrincipalAsync(
+                    db,
+                    parent,
+                    item.VendorProductId,
+                    deliveryBasis);
+                var inbound = IngredientUomBridge.ToInboundPrincipal(
+                    parent,
+                    packages,
+                    string.IsNullOrWhiteSpace(deliveryBasis) ? stockUom : deliveryBasis,
+                    packagePrice,
+                    item.VendorProductId,
+                    deliveryBasis,
+                    pathPrincipal,
+                    pathPrincipalUom);
+                stockQty = inbound.Quantity;
+                stockUom = inbound.Uom;
+                stockPrice = inbound.UnitPrice;
+                documentAmount = inbound.DocumentAmount;
+                roundingResidual = inbound.RoundingResidual;
+            }
+
+            // Prefer a single purchase row per PO line; if splits exist, rewrite the first and zero the rest.
+            var primary = purchases.OrderBy(p => p.Id).First();
+            primary.Quantity = stockQty;
+            primary.Uom = stockUom;
+            primary.UnitPrice = stockPrice;
+            primary.DocumentAmount = documentAmount;
+            primary.RoundingResidual = roundingResidual;
+            if (reconciledPhase
+                && string.Equals(
+                    primary.Remarks,
+                    PurchaseOrderWorkflow.StockRemarkReceivedPending,
+                    StringComparison.Ordinal))
+            {
+                primary.Remarks = string.Empty;
+            }
+
+            foreach (var extra in purchases.Where(p => p.Id != primary.Id))
+            {
+                extra.Quantity = 0;
+                extra.DocumentAmount = 0;
+                extra.RoundingResidual = 0;
+            }
+
+            await fifoBatches.SyncBatchFromPurchaseAsync(primary);
+            if (reconciledPhase)
+                await fifoBatches.UpdateBatchUnitCostFromPurchaseAsync(primary);
+            foreach (var extra in purchases.Where(p => p.Id != primary.Id))
+                await fifoBatches.SyncBatchFromPurchaseAsync(extra);
+        }
+
+        return null;
     }
 
     IQueryable<PurchaseOrder> BaseQuery() =>
@@ -1617,18 +2660,79 @@ public class PurchaseOrdersController(
         var consolidatedByMaster = await ResolveConsolidatedByMasterItemAsync(
             orders.Where(o => o.IsPreCommitted).Select(o => o.Id).ToList());
 
+        var sourceMasterIds = orders
+            .Where(o => !o.IsPreCommitted && o.SourceCommittedPurchaseOrderId is > 0)
+            .Select(o => o.SourceCommittedPurchaseOrderId!.Value)
+            .Distinct()
+            .ToList();
+        var sourcePoNumberById = sourceMasterIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await db.PurchaseOrders.AsNoTracking()
+                .Where(p => sourceMasterIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.PoNumber);
+
+        var deliveryIds = orders
+            .Select(o => (o.DeliveryLocationExternalId ?? string.Empty).Trim())
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        Dictionary<string, DeliveryLocation> deliveryByExternalId;
+        if (deliveryIds.Count == 0)
+        {
+            deliveryByExternalId = new Dictionary<string, DeliveryLocation>(StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            var deliveryRows = await db.DeliveryLocations.AsNoTracking()
+                .Where(d => deliveryIds.Contains(d.ExternalId))
+                .ToListAsync();
+            // Duplicate ExternalId rows must not take down PO list / detail mapping.
+            deliveryByExternalId = deliveryRows
+                .Where(d => !string.IsNullOrWhiteSpace(d.ExternalId))
+                .GroupBy(d => d.ExternalId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.OrderBy(d => d.Id).First(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        var companyIds = orders
+            .Where(o => o.CompanyId is > 0)
+            .Select(o => o.CompanyId!.Value)
+            .Distinct()
+            .ToList();
+        var countryByCompany = companyIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await db.Companies.AsNoTracking()
+                .Where(c => companyIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.CountryCode ?? "MY");
+
         return orders
-            .Select(o => PurchaseOrderWorkflow.MapOrder(
-                o,
-                flags.GetValueOrDefault(o.Id),
-                consolidatedByMaster.GetValueOrDefault(o.Id)))
+            .Select(o =>
+            {
+                DeliveryLocation? delivery = null;
+                var deliveryId = (o.DeliveryLocationExternalId ?? string.Empty).Trim();
+                if (deliveryId.Length > 0)
+                    deliveryByExternalId.TryGetValue(deliveryId, out delivery);
+                string? sourcePoNumber = null;
+                if (o.SourceCommittedPurchaseOrderId is int sourceId)
+                    sourcePoNumberById.TryGetValue(sourceId, out sourcePoNumber);
+                var country = "MY";
+                if (o.CompanyId is int cid && countryByCompany.TryGetValue(cid, out var code) && !string.IsNullOrWhiteSpace(code))
+                    country = code;
+                return PurchaseOrderWorkflow.MapOrder(
+                    o,
+                    flags.GetValueOrDefault(o.Id),
+                    consolidatedByMaster.GetValueOrDefault(o.Id),
+                    delivery,
+                    sourcePoNumber,
+                    OrgClock.TodayLocal(country));
+            })
             .Cast<object>()
             .ToList();
     }
 
     /// <summary>
-    /// Sums DeliveredQuantity on release PO lines that drew from each pre-committed master line
-    /// (stock impact after receive + consolidate).
+    /// Sums received / delivered qty on release PO lines that drew from each pre-committed master line.
+    /// Stock posts at receive (DeliveredQuantity + ReceivedQuantity); prefer cumulative delivered,
+    /// fall back to last received / reconciled qty for older rows that never bumped DeliveredQuantity.
     /// </summary>
     async Task<Dictionary<int, Dictionary<int, decimal>>> ResolveConsolidatedByMasterItemAsync(
         IReadOnlyList<int> masterIds)
@@ -1642,16 +2746,42 @@ public class PurchaseOrdersController(
             .Where(p => masterIds.Contains(p.Id) && p.IsPreCommitted)
             .ToListAsync();
 
+        if (masters.Count == 0)
+            return result;
+
+        var masterItemIds = masters.SelectMany(m => m.Items.Select(i => i.Id)).ToHashSet();
+
+        // Link by order-level source id and/or line-level source item id (covers legacy gaps).
         var releases = await db.PurchaseOrders.AsNoTracking()
             .Include(p => p.Items)
-            .Where(p => p.SourceCommittedPurchaseOrderId != null
-                && masterIds.Contains(p.SourceCommittedPurchaseOrderId.Value)
-                && !p.IsPreCommitted)
+            .Where(p => !p.IsPreCommitted && (
+                (p.SourceCommittedPurchaseOrderId != null
+                    && masterIds.Contains(p.SourceCommittedPurchaseOrderId.Value))
+                || p.Items.Any(i => i.SourceCommittedPurchaseOrderItemId != null
+                    && masterItemIds.Contains(i.SourceCommittedPurchaseOrderItemId.Value))))
             .ToListAsync();
 
-        var releasesByMaster = releases
-            .GroupBy(r => r.SourceCommittedPurchaseOrderId!.Value)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        var releasesByMaster = new Dictionary<int, List<PurchaseOrder>>();
+        foreach (var release in releases)
+        {
+            var masterId = release.SourceCommittedPurchaseOrderId;
+            if (masterId is null or <= 0)
+            {
+                masterId = release.Items
+                    .Where(i => i.SourceCommittedPurchaseOrderItemId is > 0)
+                    .Select(i => masters.FirstOrDefault(m =>
+                        m.Items.Any(mi => mi.Id == i.SourceCommittedPurchaseOrderItemId))?.Id)
+                    .FirstOrDefault(id => id is > 0);
+            }
+            if (masterId is null or <= 0 || !masterIds.Contains(masterId.Value))
+                continue;
+            if (!releasesByMaster.TryGetValue(masterId.Value, out var list))
+            {
+                list = [];
+                releasesByMaster[masterId.Value] = list;
+            }
+            list.Add(release);
+        }
 
         foreach (var master in masters)
         {
@@ -1666,20 +2796,19 @@ public class PurchaseOrdersController(
             {
                 foreach (var releaseItem in release.Items)
                 {
-                    var masterItem = master.Items.FirstOrDefault(mi =>
-                        !string.IsNullOrWhiteSpace(mi.VendorProductId)
-                        && string.Equals(mi.VendorProductId, releaseItem.VendorProductId, StringComparison.OrdinalIgnoreCase))
-                        ?? master.Items.FirstOrDefault(mi =>
-                            !string.IsNullOrWhiteSpace(mi.ComponentId)
-                            && string.Equals(mi.ComponentId, releaseItem.ComponentId, StringComparison.OrdinalIgnoreCase))
-                        ?? master.Items.FirstOrDefault(mi =>
-                            string.Equals(mi.Name, releaseItem.Name, StringComparison.OrdinalIgnoreCase));
+                    if (releaseItem.IsReturnableDeposit) continue;
 
-                    if (masterItem is null)
-                        continue;
+                    var receivedQty = ResolveReleaseReceivedAgainstCommitment(releaseItem);
+                    if (receivedQty <= 0.0001m) continue;
 
-                    byItem[masterItem.Id] = DecimalRounding.ToDb(
-                        byItem[masterItem.Id] + releaseItem.DeliveredQuantity);
+                    PurchaseOrderItem? masterItem = null;
+                    if (releaseItem.SourceCommittedPurchaseOrderItemId is int linkedMasterItemId)
+                        masterItem = master.Items.FirstOrDefault(mi => mi.Id == linkedMasterItemId);
+
+                    masterItem ??= MatchCommitmentMasterItem(master, releaseItem);
+                    if (masterItem is null) continue;
+
+                    byItem[masterItem.Id] = DecimalRounding.ToDb(byItem[masterItem.Id] + receivedQty);
                 }
             }
 
@@ -1687,6 +2816,45 @@ public class PurchaseOrdersController(
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Delivery-package qty received against a commitment from a release line.
+    /// Prefer cumulative DeliveredQuantity (bumped at receive); fall back to Received/Reconciled.
+    /// </summary>
+    static decimal ResolveReleaseReceivedAgainstCommitment(PurchaseOrderItem releaseItem)
+    {
+        if (releaseItem.DeliveredQuantity > 0.0001m)
+            return releaseItem.DeliveredQuantity;
+        if (releaseItem.ReceivedQuantity is decimal received && received > 0.0001m)
+            return received;
+        if (releaseItem.ReconciledQuantity is decimal reconciled && reconciled > 0.0001m)
+            return reconciled;
+        return 0m;
+    }
+
+    static PurchaseOrderItem? MatchCommitmentMasterItem(PurchaseOrder master, PurchaseOrderItem releaseItem)
+    {
+        var releaseVp = (releaseItem.VendorProductId ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(releaseVp))
+        {
+            var byVp = master.Items.FirstOrDefault(mi =>
+                string.Equals((mi.VendorProductId ?? string.Empty).Trim(), releaseVp, StringComparison.OrdinalIgnoreCase));
+            if (byVp is not null) return byVp;
+        }
+
+        var releaseComp = (releaseItem.ComponentId ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(releaseComp))
+        {
+            var byComp = master.Items.FirstOrDefault(mi =>
+                string.Equals((mi.ComponentId ?? string.Empty).Trim(), releaseComp, StringComparison.OrdinalIgnoreCase));
+            if (byComp is not null) return byComp;
+        }
+
+        var releaseName = (releaseItem.Name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(releaseName)) return null;
+        return master.Items.FirstOrDefault(mi =>
+            string.Equals((mi.Name ?? string.Empty).Trim(), releaseName, StringComparison.OrdinalIgnoreCase));
     }
 
     async Task<bool> ResolveAllowPartialAsync(PurchaseOrder order)
@@ -1715,10 +2883,14 @@ public class PurchaseOrdersController(
             .Where(v => externalIds.Contains(v.ExternalId))
             .Select(v => new { v.ExternalId, v.AllowPartialDelivery })
             .ToListAsync();
-        var byExternal = vendors.ToDictionary(
-            v => v.ExternalId,
-            v => v.AllowPartialDelivery,
-            StringComparer.OrdinalIgnoreCase);
+        // Duplicate vendor ExternalId rows (legacy) must not break PO mapping.
+        var byExternal = vendors
+            .Where(v => !string.IsNullOrWhiteSpace(v.ExternalId))
+            .GroupBy(v => v.ExternalId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.First().AllowPartialDelivery,
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var order in orders)
         {
@@ -1728,6 +2900,70 @@ public class PurchaseOrdersController(
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Inserts unordered PO lines (freebies / credit-note replacements) when receive payload
+    /// sends ItemId &lt;= 0 with Vendor Product + Component identity. Assigns new ItemIds in-place.
+    /// </summary>
+    async Task<string?> EnsureUnorderedReceiveLinesAsync(
+        PurchaseOrder order,
+        List<PurchaseOrderLineWorkflowRequest> lines)
+    {
+        var created = new List<(PurchaseOrderLineWorkflowRequest Line, PurchaseOrderItem Item)>();
+        foreach (var line in lines.Where(l => l.ItemId <= 0))
+        {
+            var vendorProductId = line.VendorProductId?.Trim() ?? string.Empty;
+            var componentId = line.ComponentId?.Trim() ?? string.Empty;
+            var name = line.Name?.Trim() ?? string.Empty;
+            var componentName = string.IsNullOrWhiteSpace(line.ComponentName)
+                ? name
+                : line.ComponentName.Trim();
+            var deliveryPackage = (line.DeliveryPackage ?? line.Unit ?? string.Empty).Trim();
+            var unit = string.IsNullOrWhiteSpace(line.Unit) ? deliveryPackage : line.Unit.Trim();
+            var componentUom = line.ComponentUom?.Trim() ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(order.VendorExternalId) && !string.IsNullOrWhiteSpace(vendorProductId))
+            {
+                var vendorProduct = await db.VendorProducts.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.ExternalId == vendorProductId);
+                if (vendorProduct is not null
+                    && !string.Equals(
+                        vendorProduct.VendorExternalId?.Trim(),
+                        order.VendorExternalId.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"Vendor product '{vendorProductId}' does not belong to vendor on this PO.";
+                }
+            }
+
+            // Ordered qty stays 0 — variance = received qty (freebie / replacement not on original order).
+            var item = new PurchaseOrderItem
+            {
+                PurchaseOrderId = order.Id,
+                ComponentId = componentId,
+                ComponentName = componentName,
+                VendorProductId = vendorProductId,
+                Name = name,
+                Quantity = 0m,
+                UnitPrice = DecimalRounding.ToDb(line.UnitPrice),
+                IssuedUnitPrice = DecimalRounding.ToDb(line.UnitPrice),
+                Unit = unit,
+                ComponentUom = componentUom,
+                DeliveryPackage = deliveryPackage,
+                IsReturnableDeposit = false,
+            };
+            order.Items.Add(item);
+            created.Add((line, item));
+        }
+
+        if (created.Count == 0)
+            return null;
+
+        await db.SaveChangesAsync();
+        foreach (var (line, item) in created)
+            line.ItemId = item.Id;
+        return null;
     }
 
     static void ApplyWorkflowLines(

@@ -40,32 +40,142 @@ export type HierarchyAssignmentRow = {
   items: number;
 };
 
-function defaultState(): ComponentHierarchyState {
-  const categories: ComponentCategory[] = [
-    { id: 1, name: 'Food' },
-    { id: 2, name: 'Beverage' },
-  ];
-  const groups: ComponentGroup[] = [
-    { id: 1, categoryId: 1, name: 'Proteins', items: 12 },
-    { id: 2, categoryId: 1, name: 'Dairy', items: 8 },
-    { id: 3, categoryId: 1, name: 'Produce', items: 15 },
-    { id: 4, categoryId: 2, name: 'Spirits', items: 24 },
-    { id: 5, categoryId: 1, name: 'Dry Goods', items: 18 },
-  ];
-  const subGroups: ComponentSubGroup[] = [
-    { id: 1, groupId: 1, name: 'Beef', items: 5 },
-    { id: 2, groupId: 1, name: 'Poultry', items: 4 },
-    { id: 3, groupId: 2, name: 'Cheese', items: 6 },
-    { id: 4, groupId: 4, name: 'Whisky', items: 10 },
-  ];
+/** Empty hierarchy — no demo Food/Proteins/Beef residue. */
+export function emptyComponentHierarchy(): ComponentHierarchyState {
   return {
-    categories,
-    groups,
-    subGroups,
-    nextCategoryId: 3,
-    nextGroupId: 6,
-    nextSubGroupId: 5,
+    categories: [],
+    groups: [],
+    subGroups: [],
+    nextCategoryId: 1,
+    nextGroupId: 1,
+    nextSubGroupId: 1,
   };
+}
+
+function defaultState(): ComponentHierarchyState {
+  return emptyComponentHierarchy();
+}
+
+/** Legacy seeded demo tree shipped before hierarchy became user/component-owned. */
+const LEGACY_SEED_GROUPS = new Set(['proteins', 'dairy', 'produce', 'spirits', 'dry goods']);
+const LEGACY_SEED_SUBGROUPS = new Set(['beef', 'poultry', 'cheese', 'whisky']);
+
+export function isLegacySeedHierarchy(state: ComponentHierarchyState): boolean {
+  if (state.groups.some(g => !LEGACY_SEED_GROUPS.has(g.name.trim().toLowerCase()))) return false;
+  if (state.subGroups.some(s => !LEGACY_SEED_SUBGROUPS.has(s.name.trim().toLowerCase()))) return false;
+  const seedGroups = state.groups.filter(g => LEGACY_SEED_GROUPS.has(g.name.trim().toLowerCase())).length;
+  const seedSubs = state.subGroups.filter(s => LEGACY_SEED_SUBGROUPS.has(s.name.trim().toLowerCase())).length;
+  const fakeItems = state.groups.some(g => g.items > 0) || state.subGroups.some(s => s.items > 0);
+  return (seedGroups >= 3 && seedSubs >= 2) || (seedGroups >= 4 && fakeItems);
+}
+
+/**
+ * Drop unused legacy seed rows and ensure categories/groups from live components
+ * exist in the hierarchy (wired to real ingredient Category/Group values).
+ */
+export function reconcileHierarchyWithComponents(
+  state: ComponentHierarchyState,
+  ingredients: { category?: string | null; group?: string | null }[],
+): { state: ComponentHierarchyState; changed: boolean } {
+  const counts = buildHierarchyAttachmentCounts(ingredients);
+  const deduped = mergeDuplicateHierarchyLabels(
+    isLegacySeedHierarchy(state) ? emptyComponentHierarchy() : state,
+  );
+  let next = deduped.state;
+  let changed = deduped.changed;
+
+  // Strip seed residue that has no attached components.
+  const keptGroups = next.groups.filter(group => {
+    const cat = next.categories.find(c => c.id === group.categoryId)?.name ?? '';
+    const attached = groupIngredientCount(counts, cat, group.name);
+    if (attached > 0) return true;
+    return !LEGACY_SEED_GROUPS.has(group.name.trim().toLowerCase());
+  });
+  const keptGroupIds = new Set(keptGroups.map(g => g.id));
+  const keptSubGroups = next.subGroups.filter(sub => {
+    if (!keptGroupIds.has(sub.groupId)) return false;
+    const group = keptGroups.find(g => g.id === sub.groupId);
+    if (!group) return false;
+    const cat = next.categories.find(c => c.id === group.categoryId)?.name ?? '';
+    const attached = groupIngredientCount(counts, cat, group.name);
+    if (attached > 0) return true;
+    return !LEGACY_SEED_SUBGROUPS.has(sub.name.trim().toLowerCase());
+  });
+  const keptCategoryIds = new Set(keptGroups.map(g => g.categoryId));
+  // Keep non-seed empty categories the user may have just created.
+  const keptCategories = next.categories.filter(cat => {
+    if (keptCategoryIds.has(cat.id)) return true;
+    const attached = categoryIngredientCount(counts, cat.name);
+    if (attached > 0) return true;
+    const isSeedCat = cat.name.trim().toLowerCase() === 'food'
+      || cat.name.trim().toLowerCase() === 'beverage';
+    // Drop unused Food/Beverage only when they came from the legacy seed rebuild path
+    // or have no groups left and no components.
+    if (isLegacySeedHierarchy(state) && isSeedCat && attached === 0) return false;
+    return true;
+  });
+
+  next = {
+    ...next,
+    categories: keptCategories,
+    groups: keptGroups,
+    subGroups: keptSubGroups,
+  };
+
+  // Ensure every live component category/group is present.
+  let nextCategoryId = Math.max(1, next.nextCategoryId, ...next.categories.map(c => c.id + 1));
+  let nextGroupId = Math.max(1, next.nextGroupId, ...next.groups.map(g => g.id + 1));
+  const categories = [...next.categories];
+  const groups = [...next.groups];
+
+  for (const ingredient of ingredients) {
+    const categoryNameValue = (ingredient.category ?? '').trim();
+    const groupNameValue = (ingredient.group ?? '').trim();
+    if (!categoryNameValue) continue;
+
+    let category = categories.find(
+      c => c.name.trim().toLowerCase() === categoryNameValue.toLowerCase(),
+    );
+    if (!category) {
+      category = { id: nextCategoryId++, name: categoryNameValue };
+      categories.push(category);
+    }
+
+    if (!groupNameValue) continue;
+    const exists = groups.some(
+      g => g.categoryId === category!.id
+        && g.name.trim().toLowerCase() === groupNameValue.toLowerCase(),
+    );
+    if (!exists) {
+      groups.push({
+        id: nextGroupId++,
+        categoryId: category.id,
+        name: groupNameValue,
+        items: 0,
+      });
+    }
+  }
+
+  // Refresh item counts from live attachments.
+  const withCounts: ComponentHierarchyState = {
+    categories,
+    groups: groups.map(group => {
+      const cat = categories.find(c => c.id === group.categoryId)?.name ?? '';
+      return { ...group, items: groupIngredientCount(counts, cat, group.name) };
+    }),
+    subGroups: next.subGroups.map(sub => {
+      const group = groups.find(g => g.id === sub.groupId);
+      if (!group) return { ...sub, items: 0 };
+      const cat = categories.find(c => c.id === group.categoryId)?.name ?? '';
+      return { ...sub, items: groupIngredientCount(counts, cat, group.name) };
+    }),
+    nextCategoryId,
+    nextGroupId,
+    nextSubGroupId: Math.max(1, next.nextSubGroupId, ...next.subGroups.map(s => s.id + 1)),
+  };
+
+  changed = changed || JSON.stringify(withCounts) !== JSON.stringify(state);
+  return { state: withCounts, changed };
 }
 
 export function loadComponentHierarchy(): ComponentHierarchyState {
@@ -88,7 +198,7 @@ function uniqueSorted(values: string[]): string[] {
 /** First category + first group under it for new component defaults. */
 export function getDefaultCategoryAndGroup(state: ComponentHierarchyState): { category: string; group: string } {
   const category = state.categories[0];
-  if (!category) return { category: 'Food', group: 'Proteins' };
+  if (!category) return { category: '', group: '' };
   const groups = state.groups
     .filter(group => group.categoryId === category.id)
     .map(group => group.name);
@@ -105,12 +215,17 @@ export function getHierarchyCategoryOptions(
   fallback: string[] = [],
 ): string[] {
   const fromHierarchy = state.categories.map(category => category.name);
-  const base = fromHierarchy.length > 0 ? fromHierarchy : fallback;
+  // Always merge fallbacks (e.g. categories already used on components) so uploads
+  // beyond the saved hierarchy still appear in detail/filter pickers.
+  const base = uniqueSorted([
+    ...(fromHierarchy.length > 0 ? fromHierarchy : []),
+    ...fallback,
+  ]);
   const current = currentValue.trim();
   if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
     return uniqueSorted([...base, current]);
   }
-  return uniqueSorted(base);
+  return base;
 }
 
 /** Group names under a category for component detail dropdowns. */
@@ -120,21 +235,123 @@ export function getHierarchyGroupOptions(
   currentValue = '',
   fallback: string[] = [],
 ): string[] {
+  const categoryKey = categoryName.trim().toLowerCase();
+  // No category selected → caller may list all groups; empty category keeps options empty.
+  if (!categoryKey) {
+    const base = uniqueSorted(fallback);
+    const current = currentValue.trim();
+    if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
+      return uniqueSorted([...base, current]);
+    }
+    return base;
+  }
+
   const category = state.categories.find(
-    item => item.name.toLowerCase() === categoryName.trim().toLowerCase(),
+    item => item.name.toLowerCase() === categoryKey,
   );
-  const hasHierarchy = state.categories.length > 0;
+  // Strict hierarchy: only groups that belong to this category (never all groups).
   const fromHierarchy = category
     ? state.groups.filter(group => group.categoryId === category.id).map(group => group.name)
-    : hasHierarchy
-      ? uniqueSorted(state.groups.map(group => group.name))
-      : [];
-  const base = fromHierarchy.length > 0 ? fromHierarchy : (hasHierarchy ? [] : fallback);
+    : [];
+  // Merge fallback groups from existing components even when hierarchy already has entries.
+  const base = uniqueSorted([...fromHierarchy, ...fallback]);
   const current = currentValue.trim();
   if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
     return uniqueSorted([...base, current]);
   }
-  return uniqueSorted(base);
+  return base;
+}
+
+/**
+ * Merge case-insensitive duplicate categories and duplicate groups within a category.
+ * Remaps group.categoryId / subGroup.groupId onto the kept rows.
+ */
+export function mergeDuplicateHierarchyLabels(
+  state: ComponentHierarchyState,
+): { state: ComponentHierarchyState; changed: boolean } {
+  let changed = false;
+
+  const categoryKeepByKey = new Map<string, ComponentCategory>();
+  const categoryIdRemap = new Map<number, number>();
+  const categories: ComponentCategory[] = [];
+  for (const category of [...state.categories].sort((a, b) => a.id - b.id)) {
+    const key = category.name.trim().toLowerCase();
+    if (!key) continue;
+    const keep = categoryKeepByKey.get(key);
+    if (!keep) {
+      const normalized = { ...category, name: category.name.trim() };
+      categoryKeepByKey.set(key, normalized);
+      categories.push(normalized);
+      categoryIdRemap.set(category.id, normalized.id);
+      if (normalized.name !== category.name) changed = true;
+      continue;
+    }
+    categoryIdRemap.set(category.id, keep.id);
+    if (keep.id !== category.id) changed = true;
+  }
+
+  const groupKeepByKey = new Map<string, ComponentGroup>();
+  const groupIdRemap = new Map<number, number>();
+  const groups: ComponentGroup[] = [];
+  for (const group of [...state.groups].sort((a, b) => a.id - b.id)) {
+    const categoryId = categoryIdRemap.get(group.categoryId) ?? group.categoryId;
+    const name = group.name.trim();
+    if (!name) continue;
+    const key = `${categoryId}::${name.toLowerCase()}`;
+    const keep = groupKeepByKey.get(key);
+    if (!keep) {
+      const normalized = {
+        ...group,
+        categoryId,
+        name,
+        items: group.items,
+      };
+      groupKeepByKey.set(key, normalized);
+      groups.push(normalized);
+      groupIdRemap.set(group.id, normalized.id);
+      if (normalized.categoryId !== group.categoryId || normalized.name !== group.name) changed = true;
+      continue;
+    }
+    keep.items = Math.max(keep.items, group.items);
+    groupIdRemap.set(group.id, keep.id);
+    if (keep.id !== group.id || keep.categoryId !== group.categoryId) changed = true;
+  }
+
+  const subKeepByKey = new Map<string, ComponentSubGroup>();
+  const subGroups: ComponentSubGroup[] = [];
+  for (const sub of [...state.subGroups].sort((a, b) => a.id - b.id)) {
+    const groupId = groupIdRemap.get(sub.groupId) ?? sub.groupId;
+    const name = sub.name.trim();
+    if (!name) continue;
+    const key = `${groupId}::${name.toLowerCase()}`;
+    const keep = subKeepByKey.get(key);
+    if (!keep) {
+      const normalized = { ...sub, groupId, name };
+      subKeepByKey.set(key, normalized);
+      subGroups.push(normalized);
+      if (normalized.groupId !== sub.groupId || normalized.name !== sub.name) changed = true;
+      continue;
+    }
+    keep.items = Math.max(keep.items, sub.items);
+    if (keep.id !== sub.id) changed = true;
+  }
+
+  if (!changed
+    && categories.length === state.categories.length
+    && groups.length === state.groups.length
+    && subGroups.length === state.subGroups.length) {
+    return { state, changed: false };
+  }
+
+  return {
+    changed: true,
+    state: {
+      ...state,
+      categories,
+      groups,
+      subGroups,
+    },
+  };
 }
 
 export function flattenHierarchyForAssignment(state: ComponentHierarchyState): HierarchyAssignmentRow[] {

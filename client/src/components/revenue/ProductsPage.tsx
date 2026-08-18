@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
@@ -39,6 +39,7 @@ import {
   calcProductCogs,
   calcSubProductUnitCost,
   calcTotalCost,
+  findSimilarProductNames,
   generateProductId,
   isProductLineFilled,
   parseOptionalActivationPeriodHours,
@@ -47,9 +48,14 @@ import {
   type ProductAliasLine,
   type ProductLine,
 } from '../../data/productForm';
+import { hasExactCatalogNameMatch } from '../../utils/catalogNameMatch';
+import { SimilarNameMatchesNotice } from '../shared/SimilarNameMatchesNotice';
 import {
   findSubProductForLine,
+  resolveAutomatedComponentUomPrice,
   resolveProductLineUomOptions,
+  resolveSelectedUomOptionLabel,
+  normalizeSubProductRecipeLine,
   subProductComponentUomOptions,
   withCurrentProductLineUomOption,
 } from '../../data/productComponentUomOptions';
@@ -71,7 +77,28 @@ import {
 import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import { B2bSalesBox } from './B2bSalesBox';
 import { ProductAliasB2bSalesModal } from './ProductAliasB2bSalesModal';
-import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { VariableProductSection } from './VariableProductSection';
+import { VariableComponentSection } from './VariableComponentSection';
+import {
+  blankVariableComponentConfig,
+  parseVariableComponentOptionsJson,
+  serializeVariableComponentOptionsJson,
+  validateVariableComponentConfig,
+  variableComponentRecipeCost,
+  variableComponentToRecipeItems,
+  type VariableComponentConfig,
+} from '../../data/productVariableComponent';
+import {
+  blankVariableConfig,
+  calcVariableMinMaxCost,
+  parseVariableMode,
+  parseVariableOptionsJson,
+  serializeVariableOptionsJson,
+  type VariableProductConfig,
+} from '../../data/productVariable';
+import { listGroupFormOptions } from '../../data/categoryGroupFilters';
+import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
+import { labelsEqual } from '../../utils/labelMatch';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import { ComponentEditPanel } from './ComponentEditPanel';
 import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
@@ -82,24 +109,25 @@ import {
   groupsMatch,
   productToUpsertPayload,
 } from '../../data/productGroupCatalog';
-import { ProductionMethodModal } from './ProductionMethodModal';
 import { productKeyFromParts } from '../../data/productProductionMethod';
+import { ProductMethodBox } from './ProductMethodBox';
 import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
 import { SmartComponentPicker } from './SmartComponentPicker';
 import { ProductComponentPicker } from './ProductComponentPicker';
 import {
   loadYieldAltUnitsFromProduct,
+  parseYieldAltUnitsJson,
   refreshBatchAdditionalUoms,
   serializeYieldAltUnits,
 } from '../../data/productBatchUom';
 import {
-  createDefaultBatchAdditionalEntry,
-  SubProductBatchAdditionalUoms,
-} from './SubProductBatchUomSection';
-import {
   clampSubProductAltUnits,
   SubProductBatchProduceFields,
 } from './SubProductBatchProduceFields';
+import {
+  B2bProductionUomFields,
+  clampProductionAltUnits,
+} from './B2bProductionUomFields';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -108,9 +136,13 @@ type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
   embedded?: boolean;
-  editorRequest?: { mode: 'new' } | { mode: 'edit'; id: number } | null;
+  /** Compact chrome for embedding inside the Product List detail popup. */
+  popupMode?: boolean;
+  editorRequest?: { mode: 'new' } | { mode: 'edit'; id: number } | { mode: 'copy'; id: number } | null;
   onEditorRequestConsumed?: () => void;
   onClose?: () => void;
+  /** Called after a successful create/update (popup returns to the list). */
+  onSaved?: (product: Product) => void;
 };
 
 const fieldCls =
@@ -123,12 +155,12 @@ const addBtnCls =
 type BomLineSortColumn = 'component' | 'uom' | 'price' | 'qty' | 'subtotal' | 'action';
 
 const BOM_LINE_TABLE_COLUMNS: SortableColumnDef<BomLineSortColumn>[] = [
-  { key: 'component', label: 'Smart component' },
-  { key: 'uom', label: 'Smart component UOM' },
-  { key: 'price', label: 'Smart component UOM price', sortable: false },
-  { key: 'qty', label: 'Qty', sortable: false },
-  { key: 'subtotal', label: 'Subtotal', align: 'right' },
-  { key: 'action', label: '', sortable: false, className: 'w-10' },
+  { key: 'component', label: 'Smart component', ...tableColWidth('32%') },
+  { key: 'uom', label: 'Smart component UOM', ...tableColWidth('16%') },
+  { key: 'price', label: 'Smart component UOM price', sortable: false, ...tableColWidth('18%') },
+  { key: 'qty', label: 'Qty', sortable: false, ...tableColWidth('12%') },
+  { key: 'subtotal', label: 'Subtotal', align: 'right', ...tableColWidth('14%') },
+  { key: 'action', label: '', sortable: false, ...tableColWidth(48) },
 ];
 
 const categoryOptions = getSiCategoryFilterOptions().filter(c => c !== 'All');
@@ -142,6 +174,8 @@ type ComponentLinesSectionProps = {
   totalCost: number;
   totalLabel: string;
   availableComponents: ComponentRow[];
+  /** Full component catalog for UOM/price resolution (includes out-of-filter rows on existing BOM lines). */
+  uomComponents?: ComponentRow[];
   includeSubProducts?: boolean;
   availableSubProducts?: Product[];
   subProductCatalog?: Product[];
@@ -151,7 +185,6 @@ type ComponentLinesSectionProps = {
   onRemoveLine: (key: string) => void;
   onAddLine: () => void;
   onOpenAddComponent: (lineKey: string) => void;
-  onOpenProductionMethod?: () => void;
   estimateComponentPrice?: (component: ComponentRow, selectedUom: string) => string;
 };
 
@@ -162,6 +195,7 @@ function ComponentLinesSection({
   totalCost,
   totalLabel,
   availableComponents,
+  uomComponents,
   includeSubProducts = false,
   availableSubProducts = [],
   subProductCatalog = [],
@@ -171,9 +205,9 @@ function ComponentLinesSection({
   onRemoveLine,
   onAddLine,
   onOpenAddComponent,
-  onOpenProductionMethod,
   estimateComponentPrice,
 }: ComponentLinesSectionProps) {
+  const componentsForUom = uomComponents ?? availableComponents;
   const { rm, symbol } = useCountryFormatters();
   const columns = includeSubProducts
     ? BOM_LINE_TABLE_COLUMNS.map(column => (
@@ -237,13 +271,13 @@ function ComponentLinesSection({
       map.set(
         line.key,
         withCurrentProductLineUomOption(
-          resolveProductLineUomOptions(line, availableComponents, resolvedSubProductCatalog),
+          resolveProductLineUomOptions(line, componentsForUom, resolvedSubProductCatalog),
           line,
         ),
       );
     }
     return map;
-  }, [lines, availableComponents, resolvedSubProductCatalog]);
+  }, [lines, componentsForUom, resolvedSubProductCatalog]);
 
   const {
     visibleItems: pagedLines,
@@ -254,24 +288,14 @@ function ComponentLinesSection({
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
-        </div>
-        {onOpenProductionMethod ? (
-          <button
-            type="button"
-            onClick={onOpenProductionMethod}
-            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
-          >
-            Production Method
-          </button>
-        ) : null}
+      <div className="px-4 py-3 border-b border-border bg-muted/20">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
-        <table className="w-full table-fixed border-collapse">
+        <table className="w-full border-collapse">
+          <TableColGroup columns={columns} />
           <thead>
             <SortableTableHeaderRow
               columns={columns}
@@ -295,6 +319,7 @@ function ComponentLinesSection({
                             components={availableComponents}
                             subProducts={availableSubProducts}
                             value={line.componentId}
+                            fallbackLabel={line.componentName}
                             onComponentSelect={component => onComponentSelect(line.key, component)}
                             onSubProductSelect={product => onSubProductSelect?.(line.key, product)}
                           />
@@ -302,6 +327,7 @@ function ComponentLinesSection({
                           <SmartComponentPicker
                             components={availableComponents}
                             value={line.componentId}
+                            fallbackLabel={line.componentName}
                             onChange={component => onComponentSelect(line.key, component)}
                           />
                         )}
@@ -320,17 +346,23 @@ function ComponentLinesSection({
                   <td className={tdCls}>
                     {uomOptions.length > 1 ? (
                       <select
-                        value={line.componentUom}
+                        value={resolveSelectedUomOptionLabel(uomOptions, line.componentUom)}
                         onChange={e => {
                           const selected = uomOptions.find(option => option.label === e.target.value);
                           if (!selected) return;
-                          const component = availableComponents.find(item => item.componentId === line.componentId);
+                          const component = componentsForUom.find(item => item.componentId === line.componentId);
                           const estimated = component && estimateComponentPrice
                             ? estimateComponentPrice(component, selected.label)
                             : '';
                           onUpdateLine(line.key, {
                             componentUom: selected.label,
-                            componentUomPrice: estimated || (selected.price > 0 ? String(selected.price) : ''),
+                            componentUomPrice: resolveAutomatedComponentUomPrice({
+                              selected,
+                              component,
+                              lineUom: line.componentUom,
+                              lineUomPrice: line.componentUomPrice,
+                              estimatedPrice: estimated,
+                            }),
                           });
                         }}
                         className={`${fieldCls} min-w-[6rem] max-w-full`}
@@ -418,44 +450,29 @@ function mapProductItemsToLines(
       product.isSubProduct
       && product.productId.trim().toLowerCase() === item.componentId.trim().toLowerCase(),
     );
-    return {
+    const line: ProductLine = {
       key: item.id ? `saved-${item.id}` : `line-${item.componentId}`,
       componentId: item.componentId,
       componentName: item.componentName,
-      componentUom: item.componentUom,
+      componentUom: fromApiUom(item.componentUom) || item.componentUom,
       componentUomPrice: String(item.componentUomPrice),
       quantity: String(item.quantity),
       sourceProductId: linkedSubProduct?.id,
     };
+    return linkedSubProduct ? normalizeSubProductRecipeLine(line, linkedSubProduct) : line;
   });
   return mapped.length > 0 ? mapped : [blankProductLine()];
-}
-
-function mapProductLinesToComponentItems(lines: ProductLine[]): Product['items'] {
-  return lines
-    .filter(isProductLineFilled)
-    .map((line, index) => {
-      const quantity = parseFloat(line.quantity) || 0;
-      const componentUomPrice = parseFloat(line.componentUomPrice) || 0;
-      return {
-        componentId: line.componentId,
-        componentName: line.componentName,
-        componentUom: line.componentUom,
-        componentUomPrice,
-        quantity,
-        subtotal: calcLineSubtotal(line.quantity, line.componentUomPrice),
-        sortOrder: index + 1,
-      };
-    });
 }
 
 export function ProductsPage({
   selectedCompanyId,
   selectedLocationIds,
   embedded = false,
+  popupMode = false,
   editorRequest = null,
   onEditorRequestConsumed,
   onClose,
+  onSaved,
 }: Props) {
   const { rm, symbol, cogsPercent } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -471,14 +488,20 @@ export function ProductsPage({
 
   const [name, setName] = useState('');
   const [isSubProduct, setIsSubProduct] = useState(false);
+  const [isVariableProduct, setIsVariableProduct] = useState(false);
+  const [variableConfig, setVariableConfig] = useState<VariableProductConfig>(blankVariableConfig());
+  const [isVariableComponent, setIsVariableComponent] = useState(false);
+  const [variableComponentConfig, setVariableComponentConfig] = useState<VariableComponentConfig>(
+    blankVariableComponentConfig(),
+  );
   const [productId, setProductId] = useState('');
   const [category, setCategory] = useState('');
   const [group, setGroup] = useState('');
   const [b2cEnabled, setB2cEnabled] = useState(true);
   const [b2bEnabled, setB2bEnabled] = useState(false);
   const [rrp, setRrp] = useState('');
-  const [yieldQuantity, setYieldQuantity] = useState('');
-  const [yieldUom, setYieldUom] = useState('');
+  const [yieldQuantity, setYieldQuantity] = useState('1');
+  const [yieldUom, setYieldUom] = useState('Each');
   const [yieldAltUnits, setYieldAltUnits] = useState<AltUnitEntry[]>([]);
   const [expiryPeriodDays, setExpiryPeriodDays] = useState('');
   const [activationPeriodHours, setActivationPeriodHours] = useState('');
@@ -503,7 +526,6 @@ export function ProductsPage({
   const [isNewGroup, setIsNewGroup] = useState(false);
   const [componentEditorLineKey, setComponentEditorLineKey] = useState<string | null>(null);
   const [componentEditorTarget, setComponentEditorTarget] = useState<'product' | 'packaging'>('product');
-  const [productionMethodOpen, setProductionMethodOpen] = useState(false);
   const [editComponentRow, setEditComponentRow] = useState<ReturnType<typeof ingredientToRow> | null>(null);
   const [isNewComponent, setIsNewComponent] = useState(false);
   const [componentSaveError, setComponentSaveError] = useState<string | null>(null);
@@ -517,29 +539,38 @@ export function ProductsPage({
   }
 
   const groupOptions = useMemo(() => {
-    const fromComponents = components.map(c => c.group).filter(Boolean);
-    const fromProducts = savedProducts.map(product => product.group).filter(Boolean);
-    const merged = new Set([
-      ...getSiGroupFilterOptions().filter(g => g !== 'All'),
-      ...extraGroups,
-      ...fromComponents,
-      ...fromProducts,
-      ...(group ? [group] : []),
-    ]);
-    return [...merged].sort((a, b) => a.localeCompare(b));
-  }, [components, extraGroups, group, savedProducts]);
+    const rows = [
+      ...components.map(c => ({ category: c.category, group: c.group })),
+      ...savedProducts.map(product => ({ category: product.category, group: product.group })),
+    ];
+    return listGroupFormOptions(category, rows, group, extraGroups);
+  }, [category, components, extraGroups, group, savedProducts]);
+
+  useEffect(() => {
+    if (!group.trim()) return;
+    if (!category.trim()) return;
+    if (!groupOptions.some(option => labelsEqual(option, group))) {
+      setGroup('');
+    }
+  }, [category, group, groupOptions]);
+
+  const similarProductNameMatches = useMemo(() => {
+    if (!name.trim() || name.trim().length < 3) return [];
+    const excludeId = selectedProductId ? Number(selectedProductId) : undefined;
+    return findSimilarProductNames(name, savedProducts, excludeId);
+  }, [name, savedProducts, selectedProductId]);
 
   const loadComponents = useCallback(() => {
-    if (!orgReady) {
+    if (!orgReady || !selectedCompanyId) {
       setComponents([]);
       return Promise.resolve();
     }
     setLoading(true);
-    return api.ingredients()
+    return api.ingredients(selectedCompanyId)
       .then(rows => setComponents(rows.map(ingredientToRow)))
       .catch(() => setComponents([]))
       .finally(() => setLoading(false));
-  }, [orgReady]);
+  }, [orgReady, selectedCompanyId]);
 
   const loadSavedProducts = useCallback(() => {
     if (!selectedCompanyId) {
@@ -548,7 +579,10 @@ export function ProductsPage({
     }
     api.products(selectedCompanyId)
       .then(setSavedProducts)
-      .catch(() => setSavedProducts([]));
+      .catch(err => {
+        setSavedProducts([]);
+        setError(err instanceof Error ? err.message : 'Failed to load products.');
+      });
   }, [selectedCompanyId]);
 
   useEffect(() => {
@@ -608,11 +642,15 @@ export function ProductsPage({
       return;
     }
     api.locationsConfig()
-      .then(rows => setLocations(
-        rows
-          .filter(loc => loc.companyId === selectedCompanyId)
-          .map(configLocationToDropdown),
-      ))
+      .then(rows => {
+        const activeForCompany = rows
+          .filter(loc => loc.companyId === selectedCompanyId && loc.active !== false)
+          .map(configLocationToDropdown);
+        setLocations(activeForCompany);
+        const activeIds = new Set(activeForCompany.map(loc => loc.externalId));
+        // Drop deactivated locations so they cannot stay ticked/saved on the product.
+        setProductLocationIds(prev => prev.filter(id => activeIds.has(id)));
+      })
       .catch(() => setLocations([]));
   }, [selectedCompanyId]);
 
@@ -628,31 +666,79 @@ export function ProductsPage({
     setB2bSalesConfig(blankB2bSalesConfig());
   }, [hasB2bProductCapability, b2bEnabled]);
 
+  const appliedEditorRequestKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!editorRequest) return;
+    if (!editorRequest) {
+      appliedEditorRequestKeyRef.current = null;
+      return;
+    }
+
     if (editorRequest.mode === 'new') {
+      const key = 'new';
+      if (appliedEditorRequestKeyRef.current === key) {
+        onEditorRequestConsumed?.();
+        return;
+      }
       resetEditor();
+      appliedEditorRequestKeyRef.current = key;
       onEditorRequestConsumed?.();
       return;
     }
+
+    const key = `${editorRequest.mode}:${editorRequest.id}`;
     const product = savedProducts.find(p => p.id === editorRequest.id);
     if (!product) return;
-    loadProduct(product);
-    setIsEditing(editorRequest.mode === 'edit');
+
+    if (appliedEditorRequestKeyRef.current === key) {
+      onEditorRequestConsumed?.();
+      return;
+    }
+
+    if (editorRequest.mode === 'copy') {
+      copyProductAsNew(product);
+    } else {
+      loadProduct(product);
+      setIsEditing(true);
+    }
+    appliedEditorRequestKeyRef.current = key;
     onEditorRequestConsumed?.();
   }, [editorRequest, savedProducts, onEditorRequestConsumed]);
 
-  const availableComponents = useMemo(
-    () => components.filter(c => c.active && componentMatchesLocations(c, selectedLocationIds)),
-    [components, selectedLocationIds],
-  );
+  const availableComponents = useMemo(() => {
+    const activeScoped = components.filter(
+      c => c.active && componentMatchesLocations(c, selectedLocationIds),
+    );
+    const byId = new Map(activeScoped.map(c => [c.componentId, c]));
+    // Keep components already on the BOM selectable/visible even if inactive or unscoped.
+    for (const line of [...lines, ...packagingLines]) {
+      const id = line.componentId.trim();
+      if (!id || byId.has(id)) continue;
+      const raw = components.find(c => c.componentId === id);
+      if (raw) {
+        byId.set(id, raw);
+        continue;
+      }
+      byId.set(id, {
+        ...blankComponentRow,
+        componentId: id,
+        name: line.componentName || id,
+        recipeUOM: line.componentUom || 'g',
+        active: false,
+        locations: selectedLocationIds.length > 0 ? [...selectedLocationIds] : ['all'],
+      });
+    }
+    return [...byId.values()];
+  }, [components, selectedLocationIds, lines, packagingLines]);
 
   const availableSubProducts = useMemo(
     () => savedProducts.filter(product =>
       product.isSubProduct
       && product.active
       && (!product.locationExternalIds?.length
-        || product.locationExternalIds.some(id => selectedLocationIds.includes(id))),
+        || product.locationExternalIds.some(id =>
+          selectedLocationIds.some(selected =>
+            id.localeCompare(selected, undefined, { sensitivity: 'accent' }) === 0))),
     ),
     [savedProducts, selectedLocationIds],
   );
@@ -708,13 +794,19 @@ export function ProductsPage({
 
   const totalCost = useMemo(() => calcTotalCost(lines), [lines]);
   const totalPackagingCost = useMemo(() => calcTotalCost(packagingLines), [packagingLines]);
+  const variableComponentCost = useMemo(
+    () => variableComponentRecipeCost(variableComponentConfig),
+    [variableComponentConfig],
+  );
+  const recipeCostForCogs = isVariableComponent ? variableComponentCost : totalCost;
+  const packagingCostForCogs = isVariableComponent ? 0 : totalPackagingCost;
   const effectiveProductCogs = useMemo(
-    () => calcProductCogs(totalCost, totalPackagingCost, {
+    () => calcProductCogs(recipeCostForCogs, packagingCostForCogs, {
       isSubProduct,
       b2bEnabled,
       b2cEnabled,
     }),
-    [totalCost, totalPackagingCost, isSubProduct, b2bEnabled, b2cEnabled],
+    [recipeCostForCogs, packagingCostForCogs, isSubProduct, b2bEnabled, b2cEnabled],
   );
   const rrpValue = useMemo(() => {
     const parsed = parseFloat(rrp);
@@ -731,10 +823,9 @@ export function ProductsPage({
   const supportsBatchAdditionalUom = isSubProduct || b2bEnabled;
 
   const batchUomForAdditional = useMemo(() => {
-    if (isSubProduct) return yieldUom.trim();
-    if (!b2bEnabled) return '';
-    return formatDeliveryUnitPath(b2bSalesConfig.principal.delivery).trim();
-  }, [isSubProduct, b2bEnabled, yieldUom, b2bSalesConfig]);
+    if (isSubProduct || b2bEnabled) return yieldUom.trim();
+    return '';
+  }, [isSubProduct, b2bEnabled, yieldUom]);
 
   const batchQtyForAdditional = isSubProduct
     ? (parseFloat(yieldQuantity) || 0)
@@ -757,6 +848,7 @@ export function ProductsPage({
     ),
     [parStockUom, yieldUom, isSubProduct, b2bEnabled, b2bSalesConfig],
   );
+  const productUomOptionList = productParStockUomOptions(getKnownRecipeUnits(), yieldUom);
 
   useEffect(() => {
     if (!isSubProduct || !yieldUom.trim()) return;
@@ -764,9 +856,9 @@ export function ProductsPage({
   }, [isSubProduct, yieldUom]);
 
   useEffect(() => {
-    if (!supportsBatchAdditionalUom || !batchUomForAdditional) return;
+    if (!isSubProduct || !batchUomForAdditional) return;
     setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, batchQtyForAdditional, batchUomForAdditional));
-  }, [supportsBatchAdditionalUom, batchQtyForAdditional, batchUomForAdditional]);
+  }, [isSubProduct, batchQtyForAdditional, batchUomForAdditional]);
 
   useEffect(() => {
     if (parStockUom.trim()) return;
@@ -799,20 +891,29 @@ export function ProductsPage({
     handleParStockUomChange(nextUom);
   }
 
-  function setProductType(subProduct: boolean) {
-    setIsSubProduct(subProduct);
-    if (subProduct) {
+  function setProductKind(kind: 'product' | 'subProduct' | 'variable') {
+    setIsSubProduct(kind === 'subProduct');
+    setIsVariableProduct(kind === 'variable');
+    if (kind === 'subProduct') {
       setB2cEnabled(false);
       setB2bEnabled(false);
       setRrp('');
       setAliases([]);
+      setVariableConfig(blankVariableConfig());
+      setIsVariableComponent(false);
+      setVariableComponentConfig(blankVariableComponentConfig());
     } else {
       setB2cEnabled(true);
       setB2bEnabled(false);
-      setYieldQuantity('');
-      setYieldUom('');
+      setYieldQuantity('1');
+      setYieldUom('Each');
       setYieldAltUnits([]);
       setActivationPeriodHours('');
+      if (kind === 'variable') {
+        setVariableConfig(prev => prev.mode ? prev : blankVariableConfig('combination'));
+      } else {
+        setVariableConfig(blankVariableConfig());
+      }
     }
   }
 
@@ -820,14 +921,18 @@ export function ProductsPage({
     setSelectedProductId('');
     setName('');
     setIsSubProduct(false);
+    setIsVariableProduct(false);
+    setVariableConfig(blankVariableConfig());
+    setIsVariableComponent(false);
+    setVariableComponentConfig(blankVariableComponentConfig());
     setProductId('');
     setCategory('');
     setGroup('');
     setB2cEnabled(true);
     setB2bEnabled(false);
     setRrp('');
-    setYieldQuantity('');
-    setYieldUom('');
+    setYieldQuantity('1');
+    setYieldUom('Each');
     setYieldAltUnits([]);
     setExpiryPeriodDays('');
     setActivationPeriodHours('');
@@ -846,36 +951,79 @@ export function ProductsPage({
     setSelectedProductId(String(product.id));
     setName(product.name);
     setIsSubProduct(product.isSubProduct);
+
+    const legacyReplacement = Boolean(product.isVariableProduct)
+      && !product.isSubProduct
+      && String(product.variableMode || '').toLowerCase() === 'replacement';
+    const asVariableProduct = Boolean(product.isVariableProduct) && !product.isSubProduct && !legacyReplacement;
+    setIsVariableProduct(asVariableProduct);
+    if (asVariableProduct) {
+      const mode = parseVariableMode(product.variableMode);
+      const parsed = parseVariableOptionsJson(product.variableOptionsJson, mode);
+      setVariableConfig({
+        ...parsed,
+        mode,
+        choiceQty: mode === 'combination' || mode === 'weight'
+          ? (product.variableChoiceQty && product.variableChoiceQty > 0 ? product.variableChoiceQty : parsed.choiceQty)
+          : parsed.choiceQty,
+        weightUom: mode === 'weight' ? (parsed.weightUom || 'kg') : '',
+      });
+    } else {
+      setVariableConfig(blankVariableConfig());
+    }
+
+    const variableComponentEnabled = !product.isSubProduct && (
+      Boolean(product.isVariableComponent) || legacyReplacement
+    );
+    setIsVariableComponent(variableComponentEnabled);
+    if (variableComponentEnabled) {
+      const raw = product.isVariableComponent
+        ? product.variableComponentOptionsJson
+        : product.variableOptionsJson;
+      setVariableComponentConfig(parseVariableComponentOptionsJson(raw));
+    } else {
+      setVariableComponentConfig(blankVariableComponentConfig());
+    }
+
     setProductId(product.productId);
     setCategory(product.category);
     setGroup(product.group);
     setB2cEnabled(product.b2cEnabled);
     setB2bEnabled(product.b2bEnabled);
     setRrp(product.rrp > 0 ? String(product.rrp) : '');
-    setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : '');
-    setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : '');
+    const isB2cProduct = !product.isSubProduct && product.b2cEnabled && !product.b2bEnabled;
+    setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : (isB2cProduct ? '1' : ''));
+    setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : (isB2cProduct ? 'Each' : ''));
     const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
     const parsedB2bSales = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
-    const loadedBatchUom = product.isSubProduct
-      ? loadedYieldUom
-      : (product.b2bEnabled
-        ? (product.b2bPackageUnit?.trim()
-          || formatDeliveryUnitPath(parsedB2bSales.principal.delivery).trim())
-        : '');
-    const loadedBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
-    const loadedAlt = refreshBatchAdditionalUoms(
-      loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedBatchUom),
-      loadedBatchQty,
-      loadedBatchUom,
-    );
-    setYieldAltUnits(product.isSubProduct ? clampSubProductAltUnits(loadedAlt) : loadedAlt);
+    if (product.isSubProduct) {
+      const loadedAlt = refreshBatchAdditionalUoms(
+        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+        product.yieldQuantity,
+        loadedYieldUom,
+      );
+      setYieldAltUnits(clampSubProductAltUnits(loadedAlt));
+    } else if (product.b2bEnabled) {
+      setYieldAltUnits(clampProductionAltUnits(parseYieldAltUnitsJson(product.yieldAltUnitsJson)));
+    } else {
+      setYieldAltUnits([]);
+    }
     setExpiryPeriodDays(product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '');
     setActivationPeriodHours(product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '');
     setParStock((product.parStock ?? 0) > 0 ? String(product.parStock) : '');
     setParStockUom(product.parStockUom ? fromApiUom(product.parStockUom) : '');
-    setProductLocationIds(product.locationExternalIds?.length
-      ? [...product.locationExternalIds]
-      : selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
+    {
+      const rawLocationIds = product.locationExternalIds?.length
+        ? [...product.locationExternalIds]
+        : selectedLocationIds.length > 0 ? [...selectedLocationIds] : [];
+      // Never keep deactivated locations ticked (they are hidden from the Location list).
+      const allowed = new Set(locations.map(loc => loc.externalId));
+      setProductLocationIds(
+        allowed.size > 0
+          ? rawLocationIds.filter(id => allowed.has(id))
+          : rawLocationIds,
+      );
+    }
     setAliases((product.aliases ?? []).map(alias => {
       const parsedAliasConfig = parseB2bSalesConfigJson(alias.b2bSalesConfigJson);
       if (alias.rrp > 0 && !parsedAliasConfig.principal.rrp.trim()) {
@@ -895,6 +1043,34 @@ export function ProductsPage({
       parsedB2bSales.principal.rrp = String(product.rrp);
     }
     setB2bSalesConfig(parsedB2bSales);
+    setError(null);
+  }
+
+  /** Clone an existing product into the create editor: same BOM/config, blank name, new ID on save. */
+  function copyProductAsNew(product: Product) {
+    loadProduct(product);
+    setSelectedProductId('');
+    setName('');
+    setProductId('');
+    const stamp = Date.now();
+    setLines(
+      mapProductItemsToLines(product.items, subProductCatalog).map((line, index) => ({
+        ...line,
+        key: `copy-line-${stamp}-${index}`,
+      })),
+    );
+    setPackagingLines(
+      mapProductItemsToLines(product.packagingItems, subProductCatalog).map((line, index) => ({
+        ...line,
+        key: `copy-pack-${stamp}-${index}`,
+      })),
+    );
+    setAliases(prev => prev.map((alias, index) => ({
+      ...alias,
+      id: undefined,
+      key: `copy-alias-${stamp}-${index}`,
+    })));
+    setIsEditing(true);
     setError(null);
   }
 
@@ -968,12 +1144,42 @@ export function ProductsPage({
     setIsNewGroup(true);
   }
 
-  function saveGroup(updated: GroupRow) {
+  function openRenameGroup() {
+    const current = group.trim();
+    if (!current) return;
+    setEditingGroup({
+      id: Date.now(),
+      name: current,
+      category: category || 'Food',
+      items: findProductsUsingGroup(savedProducts, current).length,
+    });
+    setIsNewGroup(false);
+  }
+
+  async function saveGroup(updated: GroupRow) {
     const name = updated.name.trim();
     if (!name) return;
 
+    const previousName = isNewGroup ? '' : (editingGroup?.name.trim() || group.trim());
+    if (!isNewGroup && previousName && previousName !== name && selectedCompanyId) {
+      try {
+        await api.renameCompanyCategoryGroup(selectedCompanyId, 'group', previousName, name);
+        setSavedProducts(prev => prev.map(product => (
+          groupsMatch(product.group, previousName)
+            ? { ...product, group: name, category: updated.category || product.category }
+            : product
+        )));
+      } catch (err) {
+        setDeletingGroupError(err instanceof Error ? err.message : 'Failed to rename group across products/POS.');
+        return;
+      }
+    }
+
     setExtraGroups(prev => {
-      const next = prev.includes(name) ? prev : [...prev, name];
+      const withoutOld = previousName && previousName !== name
+        ? prev.filter(item => !groupsMatch(item, previousName))
+        : prev;
+      const next = withoutOld.includes(name) ? withoutOld : [...withoutOld, name];
       saveExtraGroups(next, selectedCompanyId);
       return next;
     });
@@ -1134,6 +1340,8 @@ export function ProductsPage({
     setB2cEnabled(true);
     setB2bEnabled(false);
     setB2bSalesConfig(blankB2bSalesConfig());
+    setYieldQuantity(current => (parseFloat(current) || 0) > 0 ? current : '1');
+    setYieldUom(current => current || 'Each');
   }
 
   function handleB2bEnabledChange(checked: boolean) {
@@ -1143,11 +1351,12 @@ export function ProductsPage({
       return;
     }
     if (!hasB2bProductCapability) {
-      showSaveError('B2B products are available for Central Kitchen / Warehouse and Manufacturer.');
+      showSaveError('B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.');
       return;
     }
     setB2bEnabled(true);
     setB2cEnabled(false);
+    setYieldUom(current => current || 'Each');
     if (rrp.trim()) {
       setB2bSalesConfig(prev => ({
         ...prev,
@@ -1166,7 +1375,13 @@ export function ProductsPage({
     if (!name.trim()) {
       showSaveError(isSubProduct
         ? 'Enter a sub-product name to generate the product ID.'
-        : 'Enter a principal product name to generate the product ID.');
+        : isVariableComponent
+          ? 'Enter a SWAP Name to generate the product ID.'
+          : 'Enter a principal product name to generate the product ID.');
+      return;
+    }
+    if (hasExactCatalogNameMatch(similarProductNameMatches)) {
+      showSaveError('A product with this name already exists (active or inactive). Use the existing product or choose a different name.');
       return;
     }
     if (!category) {
@@ -1186,7 +1401,7 @@ export function ProductsPage({
       return;
     }
     if (!isSubProduct && b2bEnabled && !hasB2bProductCapability) {
-      showSaveError('B2B products are available for Central Kitchen / Warehouse and Manufacturer.');
+      showSaveError('B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.');
       return;
     }
 
@@ -1214,10 +1429,17 @@ export function ProductsPage({
         showSaveError('Incubation hours must be a whole number zero or greater, or leave blank for none.');
         return;
       }
+    } else if (b2cEnabled && !b2bEnabled && !yieldUom.trim()) {
+      showSaveError('Select a Product UOM.');
+      return;
     } else if (b2bEnabled) {
+      if (!yieldUom.trim()) {
+        showSaveError('Select a Principal Production UOM for B2B Principal products.');
+        return;
+      }
       const expiryDays = parseInt(expiryPeriodDays, 10);
       if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
-        showSaveError('Enter an expiry period (days) greater than zero for B2B products.');
+        showSaveError('Enter an expiry period (days) greater than zero for B2B Principal products.');
         return;
       }
       const activation = parseOptionalActivationPeriodHours(activationPeriodHours);
@@ -1225,8 +1447,9 @@ export function ProductsPage({
         showSaveError('Incubation hours must be a whole number zero or greater, or leave blank for none.');
         return;
       }
+      const isComboVariable = isVariableProduct && variableConfig.mode === 'combination';
       const linked = resolveLinkedSubProduct(lines, savedProducts);
-      if (!linked) {
+      if (!linked && !isComboVariable && !isVariableComponent) {
         showSaveError('Select a sub-product in Product Component for B2B sales COGS.');
         return;
       }
@@ -1237,12 +1460,12 @@ export function ProductsPage({
           : 'Enter an RRP for the principal B2B delivery unit.');
         return;
       }
-      if (!b2bDeliveryResolvesToYieldUom(b2bConfigForSave.principal.delivery, linked)) {
+      if (linked && !b2bDeliveryResolvesToYieldUom(b2bConfigForSave.principal.delivery, linked)) {
         const hint = describeB2bDeliveryYieldResolution(b2bConfigForSave.principal.delivery, linked);
         showSaveError(hint.message || 'Principal Delivery Unit must convert to the linked sub-product Delivery Unit.');
         return;
       }
-      if (b2bConfigForSave.alternates.some(line => (
+      if (linked && b2bConfigForSave.alternates.some(line => (
         isB2bAlternateLineActive(line)
         && !b2bDeliveryResolvesToYieldUom(line.delivery, linked)
       ))) {
@@ -1255,17 +1478,56 @@ export function ProductsPage({
       }
     }
 
-    const payloadItems = lines
-      .filter(line => line.componentId)
-      .map(line => ({
-        componentId: line.componentId,
-        componentName: line.componentName,
-        componentUom: line.componentUom,
-        componentUomPrice: parseFloat(line.componentUomPrice) || 0,
-        quantity: parseFloat(line.quantity) || 0,
-      }));
+    if (isVariableProduct) {
+      if (variableConfig.mode === 'combination') {
+        if (variableConfig.choiceQty <= 0) {
+          showSaveError('Enter the total package quantity for this combination.');
+          return;
+        }
+        if (variableConfig.combinationOptions.length < 2) {
+          showSaveError('Add at least two products to the combination choice list.');
+          return;
+        }
+      } else if (variableConfig.mode === 'weight') {
+        if (!variableConfig.weightUom.trim()) {
+          showSaveError('Select a Weight UOM for this weight-based product.');
+          return;
+        }
+        if (variableConfig.choiceQty <= 0) {
+          showSaveError('Enter the weight QTY that the RRP applies to.');
+          return;
+        }
+        if (rrpValue <= 0) {
+          showSaveError('Enter an RRP for the weight QTY (POS multiplies by entered weight).');
+          return;
+        }
+      }
+    }
 
-    if (payloadItems.length === 0) {
+    if (isVariableComponent) {
+      const vcError = validateVariableComponentConfig(variableComponentConfig);
+      if (vcError) {
+        showSaveError(vcError);
+        return;
+      }
+    }
+
+    const payloadItems = isVariableComponent
+      ? variableComponentToRecipeItems(variableComponentConfig)
+      : lines
+        .filter(line => line.componentId)
+        .map(line => ({
+          componentId: line.componentId,
+          componentName: line.componentName,
+          componentUom: line.componentUom,
+          componentUomPrice: parseFloat(line.componentUomPrice) || 0,
+          quantity: parseFloat(line.quantity) || 0,
+        }));
+
+    const allowsEmptyRecipe = (isVariableProduct
+      && (variableConfig.mode === 'combination' || variableConfig.mode === 'weight'))
+      || isVariableComponent;
+    if (payloadItems.length === 0 && !allowsEmptyRecipe) {
       showSaveError(b2bEnabled && !isSubProduct
         ? 'Add at least one component or sub-product line.'
         : 'Add at least one smart component or sub-product line.');
@@ -1276,38 +1538,42 @@ export function ProductsPage({
       return;
     }
 
-    const payloadPackagingItems = packagingLines
-      .filter(line => line.componentId)
-      .map(line => ({
-        componentId: line.componentId,
-        componentName: line.componentName,
-        componentUom: line.componentUom,
-        componentUomPrice: parseFloat(line.componentUomPrice) || 0,
-        quantity: parseFloat(line.quantity) || 0,
-      }));
+    const payloadPackagingItems = isVariableComponent
+      ? []
+      : packagingLines
+        .filter(line => line.componentId)
+        .map(line => ({
+          componentId: line.componentId,
+          componentName: line.componentName,
+          componentUom: line.componentUom,
+          componentUomPrice: parseFloat(line.componentUomPrice) || 0,
+          quantity: parseFloat(line.quantity) || 0,
+        }));
 
     if (payloadPackagingItems.some(item => item.quantity <= 0)) {
       showSaveError('Each packaging line requires a quantity greater than zero.');
       return;
     }
 
-    const payloadAliases = aliases
-      .filter(alias => alias.name.trim())
-      .map(alias => {
-        const aliasConfig = buildB2bConfigForSave(
-          alias.b2bSalesConfig,
-          parseFloat(alias.rrp) || 0,
-        );
-        const aliasRrp = b2bEnabled
-          ? resolvePrincipalB2bRrp(aliasConfig, parseFloat(alias.rrp) || 0)
-          : parseFloat(alias.rrp) || 0;
-        return {
-          id: alias.id,
-          name: alias.name.trim(),
-          rrp: aliasRrp,
-          b2bSalesConfigJson: b2bEnabled ? serializeB2bSalesConfig(aliasConfig) : undefined,
-        };
-      });
+    const payloadAliases = isVariableComponent
+      ? []
+      : aliases
+        .filter(alias => alias.name.trim())
+        .map(alias => {
+          const aliasConfig = buildB2bConfigForSave(
+            alias.b2bSalesConfig,
+            parseFloat(alias.rrp) || 0,
+          );
+          const aliasRrp = b2bEnabled
+            ? resolvePrincipalB2bRrp(aliasConfig, parseFloat(alias.rrp) || 0)
+            : parseFloat(alias.rrp) || 0;
+          return {
+            id: alias.id,
+            name: alias.name.trim(),
+            rrp: aliasRrp,
+            b2bSalesConfigJson: b2bEnabled ? serializeB2bSalesConfig(aliasConfig) : undefined,
+          };
+        });
 
     const effectiveRrp = isSubProduct
       ? 0
@@ -1315,12 +1581,28 @@ export function ProductsPage({
         ? resolvePrincipalB2bRrp(b2bConfigForSave, rrpValue)
         : rrpValue;
 
+    const variableCosts = calcVariableMinMaxCost(variableConfig, calcTotalCost(lines));
     const payload = {
       productId: productId || undefined,
       name: name.trim(),
       category,
       group,
       isSubProduct,
+      isVariableProduct: !isSubProduct && isVariableProduct,
+      variableMode: !isSubProduct && isVariableProduct ? variableConfig.mode : undefined,
+      variableChoiceQty: !isSubProduct && isVariableProduct
+        && (variableConfig.mode === 'combination' || variableConfig.mode === 'weight')
+        ? variableConfig.choiceQty
+        : undefined,
+      variableOptionsJson: !isSubProduct && isVariableProduct
+        ? serializeVariableOptionsJson(variableConfig)
+        : undefined,
+      variableMinCost: !isSubProduct && isVariableProduct ? variableCosts.minCost : undefined,
+      variableMaxCost: !isSubProduct && isVariableProduct ? variableCosts.maxCost : undefined,
+      isVariableComponent: !isSubProduct && isVariableComponent,
+      variableComponentOptionsJson: !isSubProduct && isVariableComponent
+        ? serializeVariableComponentOptionsJson(variableComponentConfig)
+        : undefined,
       b2cEnabled: isSubProduct ? false : b2cEnabled,
       b2bEnabled: isSubProduct ? false : b2bEnabled,
       b2bPackageUnit: isSubProduct || !b2bEnabled
@@ -1330,26 +1612,38 @@ export function ProductsPage({
         ? undefined
         : serializeB2bSalesConfig(b2bConfigForSave),
       rrp: effectiveRrp,
-      yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
-      yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
+      yieldQuantity: isSubProduct
+        ? parseFloat(yieldQuantity) || 0
+        : b2cEnabled && !b2bEnabled
+          ? 1
+          : undefined,
+      yieldUom: isSubProduct || b2bEnabled || (b2cEnabled && !b2bEnabled)
+        ? toApiUom(yieldUom)
+        : undefined,
       yieldAltUnitsJson: supportsBatchAdditionalUom
-        ? serializeYieldAltUnits(isSubProduct ? clampSubProductAltUnits(yieldAltUnits) : yieldAltUnits)
+        ? serializeYieldAltUnits(
+          isSubProduct
+            ? clampSubProductAltUnits(yieldAltUnits)
+            : clampProductionAltUnits(yieldAltUnits),
+        )
         : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
       activationPeriodHours: supportsBatchAdditionalUom
         ? parseOptionalActivationPeriodHours(activationPeriodHours).hours
         : undefined,
-      parStock: parseFloat(parStock) || 0,
-      parStockUom: (parseFloat(parStock) || 0) > 0
-        ? serializeProductParStockUom(isSubProduct
-          ? (yieldUom || parStockUom)
-          : (parStockUom || resolveDefaultProductParStockUom({
-            isSubProduct,
-            yieldUom,
-            b2bEnabled,
-            b2bSalesConfig,
-          })))
-        : undefined,
+      parStock: isVariableComponent ? 0 : (parseFloat(parStock) || 0),
+      parStockUom: isVariableComponent
+        ? undefined
+        : (parseFloat(parStock) || 0) > 0
+          ? serializeProductParStockUom(isSubProduct
+            ? (yieldUom || parStockUom)
+            : (parStockUom || resolveDefaultProductParStockUom({
+              isSubProduct,
+              yieldUom,
+              b2bEnabled,
+              b2bSalesConfig,
+            })))
+          : undefined,
       active: true,
       posEnabled: !isSubProduct && b2cEnabled && effectiveRrp > 0,
       companyId: selectedCompanyId,
@@ -1372,8 +1666,12 @@ export function ProductsPage({
       if (!isSubProduct && b2bEnabled) {
         setB2bSalesConfig(b2bConfigForSave);
       }
-      setIsEditing(false);
       loadSavedProducts();
+      if (onSaved) {
+        onSaved(saved);
+        return;
+      }
+      setIsEditing(false);
     } catch (err) {
       showSaveError(err instanceof Error ? err.message : 'Failed to save product.');
     } finally {
@@ -1382,8 +1680,8 @@ export function ProductsPage({
   }
 
   return (
-    <div className={pageShellClass({ embedded, spacing: 'loose' })}>
-      {!embedded ? (
+    <div className={pageShellClass({ embedded: embedded || popupMode, spacing: popupMode ? 'default' : 'loose' })}>
+      {popupMode ? null : !embedded ? (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Products</p>
@@ -1483,8 +1781,8 @@ export function ProductsPage({
                   <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={!isSubProduct}
-                      onChange={() => setProductType(false)}
+                      checked={!isSubProduct && !isVariableProduct}
+                      onChange={() => setProductKind('product')}
                       className="rounded border-border"
                     />
                     Product
@@ -1493,10 +1791,47 @@ export function ProductsPage({
                     <input
                       type="checkbox"
                       checked={isSubProduct}
-                      onChange={() => setProductType(true)}
+                      onChange={() => setProductKind('subProduct')}
                       className="rounded border-border"
                     />
                     Sub-Product
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isVariableProduct}
+                      onChange={() => setProductKind('variable')}
+                      className="rounded border-border"
+                    />
+                    Variable Product
+                  </label>
+                  <label
+                    className={`inline-flex items-center gap-2 text-xs ${
+                      isSubProduct ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                    }`}
+                    title={isSubProduct ? 'Sub-products cannot use Variable Component swaps.' : undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isVariableComponent}
+                      disabled={isSubProduct}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        setIsVariableComponent(on);
+                        if (on) {
+                          setVariableComponentConfig(prev => (
+                            prev.slots.length > 0 ? prev : blankVariableComponentConfig()
+                          ));
+                          setAliases([]);
+                          setParStock('');
+                          setPackagingLines([blankProductLine()]);
+                        } else {
+                          setVariableComponentConfig(blankVariableComponentConfig());
+                        }
+                      }}
+                      className="rounded border-border disabled:cursor-not-allowed"
+                    />
+                    Variable Component
                   </label>
                 </div>
               </div>
@@ -1507,7 +1842,7 @@ export function ProductsPage({
                   className={`flex flex-wrap gap-4 rounded-md border px-3 py-2 ${
                     isSubProduct ? 'border-border bg-muted/30 opacity-70' : 'border-transparent'
                   }`}
-                  title={isSubProduct ? 'Sub-products are prep items used inside a B2C or B2B product.' : undefined}
+                  title={isSubProduct ? 'Sub-products are prep items used inside a B2C or B2B Principal product.' : undefined}
                 >
                   <label className={`inline-flex items-center gap-2 text-xs ${isSubProduct ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                     <input
@@ -1526,7 +1861,7 @@ export function ProductsPage({
                     }`}
                     title={
                       !hasB2bProductCapability
-                        ? 'B2B products are available for Central Kitchen / Warehouse and Manufacturer.'
+                        ? 'B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.'
                         : undefined
                     }
                   >
@@ -1538,20 +1873,31 @@ export function ProductsPage({
                       onChange={() => handleB2bEnabledChange(true)}
                       className="border-border disabled:cursor-not-allowed"
                     />
-                    B2B
+                    B2B Principal
                   </label>
                 </div>
                 {isSubProduct ? (
                   <p className="text-[10px] text-muted-foreground">
-                    Sub-products are made or prepped as part of a B2C or B2B product — they are not sold directly on a channel.
+                    Sub-products are made or prepped as part of a B2C or B2B Principal product — they are not sold directly on a channel.
+                  </p>
+                ) : isVariableProduct ? (
+                  <p className="text-[10px] text-muted-foreground">
+                    Variable products sell on B2C or B2B with combination or weight-based pricing.
+                    {isVariableComponent
+                      ? ' Variable Component adds POS SWAP substitutes on recipe components.'
+                      : ''}
+                  </p>
+                ) : isVariableComponent ? (
+                  <p className="text-[10px] text-muted-foreground">
+                    Variable Component sells under a SWAP Name. Staff pick an alternate component at POS; Addon RRP applies when charged.
                   </p>
                 ) : !hasB2bProductCapability ? (
                   <p className="text-[10px] text-muted-foreground">
-                    B2B products are available for Central Kitchen / Warehouse and Manufacturer.
+                    B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.
                   </p>
                 ) : (
                   <p className="text-[10px] text-muted-foreground">
-                    A product is either B2C (POS / takeaway / online retail) or B2B (wholesale sales orders).
+                    A product is either B2C (POS / takeaway / online retail) or B2B Principal (wholesale sales orders).
                   </p>
                 )}
               </div>
@@ -1577,7 +1923,10 @@ export function ProductsPage({
                 <select
                   id="product-category"
                   value={category}
-                  onChange={e => setCategory(e.target.value)}
+                  onChange={e => {
+                    setCategory(e.target.value);
+                    setGroup('');
+                  }}
                   className={fieldCls}
                 >
                   <option value="">Select category…</option>
@@ -1609,6 +1958,16 @@ export function ProductsPage({
                   >
                     <Plus size={14} />
                   </button>
+                  <button
+                    type="button"
+                    onClick={openRenameGroup}
+                    disabled={!group.trim() || !selectedCompanyId}
+                    className={addBtnCls}
+                    title="Rename selected group (updates products + POS)"
+                    aria-label="Rename selected group"
+                  >
+                    <Pencil size={14} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -1616,12 +1975,18 @@ export function ProductsPage({
 
           <section className="rounded-lg border border-border bg-card p-4 space-y-4">
             <h3 className="text-sm font-semibold">
-              {isSubProduct ? 'Batch produce & Location' : 'Pricing, Par Stock & Location'}
+              {isSubProduct
+                ? 'Batch produce & Location'
+                : isVariableComponent
+                  ? 'Pricing & Location'
+                  : 'Pricing, Par Stock & Location'}
             </h3>
             <p className="text-[11px] text-muted-foreground -mt-2">
               {isSubProduct
                 ? 'Sub-products are made in batches for use as components inside a Product recipe. Set batch yield quantity and UOM so unit COGS is measurable.'
-                : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
+                : isVariableComponent
+                  ? 'SWAP Name appears on POS. Original and alternate components are configured in Variable Component below — no product aliases, par stock, or packaging.'
+                  : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
             </p>
 
             {isSubProduct ? (
@@ -1634,52 +1999,119 @@ export function ProductsPage({
                     value={name}
                     onChange={e => setName(e.target.value)}
                     placeholder="e.g. Burger Patty Prep, Espresso Base"
-                    className={fieldCls}
+                    className={`${fieldCls}${hasExactCatalogNameMatch(similarProductNameMatches) ? ' border-destructive focus:ring-destructive' : ''}`}
                   />
+                  <SimilarNameMatchesNotice matches={similarProductNameMatches} entityLabel="product" />
                 </div>
 
-                <SubProductBatchProduceFields
-                  batchQty={yieldQuantity}
-                  batchUom={yieldUom}
-                  altUnits={yieldAltUnits}
-                  onBatchQtyChange={setYieldQuantity}
-                  onBatchUomChange={setYieldUom}
-                  onAltUnitsChange={entries => setYieldAltUnits(clampSubProductAltUnits(entries))}
-                  cogsLabel={
-                    yieldUom && (parseFloat(yieldQuantity) || 0) > 0
-                      ? `${rm(subProductUnitCost)} / ${yieldUom}`
-                      : '—'
-                  }
-                  cogsHint={`Batch COGS ${rm(effectiveProductCogs)} ÷ ${yieldQuantity || '—'}`}
-                />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <SubProductBatchProduceFields
+                    batchQty={yieldQuantity}
+                    batchUom={yieldUom}
+                    altUnits={yieldAltUnits}
+                    onBatchQtyChange={setYieldQuantity}
+                    onBatchUomChange={setYieldUom}
+                    onAltUnitsChange={entries => setYieldAltUnits(clampSubProductAltUnits(entries))}
+                    cogsLabel={
+                      yieldUom && (parseFloat(yieldQuantity) || 0) > 0
+                        ? `${rm(subProductUnitCost)} / ${yieldUom}`
+                        : '—'
+                    }
+                    cogsHint={`Batch COGS ${rm(effectiveProductCogs)} ÷ ${yieldQuantity || '—'}`}
+                  />
+                  <div className="rounded-lg border border-border bg-muted/10 p-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
+                        <input
+                          id="expiry-period-days"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={expiryPeriodDays}
+                          onChange={e => setExpiryPeriodDays(e.target.value)}
+                          placeholder="e.g. 7"
+                          className={fieldCls}
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Each production batch expires this many days after its production date.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={labelCls} htmlFor="incubation-period-hours">Incubation (hours)</label>
+                        <input
+                          id="incubation-period-hours"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={activationPeriodHours}
+                          onChange={e => setActivationPeriodHours(e.target.value)}
+                          placeholder="Optional"
+                          className={fieldCls}
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Optional. Leave blank if the batch is sellable immediately after production.
+                          Enter hours to hold stock in incubation before it can be sold.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
+                        <input
+                          id="par-stock-qty"
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={parStock}
+                          onChange={e => setParStock(e.target.value)}
+                          placeholder="0"
+                          className={fieldCls}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={labelCls}>UOM</label>
+                        <p className={fieldCls}>{yieldUom || '—'}</p>
+                        <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </>
             ) : (
               <>
                 <div className="space-y-3">
-                  <div className="flex gap-1.5 items-end">
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      <label className={labelCls} htmlFor="principal-product-name">Principal Product Name</label>
-                      <input
-                        id="principal-product-name"
-                        type="text"
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        placeholder="e.g. Wagyu Burger, Espresso Latte"
-                        className={fieldCls}
-                      />
+                  <div className="space-y-1.5">
+                    <div className="flex gap-1.5 items-end">
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <label className={labelCls} htmlFor="principal-product-name">
+                          {isVariableComponent ? 'SWAP Name' : 'Principal Product Name'}
+                        </label>
+                        <input
+                          id="principal-product-name"
+                          type="text"
+                          value={name}
+                          onChange={e => setName(e.target.value)}
+                          placeholder={isVariableComponent
+                            ? 'e.g. Milk Swap, Protein Choice'
+                            : 'e.g. Wagyu Burger, Espresso Latte'}
+                          className={`${fieldCls}${hasExactCatalogNameMatch(similarProductNameMatches) ? ' border-destructive focus:ring-destructive' : ''}`}
+                        />
+                      </div>
+                      {!isVariableComponent ? (
+                        <button
+                          type="button"
+                          onClick={addAlias}
+                          className={addBtnCls}
+                          title="Add product alias"
+                          aria-label="Add product alias"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      ) : null}
                     </div>
-                    <button
-                      type="button"
-                      onClick={addAlias}
-                      className={addBtnCls}
-                      title="Add product alias"
-                      aria-label="Add product alias"
-                    >
-                      <Plus size={14} />
-                    </button>
+                    <SimilarNameMatchesNotice matches={similarProductNameMatches} entityLabel="product" />
                   </div>
 
-                  {aliases.length > 0 ? (
+                  {!isVariableComponent && aliases.length > 0 ? (
                     <div className="space-y-2 pl-3 border-l-2 border-primary/20">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1754,11 +2186,31 @@ export function ProductsPage({
                   ) : null}
                 </div>
 
+                {b2cEnabled && !b2bEnabled ? (
+                  <div className="space-y-1.5 max-w-xs">
+                    <label className={labelCls} htmlFor="product-uom">Product UOM</label>
+                    <select
+                      id="product-uom"
+                      value={yieldUom}
+                      onChange={e => setYieldUom(e.target.value)}
+                      className={fieldCls}
+                    >
+                      <option value="">Select Product UOM…</option>
+                      {productUomOptionList.map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">
+                      Used for product stock and as the default POS sales UOM.
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product COGS</p>
                     <p className="text-sm font-semibold mt-1">{rm(effectiveProductCogs)}</p>
-                    {!isSubProduct && b2cEnabled && !b2bEnabled && totalPackagingCost > 0 ? (
+                    {!isSubProduct && !isVariableComponent && b2cEnabled && !b2bEnabled && totalPackagingCost > 0 ? (
                       <p className="text-[10px] text-muted-foreground mt-0.5">
                         B2C dine-in excludes packaging; takeaway adds {rm(totalPackagingCost)} at POS.
                       </p>
@@ -1793,7 +2245,7 @@ export function ProductsPage({
               </>
             )}
 
-            {(isSubProduct || b2bEnabled) ? (
+            {!isSubProduct && b2bEnabled ? (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 max-w-2xl">
                 <div className="space-y-1.5">
                   <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
@@ -1831,28 +2283,7 @@ export function ProductsPage({
               </div>
             ) : null}
 
-            {isSubProduct ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-                <div className="space-y-1.5">
-                  <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
-                  <input
-                    id="par-stock-qty"
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={parStock}
-                    onChange={e => setParStock(e.target.value)}
-                    placeholder="0"
-                    className={fieldCls}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className={labelCls}>UOM</label>
-                  <p className={fieldCls}>{yieldUom || '—'}</p>
-                  <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
-                </div>
-              </div>
-            ) : (
+            {isVariableComponent || isSubProduct ? null : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
               <div className="space-y-1.5">
                 <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
@@ -1946,82 +2377,99 @@ export function ProductsPage({
           {!isSubProduct && b2bEnabled ? (
             <section className="rounded-lg border border-border bg-card p-4 space-y-3">
               <div>
-                <p className="text-sm font-semibold">Additional UOM</p>
+                <p className="text-sm font-semibold">Production UOM</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Alternate units for the principal B2B delivery unit
-                  {batchUomForAdditional ? ` (${batchUomForAdditional})` : ''}.
+                  Principal Production UOM plus up to two alternate production units for To Produce / Produced.
                 </p>
               </div>
-              {batchUomForAdditional ? (
-                <>
-                  <div className="flex gap-1.5 items-center max-w-md">
-                    <p className={`${fieldCls} flex-1`}>{batchUomForAdditional}</p>
-                    <button
-                      type="button"
-                      onClick={() => setYieldAltUnits(prev => createDefaultBatchAdditionalEntry(
-                        prev,
-                        String(batchQtyForAdditional),
-                        batchUomForAdditional,
-                      ))}
-                      disabled={!isEditing || saving}
-                      className={addBtnCls}
-                      title="Add additional UOM"
-                      aria-label="Add additional UOM"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                  <SubProductBatchAdditionalUoms
-                    yieldQuantity={String(batchQtyForAdditional)}
-                    yieldUom={batchUomForAdditional}
-                    altUnits={yieldAltUnits}
-                    onAltUnitsChange={setYieldAltUnits}
-                  />
-                </>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  Configure the principal delivery unit in B2B Sales to add alternate units.
-                </p>
-              )}
+              <B2bProductionUomFields
+                principalUnit={yieldUom}
+                altUnits={yieldAltUnits}
+                disabled={!isEditing || saving}
+                onPrincipalChange={setYieldUom}
+                onAltUnitsChange={entries => setYieldAltUnits(clampProductionAltUnits(entries))}
+              />
             </section>
           ) : null}
 
-          <ComponentLinesSection
-            title="Product Component"
-            description={!isSubProduct && b2bEnabled
-              ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
-              : 'Add smart components or sub-products from batch produce into this product recipe mix'}
-            lines={lines}
-            totalCost={totalCost}
-            totalLabel="Total cost"
-            availableComponents={availableComponents}
-            includeSubProducts
-            availableSubProducts={productComponentSubProducts}
-            subProductCatalog={subProductCatalog}
-            onUpdateLine={updateLine}
-            onComponentSelect={handleComponentSelect}
-            onSubProductSelect={handleSubProductSelect}
-            onRemoveLine={removeLine}
-            onAddLine={addLine}
-            onOpenAddComponent={lineKey => openAddComponent(lineKey, 'product')}
-            onOpenProductionMethod={() => setProductionMethodOpen(true)}
-            estimateComponentPrice={estimateComponentPrice}
-          />
+          {isVariableProduct ? (
+            <VariableProductSection
+              config={variableConfig}
+              onChange={setVariableConfig}
+              catalogProducts={savedProducts.filter(p => (
+                !p.isSubProduct
+                && p.active !== false
+                && (!selectedProductId || p.id !== Number(selectedProductId))
+                && (p.b2cEnabled || p.b2bEnabled)
+              ))}
+              disabled={!isEditing || saving}
+              baseRecipeCost={totalCost}
+              rrp={rrpValue}
+            />
+          ) : null}
 
-          <ComponentLinesSection
-            title="Packaging Cost"
-            description="Add packaging smart components and quantities to calculate packaging cost"
-            lines={packagingLines}
-            totalCost={totalPackagingCost}
-            totalLabel="Total packaging cost"
-            availableComponents={availableComponents}
-            onUpdateLine={updatePackagingLine}
-            onComponentSelect={handlePackagingComponentSelect}
-            onRemoveLine={removePackagingLine}
-            onAddLine={addPackagingLine}
-            onOpenAddComponent={lineKey => openAddComponent(lineKey, 'packaging')}
-            estimateComponentPrice={estimateComponentPrice}
-          />
+          {isVariableComponent && !(isVariableProduct && variableConfig.mode === 'combination') ? (
+            <VariableComponentSection
+              config={variableComponentConfig}
+              onChange={setVariableComponentConfig}
+              ingredients={availableComponents}
+              subProducts={productComponentSubProducts}
+              disabled={!isEditing || saving}
+            />
+          ) : null}
+
+          {!isVariableComponent && !(isVariableProduct && variableConfig.mode === 'combination') ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              <ComponentLinesSection
+                title="Product Component"
+                description={!isSubProduct && b2bEnabled
+                  ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
+                  : isVariableProduct
+                    ? 'Base recipe components for this variable product.'
+                    : 'Add smart components or sub-products from batch produce into this product recipe mix'}
+                lines={lines}
+                totalCost={totalCost}
+                totalLabel="Total cost"
+                availableComponents={availableComponents}
+                uomComponents={components}
+                includeSubProducts
+                availableSubProducts={productComponentSubProducts}
+                subProductCatalog={subProductCatalog}
+                onUpdateLine={updateLine}
+                onComponentSelect={handleComponentSelect}
+                onSubProductSelect={handleSubProductSelect}
+                onRemoveLine={removeLine}
+                onAddLine={addLine}
+                onOpenAddComponent={lineKey => openAddComponent(lineKey, 'product')}
+                estimateComponentPrice={estimateComponentPrice}
+              />
+              <ProductMethodBox
+                productKey={productKeyFromParts(
+                  selectedProductId ? Number(selectedProductId) : null,
+                  productId,
+                )}
+                disabled={!isEditing || saving}
+              />
+            </div>
+          ) : null}
+
+          {!isVariableComponent ? (
+            <ComponentLinesSection
+              title="Packaging Cost"
+              description="Add packaging smart components and quantities to calculate packaging cost"
+              lines={packagingLines}
+              totalCost={totalPackagingCost}
+              totalLabel="Total packaging cost"
+              availableComponents={availableComponents}
+              uomComponents={components}
+              onUpdateLine={updatePackagingLine}
+              onComponentSelect={handlePackagingComponentSelect}
+              onRemoveLine={removePackagingLine}
+              onAddLine={addPackagingLine}
+              onOpenAddComponent={lineKey => openAddComponent(lineKey, 'packaging')}
+              estimateComponentPrice={estimateComponentPrice}
+            />
+          ) : null}
           </fieldset>
 
           {error ? (
@@ -2061,13 +2509,14 @@ export function ProductsPage({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-border text-xs font-semibold hover:bg-muted/40 disabled:opacity-50"
                 >
                   <X size={14} />
-                  Close
+                  {popupMode ? 'Cancel' : 'Close'}
                 </button>
               ) : null}
-              {isEditing ? (
+              {isEditing || popupMode ? (
                 <button
                   type="button"
                   disabled={saving}
@@ -2075,7 +2524,7 @@ export function ProductsPage({
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
                 >
                   <Check size={14} />
-                  {saving ? 'Saving…' : selectedProductId ? 'Update product' : 'Save product'}
+                  {saving ? 'Saving…' : selectedProductId ? 'Save' : 'Save product'}
                 </button>
               ) : (
                 <>
@@ -2170,22 +2619,6 @@ export function ProductsPage({
               />
             );
           })() : null}
-
-          {productionMethodOpen ? (
-            <ProductionMethodModal
-              category={category}
-              group={group}
-              productName={name.trim() || 'Product'}
-              productKey={productKeyFromParts(
-                selectedProductId ? Number(selectedProductId) : null,
-                productId,
-              )}
-              productId={selectedProductId ? Number(selectedProductId) : null}
-              components={mapProductLinesToComponentItems(lines)}
-              yieldQuantity={parseFloat(yieldQuantity) || 1}
-              onClose={() => setProductionMethodOpen(false)}
-            />
-          ) : null}
         </>
       )}
     </div>

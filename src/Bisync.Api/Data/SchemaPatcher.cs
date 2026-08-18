@@ -1,6 +1,8 @@
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Bisync.Api.Data;
 
@@ -45,16 +47,28 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoFileName", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoContentType", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoBase64", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "BusinessHoursJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "FunctionalCurrency", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "FiscalYearStartMonth", "INTEGER NOT NULL DEFAULT 1");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "OpeningHoursJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "DeliveryAllowTimeEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "DeliveryAllowPeriodsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "TimeZoneId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "SecondaryContactUserId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "Active", "INTEGER NOT NULL DEFAULT 1");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "PhysicalSiteKey", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ConceptLabel", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ConceptSortOrder", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "LogoFileName", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "LogoContentType", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "LogoBase64", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "ProductPolicyTag", "TEXT NOT NULL DEFAULT 'non-halal'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "AllowPartialDelivery", "BOOLEAN NOT NULL DEFAULT FALSE");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "EngagedLocationIdsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "DeliveryDaysJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "Active", "BOOLEAN NOT NULL DEFAULT TRUE");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrders", "FinalDeliveryCompletedAt", "timestamp with time zone");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrders", "IsPreCommitted", "BOOLEAN NOT NULL DEFAULT FALSE");
@@ -63,6 +77,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrders", "SourceCommittedPurchaseOrderId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrderItems", "DeliveredQuantity", "NUMERIC NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrderItems", "DrawnQuantity", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrderItems", "SourceCommittedPurchaseOrderItemId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "OrderTemplates", "TemplateKind", "TEXT NOT NULL DEFAULT 'schedule'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "HalalCertNo", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "ProductExpiryDate", "TEXT NOT NULL DEFAULT ''");
@@ -90,6 +105,28 @@ public static class SchemaPatcher
             "PlatformLaunchSettings",
             "ModulesGoLiveJson",
             "TEXT NOT NULL DEFAULT '{}'");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PlatformPriceDisplaySettings" (
+                "Id" integer NOT NULL CONSTRAINT "PK_PlatformPriceDisplaySettings" PRIMARY KEY,
+                "PrincipalUomPriceDecimals" integer NOT NULL DEFAULT 4,
+                "AlternateUomPriceDecimals" integer NOT NULL DEFAULT 2,
+                "VendorDeliveryPriceDecimals" integer NOT NULL DEFAULT 2,
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedByEmail" TEXT NOT NULL DEFAULT ''
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "PlatformPriceDisplaySettings" (
+                "Id", "PrincipalUomPriceDecimals", "AlternateUomPriceDecimals",
+                "VendorDeliveryPriceDecimals", "UpdatedAt", "UpdatedByEmail"
+            )
+            SELECT 1, 4, 2, 2, NOW(), ''
+            WHERE NOT EXISTS (
+                SELECT 1 FROM "PlatformPriceDisplaySettings" WHERE "Id" = 1
+            );
+            """);
 
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "Vendors"
@@ -178,9 +215,24 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CompanyId", "INTEGER");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStock", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStockUom", "TEXT NOT NULL DEFAULT ''");
+        // Employee level leave Include flags — must exist before any request can read EmployeeLevels.
+        // Keep in critical bootstrap (not only deferred HrStartup) so /api/employee-levels cannot 500.
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "NUMERIC(8,2) NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmount", "NUMERIC(12,2) NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountPeriod", "TEXT NOT NULL DEFAULT 'Monthly'");
+        // LeaveBalances.AlCarryForward — required by /api/leave-balances (HR Module load).
+        // Keep in critical bootstrap (not only deferred HrStartup) so HR cannot 500 after deploy.
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "LeaveBalances", "AlCarryForward", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "Postcode", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "EngagementStatus", "TEXT NOT NULL DEFAULT 'none'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "LinkedCompanyId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "MinOrderAmount", "numeric");
@@ -197,11 +249,24 @@ public static class SchemaPatcher
         await BackfillCatalogCompanyIdsAsync(db);
         await EnsureCompanyScopedCatalogIndexesAsync(db);
         await ComponentIdentityMigrator.ApplyAsync(db);
+        await ProductCostRecalculator.RemountAllSubProductRecipeUnitsAsync(db);
+        await IngredientCatalogNormalizer.NormalizeExistingAsync(db);
+        await CategoryGroupRenameService.RemountPosGroupSynonymsAsync(db);
         await EnsureTenantConnectionsTableAsync(db);
         await BackfillTenantConnectionsAsync(db);
         await EnsureTenantRollupSnapshotsTableAsync(db);
         await EnsurePromotionsTablesAsync(db);
+        await EnsurePosPromotionsTablesAsync(db);
+        await EnsurePosProductMappingsTableAsync(db);
+        await EnsurePosPrepaidTablesAsync(db);
+        await EnsurePosSaleDetailsTableAsync(db);
+        await EnsurePosDevicesTablesAsync(db);
+        await EnsurePosDeviceSetupRulesTableAsync(db);
+        await EnsurePosModifierGroupsTablesAsync(db);
+        await EnsurePosConfigTypesTableAsync(db);
         await EnsureFifoIssueStockAsync(db);
+        await EnsureGlLedgerTablesAsync(db);
+        await EnsureGlBooksTablesAsync(db);
 
         // Resync identity sequences before seeders — SQLite→PostgreSQL migrations often leave sequences behind MAX(Id).
         await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);
@@ -212,6 +277,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "DocumentType", "TEXT NOT NULL DEFAULT 'PO'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "CompanyId", "INTEGER");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "LocationIdsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "DeliveryLocationExternalId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "InitiatedBy", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "ApprovedBy", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "ApprovedAt", "TEXT");
@@ -220,6 +286,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorShareToken", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedAt", "TEXT");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedBy", "TEXT NOT NULL DEFAULT ''");
+        // Model is DateOnly? — must be PostgreSQL date (legacy installs used TEXT).
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptExpiryDate", "date");
+        await MigrateVendorAcceptExpiryDateToDateAsync(db);
 
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "PurchaseOrders"
@@ -261,6 +330,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitLineKey", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitParentComponentId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "ProductExpiryDate", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "Remarks", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "DocumentAmount", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "RoundingResidual", "NUMERIC NOT NULL DEFAULT 0");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "UX_InventoryPurchases_SplitSource"
             ON "InventoryPurchases" ("SplitSourceType", "SplitSourceId", "SplitLineKey", "LocationExternalId")
@@ -464,8 +536,45 @@ public static class SchemaPatcher
 
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Rrp", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsBiProduct", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Products", "BiOfProductId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "BiSellable", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsVariableProduct", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMode", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableChoiceQty", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableOptionsJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMinCost", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMaxCost", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsVariableComponent", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableComponentOptionsJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosDeliveryUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosSalesUom", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
+
+        // Migrate legacy Variable Product "replacement" mode → Variable Component.
+        var variableProducts = await db.Products
+            .Where(p => p.IsVariableProduct)
+            .ToListAsync();
+        var replacementProducts = variableProducts
+            .Where(p => string.Equals(p.VariableMode, "replacement", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var product in replacementProducts)
+        {
+            product.IsVariableComponent = true;
+            if (!string.IsNullOrWhiteSpace(product.VariableOptionsJson)
+                && product.VariableOptionsJson.Trim() is not ("{}" or "[]"))
+            {
+                product.VariableComponentOptionsJson = product.VariableOptionsJson;
+            }
+            product.IsVariableProduct = false;
+            product.VariableMode = string.Empty;
+            product.VariableChoiceQty = 0;
+            product.VariableOptionsJson = "{}";
+            product.VariableMinCost = 0;
+            product.VariableMaxCost = 0;
+        }
+        if (replacementProducts.Count > 0)
+            await db.SaveChangesAsync();
 
         // B2C products with RRP are the POS retail channel — enable POS + default retail unit
         // so built/imported B2C recipes appear on POS Menu / Test Tap without a second tick.
@@ -500,6 +609,21 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldQuantity", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldUom", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldAltUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
+        var b2cProductUomBackfill = await db.Products
+            .Where(p => !p.IsSubProduct
+                && p.B2cEnabled
+                && p.Active
+                && (p.YieldUom == null || p.YieldUom.Trim() == string.Empty))
+            .ToListAsync();
+        foreach (var product in b2cProductUomBackfill)
+        {
+            product.YieldUom = "pcs";
+            if (product.YieldQuantity <= 0)
+                product.YieldQuantity = 1;
+        }
+        if (b2cProductUomBackfill.Count > 0)
+            await db.SaveChangesAsync();
+
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PackagingCost", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousTotalCost", "REAL NULL");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousPackagingCost", "REAL NULL");
@@ -578,6 +702,47 @@ public static class SchemaPatcher
         await db.Database.ExecuteSqlRawAsync("""
             CREATE INDEX IF NOT EXISTS "IX_B2bSalesOrders_CompanyId_Status"
             ON "B2bSalesOrders" ("CompanyId", "Status");
+            """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "B2bSalesOrders", "DeliveryOrderId", "INTEGER");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "DeliveryOrders" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_DeliveryOrders" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "DoNumber" TEXT NOT NULL DEFAULT '',
+                "IssueDate" TEXT NOT NULL DEFAULT '',
+                "SalesOrderId" INTEGER NOT NULL,
+                "SourcePurchaseOrderId" INTEGER,
+                "Status" TEXT NOT NULL DEFAULT 'issued',
+                "ReceivedDate" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL,
+                CONSTRAINT "FK_DeliveryOrders_B2bSalesOrders_SalesOrderId"
+                    FOREIGN KEY ("SalesOrderId") REFERENCES "B2bSalesOrders" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "DeliveryOrderLines" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_DeliveryOrderLines" PRIMARY KEY,
+                "DeliveryOrderId" INTEGER NOT NULL,
+                "SalesOrderLineId" INTEGER,
+                "ProductId" INTEGER NOT NULL,
+                "ProductAliasId" INTEGER,
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "Quantity" NUMERIC NOT NULL DEFAULT 0,
+                "Uom" TEXT NOT NULL DEFAULT '',
+                CONSTRAINT "FK_DeliveryOrderLines_DeliveryOrders_DeliveryOrderId"
+                    FOREIGN KEY ("DeliveryOrderId") REFERENCES "DeliveryOrders" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_DeliveryOrders_CompanyId_Status"
+            ON "DeliveryOrders" ("CompanyId", "Status");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_DeliveryOrders_SalesOrderId"
+            ON "DeliveryOrders" ("SalesOrderId");
             """);
 
         await db.Database.ExecuteSqlRawAsync("""
@@ -971,7 +1136,24 @@ public static class SchemaPatcher
                 "ProductName" TEXT NOT NULL DEFAULT '',
                 "AmountCents" bigint NOT NULL DEFAULT 0,
                 "Reason" TEXT NOT NULL DEFAULT '',
-                "VoidedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+                "VoidedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "AuthorizedBy" TEXT NOT NULL DEFAULT ''
+            );
+            """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosVoids", "AuthorizedBy", "TEXT NOT NULL DEFAULT ''");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosCancels" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosCancels" PRIMARY KEY,
+                "CompanyId" integer NOT NULL,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "ExternalId" TEXT NOT NULL,
+                "CheckNumber" integer NOT NULL DEFAULT 0,
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "AmountCents" bigint NOT NULL DEFAULT 0,
+                "Reason" TEXT NOT NULL DEFAULT '',
+                "CanceledBy" TEXT NOT NULL DEFAULT '',
+                "CanceledAt" timestamp with time zone NOT NULL DEFAULT NOW()
             );
             """);
 
@@ -1007,6 +1189,8 @@ public static class SchemaPatcher
         await TryCreateIndexAsync(db, "IX_PosPayments_Company_Method", "PosPayments", "\"CompanyId\", \"Method\"");
         await TryCreateUniqueIndexAsync(db, "IX_PosVoids_ExternalId", "PosVoids", "ExternalId");
         await TryCreateIndexAsync(db, "IX_PosVoids_CompanyId", "PosVoids", "\"CompanyId\"");
+        await TryCreateUniqueIndexAsync(db, "IX_PosCancels_ExternalId", "PosCancels", "ExternalId");
+        await TryCreateIndexAsync(db, "IX_PosCancels_CompanyId", "PosCancels", "\"CompanyId\"");
         await TryCreateUniqueIndexAsync(db, "IX_PosEodSessions_ExternalId", "PosEodSessions", "ExternalId");
         await TryCreateIndexAsync(db, "IX_PosEodSessions_CompanyId", "PosEodSessions", "\"CompanyId\"");
         try
@@ -1255,6 +1439,163 @@ public static class SchemaPatcher
 
         await TryCreateIndexAsync(db, "IX_VendorProducts_VendorExternalId", "VendorProducts", "\"VendorExternalId\"");
 
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "VendorProducts", "ReturnableDeposit", "boolean NOT NULL DEFAULT false");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "VendorProducts", "ReturnableItemName", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "VendorProducts", "ReturnableUom", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "VendorProducts", "ReturnableDepositAmount", "numeric NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "IsReturnableDeposit", "boolean NOT NULL DEFAULT false");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "ReturnableItemName", "TEXT NOT NULL DEFAULT ''");
+        await PurchaseOrderDepositCombinerMigrator.ApplyAsync(db);
+        // Vendor accept used to flip pre-committed masters to Accepted, blocking drawdown.
+        // Restore Committed status and re-link orphan release POs (e.g. WEIS-WPK-001-20260811).
+        if (await DatabaseSchemaHelper.TableExistsAsync(db, "PurchaseOrders")
+            && await DatabaseSchemaHelper.ColumnExistsAsync(db, "PurchaseOrders", "IsPreCommitted"))
+        {
+            await new PreCommittedPoDrawdownService(db)
+                .RepairAcceptedMastersAndOrphanReleasesAsync();
+        }
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ReturnableGoodsReturns" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_ReturnableGoodsReturns" PRIMARY KEY,
+                "CompanyId" integer,
+                "ReturnableItemName" TEXT NOT NULL DEFAULT '',
+                "Uom" TEXT NOT NULL DEFAULT '',
+                "UnitPrice" numeric NOT NULL DEFAULT 0,
+                "Quantity" numeric NOT NULL DEFAULT 0,
+                "Amount" numeric NOT NULL DEFAULT 0,
+                "ReturnDate" date NOT NULL DEFAULT CURRENT_DATE,
+                "CreditNoteNumber" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_ReturnableGoodsReturns_CompanyId", "ReturnableGoodsReturns", "\"CompanyId\"");
+        await TryCreateIndexAsync(db, "IX_ReturnableGoodsReturns_ItemName", "ReturnableGoodsReturns", "\"ReturnableItemName\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "CreditNotes" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_CreditNotes" PRIMARY KEY,
+                "CompanyId" integer,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "CreditNoteNumber" TEXT NOT NULL DEFAULT '',
+                "CreditNoteDate" date NOT NULL DEFAULT CURRENT_DATE,
+                "PurchaseOrderId" integer NOT NULL DEFAULT 0,
+                "PoNumber" TEXT NOT NULL DEFAULT '',
+                "PurchaseOrderItemId" integer NOT NULL DEFAULT 0,
+                "VendorExternalId" TEXT NOT NULL DEFAULT '',
+                "VendorName" TEXT NOT NULL DEFAULT '',
+                "VendorProductId" TEXT NOT NULL DEFAULT '',
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "DeliveryUom" TEXT NOT NULL DEFAULT '',
+                "DeliveryUnitPrice" numeric NOT NULL DEFAULT 0,
+                "Quantity" numeric NOT NULL DEFAULT 0,
+                "Amount" numeric NOT NULL DEFAULT 0,
+                "StockQuantity" numeric NOT NULL DEFAULT 0,
+                "StockUom" TEXT NOT NULL DEFAULT '',
+                "StockUnitPrice" numeric NOT NULL DEFAULT 0,
+                "Status" TEXT NOT NULL DEFAULT 'confirmed',
+                "CancelPurchaseOrderId" integer,
+                "CancelPoNumber" TEXT NOT NULL DEFAULT '',
+                "CancelDoOrInvoiceNumber" TEXT NOT NULL DEFAULT '',
+                "CancelledAt" timestamp with time zone,
+                "CancelledBy" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedAt" timestamp with time zone
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_CreditNotes_CompanyId", "CreditNotes", "\"CompanyId\"");
+        await TryCreateIndexAsync(db, "IX_CreditNotes_CompanyId_CreditNoteDate", "CreditNotes", "\"CompanyId\", \"CreditNoteDate\"");
+        await TryCreateIndexAsync(db, "IX_CreditNotes_PurchaseOrderItemId", "CreditNotes", "\"PurchaseOrderItemId\"");
+        await TryCreateIndexAsync(db, "IX_CreditNotes_Status", "CreditNotes", "\"Status\"");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "CreditNotes", "DocumentAmount", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "CreditNotes", "RoundingResidual", "NUMERIC NOT NULL DEFAULT 0");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "CentralStoreConfigs" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_CentralStoreConfigs" PRIMARY KEY,
+                "CompanyId" integer NOT NULL DEFAULT 0,
+                "Active" boolean NOT NULL DEFAULT false,
+                "StoreLocationExternalId" TEXT NOT NULL DEFAULT '',
+                "KitchenLocationExternalId" TEXT NOT NULL DEFAULT '',
+                "ActivatedAt" timestamp with time zone,
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateIndexAsync(db, "UX_CentralStoreConfigs_CompanyId", "CentralStoreConfigs", "\"CompanyId\"");
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE UNIQUE INDEX IF NOT EXISTS "UX_CentralStoreConfigs_CompanyId_Unique"
+                ON "CentralStoreConfigs" ("CompanyId");
+                """);
+        }
+        catch { /* already exists */ }
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "StoreRequisitions" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_StoreRequisitions" PRIMARY KEY,
+                "CompanyId" integer,
+                "RequisitionNumber" TEXT NOT NULL DEFAULT '',
+                "ProductId" integer NOT NULL DEFAULT 0,
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "IsSubProduct" boolean NOT NULL DEFAULT false,
+                "BatchQty" numeric NOT NULL DEFAULT 0,
+                "StoreLocationExternalId" TEXT NOT NULL DEFAULT '',
+                "KitchenLocationExternalId" TEXT NOT NULL DEFAULT '',
+                "Status" TEXT NOT NULL DEFAULT 'pending',
+                "RequestedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "IssuedAt" timestamp with time zone,
+                "IssuedBy" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_StoreRequisitions_CompanyId", "StoreRequisitions", "\"CompanyId\"");
+        await TryCreateIndexAsync(db, "IX_StoreRequisitions_Status", "StoreRequisitions", "\"Status\"");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "Kind", "TEXT NOT NULL DEFAULT 'production'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "RequestedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "ReceivedAt", "timestamp with time zone NULL");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "StoreRequisitions", "ReceivedBy", "TEXT NOT NULL DEFAULT ''");
+        await TryCreateIndexAsync(db, "IX_StoreRequisitions_Kind", "StoreRequisitions", "\"Kind\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "StoreRequisitionLines" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_StoreRequisitionLines" PRIMARY KEY,
+                "StoreRequisitionId" integer NOT NULL DEFAULT 0,
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "Uom" TEXT NOT NULL DEFAULT '',
+                "RequiredQty" numeric NOT NULL DEFAULT 0,
+                "IssuedQty" numeric NOT NULL DEFAULT 0,
+                "UnitPrice" numeric NOT NULL DEFAULT 0
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_StoreRequisitionLines_StoreRequisitionId", "StoreRequisitionLines", "\"StoreRequisitionId\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ProductionStockHolds" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_ProductionStockHolds" PRIMARY KEY,
+                "CompanyId" integer,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "Uom" TEXT NOT NULL DEFAULT '',
+                "Quantity" numeric NOT NULL DEFAULT 0,
+                "UnitPrice" numeric NOT NULL DEFAULT 0,
+                "StoreRequisitionId" integer NOT NULL DEFAULT 0,
+                "StoreRequisitionLineId" integer NOT NULL DEFAULT 0,
+                "ProductId" integer NOT NULL DEFAULT 0,
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "Status" TEXT NOT NULL DEFAULT 'held',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "DepletedAt" timestamp with time zone
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_ProductionStockHolds_CompanyId", "ProductionStockHolds", "\"CompanyId\"");
+        await TryCreateIndexAsync(db, "IX_ProductionStockHolds_Status", "ProductionStockHolds", "\"Status\"");
+        await TryCreateIndexAsync(db, "IX_ProductionStockHolds_Location", "ProductionStockHolds", "\"LocationExternalId\"");
+
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "VendorRatings" (
                 "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_VendorRatings" PRIMARY KEY,
@@ -1437,6 +1778,14 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "InviteTokenExpiresAt", "TIMESTAMP");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "PasswordResetToken", "TEXT");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "PasswordResetTokenExpiresAt", "TIMESTAMP");
+        var hadMustChangePassword = await DatabaseSchemaHelper.ColumnExistsAsync(db, "DevTeamUsers", "MustChangePassword");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "MustChangePassword", "BOOLEAN NOT NULL DEFAULT FALSE");
+        if (!hadMustChangePassword)
+        {
+            // One-shot rollout: every non-root operator starts on Pass@123 and must change it after first login.
+            await db.Database.ExecuteSqlRawAsync(
+                """UPDATE "DevTeamUsers" SET "MustChangePassword" = TRUE WHERE "IsRoot" = FALSE""");
+        }
         await TryCreateUniqueIndexAsync(db, "IX_DevTeamUsers_Email", "DevTeamUsers", "Email");
 
         await db.Database.ExecuteSqlRawAsync("""
@@ -1712,25 +2061,1344 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "B2bSalesOrderLines", "IsCombo", "BOOLEAN NOT NULL DEFAULT FALSE");
     }
 
+    static async Task EnsurePosPromotionsTablesAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosPromotions" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosPromotions" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "StartDate" date NOT NULL,
+                "EndDate" date,
+                "EndDateOpen" BOOLEAN NOT NULL DEFAULT FALSE,
+                "StartTime" time NOT NULL DEFAULT '00:00:00',
+                "EndTime" time NOT NULL DEFAULT '23:59:00',
+                "RepeatMode" TEXT NOT NULL DEFAULT 'daily',
+                "DaysOfWeekJson" TEXT NOT NULL DEFAULT '[]',
+                "FilterCategory" TEXT NULL,
+                "FilterGroup" TEXT NULL,
+                "PromoType" TEXT NOT NULL DEFAULT 'discountPercent',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedBy" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosPromotions_CompanyId_Active"
+            ON "PosPromotions" ("CompanyId", "Active");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosPromotionProducts" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosPromotionProducts" PRIMARY KEY,
+                "PosPromotionId" INTEGER NOT NULL,
+                "ProductId" INTEGER NOT NULL,
+                "ProductCode" TEXT NOT NULL DEFAULT '',
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "Rrp" NUMERIC NOT NULL DEFAULT 0,
+                "Cogs" NUMERIC NOT NULL DEFAULT 0,
+                "Rpp" NUMERIC NOT NULL DEFAULT 0,
+                "DiscountPercent" NUMERIC NOT NULL DEFAULT 0,
+                CONSTRAINT "FK_PosPromotionProducts_PosPromotions_PosPromotionId"
+                    FOREIGN KEY ("PosPromotionId") REFERENCES "PosPromotions" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosPromotionProducts_PosPromotionId_ProductId"
+            ON "PosPromotionProducts" ("PosPromotionId", "ProductId");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosPromotionProducts_ProductId"
+            ON "PosPromotionProducts" ("ProductId");
+            """);
+
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "PromotionKind", "TEXT NOT NULL DEFAULT 'timeBase'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "ValidityPeriodValue", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "ValidityPeriodUnit", "TEXT NOT NULL DEFAULT 'days'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "PackageQty", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "PackageUom", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "PackageRrp", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "PackageTotalValue", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "PackageRpp", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "DiscountAmount", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "DepletionMethod", "TEXT NOT NULL DEFAULT 'salesUnit'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPromotions", "DepletionUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
+    }
+
+    static async Task EnsurePosProductMappingsTableAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosProductMappings" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosProductMappings" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "ProductId" INTEGER NOT NULL,
+                "ProductCode" TEXT NOT NULL DEFAULT '',
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "PluNumber" TEXT NOT NULL DEFAULT '',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosProductMappings_CompanyId_ProductId"
+            ON "PosProductMappings" ("CompanyId", "ProductId");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosProductMappings_CompanyId_PluNumber"
+            ON "PosProductMappings" ("CompanyId", "PluNumber");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosProductMappings_CompanyId_Active"
+            ON "PosProductMappings" ("CompanyId", "Active");
+            """);
+    }
+
+    static async Task EnsurePosPrepaidTablesAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosPrepaidPurchases" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosPrepaidPurchases" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "PosPromotionId" INTEGER NOT NULL,
+                "ProductId" INTEGER NOT NULL,
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "PosCustomerId" INTEGER,
+                "CustomerName" TEXT NOT NULL DEFAULT '',
+                "CustomerMobile" TEXT NOT NULL DEFAULT '',
+                "PurchasedAt" timestamp with time zone NOT NULL,
+                "ExpiresAt" timestamp with time zone,
+                "PackageQty" NUMERIC NOT NULL DEFAULT 0,
+                "PackageUom" TEXT NOT NULL DEFAULT '',
+                "PackageRpp" NUMERIC NOT NULL DEFAULT 0,
+                "BalanceRemaining" NUMERIC NOT NULL DEFAULT 0,
+                "Status" TEXT NOT NULL DEFAULT 'active',
+                "CheckNumber" INTEGER,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_PosPrepaidPurchases_CompanyId_CustomerMobile", "PosPrepaidPurchases", "\"CompanyId\", \"CustomerMobile\"");
+        await TryCreateIndexAsync(db, "IX_PosPrepaidPurchases_PosPromotionId", "PosPrepaidPurchases", "\"PosPromotionId\"");
+        await TryCreateIndexAsync(db, "IX_PosPrepaidPurchases_Status", "PosPrepaidPurchases", "\"Status\"");
+        await TryCreateIndexAsync(db, "IX_PosPrepaidPurchases_CompanyId_Status", "PosPrepaidPurchases", "\"CompanyId\", \"Status\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosPrepaidLedgers" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosPrepaidLedgers" PRIMARY KEY,
+                "PosPrepaidPurchaseId" INTEGER NOT NULL,
+                "EntryType" TEXT NOT NULL DEFAULT '',
+                "QtyDelta" NUMERIC NOT NULL DEFAULT 0,
+                "UnitCode" TEXT NOT NULL DEFAULT '',
+                "UnitLabel" TEXT NOT NULL DEFAULT '',
+                "QtyPerUnit" NUMERIC NOT NULL DEFAULT 1,
+                "ProductId" INTEGER,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "CheckNumber" INTEGER,
+                "Note" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "CreatedBy" TEXT NOT NULL DEFAULT '',
+                CONSTRAINT "FK_PosPrepaidLedgers_PosPrepaidPurchases_PosPrepaidPurchaseId"
+                    FOREIGN KEY ("PosPrepaidPurchaseId") REFERENCES "PosPrepaidPurchases" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_PosPrepaidLedgers_PosPrepaidPurchaseId", "PosPrepaidLedgers", "\"PosPrepaidPurchaseId\"");
+    }
+
+    public static async Task EnsurePosDeviceSetupRulesTableAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosDeviceSetupRules" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosDeviceSetupRules" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "ProductCategory" TEXT NOT NULL DEFAULT '',
+                "ProductGroup" TEXT NOT NULL DEFAULT '',
+                "ProductId" INTEGER,
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "PrimaryDeviceId" INTEGER,
+                "SecondaryDeviceId" INTEGER,
+                "ConcurrentDeviceId" INTEGER,
+                "Sequence" INTEGER NOT NULL DEFAULT 0,
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosDeviceSetupRules_CompanyId_Location_Active"
+            ON "PosDeviceSetupRules" ("CompanyId", "LocationExternalId", "Active");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosDeviceSetupRules_CompanyId_ProductId"
+            ON "PosDeviceSetupRules" ("CompanyId", "ProductId");
+            """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(
+            db, "PosDeviceSetupRules", "PrimaryDeviceType", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(
+            db, "PosDeviceSetupRules", "SecondaryDeviceType", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(
+            db, "PosDeviceSetupRules", "ConcurrentDeviceType", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    static async Task EnsurePosDevicesTablesAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosDevices" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosDevices" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "Name" TEXT NOT NULL DEFAULT '',
+                "DeviceType" TEXT NOT NULL DEFAULT '',
+                "ConnectionType" TEXT NOT NULL DEFAULT 'ethernet',
+                "HostAddress" TEXT NOT NULL DEFAULT '',
+                "Port" INTEGER,
+                "MacAddress" TEXT NOT NULL DEFAULT '',
+                "SubnetMask" TEXT NOT NULL DEFAULT '',
+                "Gateway" TEXT NOT NULL DEFAULT '',
+                "DnsPrimary" TEXT NOT NULL DEFAULT '',
+                "DnsSecondary" TEXT NOT NULL DEFAULT '',
+                "Hostname" TEXT NOT NULL DEFAULT '',
+                "NetworkNotesJson" TEXT NOT NULL DEFAULT '{{}}',
+                "PrinterSdkCode" TEXT NOT NULL DEFAULT '',
+                "PrinterBrand" TEXT NOT NULL DEFAULT '',
+                "PrinterModel" TEXT NOT NULL DEFAULT '',
+                "PaperWidthMm" INTEGER,
+                "PrintAlignment" TEXT NOT NULL DEFAULT 'left',
+                "PrintMarginLeft" INTEGER NOT NULL DEFAULT 0,
+                "PrintMarginRight" INTEGER NOT NULL DEFAULT 0,
+                "PrinterSetupComplete" BOOLEAN NOT NULL DEFAULT FALSE,
+                "LastProbeStatus" TEXT NOT NULL DEFAULT '',
+                "LastProbedAt" timestamp with time zone,
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedBy" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosDevices_CompanyId_Location_Active"
+            ON "PosDevices" ("CompanyId", "LocationExternalId", "Active");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosDevices_CompanyId_DeviceType"
+            ON "PosDevices" ("CompanyId", "DeviceType");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosPrinterSdks" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosPrinterSdks" PRIMARY KEY,
+                "SdkCode" TEXT NOT NULL DEFAULT '',
+                "Brand" TEXT NOT NULL DEFAULT '',
+                "DisplayName" TEXT NOT NULL DEFAULT '',
+                "Protocol" TEXT NOT NULL DEFAULT '',
+                "Version" TEXT NOT NULL DEFAULT '',
+                "Description" TEXT NOT NULL DEFAULT '',
+                "ModelHints" TEXT NOT NULL DEFAULT '',
+                "DefaultPort" INTEGER NOT NULL DEFAULT 9100,
+                "SupportedPaperWidthsJson" TEXT NOT NULL DEFAULT '[58,80]',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "Platform", "TEXT NOT NULL DEFAULT 'any'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "PackageKind", "TEXT NOT NULL DEFAULT 'dialect'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "ExternalUrl", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "ArtifactFolder", "TEXT NOT NULL DEFAULT ''");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosPrinterSdks_SdkCode"
+            ON "PosPrinterSdks" ("SdkCode");
+            """);
+
+        await Services.PosPrinterSdkCatalog.EnsureSeededAsync(db);
+    }
+
+    static async Task EnsurePosModifierGroupsTablesAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosModifierGroups" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosModifierGroups" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Kind" TEXT NOT NULL DEFAULT 'food',
+                "Name" TEXT NOT NULL DEFAULT '',
+                "Sequence" INTEGER NOT NULL DEFAULT 0,
+                "Required" BOOLEAN NOT NULL DEFAULT FALSE,
+                "MinSelect" INTEGER NOT NULL DEFAULT 1,
+                "MaxSelect" INTEGER NOT NULL DEFAULT 1,
+                "AffectsStock" BOOLEAN NOT NULL DEFAULT FALSE,
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosModifierGroups_CompanyId_Kind_Active"
+            ON "PosModifierGroups" ("CompanyId", "Kind", "Active");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosModifierOptions" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosModifierOptions" PRIMARY KEY,
+                "PosModifierGroupId" INTEGER NOT NULL,
+                "Label" TEXT NOT NULL DEFAULT '',
+                "Sequence" INTEGER NOT NULL DEFAULT 0,
+                "ExtraChargeCents" bigint NOT NULL DEFAULT 0,
+                "LinkedProductId" INTEGER,
+                "LinkedProductName" TEXT NOT NULL DEFAULT '',
+                "LinkedComponentId" TEXT NOT NULL DEFAULT '',
+                "LinkedComponentName" TEXT NOT NULL DEFAULT '',
+                "BaseComponentId" TEXT NOT NULL DEFAULT '',
+                "BaseComponentName" TEXT NOT NULL DEFAULT '',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                CONSTRAINT "FK_PosModifierOptions_PosModifierGroups_PosModifierGroupId"
+                    FOREIGN KEY ("PosModifierGroupId") REFERENCES "PosModifierGroups" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosModifierOptions", "BaseComponentId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosModifierOptions", "BaseComponentName", "TEXT NOT NULL DEFAULT ''");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosModifierOptions_PosModifierGroupId"
+            ON "PosModifierOptions" ("PosModifierGroupId");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosModifierAttachments" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosModifierAttachments" PRIMARY KEY,
+                "PosModifierGroupId" INTEGER NOT NULL,
+                "TargetType" TEXT NOT NULL DEFAULT 'product-group',
+                "TargetProductCategory" TEXT NOT NULL DEFAULT '',
+                "TargetProductGroup" TEXT NOT NULL DEFAULT '',
+                "TargetProductId" INTEGER,
+                "TargetProductName" TEXT NOT NULL DEFAULT '',
+                CONSTRAINT "FK_PosModifierAttachments_PosModifierGroups_PosModifierGroupId"
+                    FOREIGN KEY ("PosModifierGroupId") REFERENCES "PosModifierGroups" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(
+            db, "PosModifierAttachments", "TargetProductCategory", "TEXT NOT NULL DEFAULT ''");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosModifierAttachments_PosModifierGroupId"
+            ON "PosModifierAttachments" ("PosModifierGroupId");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosModifierAttachments_TargetProductId"
+            ON "PosModifierAttachments" ("TargetProductId");
+            """);
+    }
+
+    static async Task EnsurePosConfigTypesTableAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosConfigTypes" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosConfigTypes" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Kind" TEXT NOT NULL DEFAULT 'payment',
+                "Name" TEXT NOT NULL DEFAULT '',
+                "Code" TEXT NOT NULL DEFAULT '',
+                "Sequence" INTEGER NOT NULL DEFAULT 0,
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "IncludeAll" BOOLEAN NOT NULL DEFAULT FALSE,
+                "ExceptionGroupsJson" TEXT NOT NULL DEFAULT '[]',
+                "ExceptionProductIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "Percentage" NUMERIC(8,2) NOT NULL DEFAULT 0,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "IncludeAll", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "ExceptionGroupsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "ExceptionProductIdsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "Percentage", "NUMERIC(8,2) NOT NULL DEFAULT 0");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosConfigTypes_CompanyId_Kind_Code"
+            ON "PosConfigTypes" ("CompanyId", "Kind", "Code");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosConfigTypes_CompanyId_Kind_Active"
+            ON "PosConfigTypes" ("CompanyId", "Kind", "Active");
+            """);
+    }
+
+    /// <summary>Safe to run after Kestrel is listening (also called from deferred startup / tax-service API).</summary>
+    public static async Task EnsurePosTaxServiceConfigsTableAsync(BisyncDbContext db)
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await db.Database.OpenConnectionAsync();
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "PosTaxServiceConfigs" (
+                    "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosTaxServiceConfigs" PRIMARY KEY,
+                    "CompanyId" INTEGER NOT NULL,
+                    "ConfigJson" TEXT NOT NULL DEFAULT '{}',
+                    "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosTaxServiceConfigs_CompanyId"
+                ON "PosTaxServiceConfigs" ("CompanyId");
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    /// <summary>Safe to run after Kestrel is listening (also called from deferred startup / floor-plan API).</summary>
+    public static async Task EnsurePosFloorPlansTableAsync(BisyncDbContext db)
+    {
+        // Prefer ADO so DDL is not wrapped in an EF ambient transaction.
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await db.Database.OpenConnectionAsync();
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "PosFloorPlans" (
+                    "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosFloorPlans" PRIMARY KEY,
+                    "CompanyId" INTEGER NOT NULL DEFAULT 0,
+                    "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                    "LayoutJson" TEXT NOT NULL DEFAULT '{}',
+                    "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosFloorPlans_Company_Location"
+                ON "PosFloorPlans" ("CompanyId", "LocationExternalId");
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await EnsurePosFloorPlanVersionsTableAsync(db);
+    }
+
+    /// <summary>Snapshots of floor layouts before overwrite (recovery / audit).</summary>
+    public static async Task EnsurePosFloorPlanVersionsTableAsync(BisyncDbContext db)
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await db.Database.OpenConnectionAsync();
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "PosFloorPlanVersions" (
+                    "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosFloorPlanVersions" PRIMARY KEY,
+                    "CompanyId" INTEGER NOT NULL DEFAULT 0,
+                    "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                    "LayoutJson" TEXT NOT NULL DEFAULT '{}',
+                    "CapturedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                    "Source" TEXT NOT NULL DEFAULT 'overwrite'
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE INDEX IF NOT EXISTS "IX_PosFloorPlanVersions_Company_Location_Captured"
+                ON "PosFloorPlanVersions" ("CompanyId", "LocationExternalId", "CapturedAt");
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    /// <summary>Customer waitlist parties joined via public /WAITLIST QR form.</summary>
+    public static async Task EnsurePosWaitlistEntriesTableAsync(BisyncDbContext db)
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await db.Database.OpenConnectionAsync();
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "PosWaitlistEntries" (
+                    "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosWaitlistEntries" PRIMARY KEY,
+                    "CompanyId" INTEGER NOT NULL DEFAULT 0,
+                    "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                    "Name" TEXT NOT NULL DEFAULT '',
+                    "Mobile" TEXT NOT NULL DEFAULT '',
+                    "Pax" INTEGER NOT NULL DEFAULT 1,
+                    "Status" TEXT NOT NULL DEFAULT 'waiting',
+                    "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                    "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE INDEX IF NOT EXISTS "IX_PosWaitlistEntries_Company_Location_Status"
+                ON "PosWaitlistEntries" ("CompanyId", "LocationExternalId", "Status");
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    /// <summary>Guest e-menu orders placed via public /QR link.</summary>
+    public static async Task EnsurePosQrOrdersTableAsync(BisyncDbContext db)
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await db.Database.OpenConnectionAsync();
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "PosQrOrders" (
+                    "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosQrOrders" PRIMARY KEY,
+                    "CompanyId" INTEGER NOT NULL DEFAULT 0,
+                    "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                    "TableLabel" TEXT NOT NULL DEFAULT '',
+                    "GuestName" TEXT NOT NULL DEFAULT '',
+                    "Status" TEXT NOT NULL DEFAULT 'open',
+                    "ItemsJson" TEXT NOT NULL DEFAULT '[]',
+                    "TotalValue" NUMERIC NOT NULL DEFAULT 0,
+                    "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                    "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                CREATE INDEX IF NOT EXISTS "IX_PosQrOrders_Company_Location_Status"
+                ON "PosQrOrders" ("CompanyId", "LocationExternalId", "Status");
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    static async Task EnsurePosSaleDetailsTableAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "PosSaleDetails" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_PosSaleDetails" PRIMARY KEY,
+                "ProductId" INTEGER NOT NULL,
+                "ProductCode" TEXT NOT NULL DEFAULT '',
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "CompanyId" INTEGER,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "SalesChannel" TEXT NOT NULL DEFAULT 'pos',
+                "VariableMode" TEXT NOT NULL DEFAULT '',
+                "QuantitySold" NUMERIC NOT NULL DEFAULT 0,
+                "EnteredWeight" NUMERIC,
+                "WeightUom" TEXT NOT NULL DEFAULT '',
+                "ReferenceWeightQty" NUMERIC,
+                "SelectionsJson" TEXT NOT NULL DEFAULT '[]',
+                "ComponentUsagesJson" TEXT NOT NULL DEFAULT '[]',
+                "CreatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosSaleDetails_ProductId_CreatedAt"
+            ON "PosSaleDetails" ("ProductId", "CreatedAt");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_PosSaleDetails_CompanyId_Location_CreatedAt"
+            ON "PosSaleDetails" ("CompanyId", "LocationExternalId", "CreatedAt");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "TeamConversations" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_TeamConversations" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Type" TEXT NOT NULL DEFAULT 'direct',
+                "Title" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_TeamConversations_CompanyId_Type"
+            ON "TeamConversations" ("CompanyId", "Type");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "TeamConversationMembers" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_TeamConversationMembers" PRIMARY KEY,
+                "ConversationId" INTEGER NOT NULL,
+                "EmployeeId" INTEGER NOT NULL,
+                "JoinedAt" timestamp with time zone NOT NULL,
+                "LastReadAt" timestamp with time zone NULL,
+                CONSTRAINT "FK_TeamConversationMembers_TeamConversations_ConversationId"
+                    FOREIGN KEY ("ConversationId") REFERENCES "TeamConversations" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_TeamConversationMembers_ConversationId_EmployeeId"
+            ON "TeamConversationMembers" ("ConversationId", "EmployeeId");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "TeamChatMessages" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_TeamChatMessages" PRIMARY KEY,
+                "ConversationId" INTEGER NOT NULL,
+                "SenderEmployeeId" INTEGER NOT NULL,
+                "Body" TEXT NOT NULL DEFAULT '',
+                "AttachmentBase64" TEXT NOT NULL DEFAULT '',
+                "AttachmentContentType" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                CONSTRAINT "FK_TeamChatMessages_TeamConversations_ConversationId"
+                    FOREIGN KEY ("ConversationId") REFERENCES "TeamConversations" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_TeamChatMessages_ConversationId_CreatedAt"
+            ON "TeamChatMessages" ("ConversationId", "CreatedAt");
+            """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "TeamConversations", "CreatedByEmployeeId", "INTEGER NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "TeamConversations", "ProjectStartDate", "date NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "TeamConversations", "ProjectTargetDate", "date NULL");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "TeamProjectTasks" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_TeamProjectTasks" PRIMARY KEY,
+                "ConversationId" INTEGER NOT NULL,
+                "Title" TEXT NOT NULL DEFAULT '',
+                "SortOrder" INTEGER NOT NULL DEFAULT 0,
+                "Completed" BOOLEAN NOT NULL DEFAULT FALSE,
+                "AssigneeEmployeeIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL,
+                CONSTRAINT "FK_TeamProjectTasks_TeamConversations_ConversationId"
+                    FOREIGN KEY ("ConversationId") REFERENCES "TeamConversations" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_TeamProjectTasks_ConversationId_SortOrder"
+            ON "TeamProjectTasks" ("ConversationId", "SortOrder");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "DeliveryLocations" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_DeliveryLocations" PRIMARY KEY,
+                "ExternalId" TEXT NOT NULL DEFAULT '',
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "CompanyId" INTEGER NULL,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "AddressLine1" TEXT NOT NULL DEFAULT '',
+                "AddressLine2" TEXT NOT NULL DEFAULT '',
+                "City" TEXT NOT NULL DEFAULT '',
+                "StateProvince" TEXT NOT NULL DEFAULT '',
+                "Postcode" TEXT NOT NULL DEFAULT '',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_DeliveryLocations_ExternalId"
+            ON "DeliveryLocations" ("ExternalId");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_DeliveryLocations_LocationExternalId_Active"
+            ON "DeliveryLocations" ("LocationExternalId", "Active");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_DeliveryLocations_CompanyId_Active"
+            ON "DeliveryLocations" ("CompanyId", "Active");
+            """);
+    }
+
     static async Task EnsureFifoIssueStockAsync(BisyncDbContext db)
     {
         await db.Database.ExecuteSqlRawAsync(FifoIssueStockSql.CreateTablesAndFunction);
+    }
+
+    /// <summary>
+    /// Legacy SQLite→Postgres path created VendorAcceptExpiryDate as TEXT while the
+    /// entity uses <see cref="Models.PurchaseOrder.VendorAcceptExpiryDate"/> as DateOnly?.
+    /// Npgsql cannot read DateOnly from text columns when a value is present.
+    /// </summary>
+    public static async Task MigrateVendorAcceptExpiryDateToDateAsync(BisyncDbContext db)
+    {
+        if (!await DatabaseSchemaHelper.TableExistsAsync(db, "PurchaseOrders")
+            || !await DatabaseSchemaHelper.ColumnExistsAsync(db, "PurchaseOrders", "VendorAcceptExpiryDate"))
+            return;
+
+        // Prefer a direct ALTER (idempotent when already date). Avoid relying solely on
+        // information_schema casing, which can miss the column on some Postgres setups.
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE "PurchaseOrders"
+                SET "VendorAcceptExpiryDate" = left(btrim("VendorAcceptExpiryDate"::text), 10)
+                WHERE "VendorAcceptExpiryDate" IS NOT NULL
+                  AND pg_typeof("VendorAcceptExpiryDate")::text IN ('text', 'character varying')
+                  AND length(btrim("VendorAcceptExpiryDate"::text)) >= 10
+                  AND left(btrim("VendorAcceptExpiryDate"::text), 10) ~ '^\d{4}-\d{2}-\d{2}$';
+                """);
+        }
+        catch
+        {
+            // Column may already be date — typeof/update path not needed.
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE "PurchaseOrders"
+                ALTER COLUMN "VendorAcceptExpiryDate" TYPE date
+                USING (
+                  CASE
+                    WHEN "VendorAcceptExpiryDate" IS NULL THEN NULL
+                    WHEN pg_typeof("VendorAcceptExpiryDate")::text IN ('date') THEN "VendorAcceptExpiryDate"::date
+                    WHEN btrim("VendorAcceptExpiryDate"::text) = '' THEN NULL
+                    WHEN left(btrim("VendorAcceptExpiryDate"::text), 10) ~ '^\d{4}-\d{2}-\d{2}$'
+                      THEN left(btrim("VendorAcceptExpiryDate"::text), 10)::date
+                    ELSE NULL
+                  END
+                );
+                """);
+        }
+        catch
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync("""
+                    ALTER TABLE "PurchaseOrders"
+                    ALTER COLUMN "VendorAcceptExpiryDate" TYPE date
+                    USING (NULL::date);
+                    """);
+            }
+            catch
+            {
+                // Already date, or locked — leave as-is.
+            }
+        }
+
+        try
+        {
+            if (db.Database.GetDbConnection() is Npgsql.NpgsqlConnection npgsql)
+            {
+                if (npgsql.State != System.Data.ConnectionState.Open)
+                    await npgsql.OpenAsync();
+                await npgsql.ReloadTypesAsync();
+            }
+        }
+        catch
+        {
+            // Type reload is best-effort after ALTER.
+        }
+    }
+
+    /// <summary>Apply VendorAcceptExpiryDate text→date on every active tenant operational DB.</summary>
+    public static async Task MigrateVendorAcceptExpiryDateAcrossTenantsAsync(
+        BisyncDbContext controlDb,
+        ILogger? logger = null,
+        CancellationToken cancellationToken = default)
+    {
+        await MigrateVendorAcceptExpiryDateToDateAsync(controlDb);
+
+        var connections = await controlDb.TenantConnections.AsNoTracking()
+            .Where(t => t.IsActive)
+            .Select(t => new { t.CompanyId, t.ConnectionString, t.DatabaseName })
+            .ToListAsync(cancellationToken);
+
+        var controlCs = controlDb.Database.GetConnectionString() ?? string.Empty;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var conn in connections)
+        {
+            var cs = (conn.ConnectionString ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(cs))
+            {
+                var dbName = (conn.DatabaseName ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(dbName) || string.IsNullOrWhiteSpace(controlCs))
+                    continue;
+                cs = TenantConnectionResolver.ReplaceDatabase(controlCs, dbName);
+            }
+
+            if (!seen.Add(cs))
+                continue;
+
+            try
+            {
+                var options = new DbContextOptionsBuilder<BisyncDbContext>()
+                    .UseNpgsql(cs)
+                    .Options;
+                await using var ops = new BisyncDbContext(options);
+                await MigrateVendorAcceptExpiryDateToDateAsync(ops);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(
+                    ex,
+                    "VendorAcceptExpiryDate migration failed for company {CompanyId}",
+                    conn.CompanyId);
+            }
+        }
     }
 
     /// <summary>Public hook so Program can refresh registry after companies are seeded.</summary>
     public static Task EnsureTenantRegistryAsync(BisyncDbContext db) =>
         BackfillTenantConnectionsAsync(db);
 
+    public static async Task EnsureGlLedgerTablesAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlAccounts" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlAccounts" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Code" TEXT NOT NULL DEFAULT '',
+                "Name" TEXT NOT NULL DEFAULT '',
+                "AccountType" TEXT NOT NULL DEFAULT 'expense',
+                "NormalBalance" TEXT NOT NULL DEFAULT 'D',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlAccounts_CompanyId_Code", "GlAccounts", "\"CompanyId\", \"Code\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlFiscalPeriods" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlFiscalPeriods" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Year" INTEGER NOT NULL,
+                "PeriodNo" INTEGER NOT NULL,
+                "StartDate" date NOT NULL,
+                "EndDate" date NOT NULL,
+                "Status" TEXT NOT NULL DEFAULT 'open'
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlFiscalPeriods_CompanyId_Year_PeriodNo", "GlFiscalPeriods", "\"CompanyId\", \"Year\", \"PeriodNo\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlJournals" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlJournals" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "LedgerKind" TEXT NOT NULL DEFAULT 'primary',
+                "JournalType" TEXT NOT NULL DEFAULT 'GEN',
+                "DocSeries" TEXT NOT NULL DEFAULT 'GEN',
+                "FiscalYear" INTEGER NOT NULL,
+                "DocNumber" TEXT,
+                "EffectiveDate" date NOT NULL,
+                "DocumentDate" date NOT NULL,
+                "PostedAt" timestamp with time zone,
+                "PeriodId" INTEGER NOT NULL,
+                "SourceModule" TEXT NOT NULL DEFAULT 'MANUAL',
+                "SourceDocKey" TEXT,
+                "ReversesJournalId" INTEGER,
+                "IdempotencyKey" TEXT,
+                "Narration" TEXT NOT NULL DEFAULT '',
+                "CreatedBy" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_GlJournals_CompanyId_DocSeries_FiscalYear_DocNumber"
+            ON "GlJournals" ("CompanyId", "DocSeries", "FiscalYear", "DocNumber")
+            WHERE "DocNumber" IS NOT NULL;
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_GlJournals_CompanyId_IdempotencyKey"
+            ON "GlJournals" ("CompanyId", "IdempotencyKey")
+            WHERE "IdempotencyKey" IS NOT NULL;
+            """);
+        await TryCreateIndexAsync(db, "IX_GlJournals_CompanyId_PostedAt", "GlJournals", "\"CompanyId\", \"PostedAt\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlJournalLines" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlJournalLines" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "JournalId" INTEGER NOT NULL,
+                "LineNo" INTEGER NOT NULL,
+                "AccountId" INTEGER NOT NULL,
+                "Direction" TEXT NOT NULL DEFAULT 'D',
+                "Currency" TEXT NOT NULL DEFAULT 'MYR',
+                "AmountMinor" BIGINT NOT NULL DEFAULT 0,
+                "FuncCurrency" TEXT NOT NULL DEFAULT 'MYR',
+                "FuncAmountMinor" BIGINT NOT NULL DEFAULT 0,
+                "Narration" TEXT NOT NULL DEFAULT '',
+                "EffectiveDate" date NOT NULL,
+                "PeriodId" INTEGER NOT NULL,
+                CONSTRAINT "FK_GlJournalLines_GlJournals_JournalId"
+                    FOREIGN KEY ("JournalId") REFERENCES "GlJournals" ("Id") ON DELETE RESTRICT
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlJournalLines_CompanyId_JournalId_LineNo", "GlJournalLines", "\"CompanyId\", \"JournalId\", \"LineNo\"");
+        await TryCreateIndexAsync(db, "IX_GlJournalLines_CompanyId_AccountId_EffectiveDate", "GlJournalLines", "\"CompanyId\", \"AccountId\", \"EffectiveDate\"");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRate", "NUMERIC(20,10)");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRateDate", "date");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlJournalLines", "FxRateType", "TEXT");
+        await EnsureGlJournalLineDeleteRestrictAsync(db);
+        await EnsureGlJournalBalanceTriggerAsync(db);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlPeriodBalances" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlPeriodBalances" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "AccountId" INTEGER NOT NULL,
+                "PeriodId" INTEGER NOT NULL,
+                "Currency" TEXT NOT NULL DEFAULT 'MYR',
+                "OpeningDrMinor" BIGINT NOT NULL DEFAULT 0,
+                "OpeningCrMinor" BIGINT NOT NULL DEFAULT 0,
+                "PeriodDrMinor" BIGINT NOT NULL DEFAULT 0,
+                "PeriodCrMinor" BIGINT NOT NULL DEFAULT 0,
+                "IsFrozen" BOOLEAN NOT NULL DEFAULT FALSE,
+                "RecomputeAfter" timestamp with time zone
+            );
+            """);
+        await TryCreateUniqueIndexAsync(
+            db,
+            "IX_GlPeriodBalances_CompanyId_AccountId_PeriodId_Currency",
+            "GlPeriodBalances",
+            "\"CompanyId\", \"AccountId\", \"PeriodId\", \"Currency\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlDocCounters" (
+                "CompanyId" INTEGER NOT NULL,
+                "Series" TEXT NOT NULL DEFAULT '',
+                "FiscalYear" INTEGER NOT NULL,
+                "NextValue" BIGINT NOT NULL DEFAULT 1,
+                CONSTRAINT "PK_GlDocCounters" PRIMARY KEY ("CompanyId", "Series", "FiscalYear")
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlOutboxMessages" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlOutboxMessages" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "EventType" TEXT NOT NULL DEFAULT '',
+                "PayloadJson" TEXT NOT NULL DEFAULT '{{}}',
+                "IdempotencyKey" TEXT,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "ProcessedAt" timestamp with time zone
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_GlOutboxMessages_CompanyId_IdempotencyKey"
+            ON "GlOutboxMessages" ("CompanyId", "IdempotencyKey")
+            WHERE "IdempotencyKey" IS NOT NULL;
+            """);
+        await TryCreateIndexAsync(db, "IX_GlOutboxMessages_CompanyId_CreatedAt", "GlOutboxMessages", "\"CompanyId\", \"CreatedAt\"");
+    }
+
+
+    /// <summary>Phase 1 Books tables — FX rates, localisation packs, SLA, open items, bank shells.</summary>
+    public static async Task EnsureGlBooksTablesAsync(BisyncDbContext db)
+    {
+        await EnsureGlLedgerTablesAsync(db);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlLocalisationPacks" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlLocalisationPacks" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "PackId" TEXT NOT NULL DEFAULT 'my',
+                "Status" TEXT NOT NULL DEFAULT 'active',
+                "Version" TEXT NOT NULL DEFAULT '1.0',
+                "ActivatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlLocalisationPacks_CompanyId_PackId", "GlLocalisationPacks", "\"CompanyId\", \"PackId\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlFxRates" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlFxRates" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "FromCurrency" TEXT NOT NULL DEFAULT 'USD',
+                "ToCurrency" TEXT NOT NULL DEFAULT 'MYR',
+                "RateDate" date NOT NULL,
+                "Rate" NUMERIC(20,10) NOT NULL,
+                "RateType" TEXT NOT NULL DEFAULT 'manual',
+                "Source" TEXT NOT NULL DEFAULT 'manual',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlFxRates_Company_Pair_Date_Type", "GlFxRates",
+            "\"CompanyId\", \"FromCurrency\", \"ToCurrency\", \"RateDate\", \"RateType\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlAccountRoles" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlAccountRoles" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "RoleCode" TEXT NOT NULL DEFAULT '',
+                "AccountId" INTEGER,
+                "Notes" TEXT
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlAccountRoles_CompanyId_RoleCode", "GlAccountRoles", "\"CompanyId\", \"RoleCode\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlTaxCodes" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlTaxCodes" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Code" TEXT NOT NULL DEFAULT '',
+                "Name" TEXT NOT NULL DEFAULT '',
+                "RatePercent" NUMERIC(10,4) NOT NULL DEFAULT 0,
+                "Recoverability" TEXT NOT NULL DEFAULT 'none',
+                "PackId" TEXT NOT NULL DEFAULT 'my',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlTaxCodes_CompanyId_Code", "GlTaxCodes", "\"CompanyId\", \"Code\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlSlaRuleSets" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlSlaRuleSets" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "EventType" TEXT NOT NULL DEFAULT '',
+                "PackId" TEXT NOT NULL DEFAULT 'my',
+                "Version" INTEGER NOT NULL DEFAULT 1,
+                "EffectiveFrom" date NOT NULL,
+                "Status" TEXT NOT NULL DEFAULT 'active',
+                "Name" TEXT NOT NULL DEFAULT ''
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_GlSlaRuleSets_Company_Event_Status", "GlSlaRuleSets", "\"CompanyId\", \"EventType\", \"Status\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlSlaRuleLines" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlSlaRuleLines" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "RuleSetId" INTEGER NOT NULL,
+                "Seq" INTEGER NOT NULL,
+                "ConditionJson" TEXT NOT NULL DEFAULT '{{}}',
+                "AccountRole" TEXT NOT NULL DEFAULT '',
+                "Direction" TEXT NOT NULL DEFAULT 'D',
+                "AmountSource" TEXT NOT NULL DEFAULT 'net',
+                CONSTRAINT "FK_GlSlaRuleLines_GlSlaRuleSets_RuleSetId"
+                    FOREIGN KEY ("RuleSetId") REFERENCES "GlSlaRuleSets" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlSlaRuleLines_RuleSet_Seq", "GlSlaRuleLines", "\"CompanyId\", \"RuleSetId\", \"Seq\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlOpenItems" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlOpenItems" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "Subledger" TEXT NOT NULL DEFAULT 'ap',
+                "Kind" TEXT NOT NULL DEFAULT 'bill',
+                "CounterpartyName" TEXT NOT NULL DEFAULT '',
+                "CounterpartyRef" TEXT,
+                "Currency" TEXT NOT NULL DEFAULT 'MYR',
+                "IssueDate" date NOT NULL,
+                "DueDate" date NOT NULL,
+                "GrossMinor" BIGINT NOT NULL DEFAULT 0,
+                "OpenMinor" BIGINT NOT NULL DEFAULT 0,
+                "InternalDocumentNo" TEXT NOT NULL DEFAULT '',
+                "StatutoryDocumentNo" TEXT,
+                "JournalId" INTEGER,
+                "Status" TEXT NOT NULL DEFAULT 'open',
+                "TaxCode" TEXT,
+                "TaxMinor" BIGINT NOT NULL DEFAULT 0,
+                "Narration" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlOpenItems_Company_DocNo", "GlOpenItems", "\"CompanyId\", \"InternalDocumentNo\"");
+        await TryCreateIndexAsync(db, "IX_GlOpenItems_Company_Subledger_Status", "GlOpenItems", "\"CompanyId\", \"Subledger\", \"Status\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlItemApplications" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlItemApplications" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "AppliedFromId" INTEGER NOT NULL,
+                "AppliedToId" INTEGER NOT NULL,
+                "AmountMinor" BIGINT NOT NULL DEFAULT 0,
+                "AppliedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "EffectiveDate" date NOT NULL,
+                "ReversalOfId" INTEGER,
+                "CreatedBy" TEXT NOT NULL DEFAULT ''
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_GlItemApplications_Company_From", "GlItemApplications", "\"CompanyId\", \"AppliedFromId\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlBankStatements" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlBankStatements" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "AccountLabel" TEXT NOT NULL DEFAULT 'Operating account',
+                "Currency" TEXT NOT NULL DEFAULT 'MYR',
+                "StatementDate" date NOT NULL,
+                "Source" TEXT NOT NULL DEFAULT 'manual',
+                "Status" TEXT NOT NULL DEFAULT 'open',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlBankMatchGroups" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlBankMatchGroups" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "MatchedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "Cardinality" TEXT NOT NULL DEFAULT '1:1',
+                "CreatedBy" TEXT NOT NULL DEFAULT '',
+                "Notes" TEXT NOT NULL DEFAULT ''
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlBankStatementLines" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlBankStatementLines" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "StatementId" INTEGER NOT NULL,
+                "LineNo" INTEGER NOT NULL,
+                "ValueDate" date NOT NULL,
+                "Narrative" TEXT NOT NULL DEFAULT '',
+                "AmountMinor" BIGINT NOT NULL DEFAULT 0,
+                "Currency" TEXT NOT NULL DEFAULT 'MYR',
+                "MatchGroupId" INTEGER,
+                "MatchRule" TEXT,
+                CONSTRAINT "FK_GlBankStatementLines_Statement"
+                    FOREIGN KEY ("StatementId") REFERENCES "GlBankStatements" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlBankStatementLines_Stmt_Line", "GlBankStatementLines", "\"CompanyId\", \"StatementId\", \"LineNo\"");
+
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "ApprovalStatus", "TEXT NOT NULL DEFAULT 'approved'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "CreatedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "ApprovedBy", "TEXT");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "ApprovedAt", "timestamp with time zone");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlOpenItems", "RejectionReason", "TEXT");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankMatchGroups", "Status", "TEXT NOT NULL DEFAULT 'active'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankMatchGroups", "JournalId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankStatements", "BankAccountCode", "TEXT NOT NULL DEFAULT '1000'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankStatements", "OpeningMinor", "BIGINT NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "GlBankStatements", "ClosingMinor", "BIGINT NOT NULL DEFAULT 0");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlBankMatchLinks" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlBankMatchLinks" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "MatchGroupId" INTEGER NOT NULL,
+                "OpenItemId" INTEGER NOT NULL,
+                "AmountMinor" BIGINT NOT NULL DEFAULT 0
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_GlBankMatchLinks_Group", "GlBankMatchLinks", "\"CompanyId\", \"MatchGroupId\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlFixedAssets" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlFixedAssets" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "AssetTag" TEXT NOT NULL DEFAULT '',
+                "Name" TEXT NOT NULL DEFAULT '',
+                "AssetClass" TEXT NOT NULL DEFAULT 'equipment',
+                "AcquiredOn" date NOT NULL,
+                "CostMinor" BIGINT NOT NULL DEFAULT 0,
+                "Currency" TEXT NOT NULL DEFAULT 'MYR',
+                "Status" TEXT NOT NULL DEFAULT 'active',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlFixedAssets_Company_Tag", "GlFixedAssets", "\"CompanyId\", \"AssetTag\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlFixedAssetBooks" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlFixedAssetBooks" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "AssetId" INTEGER NOT NULL,
+                "BookId" TEXT NOT NULL DEFAULT 'ifrs',
+                "Method" TEXT NOT NULL DEFAULT 'straight_line',
+                "LifeMonths" INTEGER NOT NULL DEFAULT 60,
+                "SalvageMinor" BIGINT NOT NULL DEFAULT 0,
+                "StartDate" date NOT NULL,
+                "Status" TEXT NOT NULL DEFAULT 'active',
+                CONSTRAINT "FK_GlFixedAssetBooks_Asset"
+                    FOREIGN KEY ("AssetId") REFERENCES "GlFixedAssets" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlFixedAssetBooks_Asset_Book", "GlFixedAssetBooks", "\"CompanyId\", \"AssetId\", \"BookId\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlDepreciationRuns" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlDepreciationRuns" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "AssetId" INTEGER NOT NULL,
+                "BookId" TEXT NOT NULL DEFAULT 'ifrs',
+                "Year" INTEGER NOT NULL,
+                "PeriodNo" INTEGER NOT NULL,
+                "AmountMinor" BIGINT NOT NULL DEFAULT 0,
+                "RemainingNbvMinor" BIGINT NOT NULL DEFAULT 0,
+                "JournalId" INTEGER,
+                "PostedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlDepreciationRuns_Unique", "GlDepreciationRuns",
+            "\"CompanyId\", \"AssetId\", \"BookId\", \"Year\", \"PeriodNo\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlRevRecContracts" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlRevRecContracts" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "ContractNo" TEXT NOT NULL DEFAULT '',
+                "CustomerName" TEXT NOT NULL DEFAULT '',
+                "StartDate" date NOT NULL,
+                "EndDate" date,
+                "TransactionPriceMinor" BIGINT NOT NULL DEFAULT 0,
+                "Currency" TEXT NOT NULL DEFAULT 'MYR',
+                "Status" TEXT NOT NULL DEFAULT 'active',
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateUniqueIndexAsync(db, "IX_GlRevRecContracts_Company_No", "GlRevRecContracts", "\"CompanyId\", \"ContractNo\"");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlRevRecObligations" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlRevRecObligations" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "ContractId" INTEGER NOT NULL,
+                "Description" TEXT NOT NULL DEFAULT '',
+                "AllocatedMinor" BIGINT NOT NULL DEFAULT 0,
+                "RecognisedMinor" BIGINT NOT NULL DEFAULT 0,
+                "Pattern" TEXT NOT NULL DEFAULT 'over_time',
+                CONSTRAINT "FK_GlRevRecObligations_Contract"
+                    FOREIGN KEY ("ContractId") REFERENCES "GlRevRecContracts" ("Id") ON DELETE CASCADE
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "GlStatutoryReturns" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_GlStatutoryReturns" PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "PackId" TEXT NOT NULL DEFAULT 'my',
+                "ReturnType" TEXT NOT NULL DEFAULT 'SST-02',
+                "PeriodStart" date NOT NULL,
+                "PeriodEnd" date NOT NULL,
+                "Status" TEXT NOT NULL DEFAULT 'draft',
+                "BoxesJson" TEXT NOT NULL DEFAULT '{{}}',
+                "ComputedAt" timestamp with time zone NOT NULL DEFAULT NOW()
+            );
+            """);
+        await TryCreateIndexAsync(db, "IX_GlStatutoryReturns_Company_Type", "GlStatutoryReturns", "\"CompanyId\", \"ReturnType\", \"PeriodStart\"");
+    }
+
+    /// <summary>
+    /// Posted journal lines must not vanish via CASCADE when a journal header is deleted.
+    /// Existing databases may still have ON DELETE CASCADE from earlier patches — rewrite to RESTRICT.
+    /// </summary>
+    static async Task EnsureGlJournalLineDeleteRestrictAsync(BisyncDbContext db)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                DO $$
+                DECLARE
+                    conname text;
+                BEGIN
+                    SELECT c.conname INTO conname
+                    FROM pg_constraint c
+                    JOIN pg_class rel ON rel.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = rel.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND rel.relname = 'GlJournalLines'
+                      AND c.contype = 'f'
+                      AND pg_get_constraintdef(c.oid) LIKE '%GlJournals%';
+                    IF conname IS NOT NULL THEN
+                        EXECUTE format('ALTER TABLE "GlJournalLines" DROP CONSTRAINT %I', conname);
+                    END IF;
+                    ALTER TABLE "GlJournalLines"
+                        ADD CONSTRAINT "FK_GlJournalLines_GlJournals_JournalId"
+                        FOREIGN KEY ("JournalId") REFERENCES "GlJournals" ("Id") ON DELETE RESTRICT;
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$;
+                """);
+        }
+        catch
+        {
+            // Non-Postgres or locked — app-layer Restrict in EF still applies on EnsureCreated paths.
+        }
+    }
+
+    /// <summary>
+    /// Deferred constraint trigger: every posted journal's functional lines must sum to zero.
+    /// Also blocks DELETE of posted journal headers.
+    /// </summary>
+    static async Task EnsureGlJournalBalanceTriggerAsync(BisyncDbContext db)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE OR REPLACE FUNCTION bisync_gl_journal_lines_balanced()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                DECLARE
+                    jid integer;
+                    posted timestamptz;
+                    bal bigint;
+                BEGIN
+                    jid := COALESCE(NEW."JournalId", OLD."JournalId");
+                    SELECT "PostedAt" INTO posted FROM "GlJournals" WHERE "Id" = jid;
+                    IF posted IS NULL THEN
+                        RETURN NULL;
+                    END IF;
+                    SELECT COALESCE(SUM(
+                        CASE WHEN "Direction" = 'D' THEN "FuncAmountMinor" ELSE -"FuncAmountMinor" END
+                    ), 0)
+                    INTO bal
+                    FROM "GlJournalLines"
+                    WHERE "JournalId" = jid;
+                    IF bal <> 0 THEN
+                        RAISE EXCEPTION 'Posted journal % is unbalanced by % functional minor units', jid, bal;
+                    END IF;
+                    RETURN NULL;
+                END;
+                $$;
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                DROP TRIGGER IF EXISTS trg_gl_journal_lines_balanced ON "GlJournalLines";
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE CONSTRAINT TRIGGER trg_gl_journal_lines_balanced
+                AFTER INSERT OR UPDATE OR DELETE ON "GlJournalLines"
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE PROCEDURE bisync_gl_journal_lines_balanced();
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE OR REPLACE FUNCTION bisync_gl_prevent_posted_journal_delete()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    IF OLD."PostedAt" IS NOT NULL THEN
+                        RAISE EXCEPTION 'Cannot delete posted journal % (%); reverse it instead', OLD."Id", OLD."DocNumber";
+                    END IF;
+                    RETURN OLD;
+                END;
+                $$;
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                DROP TRIGGER IF EXISTS trg_gl_prevent_posted_journal_delete ON "GlJournals";
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TRIGGER trg_gl_prevent_posted_journal_delete
+                BEFORE DELETE ON "GlJournals"
+                FOR EACH ROW
+                EXECUTE PROCEDURE bisync_gl_prevent_posted_journal_delete();
+                """);
+        }
+        catch
+        {
+            // Trigger DDL is best-effort on non-Postgres.
+        }
+    }
+
     static async Task TryCreateUniqueIndexAsync(BisyncDbContext db, string indexName, string table, string column)
     {
         try
         {
             await db.Database.ExecuteSqlRawAsync(
-                $"CREATE UNIQUE INDEX IF NOT EXISTS \"{indexName}\" ON \"{table}\" (\"{column}\");");
+                $"""CREATE UNIQUE INDEX IF NOT EXISTS "{indexName}" ON "{table}" ({column});""");
         }
         catch
         {
-            // Index may already exist with different definition
+            // Index may already exist under another definition.
         }
     }
 }

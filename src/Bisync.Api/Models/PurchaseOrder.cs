@@ -19,6 +19,11 @@ public class PurchaseOrder
     /// For pre-committed masters: locations allowed to draw down from this company-level commitment.
     /// </summary>
     public string LocationIdsJson { get; set; } = "[]";
+    /// <summary>
+    /// Optional ship-to <see cref="DeliveryLocation.ExternalId"/>. When set, PO/PDF show this
+    /// address instead of the outlet <see cref="Location"/> address. Stock still uses LocationIdsJson.
+    /// </summary>
+    public string DeliveryLocationExternalId { get; set; } = string.Empty;
     public string InitiatedBy { get; set; } = string.Empty;
     public string ApprovedBy { get; set; } = string.Empty;
     public DateTime? ApprovedAt { get; set; }
@@ -27,6 +32,11 @@ public class PurchaseOrder
     public string VendorShareToken { get; set; } = string.Empty;
     public DateTime? VendorAcceptedAt { get; set; }
     public string VendorAcceptedBy { get; set; } = string.Empty;
+    /// <summary>
+    /// Inclusive local calendar date by which the vendor must accept (7 working days after issue/approve).
+    /// Null for pending PRs or terminal orders.
+    /// </summary>
+    public DateOnly? VendorAcceptExpiryDate { get; set; }
     /// <summary>Vendor delivery order (DO) number captured at receive. Optional if invoice number is provided.</summary>
     public string VendorDoNumber { get; set; } = string.Empty;
     /// <summary>Vendor invoice number captured at receive. Optional if DO number is provided.</summary>
@@ -76,10 +86,19 @@ public class PurchaseOrderItem
     public decimal DeliveredQuantity { get; set; }
     /// <summary>Qty already drawn from a pre-committed (blanket) line via release orders.</summary>
     public decimal DrawnQuantity { get; set; }
+    /// <summary>
+    /// On a release PO line: the pre-committed master line this quantity drew from.
+    /// Null when the line is a normal (non-drawdown) purchase.
+    /// </summary>
+    public int? SourceCommittedPurchaseOrderItemId { get; set; }
     public decimal TaxAmount { get; set; }
     public string HalalCertNo { get; set; } = string.Empty;
     /// <summary>Optional vendor product expiry date (yyyy-MM-dd) captured at receive.</summary>
     public string ProductExpiryDate { get; set; } = string.Empty;
     /// <summary>Optional temperature check (°C) captured at receive/consolidate.</summary>
     public decimal? ReceivedTemperature { get; set; }
+    /// <summary>True when this line is a returnable container deposit (not inventory stock).</summary>
+    public bool IsReturnableDeposit { get; set; }
+    /// <summary>Canonical returnable item name for deposit ledger grouping.</summary>
+    public string ReturnableItemName { get; set; } = string.Empty;
 }

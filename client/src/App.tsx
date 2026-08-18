@@ -8,11 +8,11 @@ import {
   type PurchaseOrder,
   type InventoryAlert,
   type RevenuePoint,
-  type ProgressData,
 } from './api';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { StickyChromeSync } from './components/layout/StickyChromeSync';
+import { Bisync101Workspace } from './components/bisync101/Bisync101Workspace';
 import { RevenueSection } from './components/revenue/RevenueSection';
 import { HomePage } from './components/home/HomePage';
 import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
@@ -41,6 +41,67 @@ import {
   getGhostSupportSession,
   type GhostSupportSession,
 } from './data/ghostSupportSession';
+import { navItemFromPath, pathFromNavItem } from './data/appNavRoutes';
+import { useCurrentUser } from './hooks/useCurrentUser';
+
+function readStoredCompanyId(): number | null {
+  try {
+    const raw = localStorage.getItem('bisync.selectedCompanyId');
+    const id = raw ? Number(raw) : NaN;
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function locationStorageKey(companyId: number) {
+  return `bisync.selectedLocationIds.${companyId}`;
+}
+
+function readStoredLocationIds(companyId: number | null): string[] {
+  if (!companyId) return [];
+  try {
+    const raw = localStorage.getItem(locationStorageKey(companyId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredLocationIds(companyId: number | null, ids: string[]) {
+  if (!companyId) return;
+  try {
+    localStorage.setItem(locationStorageKey(companyId), JSON.stringify(ids));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function resolveLocationSelection(opts: {
+  companyId: number;
+  forCompany: { id: number; externalId: string }[];
+  previous: string[];
+  userLocationIds: number[];
+}): string[] {
+  const allowed = new Set(opts.forCompany.map(l => l.externalId));
+  const kept = opts.previous.filter(id => allowed.has(id));
+  if (kept.length > 0) return kept;
+
+  const stored = readStoredLocationIds(opts.companyId).filter(id => allowed.has(id));
+  if (stored.length > 0) return stored;
+
+  const assigned = new Set(opts.userLocationIds);
+  const fromUser = opts.forCompany
+    .filter(l => assigned.has(l.id))
+    .map(l => l.externalId);
+  if (fromUser.length > 0) return fromUser;
+
+  if (opts.forCompany.length === 1) return [opts.forCompany[0]!.externalId];
+  return [];
+}
 
 function PlaceholderModule({ title }: { title: NavItem | string }) {
   const { t, navLabel } = useAppTranslation();
@@ -62,15 +123,30 @@ function PlaceholderModule({ title }: { title: NavItem | string }) {
 }
 
 export default function App() {
+  const { currentUser } = useCurrentUser();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [editLayout, setEditLayout] = useState(false);
-  const [activeNav, setActiveNav] = useState<NavItem>('Home');
+  const [activeNav, setActiveNavState] = useState<NavItem>(
+    () => navItemFromPath(window.location.pathname) ?? 'Home',
+  );
+  const setActiveNav = useCallback((item: NavItem) => {
+    setActiveNavState(item);
+    const nextPath = pathFromNavItem(item);
+    const current = window.location.pathname.replace(/\/+$/, '') || '/';
+    const next = nextPath.replace(/\/+$/, '') || '/';
+    if (current !== next) {
+      window.history.pushState({}, '', nextPath);
+    }
+  }, []);
   const [ghostSession, setGhostSession] = useState<GhostSupportSession | null>(() => getGhostSupportSession());
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(() => getGhostSupportSession()?.companyId ?? null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(
+    () => getGhostSupportSession()?.companyId ?? readStoredCompanyId(),
+  );
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>(() => {
     const ghost = getGhostSupportSession();
-    return ghost?.locationExternalId ? [ghost.locationExternalId] : [];
+    if (ghost?.locationExternalId) return [ghost.locationExternalId];
+    return readStoredLocationIds(ghost?.companyId ?? readStoredCompanyId());
   });
   const {
     companies,
@@ -86,31 +162,62 @@ export default function App() {
   const [clientOrders, setClientOrders] = useState<B2bSalesOrder[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
-  const [progress, setProgress] = useState<ProgressData | null>(null);
   const [modulesGoLive, setModulesGoLive] = useState<ModulesGoLiveMap | null>(null);
   const [revenueIntent, setRevenueIntent] = useState<{
     revItem: string;
     createOrderPrefill?: CreateOrderPrefillItem[];
   } | null>(null);
+  const [bisync101Open, setBisync101Open] = useState(
+    () => window.location.hash.replace(/^#/, '').startsWith('bisync101'),
+  );
+
+  useEffect(() => {
+    function onHashChange() {
+      setBisync101Open(window.location.hash.replace(/^#/, '').startsWith('bisync101'));
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
   }, [darkMode]);
 
   useEffect(() => {
+    const onPopState = () => {
+      const nav = navItemFromPath(window.location.pathname);
+      if (nav) setActiveNavState(nav);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Keep shell company selection aligned with the API tenant header / user home company.
+  useEffect(() => {
+    if (ghostSession) return;
+    if (selectedCompanyId != null) {
+      setApiTenantCompanyId(selectedCompanyId);
+      return;
+    }
+    const fromUser = currentUser?.companyId;
+    if (fromUser != null && fromUser > 0) {
+      setSelectedCompanyId(fromUser);
+      setApiTenantCompanyId(fromUser);
+    }
+  }, [currentUser?.companyId, ghostSession, selectedCompanyId]);
+
+  useEffect(() => {
     async function load() {
       const results = await Promise.allSettled([
         api.menu(),
         api.revenue(),
-        api.progress(),
         api.registrationPolicy(),
       ]);
 
       if (results[0].status === 'fulfilled') setMenuItems(results[0].value);
       if (results[1].status === 'fulfilled') setRevenue(results[1].value);
-      if (results[2].status === 'fulfilled') setProgress(results[2].value);
-      if (results[3].status === 'fulfilled') {
-        setModulesGoLive(results[3].value.modulesGoLive ?? null);
+      if (results[2].status === 'fulfilled') {
+        setModulesGoLive(results[2].value.modulesGoLive ?? null);
       } else {
         setModulesGoLive(null);
       }
@@ -181,12 +288,14 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedCompanyId || companies.length === 0) return;
-    if (!companies.some(c => c.id === selectedCompanyId)) {
-      setSelectedCompanyId(null);
-      setSelectedLocationIds([]);
-      setApiTenantCompanyId(null);
-    }
-  }, [companies, selectedCompanyId]);
+    if (companies.some(c => c.id === selectedCompanyId)) return;
+    // Keep the user's home company selected while org lists catch up, or if it was
+    // temporarily inactive — do not blank the shell linkage.
+    if (currentUser?.companyId === selectedCompanyId) return;
+    setSelectedCompanyId(null);
+    setSelectedLocationIds([]);
+    setApiTenantCompanyId(null);
+  }, [companies, selectedCompanyId, currentUser?.companyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) return;
@@ -197,16 +306,17 @@ export default function App() {
       setSelectedLocationIds(prev => (prev.length === 0 ? prev : []));
       return;
     }
-    const allowed = new Set(forCompany.map(l => l.externalId));
     setSelectedLocationIds(prev => {
-      const next = prev.filter(id => allowed.has(id));
-      // Sole location for this company → select it automatically.
-      if (next.length === 0 && forCompany.length === 1) {
-        return [forCompany[0].externalId];
-      }
+      const next = resolveLocationSelection({
+        companyId: selectedCompanyId,
+        forCompany,
+        previous: prev,
+        userLocationIds: currentUser?.locationIds ?? [],
+      });
+      if (next.length > 0) writeStoredLocationIds(selectedCompanyId, next);
       return next;
     });
-  }, [configLocations, selectedCompanyId]);
+  }, [configLocations, selectedCompanyId, currentUser?.locationIds]);
 
   function exitGhostSupport() {
     const returnPath = ghostSession?.returnPath || '/dev/console';
@@ -240,10 +350,13 @@ export default function App() {
       setActiveNav('Home');
       return;
     }
+    // Wait for org/company before enforcing module access — otherwise HR/RMS
+    // deep links bounce to Home while companies are still loading.
+    if (orgLoading || !selectedCompanyId) return;
     if (moduleForNavItem(activeNav) && !isNavItemEnabled(activeNav, enabledModules)) {
       setActiveNav('Home');
     }
-  }, [activeNav, enabledModules, modulesGoLive]);
+  }, [activeNav, enabledModules, modulesGoLive, orgLoading, selectedCompanyId]);
   const headerLocations = companyScopedConfigLocations.map(configLocationToDropdown);
   const activeLocations = selectedCompanyId
     ? filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds)
@@ -279,7 +392,6 @@ export default function App() {
   const overviewMenuItems = selectedCompanyId ? menuItems : [];
   const overviewAlerts = selectedCompanyId ? alerts : [];
   const overviewRevenue = selectedCompanyId ? revenue : [];
-  const overviewProgress = selectedCompanyId ? progress : null;
 
   const handleOrderNowFromAlerts = useCallback(async () => {
     if (!selectedCompanyId || overviewAlerts.length === 0) return;
@@ -384,11 +496,19 @@ export default function App() {
             const forCompany = configLocations.filter(
               l => l.companyId === companyId && l.active !== false,
             );
-            setSelectedLocationIds(
-              forCompany.length === 1 ? [forCompany[0].externalId] : [],
-            );
+            const next = resolveLocationSelection({
+              companyId,
+              forCompany,
+              previous: [],
+              userLocationIds: currentUser?.locationIds ?? [],
+            });
+            setSelectedLocationIds(next);
+            writeStoredLocationIds(companyId, next);
           }}
-          onLocationChange={setSelectedLocationIds}
+          onLocationChange={(ids) => {
+            setSelectedLocationIds(ids);
+            writeStoredLocationIds(selectedCompanyId, ids);
+          }}
           onToggleSidebar={() => setSidebarOpen(v => !v)}
           onGoHome={() => {
             setEditLayout(false);
@@ -396,6 +516,22 @@ export default function App() {
           }}
           onToggleDark={() => setDarkMode(v => !v)}
           onToggleEditLayout={() => setEditLayout(v => !v)}
+          onOpenBisync101={() => {
+            setBisync101Open(true);
+            if (!window.location.hash.replace(/^#/, '').startsWith('bisync101')) {
+              window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#bisync101`);
+            }
+          }}
+        />
+
+        <Bisync101Workspace
+          open={bisync101Open}
+          onClose={() => {
+            setBisync101Open(false);
+            if (window.location.hash.replace(/^#/, '').startsWith('bisync101')) {
+              window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+            }
+          }}
         />
 
         <OrgCountryProvider countryCode={orgCountryCode}>
@@ -409,6 +545,14 @@ export default function App() {
               enabledModules={enabledModules}
               modulesGoLive={modulesGoLive}
               onOpenModule={handleNavigate}
+              selectedCompanyId={selectedCompanyId}
+              locations={headerLocations}
+              selectedLocationIds={selectedLocationIds}
+              onLocationChange={(ids) => {
+                setSelectedLocationIds(ids);
+                writeStoredLocationIds(selectedCompanyId, ids);
+              }}
+              orgLoading={orgLoading}
             />
           ) : isRevenueSection ? (
             <RevenueSection
@@ -425,7 +569,6 @@ export default function App() {
                 orders: overviewOrders,
                 clientOrders: overviewClientOrders,
                 revenue: overviewRevenue,
-                progress: overviewProgress,
                 sales: dashboardMetrics.sales,
                 activity: dashboardMetrics.activity,
                 aov: dashboardMetrics.aov,
@@ -433,9 +576,6 @@ export default function App() {
                 onOrderNowFromAlerts: handleOrderNowFromAlerts,
                 onPurchaseOrderUpdated: updated => {
                   setOrders(prev => {
-                    if (String(updated.status).toLowerCase() === 'reconciled') {
-                      return prev.filter(order => order.id !== updated.id);
-                    }
                     const exists = prev.some(order => order.id === updated.id);
                     return exists
                       ? prev.map(order => (order.id === updated.id ? updated : order))

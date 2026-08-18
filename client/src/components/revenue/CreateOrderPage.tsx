@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileStack, Handshake, Search, ShoppingCart } from 'lucide-react';
+import { FileStack, Handshake, Search, ShoppingCart, Warehouse } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { api, type OrderTemplate, type PurchaseOrder, type Vendor } from '../../api';
 import {
   applyCommitmentOverlays,
+  appendMissingCommittedOrderLines,
   buildCartItems,
   buildCreateOrderLines,
   countCartItems,
@@ -20,11 +21,12 @@ import { ingredientToRow } from './smartIngredientShared';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
+import { StoreRequisitionCreateModal } from './StoreRequisitionCreateModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { buildOrderQtyFromPrefill, type CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
@@ -44,17 +46,17 @@ type CreateOrderSortColumn =
   | 'totalOrderValue';
 
 const CREATE_ORDER_TABLE_COLUMNS: SortableColumnDef<CreateOrderSortColumn>[] = [
-  { key: 'componentId', label: 'Component ID' },
-  { key: 'name', label: 'Component Name' },
-  { key: 'stockOnHand', label: 'Stock On Hand', align: 'right' },
-  { key: 'usagePerDay', label: 'Usage Per Day', align: 'right' },
-  { key: 'parstock', label: 'Parstock', align: 'right' },
-  { key: 'suggestedOrder', label: 'Suggested Order (Delivery Unit)', align: 'right' },
-  { key: 'vendorProduct', label: 'Vendor Product' },
-  { key: 'deliveryUnit', label: 'Delivery Unit' },
-  { key: 'deliveryPrice', label: 'Delivery Price', align: 'right' },
-  { key: 'orderQty', label: 'Order Qty', sortable: false },
-  { key: 'totalOrderValue', label: 'Total Order Value', align: 'right' },
+  { key: 'componentId', label: 'Component ID', ...tableColWidth('9%') },
+  { key: 'name', label: 'Component Name', ...tableColWidth('13%') },
+  { key: 'stockOnHand', label: 'Stock On Hand', align: 'right', ...tableColWidth('8%') },
+  { key: 'usagePerDay', label: 'Usage Per Day', align: 'right', ...tableColWidth('8%') },
+  { key: 'parstock', label: 'Parstock', align: 'right', ...tableColWidth('7%') },
+  { key: 'suggestedOrder', label: 'Suggested Order (Delivery Unit)', align: 'right', ...tableColWidth('10%') },
+  { key: 'vendorProduct', label: 'Vendor Product', ...tableColWidth('12%') },
+  { key: 'deliveryUnit', label: 'Delivery Unit', ...tableColWidth('8%') },
+  { key: 'deliveryPrice', label: 'Delivery Price', align: 'right', ...tableColWidth('8%') },
+  { key: 'orderQty', label: 'Order Qty', sortable: false, ...tableColWidth('8%') },
+  { key: 'totalOrderValue', label: 'Total Order Value', align: 'right', ...tableColWidth('9%') },
 ];
 
 type Props = {
@@ -64,6 +66,8 @@ type Props = {
   initialPrefillItems?: CreateOrderPrefillItem[];
   /** Opens the company-level Pre-committed PO editor (Order tab). */
   onOpenPreCommitted?: () => void;
+  /** Opens Active Requisition after a Store Requisition is submitted. */
+  onOpenActiveRequisition?: () => void;
 };
 
 export function CreateOrderPage({
@@ -72,8 +76,9 @@ export function CreateOrderPage({
   embedded = false,
   initialPrefillItems,
   onOpenPreCommitted,
+  onOpenActiveRequisition,
 }: Props) {
-  const { number, rm } = useCountryFormatters();
+  const { number, rm, deliveryPrice } = useCountryFormatters();
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorFilter, setVendorFilter] = useState('');
@@ -82,6 +87,7 @@ export function CreateOrderPage({
   const [orderQtyByKey, setOrderQtyByKey] = useState<Record<string, string>>({});
   const [showCart, setShowCart] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showStoreRequisition, setShowStoreRequisition] = useState(false);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const [committedPos, setCommittedPos] = useState<PurchaseOrder[]>([]);
   const pendingTemplateRef = useRef<OrderTemplate | null>(null);
@@ -106,7 +112,7 @@ export function CreateOrderPage({
       setVendors([]);
       return;
     }
-    api.vendors()
+    api.vendors(true, selectedCompanyId)
       .then(setVendors)
       .catch(() => setVendors([]));
   }, [selectedCompanyId]);
@@ -135,8 +141,14 @@ export function CreateOrderPage({
   );
 
   const vendorOptions = useMemo(
-    () => resolveVendorsForSelectedLocations(components, selectedLocationIds, vendors, orgPolicyTags),
-    [components, selectedLocationIds, vendors, orgPolicyTags],
+    () => resolveVendorsForSelectedLocations(
+      components,
+      selectedLocationIds,
+      vendors,
+      orgPolicyTags,
+      selectedCompanyId,
+    ),
+    [components, selectedLocationIds, vendors, orgPolicyTags, selectedCompanyId],
   );
 
   useEffect(() => {
@@ -169,10 +181,20 @@ export function CreateOrderPage({
     [components, selectedLocationIds, vendorFilter, categoryFilter, search, vendors, orgPolicyTags],
   );
 
-  const lines = useMemo(
-    () => applyCommitmentOverlays(baseLines, committedPos),
-    [baseLines, committedPos],
-  );
+  const lines = useMemo(() => {
+    const withCommitted = appendMissingCommittedOrderLines(
+      baseLines,
+      committedPos,
+      components,
+      {
+        vendorExternalId: vendorFilter,
+        locationIds: selectedLocationIds,
+        categoryFilter,
+        search,
+      },
+    );
+    return applyCommitmentOverlays(withCommitted, committedPos);
+  }, [baseLines, committedPos, components, vendorFilter, selectedLocationIds, categoryFilter, search]);
 
   const sortedLines = useMemo(
     () =>
@@ -423,6 +445,22 @@ export function CreateOrderPage({
               <button
                 type="button"
                 onClick={() => {
+                  if (!selectedCompanyId) {
+                    setTemplateNotice('Select a company to create a store requisition.');
+                    return;
+                  }
+                  setShowStoreRequisition(true);
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors"
+                title="Request components from Central Store (Store → your location after issue & receive)"
+              >
+                <Warehouse size={16} />
+                Store Requisition
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   if (onOpenPreCommitted) {
                     onOpenPreCommitted();
                     return;
@@ -462,7 +500,8 @@ export function CreateOrderPage({
 
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed">
+              <table className="w-full">
+                <TableColGroup columns={CREATE_ORDER_TABLE_COLUMNS} />
                 <thead className="bg-muted/30">
                   <SortableTableHeaderRow
                     columns={CREATE_ORDER_TABLE_COLUMNS}
@@ -522,7 +561,7 @@ export function CreateOrderPage({
                         ) : null}
                       </td>
                       <td className={`${tdCls} font-sans text-foreground`}>
-                        <p>{rm(line.deliveryPrice)}</p>
+                        <p>{deliveryPrice(line.deliveryPrice)}</p>
                         {line.commitment ? (
                           <p className="text-[10px] text-teal-700 dark:text-teal-400 mt-0.5">
                             {line.commitment.poNumber} · {line.commitment.remaining} left
@@ -599,6 +638,18 @@ export function CreateOrderPage({
                 .then(setCommittedPos)
                 .catch(() => undefined);
             }
+          }}
+        />
+      )}
+
+      {showStoreRequisition && selectedCompanyId && (
+        <StoreRequisitionCreateModal
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          onClose={() => setShowStoreRequisition(false)}
+          onCreated={() => {
+            setShowStoreRequisition(false);
+            onOpenActiveRequisition?.();
           }}
         />
       )}

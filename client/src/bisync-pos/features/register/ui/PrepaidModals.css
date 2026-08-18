@@ -1,0 +1,116 @@
+.prepaid-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+}
+
+.prepaid-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.prepaid-modal__card {
+  position: relative;
+  z-index: 1;
+  width: min(28rem, calc(100vw - 1.5rem));
+  background: var(--background, #fff);
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.prepaid-modal__card--wide {
+  width: min(36rem, calc(100vw - 1.5rem));
+}
+
+.prepaid-modal__eyebrow {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground, #667085);
+}
+
+.prepaid-modal__card h2 {
+  margin: 0.15rem 0 0;
+  font-size: 1.05rem;
+}
+
+.prepaid-modal__card header p:last-child,
+.prepaid-modal__meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #667085);
+}
+
+.prepaid-modal__card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  color: var(--muted-foreground, #667085);
+}
+
+.prepaid-modal__card input,
+.prepaid-modal__card select {
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.85rem;
+  color: var(--foreground, #101828);
+  background: var(--background, #fff);
+}
+
+.prepaid-modal__units {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.prepaid-modal__units button {
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.5rem;
+  background: var(--background, #fff);
+  padding: 0.55rem 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.prepaid-modal__units button small {
+  font-size: 0.6rem;
+  font-weight: 550;
+  color: var(--muted-foreground, #667085);
+}
+
+.prepaid-modal__units button.is-active {
+  border-color: var(--primary, #2563eb);
+  color: var(--primary, #2563eb);
+  background: color-mix(in srgb, var(--primary, #2563eb) 8%, white);
+}
+
+.prepaid-modal__error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #b42318;
+}
+
+.prepaid-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}

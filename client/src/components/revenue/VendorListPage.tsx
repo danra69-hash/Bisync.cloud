@@ -2,20 +2,27 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
-import { FileText, PackageOpen, Search, UserPlus } from 'lucide-react';
+import { FilePlus2, FileText, PackageOpen, Search, Upload, UserPlus } from 'lucide-react';
 import { api, ApiError, type Company, type EngageVendorContact, type LocationConfig, type Vendor, type VendorRatingSummary, type VendorTaggedComponent } from '../../api';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import {
   applyVendorProductOverrides,
+  downloadVendorProductTemplateCsv,
   filterVendorProductsByLocationVisibility,
   vendorProductPolicyTag,
 } from '../../data/vendorProductCatalog';
+import {
+  buildVendorProductImportPlan,
+  parseVendorProductImportCsv,
+  type VendorProductImportPlan,
+} from '../../data/vendorProductImportCatalog';
+import { VendorProductImportReviewPanel } from './VendorProductImportReviewPanel';
 import {
   formatVendorPolicyLabel,
   inferVendorPolicyTag,
@@ -51,18 +58,29 @@ import {
 } from '../../data/vendorRating';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 
-type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'active' | 'rating' | 'action';
+type VendorSortColumn =
+  | 'name'
+  | 'products'
+  | 'policy'
+  | 'minOrder'
+  | 'address'
+  | 'phone'
+  | 'email'
+  | 'active'
+  | 'rating'
+  | 'action';
 
 const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
-  { key: 'name', label: 'Vendor Name' },
-  { key: 'products', label: 'Type of Product Supplied' },
-  { key: 'policy', label: 'Product Policy' },
-  { key: 'address', label: 'Address' },
-  { key: 'phone', label: 'Phone Number' },
-  { key: 'email', label: 'Email' },
-  { key: 'active', label: 'Active', align: 'center', sortable: false },
-  { key: 'rating', label: 'Vendor Rating', align: 'center' },
-  { key: 'action', label: 'Action', align: 'right', sortable: false },
+  { key: 'name', label: 'Vendor Name', ...tableColWidth('14%') },
+  { key: 'products', label: 'Type of Product Supplied', ...tableColWidth('12%') },
+  { key: 'policy', label: 'Product Policy', ...tableColWidth('9%') },
+  { key: 'minOrder', label: 'Min Order Amount', align: 'right', ...tableColWidth('9%') },
+  { key: 'address', label: 'Address', ...tableColWidth('14%') },
+  { key: 'phone', label: 'Phone Number', ...tableColWidth('9%') },
+  { key: 'email', label: 'Email', ...tableColWidth('11%') },
+  { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
+  { key: 'rating', label: 'Vendor Rating', align: 'center', ...tableColWidth('8%') },
+  { key: 'action', label: 'Action', align: 'right', sortable: false, ...tableColWidth(100) },
 ];
 
 const VENDOR_TABS = [
@@ -100,6 +118,8 @@ export function VendorListPage({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'engaged' | 'available'>('all');
+  const [stateFilter, setStateFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [productVendorFilter, setProductVendorFilter] = useState('');
   const [productGroupFilter, setProductGroupFilter] = useState('');
@@ -119,6 +139,9 @@ export function VendorListPage({
   const [rfqRefresh, setRfqRefresh] = useState(0);
   const [sampleRefresh, setSampleRefresh] = useState(0);
   const [engaging, setEngaging] = useState(false);
+  const [productImportPlan, setProductImportPlan] = useState<VendorProductImportPlan | null>(null);
+  const [productImportError, setProductImportError] = useState<string | null>(null);
+  const productTemplateRef = useRef<HTMLInputElement | null>(null);
   const [showCreateVendor, setShowCreateVendor] = useState(false);
   const [showRfqPanel, setShowRfqPanel] = useState(false);
   const [showSamplePanel, setShowSamplePanel] = useState(false);
@@ -182,10 +205,43 @@ export function VendorListPage({
 
   useEffect(() => {
     resetSort();
-  }, [search, filter, resetSort]);
+  }, [search, filter, stateFilter, cityFilter, resetSort]);
+
+  const policyVendors = useMemo(
+    () => vendors.filter(v => vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v)),
+    [vendors, orgPolicyTags],
+  );
+
+  const stateOptions = useMemo(() => {
+    const states = new Set<string>();
+    for (const v of policyVendors) {
+      const state = (v.state || '').trim();
+      if (state) states.add(state);
+    }
+    return [...states].sort((a, b) => a.localeCompare(b));
+  }, [policyVendors]);
+
+  const cityOptions = useMemo(() => {
+    const selectedState = stateFilter.trim().toLowerCase();
+    const cities = new Set<string>();
+    for (const v of policyVendors) {
+      if (selectedState && (v.state || '').trim().toLowerCase() !== selectedState) continue;
+      const city = (v.city || '').trim();
+      if (city) cities.add(city);
+    }
+    return [...cities].sort((a, b) => a.localeCompare(b));
+  }, [policyVendors, stateFilter]);
+
+  useEffect(() => {
+    if (cityFilter && !cityOptions.some(c => c.toLowerCase() === cityFilter.trim().toLowerCase())) {
+      setCityFilter('');
+    }
+  }, [cityOptions, cityFilter]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const selectedState = stateFilter.trim().toLowerCase();
+    const selectedCity = cityFilter.trim().toLowerCase();
     return vendors.filter(v => {
       if (!vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v)) return false;
       const matchSearch = !query || [
@@ -193,19 +249,23 @@ export function VendorListPage({
         v.products,
         v.address,
         v.city,
+        v.state,
         v.mobile,
         v.email,
       ].some(value => value.toLowerCase().includes(query));
       const matchFilter = filter === 'all' || (filter === 'engaged' ? v.engaged : !v.engaged);
-      return matchSearch && matchFilter;
+      const matchState = !selectedState || (v.state || '').trim().toLowerCase() === selectedState;
+      const matchCity = !selectedCity || (v.city || '').trim().toLowerCase() === selectedCity;
+      return matchSearch && matchFilter && matchState && matchCity;
     });
-  }, [vendors, search, filter, orgPolicyTags]);
+  }, [vendors, search, filter, stateFilter, cityFilter, orgPolicyTags]);
 
   const vendorSortAccessors = useMemo(
     () => ({
       name: (v: Vendor) => v.name,
       products: (v: Vendor) => v.products || '',
       policy: (v: Vendor) => formatVendorPolicyLabel(inferVendorPolicyTag(v)),
+      minOrder: (v: Vendor) => v.minOrderAmount ?? -1,
       rating: (v: Vendor) => ratingSummaries[v.externalId]?.overallRating ?? -1,
       address: (v: Vendor) => v.address || [v.city, v.state].filter(Boolean).join(', '),
       phone: (v: Vendor) => getDefaultVendorContact(v)?.mobile || v.mobile || '',
@@ -294,6 +354,33 @@ export function VendorListPage({
       return a.productName.localeCompare(b.productName);
     });
   }, [catalogProducts, productSearch, productVendorFilter, productGroupFilter, vendors, orgPolicyTags, selectedLocationIds]);
+
+  function handleDownloadProductTemplate() {
+    setProductImportError(null);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadVendorProductTemplateCsv(
+      filteredProducts,
+      `vendor-product-template-${stamp}.csv`,
+      countryCode,
+    );
+  }
+
+  async function handleProductTemplateUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setProductImportError(null);
+    try {
+      const text = await files[0].text();
+      const drafts = parseVendorProductImportCsv(text);
+      if (drafts.length === 0) {
+        setProductImportError('Template file parsed no valid rows. Use the downloaded vendor product template format.');
+        return;
+      }
+      const plan = buildVendorProductImportPlan(drafts, catalogProducts, { vendors });
+      setProductImportPlan(plan);
+    } catch (err) {
+      setProductImportError(err instanceof Error ? err.message : 'Failed to read vendor product template.');
+    }
+  }
 
   async function handleConfirmEngage(vendor: Vendor, contacts: EngageVendorContact[]) {
     setEngaging(true);
@@ -395,7 +482,7 @@ export function VendorListPage({
             )}
           </div>
         </td>
-        <td className="px-4 py-3 text-foreground ">{v.products || '—'}</td>
+        <td className="px-4 py-3 text-foreground">{v.products || '—'}</td>
         <td className="px-4 py-3 text-foreground whitespace-nowrap">
           <div className="flex flex-col gap-0.5">
             <span>{formatVendorPolicyLabel(inferVendorPolicyTag(v))}</span>
@@ -406,11 +493,19 @@ export function VendorListPage({
             ) : null}
           </div>
         </td>
-        <td className="px-4 py-3 text-muted-foreground ">
+        <td className="px-4 py-3 text-right font-sans tabular-nums text-foreground whitespace-nowrap">
+          {v.minOrderAmount != null && Number.isFinite(Number(v.minOrderAmount))
+            ? Number(v.minOrderAmount).toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2,
+              })
+            : '—'}
+        </td>
+        <td className="px-4 py-3 text-muted-foreground">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>
         <td className="px-4 py-3 font-sans text-foreground whitespace-nowrap">{displayMobile}</td>
-        <td className="px-4 py-3 text-foreground ">
+        <td className="px-4 py-3 text-foreground">
           {displayEmail ? (
             <a href={`mailto:${displayEmail}`} className="hover:text-primary hover:underline break-all">
               {displayEmail}
@@ -549,6 +644,32 @@ export function VendorListPage({
             className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
+        <select
+          value={stateFilter}
+          onChange={e => {
+            setStateFilter(e.target.value);
+            setCityFilter('');
+          }}
+          className={`${filterSelectCls} min-w-[140px]`}
+          aria-label="Filter by state"
+        >
+          <option value="">All States</option>
+          {stateOptions.map(state => (
+            <option key={state} value={state}>{state}</option>
+          ))}
+        </select>
+        <select
+          value={cityFilter}
+          onChange={e => setCityFilter(e.target.value)}
+          className={`${filterSelectCls} min-w-[140px]`}
+          aria-label="Filter by city"
+          disabled={cityOptions.length === 0}
+        >
+          <option value="">All Cities</option>
+          {cityOptions.map(city => (
+            <option key={city} value={city}>{city}</option>
+          ))}
+        </select>
         {(['all', 'engaged', 'available'] as const).map(f => (
           <button
             key={f}
@@ -577,8 +698,13 @@ export function VendorListPage({
         {loading ? (
           <MillstoneLoader size="sm" layout="block" label="Loading vendors…" />
         ) : (
-          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-            <table className="w-full table-fixed text-xs">
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+            tableId="revenue.vendor-list"
+          >
+            <table className="w-full text-xs">
+              <TableColGroup columns={VENDOR_TABLE_COLUMNS} />
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
                   columns={VENDOR_TABLE_COLUMNS}
@@ -591,7 +717,7 @@ export function VendorListPage({
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
+                    <td colSpan={10} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No vendors match your filters.
                     </td>
                   </tr>
@@ -600,7 +726,7 @@ export function VendorListPage({
                     if (row.kind === 'header') {
                       return (
                         <tr key={row.id} className="bg-muted/20">
-                          <td colSpan={9} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
+                          <td colSpan={10} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
                             {row.label}
                           </td>
                         </tr>
@@ -609,7 +735,7 @@ export function VendorListPage({
                     return renderRow(row.vendor);
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={10} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
@@ -660,7 +786,36 @@ export function VendorListPage({
             {f === 'all' ? 'All' : f === 'tagged' ? 'Tagged' : 'Untagged'}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={handleDownloadProductTemplate}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] hover:bg-[#2563eb]/15"
+        >
+          <FilePlus2 size={11} />
+          Download Vendor Product Template CSV
+        </button>
+        <button
+          type="button"
+          onClick={() => productTemplateRef.current?.click()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#7c3aed]/40 bg-[#7c3aed]/10 text-[#6d28d9] hover:bg-[#7c3aed]/15"
+        >
+          <Upload size={11} />
+          Upload Vendor Product Template
+        </button>
+        <input
+          ref={productTemplateRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={e => {
+            void handleProductTemplateUpload(e.target.files);
+            e.target.value = '';
+          }}
+        />
       </div>
+      {productImportError && (
+        <p className="text-xs text-red-500">{productImportError}</p>
+      )}
 
       <VendorProductsList
         products={filteredProducts}
@@ -673,6 +828,20 @@ export function VendorListPage({
         onVendorUpdated={handleVendorUpdated}
         onProductUpdated={() => setCatalogRefresh(key => key + 1)}
       />
+
+      {productImportPlan && (
+        <VendorProductImportReviewPanel
+          plan={productImportPlan}
+          vendors={vendors}
+          existingProducts={catalogProducts}
+          groupOptions={groupOptions}
+          onClose={() => setProductImportPlan(null)}
+          onApplied={() => {
+            setProductImportPlan(null);
+            setCatalogRefresh(key => key + 1);
+          }}
+        />
+      )}
       </>
       ) : (
         <div className="space-y-4">

@@ -50,16 +50,19 @@ public class DevConsoleAuthService(
                 AccessJson = DevConsoleTabAccess.AllTabsJson(),
                 PasswordHash = AppPasswordHasher.Hash(SuperAdminAccess.SuperAdminPassword),
                 Active = true,
+                MustChangePassword = false,
                 IsRoot = true,
                 CreatedAt = DateTime.UtcNow,
                 CreatedByEmail = "system",
             });
             await db.SaveChangesAsync(ct);
+            await EnsureDefaultTeamPasswordsAsync(ct);
             return;
         }
 
         existing.IsRoot = true;
         existing.Active = true;
+        existing.MustChangePassword = false;
         existing.Position = string.IsNullOrWhiteSpace(existing.Position) ? "Super User" : existing.Position;
         existing.TeamType = DevConsoleTabAccess.NormalizeTeamType(
             string.IsNullOrWhiteSpace(existing.TeamType) ? "Management" : existing.TeamType);
@@ -70,6 +73,53 @@ public class DevConsoleAuthService(
         existing.InviteTokenExpiresAt = null;
         existing.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        await EnsureDefaultTeamPasswordsAsync(ct);
+    }
+
+    /// <summary>
+    /// Dev Console team members use Pass@123 until they change it on first login.
+    /// </summary>
+    public static string DefaultTeamPassword => SuperAdminAccess.DefaultBootstrapPassword;
+
+    public void ApplyDefaultTeamPassword(DevTeamUser user)
+    {
+        if (user.IsRoot) return;
+        user.PasswordHash = AppPasswordHasher.Hash(DefaultTeamPassword);
+        user.MustChangePassword = true;
+        user.Active = true;
+        user.InviteToken = null;
+        user.InviteTokenExpiresAt = null;
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiresAt = null;
+        user.UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Ensure every non-root team member can sign in with Pass@123 and must change it on first login.
+    /// Personal passwords are kept only after the member completed that required change.
+    /// </summary>
+    public async Task EnsureDefaultTeamPasswordsAsync(CancellationToken ct = default)
+    {
+        var members = await db.DevTeamUsers.Where(u => !u.IsRoot).ToListAsync(ct);
+        var changed = false;
+        foreach (var member in members)
+        {
+            var alreadyChangedToPersonal =
+                member.HasPassword
+                && !member.MustChangePassword
+                && !member.InvitePending
+                && !AppPasswordHasher.Verify(DefaultTeamPassword, member.PasswordHash);
+
+            if (alreadyChangedToPersonal)
+                continue;
+
+            ApplyDefaultTeamPassword(member);
+            changed = true;
+        }
+
+        if (changed)
+            await db.SaveChangesAsync(ct);
     }
 
     public async Task<(DevConsolePasswordTicket? Ticket, string? Error)> CreatePasswordTicketAsync(
@@ -85,9 +135,7 @@ public class DevConsoleAuthService(
         if (user is null || !user.Active)
             return (null, "Invalid email or password.");
         if (!user.HasPassword)
-            return (null, "Account is not activated. Open the invitation email to set your password.");
-        if (user.InvitePending)
-            return (null, "Account is not activated. Open the invitation email to set your password.");
+            return (null, "Account has no password yet. Ask the Super User to reset it to the default.");
         if (!AppPasswordHasher.Verify(password, user.PasswordHash))
             return (null, "Invalid email or password.");
 
@@ -237,6 +285,8 @@ public class DevConsoleAuthService(
             return (null, "Invitation token is required.");
         if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
             return (null, "Password must be at least 8 characters.");
+        if (string.Equals(newPassword, DefaultTeamPassword, StringComparison.Ordinal))
+            return (null, "Choose a password different from the default team password.");
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.InviteToken == token, ct);
         if (user is null)
@@ -246,6 +296,7 @@ public class DevConsoleAuthService(
 
         user.PasswordHash = AppPasswordHasher.Hash(newPassword);
         user.Active = true;
+        user.MustChangePassword = false;
         user.InviteToken = null;
         user.InviteTokenExpiresAt = null;
         user.PasswordResetToken = null;
@@ -265,6 +316,8 @@ public class DevConsoleAuthService(
             return (null, "Reset token is required.");
         if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
             return (null, "Password must be at least 8 characters.");
+        if (string.Equals(newPassword, DefaultTeamPassword, StringComparison.Ordinal))
+            return (null, "Choose a new password different from the default team password.");
 
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.PasswordResetToken == token, ct);
         if (user is null)
@@ -275,6 +328,7 @@ public class DevConsoleAuthService(
             return (null, "Account is inactive.");
 
         user.PasswordHash = AppPasswordHasher.Hash(newPassword);
+        user.MustChangePassword = false;
         user.PasswordResetToken = null;
         user.PasswordResetTokenExpiresAt = null;
         user.InviteToken = null;
@@ -294,8 +348,11 @@ public class DevConsoleAuthService(
             return (false, "New password must be at least 8 characters.");
         if (!user.HasPassword || !AppPasswordHasher.Verify(currentPassword, user.PasswordHash))
             return (false, "Current password is incorrect.");
+        if (string.Equals(newPassword, DefaultTeamPassword, StringComparison.Ordinal))
+            return (false, "Choose a new password different from the default team password.");
 
         user.PasswordHash = AppPasswordHasher.Hash(newPassword);
+        user.MustChangePassword = false;
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return (true, null);

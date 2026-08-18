@@ -94,7 +94,10 @@ public class AuthController(
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
             return BadRequest("Email and password are required.");
 
-        var normalized = request.Email.Trim().ToLowerInvariant();
+        var normalized = SuperAdminAccess.NormalizeLoginEmail(request.Email);
+        if (SuperAdminAccess.IsPlatformOwnerEmail(request.Email))
+            await PlatformOwnerIdentityMigrator.EnsureMergedAsync(db);
+
         var user = await db.AppUsers
             .AsNoTracking()
             .Include(u => u.Employee)
@@ -120,17 +123,21 @@ public class AuthController(
                 && !string.Equals(user.Email, SuperAdminAccess.SuperAdminEmail, StringComparison.OrdinalIgnoreCase))
             {
                 var billingLocked = await locationSubscriptions.IsCompanyBillingLockedAsync(company.Id);
-                if (billingLocked || !company.Active)
+                if (billingLocked)
                 {
-                    // Re-check: inactive solely from admin vs billing lock
-                    if (billingLocked || !company.Active)
+                    return StatusCode(403, new
                     {
-                        return StatusCode(403, new
-                        {
-                            message = "This account is locked because the free trial or subscription has expired. Contact Bisync support to reactivate.",
-                            code = "subscription_locked",
-                        });
-                    }
+                        message = "This account is locked because the free trial or subscription has expired. Contact Bisync support to reactivate.",
+                        code = "subscription_locked",
+                    });
+                }
+                if (!company.Active)
+                {
+                    return StatusCode(403, new
+                    {
+                        message = "This company is deactivated in Platform Config. Contact your administrator.",
+                        code = "company_inactive",
+                    });
                 }
             }
         }
@@ -659,13 +666,13 @@ public class AuthController(
             foreach (var id in new[]
             {
                 "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder", "cashPurchase", "orderTemplate",
-                "productManagement", "subProductManagement", "offlineSales",
-                "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage", "transfer", "inventoryConfiguration",
+                "productManagement", "subProductManagement", "offlineSales", "centralStore", "stockHold",
+                "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage", "transfer",
                 "createEdit", "componentConfig", "activateDeactivateVendorProducts", "createEditComponentGroup", "createEditStorageAssignment",
                 "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",
                 "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",
                 "manageCustomers", "customerGroup", "customerManagement", "manageSalesOrder", "approveSalesOrder", "manageInvoice", "promotionScheduler",
-                "viewReports", "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit",
+                "viewReports", "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit", "opsExpensesAnalysis",
                 "accountMapping",
                 // hidePrices omitted — owners see prices by default
             })

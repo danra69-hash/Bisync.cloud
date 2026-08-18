@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { History } from 'lucide-react';
@@ -39,20 +39,20 @@ type PayrollPreviewSortColumn =
   | 'payout';
 
 const TABLE_COLUMNS: SortableColumnDef<PayrollPreviewSortColumn>[] = [
-  { key: 'id', label: 'Employee ID' },
-  { key: 'name', label: 'Employee' },
-  { key: 'position', label: 'Position' },
-  { key: 'attendance', label: 'Attendance' },
-  { key: 'overtime', label: 'Overtime', align: 'right' },
-  { key: 'base', label: 'Base Salary', align: 'right' },
-  { key: 'service', label: 'Service', align: 'right' },
-  { key: 'accommodation', label: 'Accommodation', align: 'right' },
-  { key: 'transport', label: 'Transportation', align: 'right' },
-  { key: 'mobile', label: 'Mobile', align: 'right' },
-  { key: 'epf', label: 'EPF', align: 'right' },
-  { key: 'socso', label: 'SOCSO', align: 'right' },
-  { key: 'tax', label: 'Income Tax', align: 'right' },
-  { key: 'payout', label: 'Total Payout', align: 'right' },
+  { key: 'id', label: 'Employee ID', ...tableColWidth('8%') },
+  { key: 'name', label: 'Employee', ...tableColWidth('11%') },
+  { key: 'position', label: 'Position', ...tableColWidth('9%') },
+  { key: 'attendance', label: 'Attendance', ...tableColWidth('9%') },
+  { key: 'overtime', label: 'Overtime', align: 'right', ...tableColWidth('6%') },
+  { key: 'base', label: 'Base Salary', align: 'right', ...tableColWidth('7%') },
+  { key: 'service', label: 'Service', align: 'right', ...tableColWidth('6%') },
+  { key: 'accommodation', label: 'Accommodation', align: 'right', ...tableColWidth('7%') },
+  { key: 'transport', label: 'Transportation', align: 'right', ...tableColWidth('7%') },
+  { key: 'mobile', label: 'Mobile', align: 'right', ...tableColWidth('5%') },
+  { key: 'epf', label: 'EPF', align: 'right', ...tableColWidth('6%') },
+  { key: 'socso', label: 'SOCSO', align: 'right', ...tableColWidth('6%') },
+  { key: 'tax', label: 'Income Tax', align: 'right', ...tableColWidth('6%') },
+  { key: 'payout', label: 'Total Payout', align: 'right', ...tableColWidth('7%') },
 ];
 
 type Props = {
@@ -240,7 +240,8 @@ export function ProcessPayrollPanel({
             </div>
 
             <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-sm">
+              <table className="w-full text-sm">
+                <TableColGroup columns={TABLE_COLUMNS} />
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={TABLE_COLUMNS}

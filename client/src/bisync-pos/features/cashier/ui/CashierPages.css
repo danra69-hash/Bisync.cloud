@@ -1,0 +1,87 @@
+.cashier-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-4);
+}
+
+.cashier-check__total {
+  margin-top: var(--space-4);
+  font-size: 2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.tender-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+.tender-btn {
+  height: 44px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.tender-btn.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+}
+
+.cashier-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  color: var(--color-ink-muted);
+  font-weight: 600;
+}
+
+.cashier-field input {
+  height: 42px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+}
+
+.cashier-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tip-card {
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tip-card:hover {
+  border-color: var(--color-primary);
+}
+
+.feature-toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-5);
+  transform: translateX(-50%);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--color-navy);
+  color: #fff;
+  box-shadow: var(--shadow-md);
+  z-index: 50;
+}
+
+@media (max-width: 900px) {
+  .cashier-layout {
+    grid-template-columns: 1fr;
+  }
+}

@@ -7,12 +7,14 @@ import {
   type Promotion,
 } from '../../api';
 import { inputCls } from '../../data/countries';
-import { pageShellClass } from '../layout/pageLayout';
+import { pageShellClass, TABLE_COL_ACTION, TABLE_COL_CHECK } from '../layout/pageLayout';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+import { PosMappingSchedulerPage } from './PosMappingSchedulerPage';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -22,6 +24,7 @@ type Props = {
 const TABS = [
   { id: 'active', label: 'Active Promotion' },
   { id: 'create', label: 'Create Promotion' },
+  { id: 'pos-mapping', label: 'POS Mapping' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -477,6 +480,7 @@ export function PromotionSchedulerPage({
           ) : (
             <TableScrollContainer>
               <table className="w-full min-w-[720px] text-left border-collapse">
+                <ColGroup widths={['16%', '12%', '12%', '10%', '14%', '10%', '10%', TABLE_COL_ACTION.style.width]} />
                 <thead>
                   <tr className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
                     <th className="px-3 py-2 font-semibold border-b border-border">Name</th>
@@ -546,7 +550,7 @@ export function PromotionSchedulerPage({
             </TableScrollContainer>
           )}
         </div>
-      ) : (
+      ) : tab === 'create' ? (
         <div className="space-y-4 pt-3 max-w-5xl">
           {promotionType !== 'combo' && (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -765,9 +769,10 @@ export function PromotionSchedulerPage({
                   ) : (
                     <TableScrollContainer>
                       <table className="w-full min-w-[680px] text-left border-collapse">
+                        <ColGroup widths={[TABLE_COL_CHECK.style.width, '32%', '18%', '14%', '16%', '14%']} />
                         <thead>
                           <tr className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                            <th className="px-3 py-2 font-semibold border-b border-border w-10" />
+                            <th className="px-3 py-2 font-semibold border-b border-border" />
                             <th className="px-3 py-2 font-semibold border-b border-border">Product</th>
                             <th className="px-3 py-2 font-semibold border-b border-border">Delivery unit</th>
                             <th className="px-3 py-2 font-semibold border-b border-border">QTY on hand</th>
@@ -846,9 +851,20 @@ export function PromotionSchedulerPage({
               ) : (
                 <TableScrollContainer>
                   <table className="w-full min-w-[680px] text-left border-collapse">
+                    <ColGroup
+                      widths={[
+                        TABLE_COL_CHECK.style.width,
+                        '32%',
+                        '18%',
+                        '14%',
+                        '16%',
+                        ...(durationMode === 'byQty' ? ['12%' as const] : []),
+                        ...(promotionType === 'knockedDownPrice' ? ['12%' as const] : []),
+                      ]}
+                    />
                     <thead>
                       <tr className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                        <th className="px-3 py-2 font-semibold border-b border-border w-10" />
+                        <th className="px-3 py-2 font-semibold border-b border-border" />
                         <th className="px-3 py-2 font-semibold border-b border-border">Product</th>
                         <th className="px-3 py-2 font-semibold border-b border-border">Delivery unit</th>
                         <th className="px-3 py-2 font-semibold border-b border-border">QTY on hand</th>
@@ -940,6 +956,14 @@ export function PromotionSchedulerPage({
               Clear
             </button>
           </div>
+        </div>
+      ) : (
+        <div className="pt-3">
+          <PosMappingSchedulerPage
+            selectedCompanyId={selectedCompanyId}
+            embedded
+            title="POS Mapping"
+          />
         </div>
       )}
     </div>

@@ -1,6 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Centered dialogs must stay inside the live viewport on short / keyboard layouts. */
+:root {
+  --app-modal-max-h: calc(100dvh - 1rem);
+  --app-modal-max-w: calc(100vw - 1rem);
+}
+
+@supports (height: 100svh) {
+  :root {
+    --app-modal-max-h: calc(100svh - 1rem);
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -109,6 +121,12 @@
 @layer components {
   [data-table-scroll] table {
     width: 100%;
+    /* Auto-size by default so text/photos are not clipped. Tables that declare
+       <colgroup> keep balanced fixed layout. */
+    table-layout: auto;
+  }
+
+  [data-table-scroll] table:has(> colgroup) {
     table-layout: fixed;
   }
 
@@ -120,14 +138,57 @@
   }
 
   [data-table-scroll] thead th {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    white-space: normal;
     padding: 0.25rem 0.5rem;
     font-size: 0.6875rem;
     line-height: 1.2;
+    vertical-align: top;
     background-color: color-mix(in srgb, var(--muted) 55%, var(--card));
     box-shadow: inset 0 -1px 0 var(--border);
+    position: relative;
+  }
+
+  /* Column resize affordance — only while Adjust column mode is active. */
+  [data-table-scroll][data-column-resize='true'] thead th::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 2;
+    background: linear-gradient(
+      to right,
+      transparent 0,
+      transparent 3px,
+      color-mix(in srgb, var(--primary) 45%, transparent) 3px,
+      color-mix(in srgb, var(--primary) 45%, transparent) 5px,
+      transparent 5px
+    );
+  }
+
+  [data-table-scroll][data-column-resize='true'] thead th:hover::after {
+    background: linear-gradient(
+      to right,
+      transparent 0,
+      transparent 2px,
+      var(--primary) 2px,
+      var(--primary) 6px,
+      transparent 6px
+    );
+  }
+
+  [data-table-scroll].is-col-resize-hover,
+  [data-table-scroll].is-col-resizing {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  [data-table-scroll].is-col-resizing thead th,
+  [data-table-scroll].is-col-resizing tbody td {
+    pointer-events: none;
   }
 
   /* Section title strip above a scrolling table (Summary / History bars) */
@@ -141,11 +202,21 @@
 
   [data-table-scroll] tbody td,
   [data-table-scroll] tfoot td {
-    overflow: hidden;
+    overflow: visible;
     min-width: 0;
     padding: 0.25rem 0.5rem;
     font-size: 0.75rem;
     line-height: 1.3;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Opt-in clip for cells that intentionally truncate */
+  [data-table-scroll] tbody td.truncate,
+  [data-table-scroll] tbody td .truncate,
+  [data-table-scroll] thead th.truncate {
+    overflow: hidden;
   }
 
   /* Module nav (Rev Mgmt / POS) sticks under the app header inside main scroll */
@@ -164,13 +235,23 @@
     background-color: var(--background);
   }
 
-  /* Any main-page table header sticks within its scrollport (covers ad-hoc tables too) */
-  [data-app-main] table > thead {
+  /*
+   * Stick table headers only inside an explicit table scrollport.
+   * Sticking every thead to [data-app-main] overlaps section titles / first rows
+   * when the nested table does not itself overflow (common for short lists).
+   */
+  [data-app-main] [data-table-scroll] > table > thead,
+  [data-app-main] [data-table-scroll] table > thead {
     position: sticky;
     top: 0;
     z-index: 10;
   }
 
+  [data-app-main] [data-table-scroll] table > thead th {
+    background-color: color-mix(in srgb, var(--muted) 55%, var(--card));
+  }
+
+  /* Non-scrolling tables keep a solid header background without sticky fight */
   [data-app-main] table > thead th {
     background-color: color-mix(in srgb, var(--muted) 55%, var(--card));
   }

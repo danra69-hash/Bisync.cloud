@@ -37,6 +37,22 @@ public sealed class TenantConnectionResolver : ITenantConnectionResolver
             : cached.OperationalConnection;
     }
 
+    public string ResolveDatabaseBucketName(int? companyId)
+    {
+        if (companyId is null or <= 0)
+            return DatabaseNameFromConnection(_defaultOperational) ?? "bisync";
+
+        var cached = GetOrLoad(companyId.Value);
+        if (!string.IsNullOrWhiteSpace(cached.DatabaseName))
+            return cached.DatabaseName.Trim();
+
+        var fromConn = DatabaseNameFromConnection(cached.OperationalConnection);
+        if (!string.IsNullOrWhiteSpace(fromConn) && !string.Equals(fromConn, "bisync", StringComparison.OrdinalIgnoreCase))
+            return fromConn!;
+
+        return $"bisync_c_{companyId.Value}";
+    }
+
     public string ResolveArchiveConnection(int? companyId)
     {
         if (companyId is null or <= 0)
@@ -143,6 +159,19 @@ public sealed class TenantConnectionResolver : ITenantConnectionResolver
             return connectionString;
         var separator = connectionString.TrimEnd().EndsWith(';') ? string.Empty : ";";
         return $"{connectionString}{separator}Password={password}";
+    }
+
+    static string? DatabaseNameFromConnection(string? connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString)) return null;
+        try
+        {
+            return new NpgsqlConnectionStringBuilder(connectionString).Database;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     sealed record CachedTenant(

@@ -16,10 +16,11 @@ import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { labelsEqual } from '../../utils/labelMatch';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { InventoryConfirmModal } from './InventoryConfirmModal';
@@ -48,7 +49,7 @@ import {
 } from './stockCardPeriod';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
-const TABLE_COL_COUNT = 12;
+const TABLE_COL_COUNT = 14;
 const HISTORY_TABLE_COL_COUNT = 13;
 const INVENTORY_TABS = [
   { id: 'count', label: 'Count' },
@@ -72,8 +73,10 @@ type CountSortColumn =
   | 'uom'
   | 'onHand'
   | 'principalUom'
-  | 'inventoryUom'
+  | 'alternateUom'
   | 'totalQty'
+  | 'qtyVariance'
+  | 'varianceValue'
   | 'area'
   | 'storage';
 
@@ -92,34 +95,36 @@ type HistorySortColumn =
   | 'varianceValue';
 
 const COUNT_TABLE_COLUMNS: SortableColumnDef<string>[] = [
-  { key: 'type', label: 'Type' },
-  { key: 'group', label: 'Group' },
-  { key: 'name', label: 'Name' },
-  { key: 'uom', label: 'UOM' },
-  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const },
-  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const },
-  { key: 'principalQty', label: 'QTY', align: 'right' as const, sortable: false },
-  { key: 'inventoryUom', label: 'Inventory UOM', align: 'right' as const },
-  { key: 'inventoryQty', label: 'QTY', align: 'right' as const, sortable: false },
-  { key: 'totalQty', label: 'Total QTY', align: 'right' as const, className: 'w-28' },
-  { key: 'area', label: 'Area' },
-  { key: 'storage', label: 'Storage' },
-] ;
+  { key: 'type', label: 'Type', ...tableColWidth(72) },
+  { key: 'group', label: 'Group', ...tableColWidth(96) },
+  { key: 'name', label: 'Name', ...tableColWidth(168) },
+  { key: 'uom', label: 'UOM', ...tableColWidth(64) },
+  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const, ...tableColWidth(120) },
+  { key: 'principalQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth(96) },
+  { key: 'alternateUom', label: 'Alternate Component UOM', align: 'right' as const, ...tableColWidth(120) },
+  { key: 'alternateQty', label: 'QTY Counted', align: 'right' as const, sortable: false, ...tableColWidth(96) },
+  { key: 'totalQty', label: 'Total QTY (PCU)', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'qtyVariance', label: 'QTY Variance', align: 'right' as const, ...tableColWidth(100) },
+  { key: 'varianceValue', label: 'Variance Value', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'area', label: 'Area', ...tableColWidth(88) },
+  { key: 'storage', label: 'Storage', ...tableColWidth(96) },
+];
 
 const HISTORY_TABLE_COLUMNS: SortableColumnDef<string>[] = [
-  { key: 'itemName', label: 'Item' },
-  { key: 'location', label: 'Location' },
-  { key: 'savedAt', label: 'Date Created' },
-  { key: 'confirmedAt', label: 'Date Confirmed' },
-  { key: 'effectiveDate', label: 'Effective Date' },
-  { key: 'uom', label: 'UOM' },
-  { key: 'systemQty', label: 'System Qty', align: 'right' as const },
-  { key: 'countedQty', label: 'Actual Inventory', align: 'right' as const },
-  { key: 'varianceQty', label: 'Variance', align: 'right' as const },
-  { key: 'systemValue', label: 'System Value', align: 'right' as const },
-  { key: 'actualValue', label: 'Actual Value', align: 'right' as const },
-  { key: 'varianceValue', label: 'Variance', align: 'right' as const },
-  { key: 'actions', label: 'Actions', align: 'right', sortable: false },
+  { key: 'itemName', label: 'Item', ...tableColWidth(168) },
+  { key: 'location', label: 'Location', ...tableColWidth(120) },
+  { key: 'savedAt', label: 'Date Created', ...tableColWidth(132) },
+  { key: 'confirmedAt', label: 'Date Confirmed', ...tableColWidth(132) },
+  { key: 'effectiveDate', label: 'Effective Date', ...tableColWidth(112) },
+  { key: 'uom', label: 'UOM', ...tableColWidth(64) },
+  { key: 'systemQty', label: 'System Qty', align: 'right' as const, ...tableColWidth(96) },
+  { key: 'countedQty', label: 'Actual Inventory', align: 'right' as const, ...tableColWidth(112) },
+  { key: 'varianceQty', label: 'Variance', align: 'right' as const, ...tableColWidth(88) },
+  { key: 'systemValue', label: 'System Value', align: 'right' as const, ...tableColWidth(104) },
+  { key: 'actualValue', label: 'Actual Value', align: 'right' as const, ...tableColWidth(104) },
+  { key: 'varianceValue', label: 'Variance', align: 'right' as const, ...tableColWidth(96) },
+  { key: 'actions', label: 'Actions', align: 'right', sortable: false, ...tableColWidth(100) },
 ];
 
 function todayIsoDate() {
@@ -129,6 +134,13 @@ function todayIsoDate() {
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  /**
+   * Team mobile actor (employee display name). When set, save/confirm follow
+   * Team workflow without requiring an AppUser inventory permission matrix.
+   */
+  teamActorName?: string;
+  /** Drop outer page padding when embedded in Team Stock. */
+  embedded?: boolean;
 };
 
 const ITEM_TYPES = ['All', 'Product', 'Sub-Product', 'Smart Component'] as const;
@@ -195,6 +207,24 @@ function fmtMoney(value: number | null | undefined) {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** FIFO on-hand average COGS in Principal Component Unit (fallback to outbound average). */
+function rowPcuUnitPrice(row: StockCardListRow): number {
+  if (Number.isFinite(row.onHandAverageCogs) && row.onHandAverageCogs > 0) return row.onHandAverageCogs;
+  if (Number.isFinite(row.averageCogs) && row.averageCogs > 0) return row.averageCogs;
+  return 0;
+}
+
+function rowQtyVariance(totalQty: number | null, onHand: number): number | null {
+  if (totalQty == null || !Number.isFinite(totalQty)) return null;
+  return totalQty - onHand;
+}
+
+/** Variance Value = QTY Variance × FIFO PCU unit price (same basis as inventory history). */
+function rowVarianceValue(qtyVariance: number | null, unitPrice: number): number | null {
+  if (qtyVariance == null || !Number.isFinite(qtyVariance) || unitPrice <= 0) return null;
+  return Math.round(qtyVariance * unitPrice * 100) / 100;
+}
+
 function formatDateTime(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -258,15 +288,18 @@ function sessionStatusLabel(session: InventoryCountSession, inventoryMode: Inven
   return `Full inventory confirmed on ${formatDateTime(session.confirmedAt ?? session.savedAt)} by ${session.confirmedBy || '—'}`;
 }
 
-export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props) {
+export function InventoryPage({ selectedCompanyId, selectedLocationIds, teamActorName, embedded = false }: Props) {
   const countryCode = useOrgCountryCode();
   const { currentUser } = useCurrentUser();
   const access = useMemo(
     () => (currentUser ? parseUserAccess(currentUser.accessJson) : null),
     [currentUser],
   );
-  const canSave = access ? canSaveInventoryCount(access) : false;
-  const canConfirm = access ? canConfirmInventoryCount(access) : false;
+  const teamWorkflow = Boolean(teamActorName?.trim());
+  const actorName = (currentUser?.fullName?.trim() || teamActorName?.trim() || 'Unknown user');
+  const canSave = teamWorkflow || (access ? canSaveInventoryCount(access) : false);
+  const canConfirm = teamWorkflow || (access ? canConfirmInventoryCount(access) : false);
+  const shellCls = pageShellClass({ embedded });
 
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [historyMonth, setHistoryMonth] = useState('');
@@ -275,7 +308,8 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
+  /** Count totals are always expressed in Principal Component Unit. */
+  const uomMode: 'recipe' = 'recipe';
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [countDate, setCountDate] = useState(todayIsoDate);
   const [inventoryMode, setInventoryMode] = useState<InventoryCountSessionType>('spot');
@@ -404,7 +438,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
       const [stockRows, session, ingredients, products] = await Promise.all([
         api.stockCards(selectedCompanyId, countLocationIds, {
           itemType: itemTypeFilterParam(itemTypeFilter),
-          uomMode: 'inventory',
+          uomMode: 'recipe',
           period: selectedMonth,
         }),
         api.activeInventoryCount(inventoryMode, selectedCompanyId, countLocationIds, selectedMonth, uomMode),
@@ -440,8 +474,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
           if (line.countedQty == null) continue;
           const key = `${line.itemType}-${line.itemKey}`;
           const qty = fmtQty(line.countedQty, countryCode);
-          if (uomMode === 'recipe') nextRecipe[key] = qty;
-          else nextInventory[key] = qty;
+          nextRecipe[key] = qty;
         }
       }
       setRecipeQtyByKey(nextRecipe);
@@ -460,7 +493,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     if (categoryFilter !== 'All') {
       next = next.filter(row => {
         const category = itemCategoryByKey[`${row.itemType}-${row.itemKey}`];
-        return category === categoryFilter;
+        return labelsEqual(category, categoryFilter);
       });
     }
     if (activeStorageTypes.length > 0) {
@@ -570,8 +603,19 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         uom: row => displayUomForRow(row, uomMode),
         onHand: row => row.onHandQty,
         principalUom: row => row.recipeUom || row.uom || '',
-        inventoryUom: row => row.inventoryUom || row.uom || '',
+        alternateUom: row => rowConversion(row).alternateUom || '',
         totalQty: row => rowTotalQty(row) ?? -1,
+        qtyVariance: row => {
+          const total = rowTotalQty(row);
+          const onHand = displayOnHandQty(row, uomMode, rowConversion(row));
+          return rowQtyVariance(total, onHand) ?? Number.NEGATIVE_INFINITY;
+        },
+        varianceValue: row => {
+          const total = rowTotalQty(row);
+          const onHand = displayOnHandQty(row, uomMode, rowConversion(row));
+          const variance = rowQtyVariance(total, onHand);
+          return rowVarianceValue(variance, rowPcuUnitPrice(row)) ?? Number.NEGATIVE_INFINITY;
+        },
         area: row => row.sortArea,
         storage: row => row.sortStorage,
       },
@@ -645,7 +689,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         itemTypeFilter: itemTypeFilterParam(itemTypeFilter),
         groupFilter: 'All',
         countDate: inventoryMode === 'spot' ? countDate : new Date().toISOString().slice(0, 10),
-        savedBy: currentUser?.fullName ?? 'Unknown user',
+        savedBy: actorName,
         lines,
       });
       setActiveSession(result.session);
@@ -678,7 +722,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     try {
       const result = await api.confirmInventoryCount(
         sessionId,
-        currentUser?.fullName ?? 'Unknown user',
+        actorName,
         effectiveDate,
       );
       if (activeSession?.id === sessionId) {
@@ -708,14 +752,14 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
   if (!selectedCompanyId || selectedLocationIds.length === 0) {
     return (
-      <div className={pageShellClass()}>
+      <div className={shellCls}>
         <p className="text-sm text-muted-foreground">Select a company and location in the header to view inventory.</p>
       </div>
     );
   }
 
   return (
-    <div className={pageShellClass()}>
+    <div className={shellCls}>
       <PageStickyFilters opaque className="space-y-3 pb-2">
         <HrConfigTabBar tabs={INVENTORY_TABS} active={pageTab} onChange={setPageTab} />
 
@@ -793,14 +837,9 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                 />
                 <div className="flex flex-col gap-1 shrink-0">
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-                  <select
-                    value={uomMode}
-                    onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-                    className={`${filterSelectCls} min-w-[130px]`}
-                  >
-                    <option value="inventory">Inventory UOM</option>
-                    <option value="recipe">Component UOM</option>
-                  </select>
+                  <div className={`${filterSelectCls} min-w-[160px] flex items-center text-muted-foreground`}>
+                    Principal Component Unit
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 shrink-0">
                   <span className="text-xs font-sans text-transparent uppercase tracking-wider select-none" aria-hidden="true">
@@ -898,8 +937,9 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
       {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 
-      <TableScrollContainer ref={scrollRootRef}>
-        <table className="w-full text-sm font-sans">
+      <TableScrollContainer ref={scrollRootRef} tableId="revenue.inventory.count">
+        <table className="w-full min-w-[1460px] text-sm font-sans">
+          <TableColGroup columns={COUNT_TABLE_COLUMNS} />
           <thead>
             <SortableTableHeaderRow
               columns={COUNT_TABLE_COLUMNS}
@@ -929,9 +969,13 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                 const isComponent = row.itemType === 'component';
                 const conv = rowConversion(row);
                 const principalUom = isComponent ? row.recipeUom || row.uom : '—';
-                const inventoryUom = isComponent ? row.inventoryUom || row.uom : row.uom;
+                const alternateUom = isComponent ? (conv.alternateUom || '—') : row.uom;
+                const hasAlternate = isComponent && Boolean(conv.alternateUom);
                 const totalQty = rowTotalQty(row);
                 const onHand = displayOnHandQty(row, uomMode, conv);
+                const qtyVariance = rowQtyVariance(totalQty, onHand);
+                const pcuPrice = rowPcuUnitPrice(row);
+                const varianceValue = rowVarianceValue(qtyVariance, pcuPrice);
 
                 return (
                   <tr key={key} className="border-b border-border/60 hover:bg-muted/40">
@@ -950,10 +994,10 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                         placeholder="0"
                         disabled={isReadOnly || !isComponent}
                         className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
-                        aria-label={`Principal component quantity for ${row.name}`}
+                        aria-label={`Principal QTY Counted for ${row.name}`}
                       />
                     </td>
-                    <td className="px-3 py-2.5 text-right text-muted-foreground">{inventoryUom}</td>
+                    <td className="px-3 py-2.5 text-right text-muted-foreground">{alternateUom}</td>
                     <td className="px-3 py-2.5 text-right">
                       <input
                         type="text"
@@ -961,13 +1005,22 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                         value={inventoryQtyByKey[key] ?? ''}
                         onChange={e => updateInventoryQty(key, e.target.value)}
                         placeholder="0"
-                        disabled={isReadOnly}
+                        disabled={isReadOnly || (isComponent && !hasAlternate)}
                         className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
-                        aria-label={`Inventory quantity for ${row.name}`}
+                        aria-label={`Alternate QTY Counted for ${row.name}`}
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">
                       {totalQty != null ? fmtQty(totalQty, countryCode) : '—'}
+                    </td>
+                    <td className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(qtyVariance)}`}>
+                      {fmtVarianceQty(qtyVariance, countryCode)}
+                    </td>
+                    <td
+                      className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(varianceValue)}`}
+                      title={pcuPrice > 0 ? `FIFO PCU price ${fmtMoney(pcuPrice)}` : undefined}
+                    >
+                      {varianceValue != null ? fmtVarianceQty(varianceValue, countryCode) : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.areaLabel}</td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.storageLabel}</td>
@@ -990,8 +1043,9 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
           {historyError ? <p className="text-sm text-destructive">{historyError}</p> : null}
 
-          <TableScrollContainer>
-            <table className="w-full text-sm font-sans">
+          <TableScrollContainer tableId="revenue.inventory.history">
+            <table className="w-full min-w-[1440px] text-sm font-sans">
+              <TableColGroup columns={HISTORY_TABLE_COLUMNS} />
               <thead>
                 <SortableTableHeaderRow
                   columns={HISTORY_TABLE_COLUMNS}

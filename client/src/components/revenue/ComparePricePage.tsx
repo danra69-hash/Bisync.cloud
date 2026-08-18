@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Tag, UserCheck, UserPlus } from 'lucide-react';
-import { getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { labelsEqual } from '../../utils/labelMatch';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
 import { vendorMatchesOrgPolicy } from '../../data/vendorPolicyRules';
 import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
+import { loadComponentHierarchyForCompany } from '../../data/componentHierarchy';
 import {
   buildComparePriceMatrix,
   comparePriceCellKey,
@@ -34,6 +36,7 @@ import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 
 const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0';
 const COMPONENT_COL_WIDTH_PX = 220;
@@ -70,6 +73,7 @@ function ComparePriceCellView({
 }) {
   const [draftCost, setDraftCost] = useState('');
   const [costError, setCostError] = useState<string | null>(null);
+  const { countryCode } = useCountryFormatters();
   const { product } = slot;
   const cell = slot.pricing;
   const needsManual = cell ? !cell.autoResolvable && cell.principalQty <= 0 : false;
@@ -138,7 +142,7 @@ function ComparePriceCellView({
           <p className="font-sans text-[11px] text-muted-foreground">Qty / UOM only</p>
         ) : cell && cell.uomCost !== null && cell.uomCost > 0 ? (
           <p className={`font-sans text-[11px] font-semibold ${isBest ? 'text-[#5A7A2A]' : 'text-foreground'}`}>
-            {formatUomCost(cell.uomCost, cell.componentUom)}
+            {formatUomCost(cell.uomCost, cell.componentUom, countryCode)}
             {isBest && <span className="ml-1 text-xs font-bold uppercase">Best</span>}
           </p>
         ) : cell && needsManual ? (
@@ -191,8 +195,10 @@ export function ComparePricePage({
   const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [search, setSearch] = useState('');
+  /** Empty until the user picks a category — list stays hidden until then. */
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
-  const groupFilterOptions = useMemo(() => getSiGroupFilterOptions(['Seafood']), []);
+  const [hierarchyRevision, setHierarchyRevision] = useState(0);
   const [vendorFilter, setVendorFilter] = useState<'all' | 'engaged' | 'available'>('all');
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -246,8 +252,26 @@ export function ComparePricePage({
   }, [loadData]);
 
   useEffect(() => {
+    setCategoryFilter('');
+    setGroupFilter('all');
+    setSearch('');
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedCompanyId) {
+      setHierarchyRevision(value => value + 1);
+      return;
+    }
+    void loadComponentHierarchyForCompany(selectedCompanyId).then(() => {
+      if (!cancelled) setHierarchyRevision(value => value + 1);
+    });
+    return () => { cancelled = true; };
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
     resetSort();
-  }, [search, groupFilter, vendorFilter, resetSort]);
+  }, [search, categoryFilter, groupFilter, vendorFilter, resetSort]);
 
   const policyFilteredVendors = useMemo(
     () => vendors.filter(v => vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v)),
@@ -259,26 +283,55 @@ export function ComparePricePage({
     [componentRows, policyFilteredVendors, moveVersion],
   );
 
+  const categoryFilterOptions = useMemo(() => {
+    // Compare Price only includes Food/Beverage rows; offer those present in the matrix.
+    return getSiCategoryFilterOptions(components.map(row => row.category))
+      .filter(option => option !== 'All');
+  }, [components, hierarchyRevision]);
+
+  const groupFilterOptions = useMemo(() => {
+    if (!categoryFilter) return ['All'];
+    const scopedRows = components.filter(row => labelsEqual(row.category, categoryFilter));
+    return getSiGroupFilterOptions(
+      scopedRows.map(row => row.group),
+      categoryFilter,
+    );
+  }, [components, categoryFilter, hierarchyRevision]);
+
+  useEffect(() => {
+    if (groupFilter === 'all') return;
+    const stillValid = groupFilterOptions.some(
+      option => option === 'All' || labelsEqual(option, groupFilter),
+    );
+    if (!stillValid) setGroupFilter('all');
+  }, [categoryFilter, groupFilterOptions, groupFilter]);
+
   const filteredVendorColumns = useMemo(() => {
+    // vendorColumns is already engaged-first, then unengaged (see sortComparePriceVendorColumns).
     if (vendorFilter === 'all') return vendorColumns;
     const engaged = vendorFilter === 'engaged';
     return vendorColumns.filter(v => v.engaged === engaged);
   }, [vendorColumns, vendorFilter]);
 
+  const categorySelected = Boolean(categoryFilter.trim());
+
   const filteredComponents = useMemo(() => {
+    if (!categorySelected) return [];
     const q = search.trim().toLowerCase();
     return components.filter(c => {
+      const matchCategory = labelsEqual(c.category, categoryFilter);
       const matchText =
         !q
         || c.name.toLowerCase().includes(q)
         || c.componentId.toLowerCase().includes(q)
-        || c.group.toLowerCase().includes(q);
+        || c.group.toLowerCase().includes(q)
+        || c.category.toLowerCase().includes(q);
       const matchGroup =
         groupFilter === 'all'
-        || c.group === groupFilter;
-      return matchText && matchGroup;
+        || labelsEqual(c.group, groupFilter);
+      return matchCategory && matchText && matchGroup;
     });
-  }, [components, search, groupFilter]);
+  }, [components, search, categoryFilter, groupFilter, categorySelected]);
 
   const compareTableColumns = useMemo((): SortableColumnDef<string>[] => [
     {
@@ -514,33 +567,55 @@ export function ComparePricePage({
         <>
           <PageStickyFilters opaque className="py-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-sans text-muted-foreground uppercase tracking-wider">Category</label>
+              <select
+                value={categoryFilter}
+                onChange={e => {
+                  setCategoryFilter(e.target.value);
+                  setGroupFilter('all');
+                }}
+                className={`${filterSelectCls} min-w-[150px]`}
+              >
+                <option value="">Select category</option>
+                {categoryFilterOptions.map(option => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-sans text-muted-foreground uppercase tracking-wider">Group</label>
+              <select
+                value={groupFilter}
+                onChange={e => setGroupFilter(e.target.value)}
+                disabled={!categorySelected}
+                className={`${filterSelectCls} min-w-[150px] disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {groupFilterOptions.map(option => (
+                  <option key={option} value={option === 'All' ? 'all' : option}>
+                    {option === 'All' ? 'All groups' : option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="relative flex-1 min-w-[200px] max-w-sm self-end">
               <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Filter smart components…"
-                className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary"
+                disabled={!categorySelected}
+                className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
-            <select
-              value={groupFilter}
-              onChange={e => setGroupFilter(e.target.value)}
-              className={`${filterSelectCls} min-w-[140px]`}
-            >
-              {groupFilterOptions.map(option => (
-                <option key={option} value={option === 'All' ? 'all' : option}>
-                  {option === 'All' ? 'All groups' : option}
-                </option>
-              ))}
-            </select>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 self-end">
               {(['all', 'engaged', 'available'] as const).map(f => (
                 <button
                   key={f}
                   type="button"
                   onClick={() => setVendorFilter(f)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  disabled={!categorySelected}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     vendorFilter === f
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border text-muted-foreground hover:border-primary/50'
@@ -550,17 +625,25 @@ export function ComparePricePage({
                 </button>
               ))}
             </div>
-            <p className="text-xs font-sans text-muted-foreground">
-              {filteredComponents.length} component{filteredComponents.length !== 1 ? 's' : ''}
-              {' · '}
-              {filteredVendorColumns.length} vendor{filteredVendorColumns.length !== 1 ? 's' : ''}
-            </p>
+            {categorySelected && (
+              <p className="text-xs font-sans text-muted-foreground self-end pb-1">
+                {filteredComponents.length} component{filteredComponents.length !== 1 ? 's' : ''}
+                {' · '}
+                {filteredVendorColumns.length} vendor{filteredVendorColumns.length !== 1 ? 's' : ''}
+                {vendorFilter === 'all' ? ' (engaged first)' : ''}
+              </p>
+            )}
           </div>
           </PageStickyFilters>
 
-          {filteredComponents.length === 0 || filteredVendorColumns.length === 0 ? (
+          {!categorySelected ? (
             <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
-              No food or beverage components found. Add smart components to populate this spreadsheet.
+              Select a category to view the compare price list. Group options follow the selected category.
+            </p>
+          ) : filteredComponents.length === 0 || filteredVendorColumns.length === 0 ? (
+            <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
+              No components found for this category{groupFilter !== 'all' ? ` / ${groupFilter}` : ''}.
+              Add smart components or clear filters to populate this spreadsheet.
             </p>
           ) : (
             <div className="rounded-lg border border-border bg-card overflow-hidden">

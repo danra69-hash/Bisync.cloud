@@ -35,12 +35,20 @@ export function buildPurchaseOrderPdfDataFromPortal(portal: VendorOrderPortal): 
 
   const company = portal.company;
   const vendor = portal.vendor;
+  const isPreCommitted = Boolean(portal.isPreCommitted);
+  const commitmentStart = portal.commitmentStartDate?.trim() ?? '';
+  const commitmentEnd = portal.commitmentEndDate?.trim() ?? '';
+  const deliveryDate = isPreCommitted && commitmentStart && commitmentEnd
+    ? `${formatDisplayDate(commitmentStart)} → ${formatDisplayDate(commitmentEnd)}`
+    : formatDisplayDate(portal.deliveryDate);
 
   return {
     poNumber: portal.poNumber,
     documentKind: portal.documentKind,
+    isPreCommitted,
     orderDate: formatDisplayDate(portal.orderDate),
-    deliveryDate: formatDisplayDate(portal.deliveryDate),
+    deliveryDate,
+    deliveryDateHeading: isPreCommitted ? 'Commitment Period' : undefined,
     company: company
       ? {
           name: company.name,
@@ -55,6 +63,12 @@ export function buildPurchaseOrderPdfDataFromPortal(portal: VendorOrderPortal): 
           email: company.email,
         }
       : { name: '—', address: '' },
+    companyLogo: company?.logoBase64
+      ? {
+          contentType: company.logoContentType,
+          base64: company.logoBase64,
+        }
+      : null,
     deliveryLocations: portal.deliveryLocations.map(loc => ({
       name: loc.name,
       address: formatAddress([
@@ -62,6 +76,12 @@ export function buildPurchaseOrderPdfDataFromPortal(portal: VendorOrderPortal): 
         loc.addressLine2,
         [loc.city, loc.stateProvince, loc.postcode].filter(Boolean).join(', '),
       ]),
+      logo: loc.logoBase64
+        ? {
+            contentType: loc.logoContentType,
+            base64: loc.logoBase64,
+          }
+        : null,
     })),
     vendor: {
       name: vendor.name,

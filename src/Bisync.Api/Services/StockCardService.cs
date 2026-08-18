@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +8,8 @@ namespace Bisync.Api.Services;
 public class StockCardService(
     BisyncDbContext db,
     ComponentStockService componentStock,
-    ComponentFifoCostingService fifoCosting)
+    ComponentFifoCostingService fifoCosting,
+    ReceivedPurchaseStockHealer receivedStockHealer)
 {
     public async Task<IReadOnlyList<StockCardListRow>> ListAsync(
         int? companyId,
@@ -24,8 +26,10 @@ public class StockCardService(
         var rows = new List<StockCardListRow>();
         var mode = NormalizeUomMode(uomMode);
 
-        var ingredients = await db.Ingredients.AsNoTracking()
-            .Where(i => i.Active)
+        IQueryable<Ingredient> ingredientQuery = db.Ingredients.AsNoTracking().Where(i => i.Active);
+        if (companyId is int ingredientCompanyId)
+            ingredientQuery = ingredientQuery.Where(i => i.CompanyId == null || i.CompanyId == ingredientCompanyId);
+        var ingredients = await ingredientQuery
             .OrderBy(i => i.Group)
             .ThenBy(i => i.Name)
             .ToListAsync(cancellationToken);
@@ -35,7 +39,48 @@ public class StockCardService(
             var visibleIngredients = ingredients
                 .Where(i => MatchesIngredientLocations(i, locationIds))
                 .ToList();
+
+            // Also surface components that already have inbound stock at the selected locations,
+            // even when the ingredient catalog location filter would exclude them (common after receive).
+            var purchasedComponentIds = await db.InventoryPurchases.AsNoTracking()
+                .Where(p => p.DateCreatedInStock >= stockPeriod.ArchiveCutoff
+                    && p.DateCreatedInStock <= stockPeriod.PeriodEnd
+                    && (companyId == null || p.CompanyId == null || p.CompanyId == companyId))
+                .Select(p => new { p.ComponentId, p.LocationIdsJson, p.LocationExternalId })
+                .ToListAsync(cancellationToken);
+            var purchasedAtLocation = purchasedComponentIds
+                .Where(p =>
+                    StockLocationRules.PurchaseMatchesAny(p.LocationIdsJson, locationIds)
+                    || (!string.IsNullOrWhiteSpace(p.LocationExternalId)
+                        && locationIds.Any(id => id.Equals(p.LocationExternalId, StringComparison.OrdinalIgnoreCase))))
+                .Select(p => p.ComponentId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (purchasedAtLocation.Count > 0)
+            {
+                foreach (var ingredient in ingredients)
+                {
+                    if (!purchasedAtLocation.Contains(ingredient.ComponentId))
+                        continue;
+                    if (visibleIngredients.Any(v =>
+                            v.ComponentId.Equals(ingredient.ComponentId, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    visibleIngredients.Add(ingredient);
+                }
+            }
+
             var componentIds = visibleIngredients.Select(i => i.ComponentId).ToList();
+
+            // BBQ-parity for every visible component: create missing purchases + rewrite
+            // under-converted delivery packages → PCU before summarizing the list.
+            try
+            {
+                await receivedStockHealer.HealVisibleComponentsAsync(componentIds, cancellationToken);
+            }
+            catch
+            {
+                // Listing must still succeed even if heal fails.
+            }
 
             // Batch-load purchases/movements for all components at once to avoid N+1 round-trips.
             var allPurchases = componentIds.Count == 0
@@ -98,6 +143,11 @@ public class StockCardService(
                     Uom = displayUom,
                     RecipeUom = ingredient.RecipeUom,
                     InventoryUom = ingredient.InventoryUom,
+                    LastChangedAt = ResolveComponentLastChangedAt(
+                        purchasesByComponent[ingredient.ComponentId],
+                        movementsByComponent[ingredient.ComponentId],
+                        locationIds,
+                        companyId),
                 });
             }
         }
@@ -150,6 +200,10 @@ public class StockCardService(
                     Uom = displayUom,
                     RecipeUom = product.YieldUom,
                     InventoryUom = product.YieldUom,
+                    LastChangedAt = ResolveProductLastChangedAt(
+                        logsByProduct[product.Id],
+                        locationIds,
+                        stockPeriod),
                 });
                 continue;
             }
@@ -177,10 +231,19 @@ public class StockCardService(
                 Uom = productUom,
                 RecipeUom = product.B2bPackageUnit,
                 InventoryUom = product.B2bPackageUnit,
+                LastChangedAt = ResolveProductLastChangedAt(
+                    logsByProduct[product.Id],
+                    locationIds,
+                    stockPeriod),
             });
         }
 
-        return rows;
+        // Always list latest stock activity first for List + Card views.
+        return rows
+            .OrderByDescending(r => r.LastChangedAt ?? DateTime.MinValue)
+            .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.ItemKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task<StockCardDetail?> GetDetailAsync(
@@ -202,7 +265,10 @@ public class StockCardService(
         if (normalizedType is "component" or "smart-component" or "smart component")
         {
             var ingredient = await db.Ingredients.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
+                .FirstOrDefaultAsync(i =>
+                    i.ComponentId == itemKey
+                    && (companyId == null || i.CompanyId == companyId),
+                    cancellationToken);
             if (ingredient is null)
                 return null;
 
@@ -296,7 +362,10 @@ public class StockCardService(
         if (normalizedType is "component" or "smart-component" or "smart component")
         {
             var ingredient = await db.Ingredients.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
+                .FirstOrDefaultAsync(i =>
+                    i.ComponentId == itemKey
+                    && (companyId == null || i.CompanyId == companyId),
+                    cancellationToken);
             if (ingredient is null)
                 return null;
 
@@ -573,9 +642,6 @@ public class StockCardService(
 
         if (stockRow is null)
         {
-            if (signedQty <= 0)
-                return;
-
             db.ProductB2bLocationStocks.Add(new ProductB2bLocationStock
             {
                 ProductId = productId,
@@ -586,7 +652,8 @@ public class StockCardService(
             return;
         }
 
-        stockRow.InStock = Math.Max(0, stockRow.InStock + signedQty);
+        // Allow negative finished-goods balances (oversell → priced when inbound arrives).
+        stockRow.InStock += signedQty;
         stockRow.UpdatedAt = DateTime.UtcNow;
     }
 
@@ -678,6 +745,9 @@ public class StockCardService(
             AverageCogsAfter = balanceForwardAvgCogs,
             FifoPolicy = "FIFO",
             IsNegativeBalance = balanceForward < 0,
+            InboundSequenceNo = balanceForward > 0 ? 0 : 0,
+            OriginalQuantity = Math.Abs(balanceForward),
+            DepletedQuantity = 0,
         });
 
         foreach (var entry in inPeriod)
@@ -733,11 +803,11 @@ public class StockCardService(
     }
 
     static bool IsInboundSummaryType(string entryType) =>
-        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "split_use_in";
+        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "split_use_in" or "store_hold_in";
 
     static bool IsOutboundSummaryType(string entryType) =>
         // split_use is composition of inbound (not a true outbound leave).
-        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "adjustment_out" or "outbound";
+        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "credit_note" or "store_issue" or "transfer_out" or "adjustment_out" or "outbound";
 
     static decimal ComputeOutboundAveragePrice(
         IEnumerable<StockCardLedgerEntry> entries,
@@ -788,6 +858,22 @@ public class StockCardService(
     {
         var unitPrice = StockCardFifoEngine.RoundUnitPrice(enriched.UnitPrice);
         var quantity = enriched.Event.Quantity;
+        var pcuExtended = quantity > 0 && unitPrice > 0 ? RoundLineSubtotal(quantity, unitPrice) : 0m;
+        var hasDocumentAuthority = enriched.Event.DocumentAmount > 0
+            || Math.Abs(enriched.Event.RoundingResidual) > 0.00005m;
+        var documentAmount = hasDocumentAuthority
+            ? DecimalRounding.ToDb(enriched.Event.DocumentAmount)
+            : pcuExtended;
+        var roundingResidual = enriched.Event.RoundingResidual;
+        // Inbound + credit-note outbound: financial subtotal = document amount (PO/CN authority).
+        var isInbound = enriched.Event.SignedQty > 0
+            && enriched.Event.EntryType is "purchase" or "cash_purchase" or "split_use_in" or "inbound" or "transfer_in" or "adjustment_in" or "balance_forward";
+        var isCreditNoteOutbound = enriched.Event.SignedQty < 0
+            && enriched.Event.EntryType == "credit_note";
+        var subtotal = hasDocumentAuthority && (isInbound || isCreditNoteOutbound)
+            ? documentAmount
+            : pcuExtended;
+
         return new StockCardLedgerEntry
         {
             Id = enriched.Event.Id,
@@ -797,7 +883,10 @@ public class StockCardService(
             SignedQty = enriched.Event.SignedQty,
             Uom = enriched.Event.Uom,
             UnitPrice = unitPrice,
-            Subtotal = quantity > 0 && unitPrice > 0 ? RoundLineSubtotal(quantity, unitPrice) : 0,
+            Subtotal = subtotal,
+            DocumentAmount = documentAmount,
+            RoundingResidual = roundingResidual,
+            ExtendedAtUnitPrice = pcuExtended,
             Reason = enriched.Event.Reason,
             ReferenceNumber = enriched.Event.ReferenceNumber,
             FifoDetail = enriched.FifoDetail,
@@ -808,7 +897,27 @@ public class StockCardService(
             IsShortage = enriched.IsShortage,
             IsCogsBackfilled = enriched.IsCogsBackfilled,
             IsNegativeBalance = enriched.IsNegativeBalance,
+            InboundSequenceNo = enriched.InboundSequenceNo,
+            OriginalQuantity = enriched.OriginalQuantity > 0 ? enriched.OriginalQuantity : quantity,
+            DepletedQuantity = enriched.DepletedQuantity,
+            SourceInboundSequenceNo = enriched.SourceInboundSequenceNo,
         };
+    }
+
+    static (decimal DocumentAmount, decimal RoundingResidual) ResolvePurchaseDocumentAmounts(
+        InventoryPurchase purchase,
+        decimal stockQty,
+        decimal stockUnitPrice,
+        IReadOnlyDictionary<int, PurchaseOrderItem> poItemsById)
+    {
+        _ = poItemsById;
+        if (purchase.DocumentAmount > 0 || Math.Abs(purchase.RoundingResidual) > 0.00005m)
+            return (DecimalRounding.ToDb(purchase.DocumentAmount), DecimalRounding.ToDb(purchase.RoundingResidual));
+
+        var fallback = stockQty > 0 && stockUnitPrice > 0
+            ? DecimalRounding.ToDb(stockQty * stockUnitPrice)
+            : 0m;
+        return (fallback, 0m);
     }
 
     async Task<StockMovementSummary> SummarizeComponentAsync(
@@ -823,15 +932,62 @@ public class StockCardService(
         IReadOnlyDictionary<int, Product> productionProducts,
         CancellationToken cancellationToken)
     {
-        var normalizedUom = NormalizeUom(displayUom);
         var purchases = preloadedPurchases;
 
         if (companyId is int cid)
             purchases = purchases.Where(p => p.CompanyId is null || p.CompanyId == cid).ToList();
 
+        // Load PO lines so delivery-package rows (CN freebie tub) can convert to display UOM.
+        var summarizeItemIds = purchases
+            .Where(p => p.PurchaseOrderItemId > 0)
+            .Select(p => p.PurchaseOrderItemId)
+            .Distinct()
+            .ToList();
+        var summarizePoItems = summarizeItemIds.Count == 0
+            ? new Dictionary<int, PurchaseOrderItem>()
+            : await db.PurchaseOrderItems.AsNoTracking()
+                .Where(i => summarizeItemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, cancellationToken);
+
+        var summarizeVpIds = summarizePoItems.Values
+            .Select(i => i.VendorProductId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var summarizeVendorProducts = summarizeVpIds.Count == 0
+            ? new Dictionary<string, VendorProduct>(StringComparer.OrdinalIgnoreCase)
+            : await db.VendorProducts.AsNoTracking()
+                .Where(v => summarizeVpIds.Contains(v.ExternalId))
+                .ToDictionaryAsync(v => v.ExternalId, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
         purchases = purchases
-            .Where(p => LocationMatchesAny(p.LocationIdsJson, locationIds))
-            .Where(p => NormalizeUom(p.Uom) == normalizedUom)
+            .Where(p => PurchaseMatchesSelectedLocations(p, locationIds))
+            .Select(p =>
+            {
+                summarizePoItems.TryGetValue(p.PurchaseOrderItemId, out var poItem);
+                VendorProduct? vendorProduct = null;
+                if (poItem is not null
+                    && !string.IsNullOrWhiteSpace(poItem.VendorProductId)
+                    && summarizeVendorProducts.TryGetValue(poItem.VendorProductId.Trim(), out var vp))
+                    vendorProduct = vp;
+
+                if (TryResolvePurchaseForDisplay(
+                        ingredient,
+                        p,
+                        poItem,
+                        displayUom,
+                        out var qty,
+                        out var price,
+                        vendorProduct))
+                    return ClonePurchaseWithQty(p, qty, price, displayUom);
+
+                // Never drop received purchases from inbound summary (delivery-package residual).
+                return p.Quantity > 0
+                    ? ClonePurchaseWithQty(p, p.Quantity, p.UnitPrice, string.IsNullOrWhiteSpace(p.Uom) ? displayUom : p.Uom)
+                    : null;
+            })
+            .Where(p => p is not null)
+            .Select(p => p!)
             .ToList();
 
         var movements = preloadedMovements;
@@ -841,7 +997,15 @@ public class StockCardService(
 
         movements = movements
             .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
-            .Where(m => NormalizeUom(m.Uom) == normalizedUom)
+            .Select(m =>
+            {
+                if (CanNormalizePurchaseUom(ingredient, m.Uom, displayUom))
+                    return NormalizeMovementToDisplayUom(ingredient, m, displayUom);
+
+                // Never drop outbound/inbound movements that fail direct UOM normalize
+                // (same BBQ lesson as purchases — e.g. CN still in delivery package).
+                return m;
+            })
             .ToList();
 
         var fifoResult = await BuildComponentFifoResultAsync(
@@ -979,6 +1143,7 @@ public class StockCardService(
 
             if (string.Equals(log.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             {
+                var inboundUnitPrice = log.UnitPrice > 0 ? log.UnitPrice : productionUnitPrice;
                 events.Add(new FifoEvent
                 {
                     Id = log.Id,
@@ -987,7 +1152,7 @@ public class StockCardService(
                     Quantity = log.Quantity,
                     SignedQty = log.Quantity,
                     Uom = uom,
-                    UnitPrice = productionUnitPrice,
+                    UnitPrice = inboundUnitPrice,
                     Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
                         ? "Production recorded"
                         : $"Production batch {log.BatchNumber}",
@@ -1000,6 +1165,8 @@ public class StockCardService(
             if (IsProductSaleEntryType(log.EntryType))
             {
                 var entryType = log.EntryType.Trim().ToLowerInvariant();
+                var saleReason = FormatProductSaleReason(entryType, product.Name, log.BatchNumber);
+                var unitPrice = TryParsePrepaidUnitRpp(log.BatchNumber);
                 events.Add(new FifoEvent
                 {
                     Id = log.Id,
@@ -1008,8 +1175,8 @@ public class StockCardService(
                     Quantity = log.Quantity,
                     SignedQty = -log.Quantity,
                     Uom = uom,
-                    UnitPrice = 0,
-                    Reason = FormatProductSaleReason(entryType, product.Name),
+                    UnitPrice = unitPrice,
+                    Reason = saleReason,
                     ReferenceNumber = log.BatchNumber ?? string.Empty,
                     SourceLabel = entryType,
                 });
@@ -1047,7 +1214,9 @@ public class StockCardService(
                     Quantity = log.Quantity,
                     SignedQty = entryType == "adjustment_in" ? log.Quantity : -log.Quantity,
                     Uom = uom,
-                    UnitPrice = 0,
+                    UnitPrice = entryType == "adjustment_in" && log.UnitPrice > 0
+                        ? log.UnitPrice
+                        : 0,
                     Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
                         ? $"Inventory adjustment — {product.Name}"
                         : $"Inventory adjustment — {log.BatchNumber}",
@@ -1109,7 +1278,6 @@ public class StockCardService(
         IReadOnlyDictionary<int, string>? poNumbersOverride = null,
         IReadOnlyDictionary<int, Product>? productionProductsOverride = null)
     {
-        var normalizedUom = NormalizeUom(displayUom);
         var purchases = purchasesOverride ?? await db.InventoryPurchases.AsNoTracking()
             .Where(p => p.ComponentId == ingredient.ComponentId)
             .ToListAsync(cancellationToken);
@@ -1125,9 +1293,11 @@ public class StockCardService(
         }
 
         IReadOnlyDictionary<int, string> poNumbers;
+        Dictionary<int, PurchaseOrderItem> poItemsById;
         if (poNumbersOverride is not null)
         {
             poNumbers = poNumbersOverride;
+            poItemsById = new Dictionary<int, PurchaseOrderItem>();
         }
         else
         {
@@ -1137,16 +1307,58 @@ public class StockCardService(
                 : await db.PurchaseOrders.AsNoTracking()
                     .Where(p => poIds.Contains(p.Id))
                     .ToDictionaryAsync(p => p.Id, p => p.PoNumber, cancellationToken);
+
+            var itemIds = purchases.Where(p => p.PurchaseOrderItemId > 0).Select(p => p.PurchaseOrderItemId).Distinct().ToList();
+            poItemsById = itemIds.Count == 0
+                ? new Dictionary<int, PurchaseOrderItem>()
+                : await db.PurchaseOrderItems.AsNoTracking()
+                    .Where(i => itemIds.Contains(i.Id))
+                    .ToDictionaryAsync(i => i.Id, cancellationToken);
         }
+
+        var vendorProductIds = poItemsById.Values
+            .Select(i => i.VendorProductId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var vendorProductsById = vendorProductIds.Count == 0
+            ? new Dictionary<string, VendorProduct>(StringComparer.OrdinalIgnoreCase)
+            : await db.VendorProducts.AsNoTracking()
+                .Where(v => vendorProductIds.Contains(v.ExternalId))
+                .ToDictionaryAsync(v => v.ExternalId, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
         var events = new List<FifoEvent>();
 
         foreach (var purchase in purchases)
         {
-            if (!LocationMatchesAny(purchase.LocationIdsJson, locationIds))
+            if (!PurchaseMatchesSelectedLocations(purchase, locationIds))
                 continue;
-            if (NormalizeUom(purchase.Uom) != normalizedUom)
-                continue;
+
+            poItemsById.TryGetValue(purchase.PurchaseOrderItemId, out var poItem);
+            VendorProduct? vendorProduct = null;
+            if (poItem is not null
+                && !string.IsNullOrWhiteSpace(poItem.VendorProductId)
+                && vendorProductsById.TryGetValue(poItem.VendorProductId.Trim(), out var vp))
+                vendorProduct = vp;
+
+            var eventUom = displayUom;
+            if (!TryResolvePurchaseForDisplay(
+                    ingredient,
+                    purchase,
+                    poItem,
+                    displayUom,
+                    out var convertedQty,
+                    out var convertedPrice,
+                    vendorProduct))
+            {
+                // Never hide a received PO inbound from Stock Card — keep package qty visible
+                // with its stored UOM when DU→PCU principal cannot be resolved.
+                convertedQty = purchase.Quantity;
+                convertedPrice = purchase.UnitPrice;
+                eventUom = string.IsNullOrWhiteSpace(purchase.Uom) ? displayUom : purchase.Uom.Trim();
+                if (convertedQty <= 0)
+                    continue;
+            }
 
             var entryType = purchase.PurchaseOrderId > 0 ? "purchase" : "cash_purchase";
             var poNumber = purchase.PurchaseOrderId > 0 && poNumbers.TryGetValue(purchase.PurchaseOrderId, out var num)
@@ -1160,14 +1372,31 @@ public class StockCardService(
             if (isSplitChild)
                 entryType = "split_use_in";
 
+            var (documentAmount, roundingResidual) = ResolvePurchaseDocumentAmounts(
+                purchase,
+                convertedQty,
+                convertedPrice,
+                poItemsById);
+
+            var residualNote = IngredientUomBridge.FormatRoundingResidualNote(
+                roundingResidual,
+                documentAmount,
+                DecimalRounding.ToDb(convertedQty * convertedPrice),
+                convertedPrice);
+
             var reason = isSplitChild
                 ? $"Split from {purchase.SplitParentComponentId}"
                     + (string.IsNullOrWhiteSpace(poNumber) ? string.Empty : $" — PO {poNumber}")
-                : entryType == "purchase"
-                    ? $"Purchase received — PO {poNumber}"
-                    : entryType == "cash_purchase"
-                        ? "Cash purchase"
-                        : "Stock inbound";
+                : !string.IsNullOrWhiteSpace(purchase.Remarks)
+                    ? $"{purchase.Remarks.Trim()}"
+                        + (string.IsNullOrWhiteSpace(poNumber) ? string.Empty : $" — PO {poNumber}")
+                    : entryType == "purchase"
+                        ? $"Purchase received — PO {poNumber}"
+                        : entryType == "cash_purchase"
+                            ? "Cash purchase"
+                            : "Stock inbound";
+            if (!string.IsNullOrWhiteSpace(residualNote))
+                reason = $"{reason} · {residualNote}";
 
             var sourceLabel = isSplitChild
                 ? $"Split from {purchase.SplitParentComponentId}"
@@ -1180,13 +1409,15 @@ public class StockCardService(
                 Id = purchase.Id,
                 OccurredAt = purchase.DateCreatedInStock,
                 EntryType = entryType,
-                Quantity = purchase.Quantity,
-                SignedQty = purchase.Quantity,
-                Uom = purchase.Uom,
-                UnitPrice = purchase.UnitPrice,
+                Quantity = convertedQty,
+                SignedQty = convertedQty,
+                Uom = eventUom,
+                UnitPrice = convertedPrice,
                 Reason = reason,
                 ReferenceNumber = poNumber,
                 SourceLabel = sourceLabel,
+                DocumentAmount = documentAmount,
+                RoundingResidual = roundingResidual,
             });
         }
 
@@ -1214,33 +1445,499 @@ public class StockCardService(
         var productionProducts = productionProductsOverride
             ?? await LoadProductionProductsForMovementsAsync(movements, cancellationToken);
 
-        foreach (var movement in movements.Where(m => NormalizeUom(m.Uom) == normalizedUom))
+        var creditNoteIds = movements
+            .Where(m => string.Equals(
+                (m.ReferenceType ?? string.Empty).Trim(),
+                CreditNoteService.ReferenceType,
+                StringComparison.OrdinalIgnoreCase)
+                && m.ReferenceId > 0)
+            .Select(m => m.ReferenceId)
+            .Distinct()
+            .ToList();
+        var creditNotesById = creditNoteIds.Count == 0
+            ? new Dictionary<int, CreditNote>()
+            : await db.CreditNotes.AsNoTracking()
+                .Where(c => creditNoteIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, cancellationToken);
+
+        var cnVendorProductIds = creditNotesById.Values
+            .Select(c => c.VendorProductId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var vendorProductsByCreditNote = cnVendorProductIds.Count == 0
+            ? new Dictionary<string, VendorProduct>(StringComparer.OrdinalIgnoreCase)
+            : await db.VendorProducts.AsNoTracking()
+                .Where(v => cnVendorProductIds.Contains(v.ExternalId))
+                .ToDictionaryAsync(v => v.ExternalId, StringComparer.OrdinalIgnoreCase, cancellationToken);
+
+        foreach (var movement in movements)
         {
+            var eventUom = displayUom;
+            if (!TryNormalizeStockQty(
+                    ingredient,
+                    movement.Uom,
+                    displayUom,
+                    Math.Abs(movement.QtyDelta),
+                    movement.UnitPrice,
+                    out var convertedAbsQty,
+                    out var convertedPrice))
+            {
+                // Prefer CN DeliveryJson → PCU when movement still holds delivery packages.
+                if (string.Equals(
+                        (movement.ReferenceType ?? string.Empty).Trim(),
+                        CreditNoteService.ReferenceType,
+                        StringComparison.OrdinalIgnoreCase)
+                    && movement.ReferenceId > 0
+                    && creditNotesById.TryGetValue(movement.ReferenceId, out var cnForConvert)
+                    && TryResolveCreditNoteMovementForDisplay(
+                        ingredient,
+                        movement,
+                        cnForConvert,
+                        displayUom,
+                        vendorProductsByCreditNote,
+                        out convertedAbsQty,
+                        out convertedPrice))
+                {
+                    eventUom = displayUom;
+                }
+                else
+                {
+                    // Never hide a stock movement from the ledger when UOM conversion fails.
+                    convertedAbsQty = Math.Abs(movement.QtyDelta);
+                    convertedPrice = movement.UnitPrice;
+                    eventUom = string.IsNullOrWhiteSpace(movement.Uom) ? displayUom : movement.Uom.Trim();
+                    if (convertedAbsQty <= 0)
+                        continue;
+                }
+            }
+
             var entryType = ClassifyMovementEntryType(movement);
-            var qty = Math.Abs(movement.QtyDelta);
+            var signedQty = movement.QtyDelta < 0 ? -convertedAbsQty : convertedAbsQty;
             var productionProduct = TryResolveProductionProduct(movement, productionProducts);
+
+            decimal documentAmount = 0m;
+            decimal roundingResidual = 0m;
+            var reason = FormatMovementReason(movement, productionProduct);
+            if (entryType == "credit_note"
+                && movement.ReferenceId > 0
+                && creditNotesById.TryGetValue(movement.ReferenceId, out var creditNote))
+            {
+                documentAmount = CreditNoteService.ResolveDocumentAmount(creditNote);
+                roundingResidual = CreditNoteService.ResolveRoundingResidual(creditNote);
+                var extended = CreditNoteService.ResolveExtendedAtUnitPrice(creditNote);
+                var residualNote = IngredientUomBridge.FormatRoundingResidualNote(
+                    roundingResidual,
+                    documentAmount,
+                    extended,
+                    creditNote.StockUnitPrice > 0 ? creditNote.StockUnitPrice : convertedPrice);
+                if (!string.IsNullOrWhiteSpace(residualNote))
+                    reason = $"{reason} · {residualNote}";
+            }
+
             events.Add(new FifoEvent
             {
                 Id = movement.Id,
                 OccurredAt = movement.CreatedAt,
                 EntryType = entryType,
-                Quantity = qty,
-                SignedQty = movement.QtyDelta,
-                Uom = movement.Uom,
+                Quantity = convertedAbsQty,
+                SignedQty = signedQty,
+                Uom = eventUom,
                 UnitPrice = entryType is "adjustment_out"
                     ? 0
-                    : movement.UnitPrice > 0
-                        ? movement.UnitPrice
+                    : convertedPrice > 0
+                        ? convertedPrice
                         : entryType is "adjustment_in"
                             ? 0
                             : ResolveComponentFallbackPrice(ingredient, displayUom),
-                Reason = FormatMovementReason(movement, productionProduct),
+                Reason = reason,
                 ReferenceNumber = ResolveMovementReferenceNumber(movement, productionProduct),
                 SourceLabel = entryType,
+                DocumentAmount = documentAmount,
+                RoundingResidual = roundingResidual,
             });
         }
 
         return events;
+    }
+
+    static bool CanNormalizePurchaseUom(Ingredient ingredient, string sourceUom, string displayUom)
+        => TryNormalizeStockQty(ingredient, sourceUom, displayUom, 1m, 1m, out _, out _);
+
+    /// <summary>
+    /// Purchases often remain in delivery packages (tub) while the stock card displays
+    /// Recipe UOM (Gr). Direct tub→Gr fails and previously dropped the inbound while
+    /// credit_note movements in Gr still showed — convert via principal first.
+    /// Prefer VendorProduct.DeliveryJson (same as PostReceived / healer / CN), then delivery path.
+    /// </summary>
+    static bool TryResolvePurchaseForDisplay(
+        Ingredient ingredient,
+        InventoryPurchase purchase,
+        PurchaseOrderItem? poItem,
+        string displayUom,
+        out decimal convertedQty,
+        out decimal convertedPrice,
+        VendorProduct? vendorProduct = null)
+    {
+        if (TryNormalizeStockQty(
+                ingredient,
+                purchase.Uom,
+                displayUom,
+                purchase.Quantity,
+                purchase.UnitPrice,
+                out convertedQty,
+                out convertedPrice))
+            return true;
+
+        var deliveryBasis = poItem is null
+            ? purchase.Uom
+            : (string.IsNullOrWhiteSpace(poItem.Unit) ? poItem.DeliveryPackage : poItem.Unit);
+        decimal? pathPrincipal = null;
+        string? pathPrincipalUom = null;
+        // Parity with PostReceivedStockAsync / healer: DeliveryJson before slash-path Unit label.
+        if (vendorProduct is not null
+            && DeliveryPrincipalResolver.TryResolveFromVendorProduct(
+                vendorProduct,
+                ingredient,
+                out var vpPrincipal,
+                out var vpUom))
+        {
+            pathPrincipal = vpPrincipal;
+            pathPrincipalUom = vpUom;
+        }
+        else if (DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                     deliveryBasis,
+                     ingredient,
+                     out var resolvedPrincipal,
+                     out var resolvedUom))
+        {
+            pathPrincipal = resolvedPrincipal;
+            pathPrincipalUom = resolvedUom;
+        }
+
+        var packageQty = purchase.Quantity;
+        var packagePrice = purchase.UnitPrice;
+        if (poItem is not null)
+        {
+            var linePackages = poItem.DeliveredQuantity > 0
+                ? poItem.DeliveredQuantity
+                : (poItem.ReceivedQuantity ?? poItem.Quantity);
+            var deliveryUnitPrice = poItem.ReceivedUnitPrice ?? poItem.UnitPrice;
+            if (linePackages > 0
+                && NearlyEqualQty(purchase.Quantity, linePackages)
+                && (deliveryUnitPrice <= StockCardFifoEngine.QtyEpsilon
+                    || NearlyEqualQty(purchase.UnitPrice, deliveryUnitPrice)
+                    || purchase.UnitPrice <= StockCardFifoEngine.QtyEpsilon))
+            {
+                packageQty = linePackages;
+                // Prefer a non-zero delivery price so principal conversion yields a stock rate;
+                // CN-revalued freebies may already carry a package-level extended value.
+                packagePrice = deliveryUnitPrice > StockCardFifoEngine.QtyEpsilon
+                    ? deliveryUnitPrice
+                    : (purchase.UnitPrice > StockCardFifoEngine.QtyEpsilon
+                        ? purchase.UnitPrice
+                        : deliveryUnitPrice);
+            }
+        }
+
+        var priorExtended = DecimalRounding.ToDb(purchase.Quantity * purchase.UnitPrice);
+        var inbound = IngredientUomBridge.ToInboundPrincipal(
+            ingredient,
+            packageQty,
+            string.IsNullOrWhiteSpace(deliveryBasis) ? purchase.Uom : deliveryBasis,
+            packagePrice > StockCardFifoEngine.QtyEpsilon ? packagePrice : purchase.UnitPrice,
+            poItem?.VendorProductId,
+            deliveryBasis,
+            pathPrincipal,
+            pathPrincipalUom);
+
+        // Preserve CN-revalued extended value when conversion used a $0 freebie delivery price.
+        if (priorExtended > StockCardFifoEngine.QtyEpsilon
+            && inbound.Quantity > 0
+            && inbound.DocumentAmount <= StockCardFifoEngine.QtyEpsilon)
+        {
+            var preservedPrice = DecimalRounding.ToDb(priorExtended / inbound.Quantity);
+            if (TryNormalizeStockQty(
+                    ingredient,
+                    inbound.Uom,
+                    displayUom,
+                    inbound.Quantity,
+                    preservedPrice,
+                    out convertedQty,
+                    out convertedPrice))
+                return true;
+        }
+
+        if (TryNormalizeStockQty(
+                ingredient,
+                inbound.Uom,
+                displayUom,
+                inbound.Quantity,
+                inbound.UnitPrice,
+                out convertedQty,
+                out convertedPrice))
+            return true;
+
+        // Last resort: if principal conversion produced recipe/inventory UOM, accept it even
+        // when display mode aliases differ slightly — keep the whole receive visible.
+        if (inbound.Quantity > 0
+            && (UomCanonical.Equals(inbound.Uom, displayUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.RecipeUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.InventoryUom)))
+        {
+            convertedQty = inbound.Quantity;
+            convertedPrice = inbound.UnitPrice > 0
+                ? inbound.UnitPrice
+                : (priorExtended > 0 ? DecimalRounding.ToDb(priorExtended / inbound.Quantity) : purchase.UnitPrice);
+            return true;
+        }
+
+        convertedQty = 0;
+        convertedPrice = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// Convert a credit-note movement still stored in delivery packages to display PCU
+    /// using VendorProduct.DeliveryJson — same path as purchase never-drop / receive.
+    /// </summary>
+    static bool TryResolveCreditNoteMovementForDisplay(
+        Ingredient ingredient,
+        InventoryMovement movement,
+        CreditNote creditNote,
+        string displayUom,
+        IReadOnlyDictionary<string, VendorProduct> vendorProductsById,
+        out decimal convertedQty,
+        out decimal convertedPrice)
+    {
+        convertedQty = 0;
+        convertedPrice = 0;
+        var deliveryBasis = string.IsNullOrWhiteSpace(creditNote.DeliveryUom)
+            ? movement.Uom
+            : creditNote.DeliveryUom;
+        decimal? pathPrincipal = null;
+        string? pathPrincipalUom = null;
+        var vpId = (creditNote.VendorProductId ?? string.Empty).Trim();
+        if (!string.IsNullOrEmpty(vpId)
+            && vendorProductsById.TryGetValue(vpId, out var vendorProduct)
+            && DeliveryPrincipalResolver.TryResolveFromVendorProduct(
+                vendorProduct,
+                ingredient,
+                out var vpPrincipal,
+                out var vpUom))
+        {
+            pathPrincipal = vpPrincipal;
+            pathPrincipalUom = vpUom;
+        }
+        else if (DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                     deliveryBasis,
+                     ingredient,
+                     out var pathFromLabel,
+                     out var pathFromLabelUom))
+        {
+            pathPrincipal = pathFromLabel;
+            pathPrincipalUom = pathFromLabelUom;
+        }
+
+        var packageQty = Math.Abs(movement.QtyDelta);
+        var packagePrice = movement.UnitPrice > 0
+            ? movement.UnitPrice
+            : (creditNote.DeliveryUnitPrice > 0 ? creditNote.DeliveryUnitPrice : creditNote.StockUnitPrice);
+        var inbound = IngredientUomBridge.ToInboundPrincipal(
+            ingredient,
+            packageQty,
+            string.IsNullOrWhiteSpace(movement.Uom) ? deliveryBasis : movement.Uom,
+            packagePrice,
+            creditNote.VendorProductId,
+            deliveryBasis,
+            pathPrincipal,
+            pathPrincipalUom);
+
+        if (TryNormalizeStockQty(
+                ingredient,
+                inbound.Uom,
+                displayUom,
+                inbound.Quantity,
+                inbound.UnitPrice,
+                out convertedQty,
+                out convertedPrice))
+            return convertedQty > 0;
+
+        if (inbound.Quantity > 0
+            && (UomCanonical.Equals(inbound.Uom, displayUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.RecipeUom)
+                || UomCanonical.Equals(inbound.Uom, ingredient.InventoryUom)))
+        {
+            convertedQty = inbound.Quantity;
+            convertedPrice = inbound.UnitPrice;
+            return true;
+        }
+
+        return false;
+    }
+
+    static bool NearlyEqualQty(decimal a, decimal b, decimal tolerance = 0.00015m)
+        => Math.Abs(a - b) <= Math.Max(tolerance, Math.Abs(a) * 0.0001m);
+
+    static InventoryPurchase ClonePurchaseWithQty(
+        InventoryPurchase purchase,
+        decimal quantity,
+        decimal unitPrice,
+        string uom)
+        => new()
+        {
+            Id = purchase.Id,
+            ComponentId = purchase.ComponentId,
+            ComponentName = purchase.ComponentName,
+            Quantity = quantity,
+            Uom = uom,
+            UnitPrice = unitPrice,
+            DocumentAmount = purchase.DocumentAmount,
+            RoundingResidual = purchase.RoundingResidual,
+            DateOrdered = purchase.DateOrdered,
+            DateCreatedInStock = purchase.DateCreatedInStock,
+            PurchaseOrderId = purchase.PurchaseOrderId,
+            PurchaseOrderItemId = purchase.PurchaseOrderItemId,
+            ProductExpiryDate = purchase.ProductExpiryDate,
+            Remarks = purchase.Remarks,
+            CompanyId = purchase.CompanyId,
+            LocationIdsJson = purchase.LocationIdsJson,
+            LocationExternalId = purchase.LocationExternalId,
+            SplitSourceType = purchase.SplitSourceType,
+            SplitSourceId = purchase.SplitSourceId,
+            SplitLineKey = purchase.SplitLineKey,
+            SplitParentComponentId = purchase.SplitParentComponentId,
+        };
+
+    /// <summary>
+    /// Match purchases by LocationIdsJson, with LocationExternalId fallback so CN movements
+    /// (matched on ExternalId) and their offsetting inbound stay on the same stock card.
+    /// Empty LocationIdsJson matches any selected location (same as PurchaseMatchesAny) so a
+    /// whole receive is not wiped to inbound=0 when only ExternalId is set/mismatched.
+    /// </summary>
+    static bool PurchaseMatchesSelectedLocations(
+        InventoryPurchase purchase,
+        IReadOnlyList<string> locationIds)
+    {
+        var locs = PurchaseOrderWorkflow.DeserializeLocationIds(purchase.LocationIdsJson);
+        if (locs.Count == 0)
+            return true;
+
+        if (LocationListMatches(locs, locationIds))
+            return true;
+
+        return StockLocationRules.MovementMatchesAny(purchase.LocationExternalId, locationIds);
+    }
+
+    static bool TryNormalizeStockQty(
+        Ingredient ingredient,
+        string sourceUom,
+        string displayUom,
+        decimal quantity,
+        decimal unitPrice,
+        out decimal convertedQty,
+        out decimal convertedPrice)
+    {
+        var source = NormalizeUom(sourceUom);
+        var display = NormalizeUom(displayUom);
+        if (source == display)
+        {
+            convertedQty = quantity;
+            convertedPrice = unitPrice;
+            return true;
+        }
+
+        return IngredientUomBridge.TryConvertToUom(
+            ingredient,
+            quantity,
+            unitPrice,
+            sourceUom,
+            displayUom,
+            out convertedQty,
+            out convertedPrice);
+    }
+
+    static InventoryPurchase NormalizePurchaseToDisplayUom(
+        Ingredient ingredient,
+        InventoryPurchase purchase,
+        string displayUom)
+    {
+        if (!TryNormalizeStockQty(
+                ingredient,
+                purchase.Uom,
+                displayUom,
+                purchase.Quantity,
+                purchase.UnitPrice,
+                out var qty,
+                out var price))
+            return purchase;
+
+        if (NormalizeUom(purchase.Uom) == NormalizeUom(displayUom)
+            && qty == purchase.Quantity
+            && price == purchase.UnitPrice)
+            return purchase;
+
+        return new InventoryPurchase
+        {
+            Id = purchase.Id,
+            ComponentId = purchase.ComponentId,
+            ComponentName = purchase.ComponentName,
+            Quantity = qty,
+            Uom = displayUom,
+            UnitPrice = price,
+            DateOrdered = purchase.DateOrdered,
+            DateCreatedInStock = purchase.DateCreatedInStock,
+            PurchaseOrderId = purchase.PurchaseOrderId,
+            PurchaseOrderItemId = purchase.PurchaseOrderItemId,
+            ProductExpiryDate = purchase.ProductExpiryDate,
+            Remarks = purchase.Remarks,
+            CompanyId = purchase.CompanyId,
+            LocationIdsJson = purchase.LocationIdsJson,
+            LocationExternalId = purchase.LocationExternalId,
+            SplitSourceType = purchase.SplitSourceType,
+            SplitSourceId = purchase.SplitSourceId,
+            SplitLineKey = purchase.SplitLineKey,
+            SplitParentComponentId = purchase.SplitParentComponentId,
+        };
+    }
+
+    static InventoryMovement NormalizeMovementToDisplayUom(
+        Ingredient ingredient,
+        InventoryMovement movement,
+        string displayUom)
+    {
+        var absQty = Math.Abs(movement.QtyDelta);
+        if (!TryNormalizeStockQty(
+                ingredient,
+                movement.Uom,
+                displayUom,
+                absQty,
+                movement.UnitPrice,
+                out var convertedAbs,
+                out var convertedPrice))
+            return movement;
+
+        if (NormalizeUom(movement.Uom) == NormalizeUom(displayUom)
+            && convertedAbs == absQty
+            && convertedPrice == movement.UnitPrice)
+            return movement;
+
+        var signed = movement.QtyDelta < 0 ? -convertedAbs : convertedAbs;
+        return new InventoryMovement
+        {
+            Id = movement.Id,
+            ComponentId = movement.ComponentId,
+            ComponentName = movement.ComponentName,
+            QtyDelta = signed,
+            Uom = displayUom,
+            UnitPrice = convertedPrice,
+            CreatedAt = movement.CreatedAt,
+            CompanyId = movement.CompanyId,
+            LocationExternalId = movement.LocationExternalId,
+            Reason = movement.Reason,
+            ReferenceType = movement.ReferenceType,
+            ReferenceId = movement.ReferenceId,
+        };
     }
 
     static bool IsProductSaleEntryType(string entryType)
@@ -1261,14 +1958,44 @@ public class StockCardService(
         return normalized is "adjustment_in" or "adjustment_out";
     }
 
-    static string FormatProductSaleReason(string entryType, string productName)
+    static string FormatProductSaleReason(string entryType, string productName, string? batchNumber = null)
     {
+        if (!string.IsNullOrWhiteSpace(batchNumber)
+            && batchNumber.Contains("prepaid", StringComparison.OrdinalIgnoreCase))
+        {
+            return batchNumber.Trim();
+        }
+
         return entryType.Trim().ToLowerInvariant() switch
         {
             "online_order" => $"Online order — {productName}",
             "offline_order" => $"Offline order — {productName}",
             _ => $"POS sales — {productName}",
         };
+    }
+
+    static decimal TryParsePrepaidUnitRpp(string? batchNumber)
+    {
+        if (string.IsNullOrWhiteSpace(batchNumber)
+            || !batchNumber.Contains("prepaid", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0m;
+        }
+
+        // Expected fragment: "— RPP 12.5 —"
+        var marker = "RPP ";
+        var idx = batchNumber.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return 0m;
+        var slice = batchNumber[(idx + marker.Length)..].TrimStart();
+        var end = 0;
+        while (end < slice.Length && (char.IsDigit(slice[end]) || slice[end] is '.' or ','))
+            end++;
+        if (end <= 0) return 0m;
+        var raw = slice[..end].Replace(',', '.');
+        return decimal.TryParse(raw, System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : 0m;
     }
 
     static string ClassifyMovementEntryType(InventoryMovement movement)
@@ -1288,6 +2015,10 @@ public class StockCardService(
             return "offline_order";
         if (refType == "wastage" || reason.Contains("wastage") || reason.Contains("spoilage"))
             return "wastage";
+        if (refType == "credit_note" || reason.Contains("credit note"))
+            return "credit_note";
+        if (refType is "store_issue" or "store_hold_in" || reason.Contains("store issue") || reason.Contains("store hold"))
+            return refType == "store_hold_in" || reason.Contains("store hold in") ? "store_hold_in" : "store_issue";
         if (refType == "split_use" || reason.Contains("split use"))
             return "split_use";
         if (refType == "inventory_adjustment" || IsAdjustmentMovement(movement))
@@ -1309,10 +2040,26 @@ public class StockCardService(
         if (productionProduct is not null && ShouldEnrichProductionReason(movement))
             return FormatProductionDeductionReason(productionProduct, movement);
 
+        var entryType = ClassifyMovementEntryType(movement);
+        if (entryType == "credit_note")
+        {
+            var raw = (movement.Reason ?? string.Empty).Trim();
+            if (raw.Length > 0)
+            {
+                var fifoIdx = raw.IndexOf("[fifo:", StringComparison.OrdinalIgnoreCase);
+                if (fifoIdx >= 0)
+                    raw = raw[..fifoIdx].Trim();
+                raw = raw.Replace('_', ' ').Trim();
+                if (raw.Length > 0)
+                    return raw;
+            }
+            return "Credit note";
+        }
+
         if (!string.IsNullOrWhiteSpace(movement.Reason))
             return movement.Reason.Replace('_', ' ');
 
-        return ClassifyMovementEntryType(movement) switch
+        return entryType switch
         {
             "transfer_in" => "Transfer in",
             "transfer_out" => "Transfer out",
@@ -1320,6 +2067,9 @@ public class StockCardService(
             "online_order" => "Online order sales depletion",
             "offline_order" => "Offline order sales depletion",
             "wastage" => "Wastage",
+            "credit_note" => "Credit note",
+            "store_issue" => "Central Store issue",
+            "store_hold_in" => "Production stock hold",
             "split_use" => "Sub-component composition",
             "production" => productionProduct is null
                 ? "Production"
@@ -1385,7 +2135,33 @@ public class StockCardService(
         if (productionProduct is not null && !string.IsNullOrWhiteSpace(productionProduct.ProductId))
             return productionProduct.ProductId.Trim();
 
+        var refType = (movement.ReferenceType ?? string.Empty).Trim().ToLowerInvariant();
+        if (refType == "credit_note" && movement.ReferenceId > 0)
+        {
+            // Stock Card outbound shows this as the credit-note transaction id.
+            var fifoTx = TryParseFifoTransactionId(movement.Reason);
+            return fifoTx is Guid tx
+                ? $"CN-{movement.ReferenceId} · TX {tx.ToString("N")[..8].ToUpperInvariant()}"
+                : $"CN-{movement.ReferenceId}";
+        }
+
         return movement.ReferenceId > 0 ? movement.ReferenceId.ToString() : string.Empty;
+    }
+
+    static Guid? TryParseFifoTransactionId(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return null;
+        var marker = "[fifo:";
+        var start = reason.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+            return null;
+        start += marker.Length;
+        var end = reason.IndexOf(']', start);
+        if (end <= start)
+            return null;
+        var hex = reason[start..end].Trim();
+        return Guid.TryParseExact(hex, "N", out var id) ? id : null;
     }
 
     async Task<Dictionary<int, Product>> LoadProductionProductsForMovementsAsync(
@@ -1489,7 +2265,7 @@ public class StockCardService(
     static string NormalizeUomMode(string uomMode)
         => string.Equals(uomMode, "recipe", StringComparison.OrdinalIgnoreCase) ? "recipe" : "inventory";
 
-    static string NormalizeUom(string uom) => uom.Trim().ToUpperInvariant();
+    static string NormalizeUom(string uom) => UomCanonical.Normalize(uom);
 
     static string? ResolveInboundAdjustmentUom(
         string recipeUom,
@@ -1517,6 +2293,58 @@ public class StockCardService(
         return itemTypeFilter.Replace(' ', '-').Equals(itemType, StringComparison.OrdinalIgnoreCase);
     }
 
+    static DateTime? ResolveComponentLastChangedAt(
+        IEnumerable<InventoryPurchase> purchases,
+        IEnumerable<InventoryMovement> movements,
+        IReadOnlyList<string> locationIds,
+        int? companyId)
+    {
+        DateTime? last = null;
+
+        foreach (var purchase in purchases)
+        {
+            if (companyId is int cid && purchase.CompanyId is int pcid && pcid != cid)
+                continue;
+            if (!PurchaseMatchesSelectedLocations(purchase, locationIds))
+                continue;
+            if (last is null || purchase.DateCreatedInStock > last)
+                last = purchase.DateCreatedInStock;
+        }
+
+        foreach (var movement in movements)
+        {
+            if (companyId is int cid && movement.CompanyId is int mcid && mcid != cid)
+                continue;
+            if (!StockLocationRules.MovementMatchesAny(movement.LocationExternalId, locationIds))
+                continue;
+            if (last is null || movement.CreatedAt > last)
+                last = movement.CreatedAt;
+        }
+
+        return last;
+    }
+
+    static DateTime? ResolveProductLastChangedAt(
+        IEnumerable<ProductProductionLog> logs,
+        IReadOnlyList<string> locationIds,
+        StockCardPeriod period)
+    {
+        DateTime? last = null;
+
+        foreach (var log in logs)
+        {
+            if (!LogMatchesAnyLocation(log.LocationIdsJson, locationIds))
+                continue;
+            var occurredAt = ParseProductionDate(log.ProductionDate) ?? log.CreatedAt;
+            if (occurredAt < period.ArchiveCutoff || occurredAt > period.PeriodEnd)
+                continue;
+            if (last is null || occurredAt > last)
+                last = occurredAt;
+        }
+
+        return last;
+    }
+
     static bool MatchesIngredientLocations(Ingredient ingredient, IReadOnlyList<string> locationIds)
     {
         var locs = PurchaseOrderWorkflow.DeserializeLocationIds(ingredient.LocationsJson);
@@ -1541,7 +2369,8 @@ public class StockCardService(
             return true;
         if (itemLocations.Any(l => l.Equals("all", StringComparison.OrdinalIgnoreCase)))
             return true;
-        return selectedLocations.Any(itemLocations.Contains);
+        return selectedLocations.Any(selected =>
+            itemLocations.Any(item => item.Equals(selected, StringComparison.OrdinalIgnoreCase)));
     }
 
     static bool LogMatchesAnyLocation(string locationIdsJson, IReadOnlyList<string> locationIds)
@@ -1561,37 +2390,59 @@ public class StockCardService(
 
     const int HistoryRetentionYears = 2;
 
-    static StockCardPeriod ResolvePeriod(string? period)
+    static StockCardPeriod ResolvePeriod(string? period, Company? company = null)
     {
-        var now = DateTime.UtcNow;
-        var archiveCutoff = now.Date.AddYears(-HistoryRetentionYears);
-        var earliestMonth = new DateTime(archiveCutoff.Year, archiveCutoff.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var nowLocal = OrgClock.NowLocal(company);
+        var archiveCutoffLocal = DateOnly.FromDateTime(nowLocal).AddYears(-HistoryRetentionYears);
+        var archiveCutoff = OrgClock.StartOfLocalDayUtc(archiveCutoffLocal, company);
 
         int year;
         int month;
         if (string.IsNullOrWhiteSpace(period)
             || string.Equals(period, "month", StringComparison.OrdinalIgnoreCase))
         {
-            year = now.Year;
-            month = now.Month;
+            year = nowLocal.Year;
+            month = nowLocal.Month;
+        }
+        else if (TryParseWeekKey(period.Trim(), out var weekYear, out var weekNumber))
+        {
+            var weekStartDate = ISOWeek.ToDateTime(weekYear, weekNumber, DayOfWeek.Monday);
+            var weekStartLocal = DateOnly.FromDateTime(weekStartDate);
+            var weekStart = OrgClock.StartOfLocalDayUtc(weekStartLocal, company);
+            if (weekStart < archiveCutoff)
+                weekStart = archiveCutoff;
+            var weekEnd = OrgClock.EndOfLocalDayUtc(weekStartLocal.AddDays(6), company);
+            var nowUtc = DateTime.UtcNow;
+            if (weekEnd > nowUtc)
+                weekEnd = nowUtc;
+            return new StockCardPeriod(
+                $"{weekYear:D4}-W{weekNumber:D2}",
+                weekStart,
+                weekEnd,
+                archiveCutoff,
+                weekEnd >= nowUtc.Date);
         }
         else if (!TryParseMonthKey(period.Trim(), out year, out month))
         {
-            year = now.Year;
-            month = now.Month;
+            year = nowLocal.Year;
+            month = nowLocal.Month;
         }
 
-        var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        if (monthStart < earliestMonth)
-            monthStart = earliestMonth;
+        var monthStartLocal = new DateOnly(year, month, 1);
+        var monthStart = OrgClock.StartOfLocalDayUtc(monthStartLocal, company);
+        if (monthStart < archiveCutoff)
+        {
+            monthStartLocal = new DateOnly(archiveCutoffLocal.Year, archiveCutoffLocal.Month, 1);
+            monthStart = OrgClock.StartOfLocalDayUtc(monthStartLocal, company);
+        }
 
-        var isCurrentMonth = monthStart.Year == now.Year && monthStart.Month == now.Month;
+        var isCurrentMonth = monthStartLocal.Year == nowLocal.Year && monthStartLocal.Month == nowLocal.Month;
         var periodEnd = isCurrentMonth
-            ? now
-            : monthStart.AddMonths(1).AddSeconds(-1);
+            ? DateTime.UtcNow
+            : OrgClock.EndOfLocalDayUtc(monthStartLocal.AddMonths(1).AddDays(-1), company);
 
         return new StockCardPeriod(
-            $"{monthStart:yyyy-MM}",
+            $"{monthStartLocal:yyyy-MM}",
             monthStart,
             periodEnd,
             archiveCutoff,
@@ -1599,7 +2450,7 @@ public class StockCardService(
     }
 
     /// <summary>
-    /// Calendar month window, shifted when prior-month full inventory was consolidated
+    /// Company-local calendar month window, shifted when prior-month full inventory was consolidated
     /// on a later EffectiveDate (C/F). Next period starts the day after EffectiveDate;
     /// prior period extends through end of EffectiveDate.
     /// </summary>
@@ -1608,7 +2459,18 @@ public class StockCardService(
         int? companyId,
         CancellationToken cancellationToken)
     {
-        var basePeriod = ResolvePeriod(period);
+        Company? company = null;
+        if (companyId is int cid && cid > 0)
+        {
+            company = await db.Companies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+        }
+
+        var basePeriod = ResolvePeriod(period, company);
+        // Carry-forward inventory shifts apply to calendar months only.
+        if (basePeriod.MonthKey.Contains('W', StringComparison.OrdinalIgnoreCase))
+            return basePeriod;
+
         var carryForward = await FindCarryForwardEffectiveDateAsync(
             basePeriod.MonthKey,
             companyId,
@@ -1618,32 +2480,35 @@ public class StockCardService(
             return basePeriod;
 
         var cf = carryForward.Value;
-        var calendarStart = basePeriod.MonthStart;
-        var nextCalendarStart = calendarStart.AddMonths(1);
+        if (!TryParseMonthKey(basePeriod.MonthKey, out var viewYear, out var viewMonth))
+            return basePeriod with { CarryForwardDate = cf.EffectiveDate };
+
+        var monthStartLocal = new DateOnly(viewYear, viewMonth, 1);
+        var nextMonthStartLocal = monthStartLocal.AddMonths(1);
 
         // Viewing the inventory's own PeriodMonth: extend PeriodEnd through EffectiveDate.
         if (string.Equals(cf.PeriodMonth, basePeriod.MonthKey, StringComparison.OrdinalIgnoreCase))
         {
-            var extendedEnd = EndOfUtcDay(cf.EffectiveDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            var extendedEnd = OrgClock.EndOfLocalDayUtc(cf.EffectiveDate, company);
             if (extendedEnd <= basePeriod.PeriodEnd)
                 return basePeriod with { CarryForwardDate = cf.EffectiveDate };
 
             var now = DateTime.UtcNow;
             var cappedEnd = extendedEnd > now ? now : extendedEnd;
+            var localNow = OrgClock.NowLocal(company);
             return basePeriod with
             {
                 PeriodEnd = cappedEnd,
                 CarryForwardDate = cf.EffectiveDate,
-                IsCurrentMonth = cappedEnd >= now.Date,
+                IsCurrentMonth = DateOnly.FromDateTime(localNow) <= cf.EffectiveDate
+                    || (localNow.Year == viewYear && localNow.Month == viewMonth),
             };
         }
 
         // Viewing the month after a late C/F: start day after EffectiveDate.
-        if (cf.EffectiveDate >= DateOnly.FromDateTime(calendarStart)
-            && cf.EffectiveDate < DateOnly.FromDateTime(nextCalendarStart))
+        if (cf.EffectiveDate >= monthStartLocal && cf.EffectiveDate < nextMonthStartLocal)
         {
-            var shiftedStart = cf.EffectiveDate.AddDays(1)
-                .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            var shiftedStart = OrgClock.StartOfLocalDayUtc(cf.EffectiveDate.AddDays(1), company);
             if (shiftedStart <= basePeriod.PeriodEnd)
             {
                 return basePeriod with
@@ -1714,6 +2579,25 @@ public class StockCardService(
         return false;
     }
 
+    static bool TryParseWeekKey(string value, out int year, out int week)
+    {
+        year = 0;
+        week = 0;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+        var match = System.Text.RegularExpressions.Regex.Match(
+            value.Trim(),
+            @"^(?<y>\d{4})-W(?<w>\d{1,2})$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return false;
+        if (!int.TryParse(match.Groups["y"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out year))
+            return false;
+        if (!int.TryParse(match.Groups["w"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out week))
+            return false;
+        return year is >= 2000 and <= 2100 && week is >= 1 and <= 53;
+    }
+
     static DateTime? ParseProductionDate(string productionDate)
     {
         if (string.IsNullOrWhiteSpace(productionDate))
@@ -1749,6 +2633,8 @@ public sealed class StockCardListRow
     public string Uom { get; init; } = string.Empty;
     public string RecipeUom { get; init; } = string.Empty;
     public string InventoryUom { get; init; } = string.Empty;
+    /// <summary>Most recent stock activity for this item in the selected locations/period.</summary>
+    public DateTime? LastChangedAt { get; init; }
 }
 
 public sealed class StockCardDetail
@@ -1799,6 +2685,12 @@ public sealed record StockCardLedgerEntry
     public string Uom { get; init; } = string.Empty;
     public decimal UnitPrice { get; init; }
     public decimal Subtotal { get; init; }
+    /// <summary>PO/cash document line amount (authority) for inbound rows.</summary>
+    public decimal DocumentAmount { get; init; }
+    /// <summary>PCU extended (qty × 4dp price) − document amount.</summary>
+    public decimal RoundingResidual { get; init; }
+    /// <summary>qty × 4dp unit price before residual true-up.</summary>
+    public decimal ExtendedAtUnitPrice { get; init; }
     public string Reason { get; init; } = string.Empty;
     public string ReferenceNumber { get; init; } = string.Empty;
     public string FifoDetail { get; init; } = string.Empty;
@@ -1809,6 +2701,10 @@ public sealed record StockCardLedgerEntry
     public bool IsShortage { get; init; }
     public bool IsCogsBackfilled { get; init; }
     public bool IsNegativeBalance { get; init; }
+    public int InboundSequenceNo { get; init; }
+    public decimal OriginalQuantity { get; init; }
+    public decimal DepletedQuantity { get; init; }
+    public int SourceInboundSequenceNo { get; init; }
 }
 
 public sealed record StockCardOnHandLayer

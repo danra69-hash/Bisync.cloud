@@ -54,7 +54,7 @@ public class AccessControlController(BisyncDbContext db) : ControllerBase
         {
             Id = 1,
             TypesJson = JsonSerializer.Serialize(
-                DefaultTypeIds.Select((id, index) => new { id, label = $"AC {index + 1}" }),
+                DefaultTypeIds.Select((id, index) => new { id, label = index == 0 ? "Super User" : $"AC {index + 1}" }),
                 JsonOptions),
             MatrixJson = "{}",
         };
@@ -75,22 +75,33 @@ public class AccessControlController(BisyncDbContext db) : ControllerBase
                         Id = id,
                         Label = parsed.ElementAtOrDefault(index)?.Label?.Trim() is { Length: > 0 } label
                             ? label
-                            : $"AC {index + 1}",
+                            : index == 0 ? "Super User" : $"AC {index + 1}",
                     }),
                     JsonOptions);
 
             return JsonSerializer.Serialize(
-                parsed.Select((type, index) => new AccessControlTypeDto
+                parsed.Select((type, index) =>
                 {
-                    Id = string.IsNullOrWhiteSpace(type.Id) ? DefaultTypeIds[index] : type.Id.Trim(),
-                    Label = string.IsNullOrWhiteSpace(type.Label) ? $"AC {index + 1}" : type.Label.Trim(),
+                    var id = string.IsNullOrWhiteSpace(type.Id) ? DefaultTypeIds[index] : type.Id.Trim();
+                    var label = string.IsNullOrWhiteSpace(type.Label)
+                        ? (index == 0 ? "Super User" : $"AC {index + 1}")
+                        : type.Label.Trim();
+                    if (string.Equals(id, "ac1", StringComparison.OrdinalIgnoreCase)
+                        && (string.Equals(label, "AC 1", StringComparison.OrdinalIgnoreCase)
+                            || label.Length == 0))
+                        label = "Super User";
+                    return new AccessControlTypeDto { Id = id, Label = label };
                 }),
                 JsonOptions);
         }
         catch
         {
             return JsonSerializer.Serialize(
-                DefaultTypeIds.Select((id, index) => new AccessControlTypeDto { Id = id, Label = $"AC {index + 1}" }),
+                DefaultTypeIds.Select((id, index) => new AccessControlTypeDto
+                {
+                    Id = id,
+                    Label = index == 0 ? "Super User" : $"AC {index + 1}",
+                }),
                 JsonOptions);
         }
     }

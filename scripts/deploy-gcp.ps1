@@ -50,6 +50,12 @@ function Step([string]$Number, [string]$Message) {
 $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 
+Step "0" "Pre-deploy simulation (related functions must pass)"
+node scripts/run-deploy-simulation.mjs --phase=pre --base=origin/master
+if ($LASTEXITCODE -ne 0) {
+    throw "Pre-deploy simulation failed. Fix suites under scripts/deploy-simulation/ before deploying."
+}
+
 Step "1" "Checking Google Cloud login"
 $Auth = & $Gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>$null
 if (-not $Auth) {
@@ -146,6 +152,7 @@ Step "8" "Deploying to Cloud Run service '$ServiceName'"
 $DefaultConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync;Username=${DbUser}"
 $ArchiveConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_archive;Username=${DbUser}"
 $AuditConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_audit;Username=${DbUser}"
+$TagSuggestionConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_tag_suggestions;Username=${DbUser}"
 
 $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
 
@@ -155,24 +162,33 @@ $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
     --platform managed `
     --allow-unauthenticated `
     --port 8080 `
-    --memory 1Gi `
+    --memory 2Gi `
     --cpu 1 `
     --min-instances 1 `
     --max-instances 2 `
     --timeout 600 `
     --cpu-boost `
     --no-cpu-throttling `
+    --startup-probe "tcpSocket.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=48" `
     --add-cloudsql-instances $InstanceConnectionName `
     --set-secrets "DB_PASSWORD=bisync-db-password:latest" `
     --set-env-vars "ASPNETCORE_ENVIRONMENT=Production" `
     --set-env-vars "ConnectionStrings__DefaultConnection=$DefaultConn" `
     --set-env-vars "ConnectionStrings__ArchiveConnection=$ArchiveConn" `
     --set-env-vars "ConnectionStrings__AuditConnection=$AuditConn" `
+    --set-env-vars "ConnectionStrings__TagSuggestionConnection=$TagSuggestionConn" `
     --set-env-vars "DEV_CONSOLE_ENABLED=$DevConsoleEnabled"
 if ($LASTEXITCODE -ne 0) { throw "Cloud Run deploy failed." }
 
-Step "9" "Deployment complete"
+Step "9" "Post-deploy simulation (related functions on live URL)"
 $Url = & $Gcloud run services describe $ServiceName --region $Region --format="value(status.url)"
+$env:DEPLOY_SIM_BASE_URL = "$Url"
+node scripts/run-deploy-simulation.mjs --phase=post --base=origin/master
+if ($LASTEXITCODE -ne 0) {
+    throw "Post-deploy simulation failed against $Url"
+}
+
+Step "10" "Deployment complete"
 Write-Host ""
 Write-Host "  Live URL:  $Url" -ForegroundColor Green
 Write-Host "  Health:    $Url/api/health" -ForegroundColor Green
@@ -185,4 +201,5 @@ Write-Host "Notes:" -ForegroundColor Yellow
 Write-Host "  - Backed by Cloud SQL PostgreSQL instance '$SqlInstance' ($InstanceConnectionName)."
 Write-Host "  - DB password is stored in Secret Manager secret 'bisync-db-password'."
 Write-Host "  - Redeploy: .\scripts\deploy-gcp.ps1 -ProjectId $ProjectId [-DevConsolePath '/dev/ops-secret']"
+Write-Host "  - Deploy is gated by scripts/run-deploy-simulation.mjs (pre + post)."
 Write-Host ""

@@ -35,7 +35,18 @@ function tenantHeaders(extra?: HeadersInit): HeadersInit {
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { headers: tenantHeaders() });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let message = `API error ${res.status}: ${path}`;
+    try {
+      const parsed = JSON.parse(text) as { message?: string; title?: string };
+      if (parsed.message) message = parsed.message;
+      else if (parsed.title) message = parsed.title;
+    } catch {
+      /* keep fallback */
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 
@@ -46,6 +57,8 @@ export interface Location {
   address: string;
   companyId?: number | null;
   companyName?: string | null;
+  active?: boolean;
+  companyActive?: boolean;
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
@@ -69,6 +82,38 @@ export interface Location {
   coversPrevWtd: number;
   coversPrevMtd: number;
   coversPrevYtd: number;
+  /** Sibling concept-locations share this key for one physical site. */
+  physicalSiteKey?: string;
+  /** Brand / concept label for POS menu buttons. */
+  conceptLabel?: string;
+  conceptSortOrder?: number;
+}
+
+/** Ship-to address under an outlet location (System Config → Location detail). */
+export interface DeliveryLocation {
+  id: number;
+  externalId: string;
+  locationExternalId: string;
+  companyId?: number | null;
+  name: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateProvince: string;
+  postcode: string;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DeliveryLocationUpsertPayload {
+  name: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  stateProvince: string;
+  postcode: string;
+  active?: boolean;
 }
 
 export interface LocationConfig {
@@ -82,6 +127,8 @@ export interface LocationConfig {
   timeZoneId?: string;
   /** Inactive locations stay in Platform Config but are hidden from day-to-day selection. */
   active?: boolean;
+  /** False when the parent company is deactivated. */
+  companyActive?: boolean;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -98,6 +145,23 @@ export interface LocationConfig {
   profileOverridden?: boolean;
   /** Weekly opening hours + last-order times (JSON). */
   openingHoursJson?: string;
+  /** When true, deliveries only during deliveryAllowPeriodsJson windows. */
+  deliveryAllowTimeEnabled?: boolean;
+  /** JSON array of { from, to } HH:mm periods. */
+  deliveryAllowPeriodsJson?: string;
+  /** Shared physical-site key for multi-concept venues. */
+  physicalSiteKey?: string;
+  /** Brand label on POS (defaults to location name). */
+  conceptLabel?: string;
+  conceptSortOrder?: number;
+  /** Original filename for the location logo (may differ from company logo). */
+  logoFileName?: string;
+  /** MIME type, e.g. image/png. */
+  logoContentType?: string;
+  /** Raw base64 logo bytes (no data-URL prefix). */
+  logoBase64?: string;
+  /** True when a location logo is stored. */
+  logoSet?: boolean;
 }
 
 export interface Company {
@@ -121,6 +185,8 @@ export interface Company {
   businessTypesJson: string;
   vendorPolicyTagsJson: string;
   modulesJson: string;
+  /** HQ office hours JSON for admin (non-shift) HR attendance — not location opening hours. */
+  businessHoursJson?: string;
   /** Original filename for the company logo. */
   logoFileName?: string;
   /** MIME type, e.g. image/png. */
@@ -307,6 +373,20 @@ export type SystemAuditListResponse = {
   rows: SystemAuditEventRow[];
 };
 
+export type PlatformPriceDisplaySettings = {
+  principalUomPriceDecimals: number;
+  alternateUomPriceDecimals: number;
+  vendorDeliveryPriceDecimals: number;
+  updatedAt: string | null;
+  updatedByEmail: string;
+  canEdit?: boolean;
+  defaults: {
+    principalUomPriceDecimals: number;
+    alternateUomPriceDecimals: number;
+    vendorDeliveryPriceDecimals: number;
+  };
+};
+
 export interface AppUser {
   id: number;
   employeeId?: number | null;
@@ -421,6 +501,7 @@ export interface Vendor {
   products: string;
   city: string;
   state: string;
+  postcode?: string;
   address: string;
   contactPerson: string;
   contactPosition: string;
@@ -441,6 +522,8 @@ export interface Vendor {
   allowPartialDelivery?: boolean;
   /** JSON array of location external IDs where this vendor is engaged. */
   engagedLocationIdsJson?: string;
+  /** JSON array of weekday keys (monday…sunday) for delivery days. */
+  deliveryDaysJson?: string;
   active?: boolean;
 }
 
@@ -542,6 +625,7 @@ export interface VendorCreatePayload {
   products: string;
   city: string;
   state: string;
+  postcode: string;
   address: string;
   contactPerson: string;
   contactPosition: string;
@@ -550,6 +634,8 @@ export interface VendorCreatePayload {
   productPolicyTag: VendorProductPolicyTag;
   allowPartialDelivery?: boolean;
   engagedLocationIds?: string[];
+  minOrderAmount?: number | null;
+  deliveryDays?: string[];
 }
 
 export interface VendorUpdatePayload {
@@ -559,6 +645,7 @@ export interface VendorUpdatePayload {
   products: string;
   city: string;
   state: string;
+  postcode: string;
   address: string;
   contactPerson: string;
   contactPosition: string;
@@ -567,6 +654,8 @@ export interface VendorUpdatePayload {
   productPolicyTag: VendorProductPolicyTag;
   allowPartialDelivery?: boolean;
   engagedLocationIds?: string[];
+  minOrderAmount?: number | null;
+  deliveryDays?: string[];
 }
 
 export interface B2bCustomerContact {
@@ -766,9 +855,20 @@ export interface SalesModuleClientUpdate {
 
 export interface SalesModuleClientUpdateImportResult {
   imported: number;
+  clientDbRows?: number;
+  clientDbWired?: number;
+  companiesCreated?: number;
+  unmatchedSales?: number;
+  companiesSynced?: number;
   sheet: string;
   fileName: string;
   importedAt?: string;
+  hunterRematch?: {
+    matched?: number;
+    unmatched?: number;
+    changed?: number;
+    total?: number;
+  };
   messages: string[];
 }
 
@@ -858,6 +958,8 @@ export interface SalesModuleOverviewPeriods {
 
 export interface SalesModuleOverviewHunterRow {
   hunter: string;
+  salesTeamMemberId?: number | null;
+  totalClients: number;
   statusChanges: number;
   interactions: number;
   newLeads: number;
@@ -874,6 +976,7 @@ export interface SalesModuleOverview {
   companyName?: string | null;
   hunters: SalesModuleOverviewHunterRow[];
   totals: {
+    totalClients: number;
     statusChanges: number;
     interactions: number;
     newLeads: number;
@@ -945,6 +1048,7 @@ export interface B2bSalesOrder {
   lockExpiryDate?: string | null;
   fulfilledDate?: string | null;
   deliveryOrderIssued?: boolean;
+  deliveryOrderId?: number | null;
   invoiceIssued?: boolean;
   shareToken?: string | null;
   customerAcceptedAt?: string | null;
@@ -952,6 +1056,31 @@ export interface B2bSalesOrder {
   createdAt: string;
   updatedAt: string;
   lines: B2bSalesOrderLine[];
+}
+
+export interface DeliveryOrderLine {
+  id: number;
+  salesOrderLineId?: number | null;
+  productId: number;
+  productAliasId?: number | null;
+  productName: string;
+  locationExternalId: string;
+  quantity: number;
+  uom: string;
+}
+
+export interface DeliveryOrder {
+  id: number;
+  companyId: number;
+  doNumber: string;
+  issueDate: string;
+  salesOrderId: number;
+  sourcePurchaseOrderId?: number | null;
+  status: string;
+  receivedDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: DeliveryOrderLine[];
 }
 
 export interface B2bSalesOrderSharePayload {
@@ -1078,6 +1207,532 @@ export interface ActiveComboPromotion {
   }[];
 }
 
+export interface PosPromotionDepletionUnit {
+  code: string;
+  label: string;
+  qtyPerUnit: number;
+}
+
+export interface PosPromotionProductLine {
+  id: number;
+  productId: number;
+  productCode: string;
+  productName: string;
+  rrp: number;
+  cogs: number;
+  rpp: number;
+  discountPercent: number;
+}
+
+export interface PosPromotion {
+  id: number;
+  companyId: number;
+  name: string;
+  promotionKind?: 'timeBase' | 'prepaid' | string;
+  startDate: string;
+  endDate?: string | null;
+  endDateOpen: boolean;
+  startTime: string;
+  endTime: string;
+  repeatMode: 'daily' | 'daysOfWeek' | string;
+  daysOfWeek: string[];
+  filterCategory?: string | null;
+  filterGroup?: string | null;
+  promoType: 'discountPercent' | 'discountPrice' | string;
+  validityPeriodValue?: number;
+  validityPeriodUnit?: 'days' | 'months' | string;
+  packageQty?: number;
+  packageUom?: string;
+  packageRrp?: number;
+  packageTotalValue?: number;
+  packageRpp?: number;
+  discountAmount?: number;
+  depletionMethod?: 'weight' | 'salesUnit' | string;
+  depletionUnits?: PosPromotionDepletionUnit[];
+  active: boolean;
+  status: 'Active' | 'Scheduled' | 'Inactive' | string;
+  /** True when date/time/weekday window is in effect for the location clock. */
+  inEffectNow?: boolean;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  products: PosPromotionProductLine[];
+}
+
+export interface PosPrepaidLedgerEntry {
+  id: number;
+  entryType: string;
+  qtyDelta: number;
+  unitCode: string;
+  unitLabel: string;
+  qtyPerUnit: number;
+  productId?: number | null;
+  locationExternalId?: string;
+  checkNumber?: number | null;
+  note: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface PosPrepaidPurchase {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  posPromotionId: number;
+  promotionName: string;
+  productId: number;
+  productName: string;
+  posCustomerId?: number | null;
+  customerName: string;
+  customerMobile: string;
+  purchasedAt: string;
+  expiresAt?: string | null;
+  packageQty: number;
+  packageUom: string;
+  packageRpp: number;
+  balanceRemaining: number;
+  status: string;
+  checkNumber?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+  ledger?: PosPrepaidLedgerEntry[];
+}
+
+export interface PosPromotionActivePrice {
+  productId: number;
+  promotionId: number;
+  promotionName: string;
+  rrp: number;
+  rpp: number;
+  discountPercent: number;
+}
+
+export interface PosPromotionActivePricesResponse {
+  asOfLocal: string;
+  locationExternalId?: string | null;
+  prices: PosPromotionActivePrice[];
+}
+
+/** Sales → Promotion Scheduler → POS Mapping: product ↔ PLU / POS product number. */
+export interface PosProductMapping {
+  id: number;
+  companyId: number;
+  productId: number;
+  productCode: string;
+  productName: string;
+  pluNumber: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpsertPosProductMappingPayload {
+  companyId: number;
+  productId: number;
+  pluNumber: string;
+  active?: boolean;
+}
+
+export interface PosDevice {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  name: string;
+  deviceType: string;
+  deviceTypeLabel?: string;
+  connectionType: string;
+  hostAddress: string;
+  port?: number | null;
+  macAddress: string;
+  subnetMask: string;
+  gateway: string;
+  dnsPrimary: string;
+  dnsSecondary: string;
+  hostname: string;
+  printerSdkCode: string;
+  printerBrand: string;
+  printerModel: string;
+  paperWidthMm?: number | null;
+  printAlignment: string;
+  printMarginLeft: number;
+  printMarginRight: number;
+  printerSetupComplete: boolean;
+  lastProbeStatus?: string;
+  lastProbedAt?: string | null;
+  active: boolean;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type PosModifierKind = 'compulsory' | 'food' | 'beverage' | 'component-swap';
+
+export interface PosModifierOption {
+  id: number;
+  label: string;
+  sequence: number;
+  extraChargeCents: number;
+  linkedProductId?: number | null;
+  linkedProductName?: string;
+  linkedComponentId?: string;
+  linkedComponentName?: string;
+  /** Original / base component for Component SWAP (e.g. Garlic Mash). */
+  baseComponentId?: string;
+  baseComponentName?: string;
+  active: boolean;
+}
+
+export interface PosModifierAttachment {
+  id: number;
+  targetType: 'category' | 'product-group' | 'product' | string;
+  targetProductCategory?: string;
+  targetProductGroup: string;
+  targetProductId?: number | null;
+  targetProductName?: string;
+}
+
+export interface PosModifierGroup {
+  id: number;
+  companyId: number;
+  kind: PosModifierKind | string;
+  name: string;
+  sequence: number;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  affectsStock: boolean;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  options: PosModifierOption[];
+  attachments: PosModifierAttachment[];
+}
+
+export type PosConfigTypeKind = 'payment' | 'entertainment' | 'discount' | 'device';
+
+export interface PosConfigType {
+  id: number;
+  companyId: number;
+  kind: PosConfigTypeKind | string;
+  name: string;
+  code: string;
+  sequence: number;
+  active: boolean;
+  /** Entertainment / discount: when true, override exception groups/items. */
+  includeAll?: boolean;
+  /** Entertainment / discount: product groups that are not allowed. */
+  exceptionGroups?: string[];
+  /** Entertainment / discount: product ids that are not allowed. */
+  exceptionProductIds?: number[];
+  /** Discount: user-defined percentage (0–100). */
+  percentage?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpsertPosConfigTypePayload {
+  companyId: number;
+  kind: PosConfigTypeKind | string;
+  name: string;
+  code: string;
+  sequence?: number;
+  active?: boolean;
+  includeAll?: boolean;
+  exceptionGroups?: string[];
+  exceptionProductIds?: number[];
+  percentage?: number;
+}
+
+export interface PosDeviceSetupDeviceRef {
+  id: number;
+  name: string;
+  deviceType: string;
+  locationExternalId?: string;
+  active?: boolean;
+}
+
+export interface PosDeviceSetupTypeRef {
+  code: string;
+  name: string;
+  active?: boolean;
+}
+
+export interface PosDeviceSetupRule {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  productCategory: string;
+  productGroup: string;
+  productId?: number | null;
+  productName: string;
+  primaryDeviceId?: number | null;
+  secondaryDeviceId?: number | null;
+  concurrentDeviceId?: number | null;
+  primaryDeviceType?: string;
+  secondaryDeviceType?: string;
+  concurrentDeviceType?: string;
+  primaryDevice?: PosDeviceSetupDeviceRef | null;
+  secondaryDevice?: PosDeviceSetupDeviceRef | null;
+  concurrentDevice?: PosDeviceSetupDeviceRef | null;
+  primaryDeviceTypeRef?: PosDeviceSetupTypeRef | null;
+  secondaryDeviceTypeRef?: PosDeviceSetupTypeRef | null;
+  concurrentDeviceTypeRef?: PosDeviceSetupTypeRef | null;
+  sequence: number;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpsertPosDeviceSetupRulePayload {
+  companyId: number;
+  locationExternalId?: string;
+  productCategory?: string;
+  productGroup?: string;
+  productId?: number | null;
+  productName?: string;
+  primaryDeviceId?: number | null;
+  secondaryDeviceId?: number | null;
+  concurrentDeviceId?: number | null;
+  primaryDeviceType?: string;
+  secondaryDeviceType?: string;
+  concurrentDeviceType?: string;
+  sequence?: number;
+  active?: boolean;
+}
+
+export type PosTaxServiceChargeType = 'tax-regular' | 'tax-alcohol' | 'service';
+
+export interface PosTaxServiceChargeLine {
+  id: string;
+  name: string;
+  percent: number;
+  /** Present on new saves; inferred from name for legacy tax lines. */
+  type?: PosTaxServiceChargeType | string;
+}
+
+export interface PosTaxServiceSalesTypeRule {
+  salesType: string;
+  taxIds: string[];
+  serviceIds: string[];
+  applyToAllProducts: boolean;
+  productGroups: string[];
+}
+
+export interface PosTaxServiceChannelFlags {
+  taxRegular: boolean;
+  taxAlcohol: boolean;
+  service: boolean;
+}
+
+export interface PosTaxServiceProductRule {
+  productId: number;
+  dineIn: PosTaxServiceChannelFlags;
+  takeaway: PosTaxServiceChannelFlags;
+  delivery: PosTaxServiceChannelFlags;
+}
+
+export interface PosTaxServiceConfig {
+  companyId: number;
+  charges?: PosTaxServiceChargeLine[];
+  productRules?: PosTaxServiceProductRule[];
+  taxes: PosTaxServiceChargeLine[];
+  services: PosTaxServiceChargeLine[];
+  salesTypes: PosTaxServiceSalesTypeRule[];
+  updatedAt?: string | null;
+}
+
+export interface UpsertPosTaxServiceConfigPayload {
+  companyId: number;
+  charges?: PosTaxServiceChargeLine[];
+  productRules?: PosTaxServiceProductRule[];
+  taxes?: PosTaxServiceChargeLine[];
+  services?: PosTaxServiceChargeLine[];
+  salesTypes?: PosTaxServiceSalesTypeRule[];
+}
+
+export interface UpsertPosModifierGroupPayload {
+  companyId: number;
+  kind: PosModifierKind | string;
+  name: string;
+  sequence?: number;
+  required?: boolean;
+  minSelect?: number;
+  maxSelect?: number;
+  affectsStock?: boolean;
+  active?: boolean;
+  options?: Array<{
+    label: string;
+    sequence?: number;
+    extraChargeCents?: number;
+    linkedProductId?: number | null;
+    linkedProductName?: string;
+    linkedComponentId?: string;
+    linkedComponentName?: string;
+    baseComponentId?: string;
+    baseComponentName?: string;
+    active?: boolean;
+  }>;
+  attachments?: Array<{
+    targetType?: 'category' | 'product-group' | 'product' | string;
+    targetProductCategory?: string;
+    targetProductGroup?: string;
+    targetProductId?: number | null;
+    targetProductName?: string;
+  }>;
+}
+
+export interface PosModifierStockCatalogProduct {
+  id: number;
+  productId: string;
+  name: string;
+  group: string;
+  rrp: number;
+  isVariableComponent: boolean;
+  variableComponentOptionsJson?: string;
+}
+
+export interface PosModifierSwapPair {
+  key: string;
+  label: string;
+  linkedProductId: number;
+  linkedProductName: string;
+  baseComponentId: string;
+  baseComponentName: string;
+  linkedComponentId: string;
+  linkedComponentName: string;
+  extraChargeCents: number;
+}
+
+export interface PosModifierStockCatalog {
+  productGroup: string;
+  products: PosModifierStockCatalogProduct[];
+  /** Base → alternate pairs from RMS Variable Component (Component SWAP only). */
+  swapPairs?: PosModifierSwapPair[];
+}
+
+export interface PosPrinterSdk {
+  id: number;
+  sdkCode: string;
+  brand: string;
+  displayName: string;
+  protocol: string;
+  version: string;
+  description: string;
+  modelHints: string;
+  defaultPort: number;
+  supportedPaperWidthsMm: number[];
+  platform?: string;
+  packageKind?: string;
+  externalUrl?: string;
+  hasBinaryPackage?: boolean;
+  active: boolean;
+  downloadPath?: string;
+}
+
+export interface PosNetworkSuggestions {
+  deviceType: string;
+  defaultPort: number;
+  note: string;
+  privateRanges: { cidr: string; example: string; label: string }[];
+  commonPorts: { port: number; label: string }[];
+  hostInterfaces: { name: string; address: string; subnet: string; isPrivate: boolean }[];
+  connectionTips: string[];
+}
+
+export interface PosLanCheckDevice {
+  id: number;
+  name: string;
+  deviceType: string;
+  deviceTypeLabel?: string;
+  connectionType: string;
+  hostAddress: string;
+  port?: number | null;
+  macAddress?: string;
+  active: boolean;
+  sameSubnetAsStation: boolean;
+  isLocalPeripheral: boolean;
+}
+
+export interface PosLanCheckResult {
+  checkedAt: string;
+  clientLocalIps: string[];
+  serverInterfaces: { name: string; address: string; subnet: string; isPrivate: boolean }[];
+  registeredDevices: PosLanCheckDevice[];
+  privateRanges: { cidr: string; example: string; label: string }[];
+  note: string;
+}
+
+export interface PosNetworkProbeResult {
+  host: string;
+  port: number;
+  reachable: boolean;
+  detail: string;
+  probedAt: string;
+  durationMs: number;
+  guidance: string;
+  hostInterfaces: { name: string; address: string; subnet: string; isPrivate: boolean }[];
+}
+
+export interface UpsertPosDevicePayload {
+  companyId: number;
+  locationExternalId: string;
+  name: string;
+  deviceType: string;
+  connectionType?: string;
+  hostAddress?: string;
+  port?: number | null;
+  macAddress?: string;
+  subnetMask?: string;
+  gateway?: string;
+  dnsPrimary?: string;
+  dnsSecondary?: string;
+  hostname?: string;
+  printerSdkCode?: string;
+  printerBrand?: string;
+  printerModel?: string;
+  paperWidthMm?: number | null;
+  printAlignment?: string;
+  printMarginLeft?: number;
+  printMarginRight?: number;
+  printerSetupComplete?: boolean;
+  active?: boolean;
+  createdBy?: string;
+}
+
+export interface CreatePosPromotionPayload {
+  companyId: number;
+  name: string;
+  startDate: string;
+  endDate?: string;
+  endDateOpen: boolean;
+  startTime: string;
+  endTime: string;
+  repeatMode: 'daily' | 'daysOfWeek';
+  daysOfWeek: string[];
+  filterCategory?: string;
+  filterGroup?: string;
+  promoType: 'discountPercent' | 'discountPrice';
+  promotionKind?: 'timeBase' | 'prepaid';
+  validityPeriodValue?: number;
+  validityPeriodUnit?: 'days' | 'months';
+  packageQty?: number;
+  packageUom?: string;
+  packageRrp?: number;
+  packageTotalValue?: number;
+  packageRpp?: number;
+  discountAmount?: number;
+  depletionMethod?: 'weight' | 'salesUnit';
+  depletionUnits?: PosPromotionDepletionUnit[];
+  createdBy?: string;
+  products: {
+    productId: number;
+    rrp: number;
+    cogs: number;
+    rpp: number;
+    discountPercent: number;
+  }[];
+}
+
 export interface TaggedB2bProductUnit {
   productId: number;
   aliasId: number | null;
@@ -1184,10 +1839,16 @@ export interface PurchaseOrderItem {
   remainingCommitmentQuantity?: number;
   /** On Pre-committed lines: qty received & consolidated via linked release POs. */
   consolidatedQuantity?: number;
+  /** Release line: master commitment line this qty drew from. */
+  sourceCommittedPurchaseOrderItemId?: number | null;
+  /** Release line: true when this line draws from a Pre-committed volume. */
+  isCommitmentDrawdown?: boolean;
   taxAmount?: number;
   halalCertNo?: string;
   productExpiryDate?: string | null;
   receivedTemperature?: number | null;
+  isReturnableDeposit?: boolean;
+  returnableItemName?: string | null;
 }
 
 export interface PurchaseOrder {
@@ -1201,6 +1862,9 @@ export interface PurchaseOrder {
   status: string;
   companyId?: number | null;
   locationExternalIds?: string[];
+  /** Ship-to delivery location when set (shown instead of outlet address). */
+  deliveryLocationExternalId?: string | null;
+  deliveryLocation?: DeliveryLocation | null;
   initiatedBy?: string;
   approvedBy?: string;
   approvedAt?: string | null;
@@ -1211,6 +1875,8 @@ export interface PurchaseOrder {
   commitmentStartDate?: string | null;
   commitmentEndDate?: string | null;
   sourceCommittedPurchaseOrderId?: number | null;
+  /** Release PO: master Pre-committed PO number when drawn down. */
+  sourceCommittedPoNumber?: string | null;
   /** On Pre-committed masters: outlets allowed to draw down (same as locationExternalIds). */
   drawdownLocationExternalIds?: string[] | null;
   /** Pre-committed totals (company blanket). */
@@ -1221,6 +1887,9 @@ export interface PurchaseOrder {
   vendorShareToken?: string | null;
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;
+  /** Inclusive yyyy-MM-dd — vendor must accept by this date (7 working days after issue). */
+  vendorAcceptExpiryDate?: string | null;
+  canVendorAccept?: boolean;
   vendorDoNumber?: string | null;
   vendorInvoiceNumber?: string | null;
   productQualityRating?: string | null;
@@ -1231,6 +1900,10 @@ export interface PurchaseOrder {
   canApprove?: boolean;
   canReceive?: boolean;
   canReconcile?: boolean;
+  /** Correct receive fields while staying Received / Partially Delivered. */
+  canAmendReceived?: boolean;
+  /** Correct consolidated fields while staying Reconciled. */
+  canAmendReconciled?: boolean;
   canFinalizeDelivery?: boolean;
   items: PurchaseOrderItem[];
 }
@@ -1245,6 +1918,8 @@ export interface CreatePurchaseOrderItemPayload {
   unit: string;
   componentUom?: string;
   deliveryPackage: string;
+  isReturnableDeposit?: boolean;
+  returnableItemName?: string;
 }
 
 export interface CreatePurchaseOrderPayload {
@@ -1265,6 +1940,8 @@ export interface CreatePurchaseOrderPayload {
 export interface CreatePurchaseOrdersBatchPayload {
   companyId?: number;
   locationExternalIds?: string[];
+  /** Optional ship-to delivery location under a selected outlet. */
+  deliveryLocationExternalId?: string;
   initiatedBy?: string;
   approvedBy?: string;
   orders: CreatePurchaseOrderPayload[];
@@ -1279,6 +1956,15 @@ export interface PurchaseOrderLineWorkflowPayload {
   halalCertNo?: string;
   productExpiryDate?: string;
   receivedTemperature?: number | null;
+  /** Unordered receive (freebie / CN replacement): ItemId 0 + these fields. */
+  vendorProductId?: string;
+  componentId?: string;
+  componentName?: string;
+  name?: string;
+  unit?: string;
+  deliveryPackage?: string;
+  /** Confirmed credit note settled by this receive line (exact vendor product). */
+  linkedCreditNoteId?: number | null;
 }
 
 export interface PurchaseOrderWorkflowPayload {
@@ -1289,6 +1975,9 @@ export interface PurchaseOrderWorkflowPayload {
   productQualityComment?: string;
   hygieneRating?: string;
   hygieneComment?: string;
+  /** Amend only: received | reconciled */
+  phase?: 'received' | 'reconciled' | string;
+  reason?: string;
 }
 
 export interface ReconcilePurchaseOrderResult {
@@ -1632,6 +2321,9 @@ export interface VendorOrderPortal {
   vendorName: string;
   documentType: string;
   documentKind: 'purchase_order' | 'purchase_request';
+  isPreCommitted?: boolean;
+  commitmentStartDate?: string | null;
+  commitmentEndDate?: string | null;
   status: string;
   orderDate: string;
   deliveryDate: string;
@@ -1653,6 +2345,8 @@ export interface VendorOrderPortal {
     city: string;
     stateProvince: string;
     postcode: string;
+    logoContentType?: string;
+    logoBase64?: string;
   } | null;
   vendor: {
     name: string;
@@ -1673,6 +2367,8 @@ export interface VendorOrderPortal {
     city: string;
     stateProvince: string;
     postcode: string;
+    logoContentType?: string;
+    logoBase64?: string;
   }[];
   items: VendorOrderPortalItem[];
 }
@@ -1711,6 +2407,10 @@ export interface VendorProductCatalogRow {
   productPolicyTag?: string;
   isPrivate?: boolean;
   privateLocationIds?: string[];
+  returnableDeposit?: boolean;
+  returnableItemName?: string;
+  returnableUom?: string;
+  returnableDepositAmount?: number;
   active?: boolean;
   updatedAt?: string;
 }
@@ -1728,6 +2428,10 @@ export interface VendorProductCatalogUpsert {
   productPolicyTag?: string;
   isPrivate?: boolean;
   privateLocationIds?: string[];
+  returnableDeposit?: boolean;
+  returnableItemName?: string;
+  returnableUom?: string;
+  returnableDepositAmount?: number;
   active?: boolean;
 }
 
@@ -1780,6 +2484,8 @@ export interface CreateCashPurchasePayload {
   deliveryPrice: number;
   quantity: number;
   componentUom: string;
+  /** Optional tagged vendor product id for delivery→PCU conversion. */
+  vendorProductId?: string;
   receiptNumber?: string;
   receiptFileName?: string;
   receiptFileBase64?: string;
@@ -1790,6 +2496,240 @@ export interface CreateCashPurchasePayload {
 export interface CreateCashPurchaseResult {
   cashPurchase: CashPurchase;
   inventoryPurchase: InventoryPurchase;
+}
+
+export interface ReturnableGoodsLedgerRow {
+  id: number;
+  returnableItemName: string;
+  uom: string;
+  uomPrice: number;
+  qty: number;
+  amountTotal: number;
+  poNumber: string;
+  poId: number;
+  orderDate?: string;
+  vendorName?: string;
+  vendorProductId?: string;
+}
+
+export interface ReturnableGoodsSummaryRow {
+  returnableItemName: string;
+  uom: string;
+  unitPrice: number;
+  incomingQty: number;
+  incomingAmount: number;
+  returnedQty: number;
+  returnedAmount: number;
+  balanceQty: number;
+  balanceAmount: number;
+}
+
+export interface ReturnableGoodsReturnRow {
+  id: number;
+  companyId?: number | null;
+  returnableItemName: string;
+  uom: string;
+  unitPrice: number;
+  quantity: number;
+  amount: number;
+  returnDate: string;
+  creditNoteNumber: string;
+  createdAt?: string;
+}
+
+export interface ReturnableGoodsOverview {
+  ledger: ReturnableGoodsLedgerRow[];
+  summary: ReturnableGoodsSummaryRow[];
+  returns: ReturnableGoodsReturnRow[];
+}
+
+export interface CreateReturnableGoodsReturnPayload {
+  companyId?: number;
+  returnableItemName: string;
+  quantity: number;
+  uom?: string;
+  unitPrice?: number;
+  returnDate: string;
+  creditNoteNumber: string;
+}
+
+export interface CreditNoteRow {
+  id: number;
+  companyId?: number | null;
+  locationExternalId: string;
+  creditNoteNumber: string;
+  creditNoteDate: string;
+  purchaseOrderId: number;
+  poNumber: string;
+  purchaseOrderItemId: number;
+  vendorExternalId?: string;
+  vendorName: string;
+  vendorProductId?: string;
+  productName: string;
+  componentId: string;
+  componentName: string;
+  deliveryUom: string;
+  deliveryUnitPrice: number;
+  quantity: number;
+  amount: number;
+  stockQuantity: number;
+  stockUom: string;
+  stockUnitPrice: number;
+  status: 'confirmed' | 'cancelled' | string;
+  cancelPurchaseOrderId?: number | null;
+  cancelPoNumber?: string;
+  cancelDoOrInvoiceNumber?: string;
+  cancelledAt?: string | null;
+  cancelledBy?: string;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface CreditNotePoSearchItem {
+  id: number;
+  vendorProductId?: string;
+  name: string;
+  componentId: string;
+  componentName: string;
+  unit: string;
+  componentUom?: string;
+  deliveredQuantity: number;
+  unitPrice: number;
+}
+
+export interface CreditNotePoSearchRow {
+  id: number;
+  poNumber: string;
+  vendorName: string;
+  vendorExternalId?: string;
+  status: string;
+  orderDate: string;
+  vendorDoNumber?: string | null;
+  vendorInvoiceNumber?: string | null;
+  locationExternalIds?: string[];
+  items: CreditNotePoSearchItem[];
+}
+
+export interface CreateCreditNotePayload {
+  companyId?: number | null;
+  purchaseOrderId: number;
+  purchaseOrderItemId: number;
+  quantity: number;
+  creditNoteNumber?: string;
+  creditNoteDate: string;
+  locationExternalId?: string;
+}
+
+export interface CancelCreditNotePayload {
+  companyId?: number | null;
+  cancelPoNumber: string;
+  cancelDoOrInvoiceNumber: string;
+  cancelledBy?: string;
+}
+
+export interface CentralStoreConfig {
+  id?: number;
+  companyId?: number;
+  active: boolean;
+  storeLocationExternalId: string;
+  kitchenLocationExternalId: string;
+  activatedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+/** Platform-wide component → vendor-product tag suggestion (≥50% probability). */
+export interface ComponentTagSuggestion {
+  vendorProductId: string;
+  productName: string;
+  vendorExternalId: string;
+  vendorName: string;
+  vendorEngaged: boolean;
+  probability: number;
+  tagCount?: number;
+  observationCount?: number;
+  suggestedVendorName?: string;
+  deliveryPrice?: number;
+  group?: string;
+  specification?: string;
+  alreadyTagged?: boolean;
+}
+
+export interface ComponentTagSuggestionResponse {
+  componentName: string;
+  minProbability: number;
+  count: number;
+  suggestions: ComponentTagSuggestion[];
+}
+
+export interface StoreRequisitionLine {
+  id: number;
+  componentId: string;
+  componentName: string;
+  uom: string;
+  requiredQty: number;
+  issuedQty: number;
+  unitPrice: number;
+}
+
+export interface StoreRequisition {
+  id: number;
+  companyId?: number | null;
+  requisitionNumber: string;
+  /** production (To Produce) | outlet (My Order Store Requisition) */
+  kind?: 'production' | 'outlet' | string;
+  productId: number;
+  productName: string;
+  isSubProduct: boolean;
+  batchQty: number;
+  storeLocationExternalId: string;
+  kitchenLocationExternalId: string;
+  status: 'pending' | 'issued' | 'received' | 'cancelled' | string;
+  requestedAt: string;
+  requestedBy?: string;
+  issuedAt?: string | null;
+  issuedBy?: string;
+  receivedAt?: string | null;
+  receivedBy?: string;
+  createdAt: string;
+  canIssue?: boolean;
+  canReceive?: boolean;
+  lines: StoreRequisitionLine[];
+}
+
+export interface CreateOutletStoreRequisitionPayload {
+  companyId: number;
+  requesterLocationExternalId: string;
+  requestedBy?: string;
+  lines: Array<{
+    componentId: string;
+    componentName?: string;
+    uom?: string;
+    quantity: number;
+  }>;
+}
+
+export interface ProductionStockHold {
+  id: number;
+  companyId?: number | null;
+  locationExternalId: string;
+  componentId: string;
+  componentName: string;
+  uom: string;
+  quantity: number;
+  unitPrice: number;
+  storeRequisitionId: number;
+  storeRequisitionLineId: number;
+  productId: number;
+  productName: string;
+  status: 'held' | 'depleted' | string;
+  createdAt: string;
+  depletedAt?: string | null;
+}
+
+export interface ActivateCentralStorePayload {
+  companyId?: number | null;
+  storeLocationExternalId: string;
+  kitchenLocationExternalId: string;
 }
 
 export interface WastageEntry {
@@ -2055,6 +2995,64 @@ export interface PosTestTapStatus {
   tables?: { name: string; count: number; purpose: string }[];
 }
 
+export interface PosEodSessionDto {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  externalId: string;
+  businessDate: string;
+  cashConfirmed: boolean;
+  cashExpectedCents: number;
+  cashCountedCents: number;
+  cashCountQtysJson: string;
+  creditQrConfirmed: boolean;
+  nonRevenueConfirmed: boolean;
+  voidsConfirmed: boolean;
+  discountConfirmed: boolean;
+  dayClosed: boolean;
+  closedAt?: string | null;
+  updatedAt: string;
+  allConfirmed: boolean;
+  cashVarianceCents: number;
+}
+
+export interface PosEodSummaryDto {
+  businessDate: string;
+  openChecks: number;
+  closedChecks: number;
+  grossSalesCents: number;
+  netSalesCents: number;
+  discountCents: number;
+  taxCents: number;
+  voidCents: number;
+  cashExpectedCents: number;
+  creditQrCents: number;
+  nonRevenueCents: number;
+  tipsOwedCents: number;
+}
+
+export interface PosEodBundleDto {
+  session: PosEodSessionDto;
+  summary: PosEodSummaryDto;
+  alreadyClosed?: boolean;
+  closed?: boolean;
+}
+
+export interface PosLocationTodayRow {
+  locationExternalId: string;
+  salesCents: number;
+  covers: number;
+  checks: number;
+  openChecks: number;
+  lastPaidAt?: string | null;
+}
+
+export interface PosLocationsTodayDto {
+  businessDate: string;
+  asOf: string;
+  locations: PosLocationTodayRow[];
+}
+
 export interface Product {
   id: number;
   productId: string;
@@ -2062,6 +3060,17 @@ export interface Product {
   category: string;
   group: string;
   isSubProduct: boolean;
+  isBiProduct?: boolean;
+  biOfProductId?: number | null;
+  biSellable?: boolean;
+  isVariableProduct?: boolean;
+  variableMode?: 'combination' | 'weight' | string;
+  variableChoiceQty?: number;
+  variableOptionsJson?: string;
+  variableMinCost?: number;
+  variableMaxCost?: number;
+  isVariableComponent?: boolean;
+  variableComponentOptionsJson?: string;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
   b2bPackageUnit?: string;
@@ -2072,7 +3081,9 @@ export interface Product {
   previousTotalCost?: number | null;
   previousPackagingCost?: number | null;
   previousRrp?: number | null;
+  /** Batch yield for sub-products; 1 for B2C products. */
   yieldQuantity: number;
+  /** Product UOM for B2C; batch yield UOM for sub-products; optional principal production UOM for B2B. */
   yieldUom: string;
   yieldAltUnitsJson?: string;
   expiryPeriodDays: number;
@@ -2082,6 +3093,8 @@ export interface Product {
   parStockUom: string;
   posEnabled: boolean;
   posDeliveryUnitsJson?: string;
+  /** POS Menu sales unit (company UOM / product unit label). */
+  posSalesUom?: string;
   active: boolean;
   companyId?: number | null;
   locationExternalIds?: string[];
@@ -2105,12 +3118,22 @@ export interface UpsertProductPayload {
   category: string;
   group: string;
   isSubProduct: boolean;
+  isVariableProduct?: boolean;
+  variableMode?: 'combination' | 'weight';
+  variableChoiceQty?: number;
+  variableOptionsJson?: string;
+  variableMinCost?: number;
+  variableMaxCost?: number;
+  isVariableComponent?: boolean;
+  variableComponentOptionsJson?: string;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
   b2bPackageUnit?: string;
   b2bSalesConfigJson?: string;
   rrp?: number;
+  /** Batch yield for sub-products; send 1 for B2C products. */
   yieldQuantity?: number;
+  /** Product UOM for B2C; batch yield UOM for sub-products; optional principal production UOM for B2B. */
   yieldUom?: string;
   yieldAltUnitsJson?: string;
   expiryPeriodDays?: number;
@@ -2130,6 +3153,7 @@ export interface UpsertProductPayload {
 export interface PatchProductPayload {
   posEnabled?: boolean;
   posDeliveryUnits?: PosDeliveryUnitSelection[];
+  posSalesUom?: string;
   active?: boolean;
   rrp?: number;
   parStock?: number;
@@ -2195,19 +3219,38 @@ export interface SalesDataResult {
   rows: SalesDataRow[];
 }
 
+/** Shared payload for RMS common reports (`/api/reports/*`). */
+export interface ReportPayload {
+  title: string;
+  period: string;
+  summary: Record<string, unknown>;
+  rows: Record<string, unknown>[];
+  extra?: Record<string, Record<string, unknown>[]>;
+}
+
 export interface ProduceBatchPayload {
   locationExternalIds: string[];
   batchQty: number;
+  /** Entry UOM label (production or delivery). BatchQty is already in stock/base units. */
+  batchUom?: string;
   productionDate?: string;
   expiryDate?: string;
   overrideStock?: boolean;
   componentUsages?: { componentId: string; usedQty: number }[];
-  subProductOutputs?: { productId: number; quantity: number }[];
+  subProductOutputs?: {
+    productId?: number;
+    name?: string;
+    quantity: number;
+    costAttributionPct?: number;
+    isBiSubProduct?: boolean;
+    biSellable?: boolean;
+  }[];
 }
 
 export interface ProductionPreviewPayload {
   locationExternalIds: string[];
   batchQty: number;
+  batchUom?: string;
   componentUsages?: { componentId: string; usedQty: number }[];
 }
 
@@ -2221,6 +3264,7 @@ export interface ProductionPreviewResult {
 
 export interface PatchProductionBatchPayload {
   batchQty: number;
+  batchUom?: string;
   productionDate?: string;
   expiryDate?: string;
   overrideStock?: boolean;
@@ -2334,6 +3378,8 @@ export interface Ingredient {
   parStock?: number;
   parStockUom?: string;
   onHandQty?: number;
+  /** True when the component has at least one inventory purchase lot. */
+  hasPurchaseRecord?: boolean;
   metricsLookbackDays?: number;
   dailyUsageAuto?: boolean;
   orderFreqAuto?: boolean;
@@ -2364,6 +3410,8 @@ export interface StockCardListRow {
   uom: string;
   recipeUom: string;
   inventoryUom: string;
+  /** Most recent stock activity (ISO); used to sort latest → oldest. */
+  lastChangedAt?: string | null;
 }
 
 export type StockCardEntryType =
@@ -2383,7 +3431,10 @@ export type StockCardEntryType =
   | 'inbound'
   | 'outbound'
   | 'split_use'
-  | 'split_use_in';
+  | 'split_use_in'
+  | 'credit_note'
+  | 'store_issue'
+  | 'store_hold_in';
 
 export interface StockCardLedgerEntry {
   id: number;
@@ -2394,6 +3445,12 @@ export interface StockCardLedgerEntry {
   uom: string;
   unitPrice: number;
   subtotal: number;
+  /** PO/cash document line amount (authority) for inbound. */
+  documentAmount?: number;
+  /** PCU extended − document (UOM rounding residual). */
+  roundingResidual?: number;
+  /** qty × 4dp unit price before residual true-up. */
+  extendedAtUnitPrice?: number;
   reason: string;
   referenceNumber: string;
   fifoDetail: string;
@@ -2404,6 +3461,14 @@ export interface StockCardLedgerEntry {
   isShortage?: boolean;
   isCogsBackfilled?: boolean;
   isNegativeBalance?: boolean;
+  /** Inbound receipt sequence (IN#n). 0 = opening B/F. */
+  inboundSequenceNo?: number;
+  /** Original inbound quantity when received. */
+  originalQuantity?: number;
+  /** Quantity depleted from this inbound by period end. */
+  depletedQuantity?: number;
+  /** Inbound sequence this outbound slice depleted from. */
+  sourceInboundSequenceNo?: number;
 }
 
 export interface StockCardOnHandLayer {
@@ -2648,13 +3713,67 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
 
 export const api = {
   health: () => fetchJson<{ status: string }>('/api/health'),
-  locations: () => fetchJson<Location[]>('/api/locations'),
-  locationsConfig: () => fetchJson<LocationConfig[]>('/api/locations/config'),
-  createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
-    fetchJsonWithMethod<LocationConfig>('/api/locations/config', 'POST', data),
+  locations: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<Location[]>(`/api/locations${q}`);
+  },
+  locationsConfig: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<LocationConfig[]>(`/api/locations/config${q}`);
+  },
+  createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'> & {
+    inheritFromCompanyId?: number | null;
+    inheritFromLocationExternalId?: string | null;
+    copyComponents?: boolean;
+    copyVendorsAndVendorProducts?: boolean;
+    copyProducts?: boolean;
+  }) =>
+    fetchJsonWithMethod<LocationConfig & {
+      inheritance?: {
+        componentsCopied: number;
+        vendorsCopied: number;
+        vendorProductsCopied: number;
+        productsCopied: number;
+        mode: string;
+      };
+      inheritanceError?: string;
+    }>('/api/locations/config', 'POST', data),
   updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
     fetchJsonWithMethod<LocationConfig>(`/api/locations/${id}/config`, 'PUT', data),
-  companies: () => fetchJson<Company[]>('/api/companies'),
+  deliveryLocations: (opts?: {
+    companyId?: number | null;
+    locationExternalIds?: string[];
+    includeInactive?: boolean;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts?.companyId != null) params.set('companyId', String(opts.companyId));
+    if (opts?.locationExternalIds?.length) {
+      params.set('locationExternalIds', opts.locationExternalIds.join(','));
+    }
+    if (opts?.includeInactive) params.set('includeInactive', 'true');
+    const q = params.toString();
+    return fetchJson<DeliveryLocation[]>(`/api/locations/delivery-locations${q ? `?${q}` : ''}`);
+  },
+  locationDeliveryLocations: (locationExternalId: string, opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<DeliveryLocation[]>(
+      `/api/locations/${encodeURIComponent(locationExternalId)}/delivery-locations${q}`,
+    );
+  },
+  createDeliveryLocation: (locationExternalId: string, data: DeliveryLocationUpsertPayload) =>
+    fetchJsonWithMethod<DeliveryLocation>(
+      `/api/locations/${encodeURIComponent(locationExternalId)}/delivery-locations`,
+      'POST',
+      data,
+    ),
+  updateDeliveryLocation: (id: number, data: DeliveryLocationUpsertPayload) =>
+    fetchJsonWithMethod<DeliveryLocation>(`/api/locations/delivery-locations/${id}`, 'PUT', data),
+  deleteDeliveryLocation: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/locations/delivery-locations/${id}`, 'DELETE'),
+  companies: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<Company[]>(`/api/companies${q}`);
+  },
   createCompany: (data: Omit<Company, 'id' | 'locationCount'>) => fetchJsonWithMethod<Company>('/api/companies', 'POST', data),
   updateCompany: (id: number, data: Company) => fetchJsonWithMethod<Company>(`/api/companies/${id}`, 'PUT', data),
   testCompanyOutboundEmail: (
@@ -2890,6 +4009,11 @@ export const api = {
     }
     return fetchJson<SalesModuleOverview>(`/api/sales-module/overview?${params}`);
   },
+  /**
+   * Client Update rows.
+   * salesTeamMemberId without view → all clients attached to that member.
+   * view=week|month → period rows with changes (optionally scoped by member/hunter).
+   */
   salesModuleClientUpdates: (opts?: {
     hunter?: string;
     salesTeamMemberId?: number;
@@ -2935,6 +4059,14 @@ export const api = {
       locationCount?: number | null;
     },
   ) => fetchJsonWithMethod<SalesModuleClientUpdate>(`/api/sales-module/client-updates/${id}`, 'PATCH', data),
+  deleteSalesModuleClientUpdate: (id: number) =>
+    fetchJsonWithMethod<{ deleted: number }>(`/api/sales-module/client-updates/${id}`, 'DELETE'),
+  mergeSalesModuleClientUpdateDuplicates: (id: number) =>
+    fetchJsonWithMethod<{
+      keeper: SalesModuleClientUpdate;
+      mergedCount: number;
+      deletedIds: number[];
+    }>(`/api/sales-module/client-updates/${id}/merge-duplicates`, 'POST'),
   followupSalesModuleClientUpdate: (id: number, data: ClientUpdateFollowupPayload) =>
     fetchJsonWithMethod<SalesModuleClientUpdateFollowupResult>(
       `/api/sales-module/client-updates/${id}/followup`,
@@ -3082,11 +4214,227 @@ export const api = {
   },
   promotionActiveCombos: (companyId: number) =>
     fetchJson<ActiveComboPromotion[]>(`/api/promotions/active-combos?companyId=${companyId}`),
+  posPromotions: (companyId: number, status?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (status) params.set('status', status);
+    return fetchJson<PosPromotion[]>(`/api/pos-promotions?${params}`);
+  },
+  posPromotionActivePrices: (
+    companyId: number,
+    opts?: { locationExternalId?: string; productIds?: number[] },
+  ) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.locationExternalId) params.set('locationExternalId', opts.locationExternalId);
+    if (opts?.productIds && opts.productIds.length > 0) {
+      params.set('productIds', opts.productIds.join(','));
+    }
+    return fetchJson<PosPromotionActivePricesResponse>(`/api/pos-promotions/active-prices?${params}`);
+  },
+  createPosPromotion: (data: CreatePosPromotionPayload) =>
+    fetchJsonWithMethod<PosPromotion>('/api/pos-promotions', 'POST', data),
+  setPosPromotionActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosPromotion>(`/api/pos-promotions/${id}/active`, 'PATCH', { active }),
+  posProductMappings: (companyId: number, opts?: { includeInactive?: boolean }) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.includeInactive === false) params.set('includeInactive', 'false');
+    else params.set('includeInactive', 'true');
+    return fetchJson<PosProductMapping[]>(`/api/pos-product-mappings?${params}`);
+  },
+  createPosProductMapping: (data: UpsertPosProductMappingPayload) =>
+    fetchJsonWithMethod<PosProductMapping>('/api/pos-product-mappings', 'POST', data),
+  updatePosProductMapping: (id: number, data: UpsertPosProductMappingPayload) =>
+    fetchJsonWithMethod<PosProductMapping>(`/api/pos-product-mappings/${id}`, 'PUT', data),
+  setPosProductMappingActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosProductMapping>(`/api/pos-product-mappings/${id}/active`, 'PATCH', { active }),
+  deletePosProductMapping: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-product-mappings/${id}`, 'DELETE'),
+  posPrepaidPurchases: (
+    companyId: number,
+    opts?: { mobile?: string; status?: string; locationExternalId?: string },
+  ) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.mobile) params.set('mobile', opts.mobile);
+    if (opts?.status) params.set('status', opts.status);
+    if (opts?.locationExternalId) params.set('locationExternalId', opts.locationExternalId);
+    return fetchJson<PosPrepaidPurchase[]>(`/api/pos-prepaid/purchases?${params}`);
+  },
+  posPrepaidPurchaseDetail: (id: number, companyId?: number) => {
+    const params = new URLSearchParams();
+    if (companyId && companyId > 0) params.set('companyId', String(companyId));
+    const q = params.toString();
+    return fetchJson<PosPrepaidPurchase>(`/api/pos-prepaid/purchases/${id}${q ? `?${q}` : ''}`);
+  },
+  createPosPrepaidPurchase: (data: {
+    companyId: number;
+    locationExternalId: string;
+    promotionId: number;
+    productId: number;
+    customerName: string;
+    customerMobile: string;
+    checkNumber?: number;
+    createdBy?: string;
+  }) => fetchJsonWithMethod<PosPrepaidPurchase>('/api/pos-prepaid/purchase', 'POST', data),
+  depletePosPrepaid: (data: {
+    purchaseId: number;
+    companyId: number;
+    locationExternalId: string;
+    unitCode?: string;
+    qty: number;
+    productId?: number;
+    checkNumber?: number;
+    createdBy?: string;
+  }) => fetchJsonWithMethod<PosPrepaidPurchase>('/api/pos-prepaid/deplete', 'POST', data),
+  posDevices: (companyId: number, locationExternalId?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (locationExternalId) params.set('locationExternalId', locationExternalId);
+    return fetchJson<PosDevice[]>(`/api/pos-devices?${params}`);
+  },
+  createPosDevice: (data: UpsertPosDevicePayload) =>
+    fetchJsonWithMethod<PosDevice>('/api/pos-devices', 'POST', data),
+  updatePosDevice: (id: number, data: UpsertPosDevicePayload) =>
+    fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}`, 'PUT', data),
+  setPosDeviceActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}/active`, 'PATCH', { active }),
+  deletePosDevice: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-devices/${id}`, 'DELETE'),
+  posModifierGroups: (companyId: number, opts?: { kind?: string; includeInactive?: boolean }) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.kind) params.set('kind', opts.kind);
+    if (opts?.includeInactive) params.set('includeInactive', 'true');
+    return fetchJson<PosModifierGroup[]>(`/api/pos-modifier-groups?${params}`);
+  },
+  posModifierGroup: (id: number) =>
+    fetchJson<PosModifierGroup>(`/api/pos-modifier-groups/${id}`),
+  posModifierStockCatalog: (companyId: number, kind: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId), kind });
+    return fetchJson<PosModifierStockCatalog>(`/api/pos-modifier-groups/stock-catalog?${params}`);
+  },
+  createPosModifierGroup: (data: UpsertPosModifierGroupPayload) =>
+    fetchJsonWithMethod<PosModifierGroup>('/api/pos-modifier-groups', 'POST', data),
+  updatePosModifierGroup: (id: number, data: UpsertPosModifierGroupPayload) =>
+    fetchJsonWithMethod<PosModifierGroup>(`/api/pos-modifier-groups/${id}`, 'PUT', data),
+  setPosModifierGroupActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosModifierGroup>(`/api/pos-modifier-groups/${id}/active`, 'PATCH', { active }),
+  deletePosModifierGroup: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-modifier-groups/${id}`, 'DELETE'),
+  inheritPosComponentSwapModifiers: (companyId: number) =>
+    fetchJsonWithMethod<PosModifierGroup>('/api/pos-modifier-groups/inherit-component-swap', 'POST', {
+      companyId,
+    }),
+  posConfigTypes: (companyId: number, opts?: { kind?: PosConfigTypeKind | string; includeInactive?: boolean }) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.kind) params.set('kind', opts.kind);
+    if (opts?.includeInactive === false) params.set('includeInactive', 'false');
+    else params.set('includeInactive', 'true');
+    return fetchJson<PosConfigType[]>(`/api/pos-config-types?${params}`);
+  },
+  createPosConfigType: (data: UpsertPosConfigTypePayload) =>
+    fetchJsonWithMethod<PosConfigType>('/api/pos-config-types', 'POST', data),
+  updatePosConfigType: (id: number, data: UpsertPosConfigTypePayload) =>
+    fetchJsonWithMethod<PosConfigType>(`/api/pos-config-types/${id}`, 'PUT', data),
+  setPosConfigTypeActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosConfigType>(`/api/pos-config-types/${id}/active`, 'PATCH', { active }),
+  deletePosConfigType: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-config-types/${id}`, 'DELETE'),
+  posDeviceSetupRules: (
+    companyId: number,
+    opts?: { locationExternalId?: string; includeInactive?: boolean },
+  ) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.locationExternalId) params.set('locationExternalId', opts.locationExternalId);
+    if (opts?.includeInactive === false) params.set('includeInactive', 'false');
+    else params.set('includeInactive', 'true');
+    return fetchJson<PosDeviceSetupRule[]>(`/api/pos-device-setup?${params}`);
+  },
+  createPosDeviceSetupRule: (data: UpsertPosDeviceSetupRulePayload) =>
+    fetchJsonWithMethod<PosDeviceSetupRule>('/api/pos-device-setup', 'POST', data),
+  updatePosDeviceSetupRule: (id: number, data: UpsertPosDeviceSetupRulePayload) =>
+    fetchJsonWithMethod<PosDeviceSetupRule>(`/api/pos-device-setup/${id}`, 'PUT', data),
+  setPosDeviceSetupRuleActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosDeviceSetupRule>(`/api/pos-device-setup/${id}/active`, 'PATCH', { active }),
+  deletePosDeviceSetupRule: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-device-setup/${id}`, 'DELETE'),
+  posTaxServiceConfig: (companyId: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    return fetchJson<PosTaxServiceConfig>(`/api/pos-tax-service-config?${params}`);
+  },
+  savePosTaxServiceConfig: (data: UpsertPosTaxServiceConfigPayload) =>
+    fetchJsonWithMethod<PosTaxServiceConfig>('/api/pos-tax-service-config', 'PUT', data),
+  posPrinterSdks: () => fetchJson<PosPrinterSdk[]>('/api/pos-devices/printer-sdks'),
+  downloadPosPrinterSdkPackage: (sdkCode: string) => {
+    const path = `/api/pos-devices/printer-sdks/${encodeURIComponent(sdkCode)}/package`;
+    return fetch(path).then(async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition') || '';
+      const match = cd.match(/filename="?([^";]+)"?/i);
+      return { blob, fileName: match?.[1] || `bisync-${sdkCode}-driver.json` };
+    });
+  },
+  posDeviceNetworkSuggestions: (deviceType?: string) => {
+    const params = new URLSearchParams();
+    if (deviceType) params.set('deviceType', deviceType);
+    const q = params.toString();
+    return fetchJson<PosNetworkSuggestions>(`/api/pos-devices/network-suggestions${q ? `?${q}` : ''}`);
+  },
+  posDeviceLanCheck: (data: {
+    companyId: number;
+    locationExternalId?: string;
+    clientLocalIps?: string[];
+  }) => fetchJsonWithMethod<PosLanCheckResult>('/api/pos-devices/lan-check', 'POST', data),
+  probePosDeviceNetwork: (data: { hostAddress: string; port?: number; deviceType?: string }) =>
+    fetchJsonWithMethod<PosNetworkProbeResult>('/api/pos-devices/network-probe', 'POST', data),
+  deployPosPrinterSdk: (id: number) =>
+    fetchJsonWithMethod<{ device: PosDevice; sdk: PosPrinterSdk; deployed: boolean; message: string }>(
+      `/api/pos-devices/${id}/deploy-sdk`,
+      'POST',
+    ),
+  testPosPrinterPrint: (id: number) =>
+    fetchJsonWithMethod<{
+      sent: boolean
+      skipped?: boolean
+      host?: string
+      port?: number
+      bytes?: number
+      durationMs?: number
+      device: PosDevice
+      message: string
+    }>(`/api/pos-devices/${id}/test-print`, 'POST'),
+  savePosPrinterSetup: (
+    id: number,
+    data: {
+      paperWidthMm: number;
+      printAlignment: string;
+      printMarginLeft?: number;
+      printMarginRight?: number;
+      markComplete?: boolean;
+      printerSdkCode?: string;
+      printerBrand?: string;
+      printerModel?: string;
+    },
+  ) => fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}/printer-setup`, 'POST', data),
   issueB2bSalesOrder: (id: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/issue`, 'POST'),
   markB2bSalesOrderLineReadyToShip: (orderId: number, lineId: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(
       `/api/b2b-sales-orders/${orderId}/lines/${lineId}/ready-to-ship`,
+      'POST',
+    ),
+  reserveB2bSalesOrderHoldout: (id: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/reserve-holdout`, 'POST'),
+  issueB2bDeliveryOrder: (id: number) =>
+    fetchJsonWithMethod<{ order: B2bSalesOrder; deliveryOrder: DeliveryOrder }>(
+      `/api/b2b-sales-orders/${id}/issue-delivery-order`,
+      'POST',
+    ),
+  getB2bDeliveryOrder: (deliveryOrderId: number) =>
+    fetchJson<DeliveryOrder>(`/api/b2b-sales-orders/delivery-orders/${deliveryOrderId}`),
+  confirmB2bDeliveryOrderReceipt: (deliveryOrderId: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(
+      `/api/b2b-sales-orders/delivery-orders/${deliveryOrderId}/confirm-receipt`,
       'POST',
     ),
   ensureB2bSalesOrderShareToken: (id: number) =>
@@ -3144,6 +4492,16 @@ export const api = {
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/receive`, 'POST', payload),
   reconcilePurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
     fetchJsonWithMethod<ReconcilePurchaseOrderResult>(`/api/purchaseorders/${id}/reconcile`, 'POST', payload),
+  amendPurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
+    fetchJsonWithMethod<{
+      order: PurchaseOrder;
+      updatedVendorProductPrices?: { id: string; deliveryPrice: number }[];
+      phase?: string;
+    }>(
+      `/api/purchaseorders/${id}/amend`,
+      'POST',
+      payload,
+    ),
   finalizePurchaseOrderDelivery: (id: number) =>
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/finalize-delivery`, 'POST', {}),
   userNotifications: (userId: number, recipientName: string, unreadOnly = false) => {
@@ -3208,12 +4566,42 @@ export const api = {
       'PUT',
       { stateJson },
     ),
+  renameCompanyUom: (companyId: number, from: string, to: string) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      from: string;
+      to: string;
+      total: number;
+      counts: Record<string, number>;
+    }>(`/api/companies/${companyId}/uoms/rename`, 'POST', { from, to }),
+  renameCompanyCategoryGroup: (
+    companyId: number,
+    kind: 'category' | 'group',
+    from: string,
+    to: string,
+  ) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      kind: string;
+      from: string;
+      to: string;
+      total: number;
+      counts: Record<string, number>;
+    }>(`/api/companies/${companyId}/category-groups/rename`, 'POST', { kind, from, to }),
   inventoryPurchases: (companyId?: number) =>
     fetchJson<InventoryPurchase[]>(`/api/inventory/purchases${companyId ? `?companyId=${companyId}` : ''}`),
   cashPurchases: (companyId?: number) =>
     fetchJson<CashPurchase[]>(`/api/cashpurchases${companyId ? `?companyId=${companyId}` : ''}`),
   createCashPurchase: (payload: CreateCashPurchasePayload) =>
     fetchJsonWithMethod<CreateCashPurchaseResult>('/api/cashpurchases', 'POST', payload),
+  returnableGoods: (companyId?: number) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    const query = params.toString();
+    return fetchJson<ReturnableGoodsOverview>(`/api/returnable-goods${query ? `?${query}` : ''}`);
+  },
+  createReturnableGoodsReturn: (payload: CreateReturnableGoodsReturnPayload) =>
+    fetchJsonWithMethod<ReturnableGoodsReturnRow>('/api/returnable-goods/returns', 'POST', payload),
   wastageEntries: (
     companyId: number | undefined,
     locationIds: string[],
@@ -3260,6 +4648,100 @@ export const api = {
     fetchJsonWithMethod<WastageEntry>('/api/wastage', 'POST', payload),
   createPosWastage: (payload: CreatePosWastagePayload) =>
     fetchJsonWithMethod<WastageEntry>('/api/wastage/pos', 'POST', payload),
+  creditNotes: (companyId?: number, locationIds?: string[]) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds?.length) params.set('locationIds', locationIds.join(','));
+    const query = params.toString();
+    return fetchJson<CreditNoteRow[]>(`/api/credit-notes${query ? `?${query}` : ''}`);
+  },
+  searchCreditNotePurchaseOrders: (companyId: number, q?: string) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    if (q?.trim()) params.set('q', q.trim());
+    return fetchJson<CreditNotePoSearchRow[]>(`/api/credit-notes/po-search?${params.toString()}`);
+  },
+  createCreditNote: (payload: CreateCreditNotePayload) =>
+    fetchJsonWithMethod<CreditNoteRow>('/api/credit-notes', 'POST', payload),
+  updateCreditNoteNumber: (id: number, companyId: number, creditNoteNumber: string) =>
+    fetchJsonWithMethod<CreditNoteRow>(`/api/credit-notes/${id}`, 'PATCH', {
+      companyId,
+      creditNoteNumber,
+    }),
+  cancelCreditNote: (id: number, payload: CancelCreditNotePayload) =>
+    fetchJsonWithMethod<CreditNoteRow>(`/api/credit-notes/${id}/cancel`, 'POST', payload),
+  deleteCreditNote: (id: number, companyId?: number | null) => {
+    const params = new URLSearchParams();
+    if (companyId != null) params.set('companyId', String(companyId));
+    const q = params.toString();
+    return fetchJsonWithMethod<void>(
+      `/api/credit-notes/${id}${q ? `?${q}` : ''}`,
+      'DELETE',
+    );
+  },
+  componentTagSuggestions: (
+    companyId: number,
+    componentName: string,
+    locationIds?: string[],
+  ) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    params.set('componentName', componentName);
+    if (locationIds?.length) params.set('locationIds', locationIds.join(','));
+    return fetchJson<ComponentTagSuggestionResponse>(`/api/tag-suggestions?${params.toString()}`);
+  },
+  componentTagSuggestionCounts: (companyId: number, componentNames: string[]) =>
+    fetchJsonWithMethod<{ counts: Record<string, number> }>(
+      '/api/tag-suggestions/counts',
+      'POST',
+      { companyId, componentNames },
+    ),
+  centralStoreConfig: (companyId: number) =>
+    fetchJson<CentralStoreConfig>(`/api/central-store/config?companyId=${companyId}`),
+  activateCentralStore: (payload: ActivateCentralStorePayload) =>
+    fetchJsonWithMethod<CentralStoreConfig>('/api/central-store/activate', 'POST', payload),
+  deactivateCentralStore: (companyId: number) =>
+    fetchJsonWithMethod<CentralStoreConfig>('/api/central-store/deactivate', 'POST', { companyId }),
+  storeRequisitions: (companyId: number, status?: string, kind?: string) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    if (status) params.set('status', status);
+    if (kind) params.set('kind', kind);
+    return fetchJson<StoreRequisition[]>(`/api/central-store/requisitions?${params.toString()}`);
+  },
+  createOutletStoreRequisition: (payload: CreateOutletStoreRequisitionPayload) =>
+    fetchJsonWithMethod<StoreRequisition>('/api/central-store/requisitions', 'POST', payload),
+  issueStoreRequisition: (
+    id: number,
+    payload: { companyId: number; issuedBy?: string },
+  ) =>
+    fetchJsonWithMethod<StoreRequisition>(
+      `/api/central-store/requisitions/${id}/issue`,
+      'POST',
+      payload,
+    ),
+  receiveStoreRequisition: (
+    id: number,
+    payload: { companyId: number; receivedBy?: string },
+  ) =>
+    fetchJsonWithMethod<StoreRequisition>(
+      `/api/central-store/requisitions/${id}/receive`,
+      'POST',
+      payload,
+    ),
+  productionStockHolds: (
+    companyId: number,
+    locationIds?: string[],
+    status?: string,
+  ) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    if (locationIds?.length) params.set('locationIds', locationIds.join(','));
+    if (status) params.set('status', status);
+    return fetchJson<ProductionStockHold[]>(
+      `/api/central-store/stock-holds?${params.toString()}`,
+    );
+  },
   transfers: (companyId: number | undefined, locationIds: string[], month?: string) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
@@ -3348,6 +4830,7 @@ export const api = {
   markProductToProduce: (productId: number, payload: {
     locationExternalIds: string[];
     batchQty: number;
+    batchUom?: string;
     productionDate?: string;
     overrideStock?: boolean;
   }) =>
@@ -3374,7 +4857,35 @@ export const api = {
       'PATCH',
       payload,
     ),
-  recordProductSale: (productId: number, payload: { locationExternalIds: string[]; quantitySold: number; salesChannel?: 'pos' | 'online' | 'offline' }) =>
+  recordProductSale: (
+    productId: number,
+    payload: {
+      locationExternalIds: string[];
+      quantitySold: number;
+      salesChannel?: 'pos' | 'online' | 'offline';
+      variableDetail?: {
+        variableMode?: 'combination' | 'replacement' | 'weight' | 'variableComponent' | string;
+        enteredWeight?: number;
+        weightUom?: string;
+        referenceWeightQty?: number;
+        combinationSelections?: Array<{
+          productId: number;
+          productCode?: string;
+          productName?: string;
+          quantity: number;
+        }>;
+        replacementSelections?: Array<{
+          baseComponentId: string;
+          baseComponentName?: string;
+          chosenComponentId: string;
+          chosenComponentName?: string;
+          componentUom?: string;
+          quantity: number;
+          extraCharge?: number;
+        }>;
+      };
+    },
+  ) =>
     fetchJsonWithMethod<void>(
       `/api/product-management/${productId}/record-sale`,
       'POST',
@@ -3385,6 +4896,281 @@ export const api = {
     if (locationExternalId) params.set('locationExternalId', locationExternalId);
     return fetchJson<PosTestTapStatus>(`/api/pos/test-tap/status?${params}`);
   },
+  posFloorPlan: (companyId: number, locationExternalId: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    return fetchJson<{
+      companyId: number;
+      locationExternalId: string;
+      layoutJson: string;
+      updatedAt: string | null;
+    }>(`/api/pos/floor-plan?${params}`);
+  },
+  posFloorPlanUpsert: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    layoutJson: string;
+    force?: boolean;
+  }) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      locationExternalId: string;
+      layoutJson: string;
+      updatedAt: string;
+    }>('/api/pos/floor-plan', 'PUT', payload),
+  posFloorPlanVersions: (companyId: number, locationExternalId: string, take = 20) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+      take: String(take),
+    });
+    return fetchJson<Array<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      source: string;
+      capturedAt: string;
+      tableCount: number;
+      isStockDefault: boolean;
+      isCustom: boolean;
+      layoutJson: string;
+    }>>(`/api/pos/floor-plan/versions?${params}`);
+  },
+  posFloorPlanRestoreVersion: (versionId: number, companyId: number, locationExternalId: string) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      locationExternalId: string;
+      layoutJson: string;
+      updatedAt: string;
+    }>(
+      `/api/pos/floor-plan/restore-version/${versionId}?companyId=${companyId}&locationExternalId=${encodeURIComponent(locationExternalId)}`,
+      'POST',
+    ),
+  posWaitlistList: (companyId: number, locationExternalId: string, includeClosed = false) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    if (includeClosed) params.set('includeClosed', 'true');
+    return fetchJson<Array<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      name: string;
+      mobile: string;
+      pax: number;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+    }>>(`/api/pos/waitlist?${params}`);
+  },
+  posWaitlistJoin: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    name: string;
+    mobile: string;
+    pax: number;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      name: string;
+      mobile: string;
+      pax: number;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+    }>('/api/pos/waitlist', 'POST', payload),
+  posWaitlistUpdateStatus: (id: number, status: 'waiting' | 'seated' | 'cancelled') =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      name: string;
+      mobile: string;
+      pax: number;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+    }>(`/api/pos/waitlist/${id}`, 'PATCH', { status }),
+  posQrOrderMenu: (companyId: number, locationExternalId: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    return fetchJson<{
+      locationName: string;
+      locationExternalId: string;
+      items: Array<{
+        id: number;
+        productId: string;
+        name: string;
+        category: string;
+        group: string;
+        rrp: number;
+        imageUrl?: string | null;
+      }>;
+    }>(`/api/pos/qr-order/menu?${params}`);
+  },
+  posQrOrderList: (companyId: number, locationExternalId: string, includeClosed = false) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    if (includeClosed) params.set('includeClosed', 'true');
+    return fetchJson<Array<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      tableLabel: string;
+      guestName: string;
+      status: string;
+      items: unknown;
+      totalValue: number;
+      createdAt: string;
+      updatedAt: string;
+    }>>(`/api/pos/qr-order?${params}`);
+  },
+  posQrOrderPlace: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    tableLabel?: string;
+    guestName?: string;
+    items: Array<{
+      productId: number;
+      name: string;
+      quantity: number;
+      detail?: string;
+      unitPrice: number;
+    }>;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      tableLabel: string;
+      guestName: string;
+      status: string;
+      items: unknown;
+      totalValue: number;
+      createdAt: string;
+      updatedAt: string;
+    }>('/api/pos/qr-order', 'POST', payload),
+  posQrOrderUpdateStatus: (id: number, status: 'open' | 'sent' | 'cancelled') =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      tableLabel: string;
+      guestName: string;
+      status: string;
+      items: unknown;
+      totalValue: number;
+      createdAt: string;
+      updatedAt: string;
+    }>(`/api/pos/qr-order/${id}`, 'PATCH', { status }),
+  posEodSummary: (companyId: number, locationExternalId: string, businessDate?: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    if (businessDate) params.set('businessDate', businessDate);
+    return fetchJson<PosEodBundleDto>(`/api/pos/eod/summary?${params}`);
+  },
+  posLocationsToday: (companyId: number, locationExternalIds: string[], businessDate?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (locationExternalIds.length > 0) {
+      params.set('locationExternalIds', locationExternalIds.join(','));
+    }
+    if (businessDate) params.set('businessDate', businessDate);
+    return fetchJson<PosLocationsTodayDto>(`/api/pos/locations-today?${params}`);
+  },
+  posEodUpsertSession: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    businessDate?: string;
+    cashConfirmed?: boolean;
+    cashCountedCents?: number;
+    cashCountQtysJson?: string;
+    creditQrConfirmed?: boolean;
+    nonRevenueConfirmed?: boolean;
+    voidsConfirmed?: boolean;
+    discountConfirmed?: boolean;
+  }) =>
+    fetchJsonWithMethod<PosEodBundleDto>('/api/pos/eod/session', 'PUT', payload),
+  posEodCloseDay: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    businessDate?: string;
+    force?: boolean;
+  }) =>
+    fetchJsonWithMethod<PosEodBundleDto>('/api/pos/eod/close', 'POST', payload),
+  posRecordClosedCheck: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    checkNumber?: number;
+    checkLabel?: string;
+    covers?: number;
+    discountCents?: number;
+    taxCents?: number;
+    voidCents?: number;
+    grossCents: number;
+    paymentMethod?: string;
+    paymentAmountCents?: number;
+    paymentPurpose?: string;
+    /** Multi-tender lines for split pay. */
+    payments?: Array<{
+      method: string;
+      amountCents: number;
+      purpose?: string;
+    }>;
+  }) =>
+    fetchJsonWithMethod<{ closedCheckId: number; checkNumber: number; paidAt: string }>(
+      '/api/pos/eod/record-check',
+      'POST',
+      payload,
+    ),
+  posRecordVoid: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    checkNumber: number;
+    productName: string;
+    amountCents: number;
+    reason: string;
+    authorizedBy?: string;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      externalId: string;
+      checkNumber: number;
+      productName: string;
+      amountCents: number;
+      reason: string;
+      authorizedBy: string;
+      voidedAt: string;
+    }>('/api/pos/voids', 'POST', payload),
+  posRecordCancel: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    checkNumber: number;
+    productName: string;
+    amountCents: number;
+    reason?: string;
+    canceledBy?: string;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      externalId: string;
+      checkNumber: number;
+      productName: string;
+      amountCents: number;
+      reason: string;
+      canceledBy: string;
+      canceledAt: string;
+    }>('/api/pos/cancels', 'POST', payload),
   salesData: (
     companyId: number | undefined,
     locationIds: string[],
@@ -3575,6 +5361,75 @@ export const api = {
     fetchJson<SystemCogsAuditHistoryEntry[]>(`/api/cogs-audit/system/history?take=${take}`),
   cogsAuditSystemHistoryOpen: (runId: string) =>
     fetchJson<SystemCogsAuditHistoryFile>(`/api/cogs-audit/system/history/${encodeURIComponent(runId)}`),
+  reportItemizedSalesSummary: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/itemized-sales-summary?${params}`);
+  },
+  reportInventorySummary: (
+    companyId: number,
+    locationIds: string[],
+    period: string,
+    itemType = 'component',
+  ) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      period,
+      itemType,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/inventory-summary?${params}`);
+  },
+  reportDetailedPurchaseSummary: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/detailed-purchase-summary?${params}`);
+  },
+  reportProduction: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/production?${params}`);
+  },
+  reportWastage: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/wastage?${params}`);
+  },
+  reportBcgMatrix: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/bcg-matrix?${params}`);
+  },
+  reportOpsExpensesAnalysis: (
+    companyId: number,
+    locationIds: string[],
+    period: string,
+    opts?: { categories?: string; groups?: string },
+  ) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      period,
+    });
+    if (opts?.categories) params.set('categories', opts.categories);
+    if (opts?.groups) params.set('groups', opts.groups);
+    return fetchJson<ReportPayload>(`/api/reports/ops-expenses-analysis?${params}`);
+  },
   systemAuditMonths: (params: { companyId?: number; locationId?: number } = {}) => {
     const q = new URLSearchParams();
     if (params.companyId != null) q.set('companyId', String(params.companyId));
@@ -3601,6 +5456,518 @@ export const api = {
   },
   recordLogoutAudit: (payload: { userId?: number; companyId?: number | null; reason?: string } = {}) =>
     fetchJsonWithMethod<{ recorded: boolean }>('/api/system-audit/logout', 'POST', payload),
+  platformPriceDisplay: () =>
+    fetchJson<PlatformPriceDisplaySettings>('/api/platform-price-display'),
+  updatePlatformPriceDisplay: (data: {
+    principalUomPriceDecimals: number;
+    alternateUomPriceDecimals: number;
+    vendorDeliveryPriceDecimals: number;
+  }) =>
+    fetchJsonWithMethod<PlatformPriceDisplaySettings>('/api/platform-price-display', 'PUT', data),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),
+
+  accountingStatus: (companyId: number) =>
+    fetchJson<AccountingLedgerStatus>(`/api/accounting/status?companyId=${companyId}`),
+  accountingAccounts: (companyId: number) =>
+    fetchJson<AccountingAccount[]>(`/api/accounting/accounts?companyId=${companyId}`),
+  accountingCreateAccount: (
+    companyId: number,
+    body: { code: string; name: string; accountType: string; normalBalance: string },
+  ) =>
+    fetchJsonWithMethod<AccountingAccount>(
+      `/api/accounting/accounts?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingUpdateAccount: (
+    companyId: number,
+    id: number,
+    body: { name?: string; active?: boolean },
+  ) =>
+    fetchJsonWithMethod<AccountingAccount>(
+      `/api/accounting/accounts/${id}?companyId=${companyId}`,
+      'PUT',
+      body,
+    ),
+  accountingJournals: (companyId: number, take = 40) =>
+    fetchJson<AccountingJournalSummary[]>(
+      `/api/accounting/journals?companyId=${companyId}&take=${take}`,
+    ),
+  accountingJournal: (companyId: number, id: number) =>
+    fetchJson<AccountingJournalDetail>(`/api/accounting/journals/${id}?companyId=${companyId}`),
+  accountingPostJournal: (
+    companyId: number,
+    body: {
+      effectiveDate?: string;
+      documentDate?: string;
+      narration?: string;
+      journalType?: string;
+      docSeries?: string;
+      currency?: string;
+      fxRate?: number;
+      fxRateDate?: string;
+      lines: Array<{ accountCode: string; direction: string; amount: number; narration?: string }>;
+    },
+  ) =>
+    fetchJsonWithMethod<{
+      id: number;
+      docNumber: string;
+      journalType: string;
+      postedAt: string;
+      narration: string;
+      lineCount: number;
+      currency?: string;
+      functionalCurrency?: string;
+      fxRate?: number | null;
+    }>(
+      `/api/accounting/journals?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingReverseJournal: (companyId: number, id: number) =>
+    fetchJsonWithMethod<{ id: number; docNumber: string; reversesJournalId: number }>(
+      `/api/accounting/journals/${id}/reverse?companyId=${companyId}`,
+      'POST',
+    ),
+  accountingTrialBalance: (companyId: number, periodId?: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (periodId) params.set('periodId', String(periodId));
+    return fetchJson<AccountingTrialBalance>(`/api/accounting/trial-balance?${params}`);
+  },
+  accountingStatements: (companyId: number, periodId?: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (periodId) params.set('periodId', String(periodId));
+    return fetchJson<AccountingStatements>(`/api/accounting/statements?${params}`);
+  },
+  accountingPeriods: (companyId: number) =>
+    fetchJson<AccountingPeriod[]>(`/api/accounting/periods?companyId=${companyId}`),
+  accountingSoftClosePeriod: (companyId: number, id: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/periods/${id}/soft-close?companyId=${companyId}`, 'POST'),
+  accountingReopenPeriod: (companyId: number, id: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/periods/${id}/reopen?companyId=${companyId}`, 'POST'),
+  accountingOutbox: (companyId: number, take = 30) =>
+    fetchJson<AccountingOutboxRow[]>(
+      `/api/accounting/outbox?companyId=${companyId}&take=${take}`,
+    ),
+  accountingPack: (companyId: number) =>
+    fetchJson<AccountingPackStatus>(`/api/accounting/books/pack?companyId=${companyId}`),
+  accountingFxRates: (companyId: number, take = 50) =>
+    fetchJson<AccountingFxRate[]>(`/api/accounting/books/fx-rates?companyId=${companyId}&take=${take}`),
+  accountingUpsertFxRate: (
+    companyId: number,
+    body: {
+      fromCurrency: string;
+      toCurrency: string;
+      rateDate: string;
+      rate: number;
+      rateType?: string;
+      source?: string;
+    },
+  ) =>
+    fetchJsonWithMethod<AccountingFxRate>(
+      `/api/accounting/books/fx-rates?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingOpenItems: (companyId: number, subledger?: string, take = 80) => {
+    const params = new URLSearchParams({ companyId: String(companyId), take: String(take) });
+    if (subledger) params.set('subledger', subledger);
+    return fetchJson<AccountingOpenItem[]>(`/api/accounting/books/open-items?${params}`);
+  },
+  accountingCreateOpenItem: (
+    companyId: number,
+    body: {
+      subledger: string;
+      kind: string;
+      counterpartyName: string;
+      issueDate: string;
+      dueDate: string;
+      gross: number;
+      currency?: string;
+      taxCode?: string;
+      taxAmount?: number;
+      narration?: string;
+      postJournal?: boolean;
+      createdBy?: string;
+      requireApApproval?: boolean;
+    },
+  ) =>
+    fetchJsonWithMethod<AccountingOpenItem>(
+      `/api/accounting/books/open-items?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingApplyOpenItems: (
+    companyId: number,
+    body: { fromId: number; toId: number; amount: number; effectiveDate?: string },
+  ) =>
+    fetchJsonWithMethod<void>(`/api/accounting/books/open-items/apply?companyId=${companyId}`, 'POST', body),
+  accountingAging: (companyId: number, subledger: string, asOf?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId), subledger });
+    if (asOf) params.set('asOf', asOf);
+    return fetchJson<AccountingAging>(`/api/accounting/books/aging?${params}`);
+  },
+  accountingControlReconciliation: (companyId: number, subledger: string, asOf?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId), subledger });
+    if (asOf) params.set('asOf', asOf);
+    return fetchJson<{
+      asOf: string;
+      subledger: string;
+      controlAccount: string;
+      functionalCurrency: string;
+      glControl: number;
+      subledgerOpen: number;
+      drift: number;
+      reconciled: boolean;
+      note: string;
+    }>(`/api/accounting/books/control-reconciliation?${params}`);
+  },
+  accountingBankStatements: (companyId: number) =>
+    fetchJson<AccountingBankStatement[]>(`/api/accounting/books/bank-statements?companyId=${companyId}`),
+  accountingCreateBankStatement: (
+    companyId: number,
+    body: {
+      accountLabel?: string;
+      bankAccountCode?: string;
+      statementDate: string;
+      currency?: string;
+      source?: string;
+      opening?: number;
+      closing?: number;
+      lines?: Array<{ valueDate: string; narrative: string; amount: number }>;
+    },
+  ) =>
+    fetchJsonWithMethod<{
+      id: number;
+      accountLabel: string;
+      bankAccountCode?: string;
+      statementDate: string;
+      opening?: number;
+      closing?: number;
+      lineCount: number;
+    }>(
+      `/api/accounting/books/bank-statements?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingFinaliseBankStatement: (companyId: number, id: number) =>
+    fetchJsonWithMethod<{ id: number; status: string; difference?: number }>(
+      `/api/accounting/books/bank-statements/${id}/finalise?companyId=${companyId}`,
+      'POST',
+    ),
+  accountingApplications: (companyId: number, take = 50) =>
+    fetchJson<Array<{ id: number; appliedFromId: number; appliedToId: number; amount: number; effectiveDate: string; reversalOfId: number | null; createdBy: string }>>(
+      `/api/accounting/books/applications?companyId=${companyId}&take=${take}`,
+    ),
+  accountingUnapply: (companyId: number, applicationId: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/unapply/${applicationId}?${params}`, 'POST');
+  },
+  accountingSubmitOpenItem: (companyId: number, id: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/submit?${params}`, 'POST');
+  },
+  accountingApproveOpenItem: (companyId: number, id: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/approve?${params}`, 'POST');
+  },
+  accountingRejectOpenItem: (companyId: number, id: number, actor?: string, reason?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/reject?${params}`, 'POST', { reason });
+  },
+  accountingVoidOpenItem: (companyId: number, id: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/books/open-items/${id}/void?companyId=${companyId}`, 'POST'),
+  accountingBankQueue: (companyId: number) =>
+    fetchJson<{
+      unmatched: Array<{ id: number; statementId: number; lineNo: number; valueDate: string; narrative: string; amount: number; currency: string }>;
+      openItems: Array<{ id: number; subledger: string; kind: string; internalDocumentNo: string; counterpartyName: string; open: number; currency: string }>;
+      matches: Array<{ id: number; cardinality: string; matchedAt: string; createdBy: string; notes: string }>;
+    }>(`/api/accounting/books/bank/queue?companyId=${companyId}`),
+  accountingBankSuggest: (companyId: number, lineId: number) =>
+    fetchJson<{ lineId: number; amount: number; narrative: string; candidates: Array<{ openItemId: number; internalDocumentNo: string; counterpartyName: string; score: number; rule: string; open: number }> }>(
+      `/api/accounting/books/bank/suggest/${lineId}?companyId=${companyId}`,
+    ),
+  accountingBankMatch: (
+    companyId: number,
+    body: { statementLineIds: number[]; openItems: Array<{ openItemId: number; amount: number }>; notes?: string; createdBy?: string },
+  ) =>
+    fetchJsonWithMethod<{ id: number; cardinality: string; matchedAt: string; status: string }>(
+      `/api/accounting/books/bank/match?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingBankUnmatch: (companyId: number, matchGroupId: number) =>
+    fetchJsonWithMethod<void>(`/api/accounting/books/bank/unmatch/${matchGroupId}?companyId=${companyId}`, 'POST'),
+  accountingBankAutoMatch: (companyId: number, actor?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (actor) params.set('actor', actor);
+    return fetchJsonWithMethod<void>(`/api/accounting/books/bank/auto-match?${params}`, 'POST');
+  },
+  accountingFixedAssets: (companyId: number) =>
+    fetchJson<Array<{ id: number; assetTag: string; name: string; assetClass: string; acquiredOn: string; cost: number; currency: string; status: string; books: Array<{ bookId: string; method: string; lifeMonths: number }> }>>(
+      `/api/accounting/books/fixed-assets?companyId=${companyId}`,
+    ),
+  accountingCreateFixedAsset: (
+    companyId: number,
+    body: { assetTag: string; name: string; assetClass?: string; acquiredOn: string; cost: number; currency?: string; lifeMonths?: number },
+  ) =>
+    fetchJsonWithMethod<{ id: number; assetTag: string; name: string; bookCount: number }>(
+      `/api/accounting/books/fixed-assets?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingDepreciate: (companyId: number, year: number, periodNo: number, bookId = 'ifrs') =>
+    fetchJsonWithMethod<{ year: number; periodNo: number; bookId: string; posted: unknown[] }>(
+      `/api/accounting/books/fixed-assets/depreciate?companyId=${companyId}&year=${year}&periodNo=${periodNo}&bookId=${bookId}`,
+      'POST',
+    ),
+  accountingRevRec: (companyId: number) =>
+    fetchJson<Array<{ id: number; contractNo: string; customerName: string; transactionPrice: number; currency: string; obligations: Array<{ id: number; description: string; allocated: number; recognised: number }> }>>(
+      `/api/accounting/books/revrec?companyId=${companyId}`,
+    ),
+  accountingCreateRevRec: (
+    companyId: number,
+    body: { contractNo: string; customerName: string; startDate: string; endDate?: string; transactionPrice: number; currency?: string; obligationDescription?: string },
+  ) =>
+    fetchJsonWithMethod<{ id: number; contractNo: string; obligationId?: number }>(
+      `/api/accounting/books/revrec?companyId=${companyId}`,
+      'POST',
+      body,
+    ),
+  accountingRecogniseRevRec: (companyId: number, obligationId: number, amount: number) =>
+    fetchJsonWithMethod<{ id: number; recognised: number; allocated: number; journalId: number }>(
+      `/api/accounting/books/revrec/obligations/${obligationId}/recognise?companyId=${companyId}`,
+      'POST',
+      { amount },
+    ),
+  accountingSst02: (companyId: number, periodStart: string, periodEnd: string) =>
+    fetchJsonWithMethod<{ id: number; returnType: string; status: string; boxes: Record<string, unknown>; transmission: string }>(
+      `/api/accounting/books/returns/sst-02?companyId=${companyId}&periodStart=${periodStart}&periodEnd=${periodEnd}`,
+      'POST',
+    ),
+};
+
+export type AccountingLedgerStatus = {
+  companyId: number;
+  currency: string;
+  functionalCurrency?: string;
+  currencies?: string[];
+  phase: string;
+  phaseLabel: string;
+  accounts: number;
+  postedJournals: number;
+  pendingOutbox: number;
+  openPeriods: number;
+  bridges: Array<{ eventType: string; module: string; status: string }>;
+};
+
+export type AccountingAccount = {
+  id: number;
+  code: string;
+  name: string;
+  accountType: string;
+  normalBalance: string;
+  active: boolean;
+};
+
+export type AccountingJournalSummary = {
+  id: number;
+  docNumber: string | null;
+  journalType: string;
+  sourceModule: string;
+  sourceDocKey: string | null;
+  narration: string;
+  effectiveDate: string;
+  postedAt: string | null;
+  reversesJournalId: number | null;
+  lineCount: number;
+};
+
+export type AccountingJournalDetail = {
+  id: number;
+  docNumber: string | null;
+  journalType: string;
+  ledgerKind: string;
+  sourceModule: string;
+  sourceDocKey: string | null;
+  narration: string;
+  effectiveDate: string;
+  documentDate: string;
+  postedAt: string | null;
+  reversesJournalId: number | null;
+  idempotencyKey: string | null;
+  lines: Array<{
+    lineNo: number;
+    accountCode: string | null;
+    accountName: string | null;
+    direction: string;
+    amount: number;
+    currency: string;
+    funcAmount?: number;
+    funcCurrency?: string;
+    fxRate?: number | null;
+    fxRateDate?: string | null;
+    fxRateType?: string | null;
+    narration: string;
+  }>;
+};
+
+export type AccountingTrialBalance = {
+  period: {
+    id: number;
+    year: number;
+    periodNo: number;
+    status: string;
+    startDate: string;
+    endDate: string;
+  };
+  currency?: string;
+  basis?: string;
+  balanced: boolean;
+  totalDr: number;
+  totalCr: number;
+  periodDr?: number;
+  periodCr?: number;
+  rows: Array<{
+    accountCode: string;
+    accountName: string;
+    accountType?: string;
+    currency: string;
+    openingDr?: number;
+    openingCr?: number;
+    periodDr: number;
+    periodCr: number;
+    closingDr?: number;
+    closingCr?: number;
+    closing: number;
+  }>;
+};
+
+export type AccountingPeriod = {
+  id: number;
+  year: number;
+  periodNo: number;
+  startDate: string;
+  endDate: string;
+  status: string;
+};
+
+export type AccountingStatements = {
+  period: AccountingPeriod;
+  profitAndLoss: {
+    income: number;
+    expense: number;
+    netIncome: number;
+    rows: Array<{ code: string; name: string; accountType: string; amount: number }>;
+  };
+  balanceSheet: {
+    assets: number;
+    liabilities: number;
+    equity: number;
+    balanced: boolean;
+    rows: Array<{ code: string; name: string; accountType: string; amount: number }>;
+    note: string;
+  };
+};
+
+export type AccountingOutboxRow = {
+  id: number;
+  eventType: string;
+  idempotencyKey: string | null;
+  createdAt: string;
+  processedAt: string | null;
+  payloadJson: string;
+};
+
+export type AccountingPackStatus = {
+  activePack: string;
+  note: string;
+  sst: {
+    model: string;
+    inputCredit: boolean;
+    recoverability: string;
+    filing: string;
+    eInvoicing: string;
+  };
+  packs: Array<{ packId: string; status: string; version: string; activatedAt: string }>;
+  accountRoles: Array<{ roleCode: string; accountId: number | null; notes: string | null; mapped: boolean }>;
+  taxCodes: Array<{ code: string; name: string; ratePercent: number; recoverability: string; packId: string }>;
+  slaRuleSets: Array<{
+    id: number;
+    eventType: string;
+    name: string;
+    version: number;
+    status: string;
+    packId: string;
+    lineCount: number;
+  }>;
+};
+
+export type AccountingFxRate = {
+  id: number;
+  fromCurrency: string;
+  toCurrency: string;
+  rateDate: string;
+  rate: number;
+  rateType: string;
+  source: string;
+  createdAt?: string;
+};
+
+export type AccountingOpenItem = {
+  id: number;
+  subledger: string;
+  kind: string;
+  counterpartyName: string;
+  currency: string;
+  issueDate: string;
+  dueDate: string;
+  gross: number;
+  open: number;
+  tax?: number;
+  taxCode?: string | null;
+  internalDocumentNo: string;
+  statutoryDocumentNo?: string | null;
+  journalId?: number | null;
+  status: string;
+  narration?: string;
+  approvalStatus?: string;
+  createdBy?: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
+};
+
+export type AccountingAging = {
+  asOf: string;
+  subledger: string;
+  buckets: Record<string, number>;
+  rows: Array<{
+    id: number;
+    internalDocumentNo: string;
+    counterpartyName: string;
+    currency: string;
+    open: number;
+    dueDate: string;
+    daysPastDue: number;
+    bucket: string;
+  }>;
+};
+
+export type AccountingBankStatement = {
+  id: number;
+  accountLabel: string;
+  bankAccountCode?: string;
+  currency: string;
+  statementDate: string;
+  opening?: number;
+  closing?: number;
+  source: string;
+  status: string;
+  lineCount: number;
 };

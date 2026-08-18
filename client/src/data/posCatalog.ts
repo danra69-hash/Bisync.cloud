@@ -6,6 +6,41 @@ import {
 } from './productPosUnits';
 
 /**
+ * Collapse synonym POS product groups so filters / register tabs stay unified.
+ * e.g. "BEER DRAFT" / "Draft Beer" / "Draught Beer" → "Draught Beer".
+ */
+export function normalizePosGroupLabel(group: string): string {
+  const trimmed = group.trim();
+  if (!trimmed) return 'General';
+  const key = trimmed.toLowerCase().replace(/\s+/g, ' ');
+  if (
+    key === 'beer draft'
+    || key === 'draft beer'
+    || key === 'draught beer'
+    || key === 'draft'
+    || key === 'draught'
+  ) {
+    return 'Draught Beer';
+  }
+  if (key === 'bottle beer' || key === 'bottled beer' || key === 'beer bottle') {
+    return 'Bottled Beer';
+  }
+  return trimmed;
+}
+
+/** RMS "Component SWAP" is a modifier source group — not a POS register menu tab. */
+export function isComponentSwapMenuGroup(group: string): boolean {
+  const key = normalizePosGroupLabel(group).toLowerCase().replace(/\s+/g, ' ');
+  return key === 'component swap' || key === 'componentswap' || key === 'component-swap';
+}
+
+/** True when product group matches the selected filter after synonym normalization. */
+export function productMatchesPosGroupFilter(productGroup: string, filterGroup: string): boolean {
+  if (!filterGroup || filterGroup === 'All') return true;
+  return normalizePosGroupLabel(productGroup || '') === normalizePosGroupLabel(filterGroup);
+}
+
+/**
  * Company scoping for POS catalog surfaces.
  * Location selection gates the Point-of-Sales module and where sales post;
  * product locationExternalIds do not hide menu/test-tap tiles (those are
@@ -53,7 +88,7 @@ export function productAssignedToSelectedLocations(
   return scoped.some(id => locationIds.includes(id));
 }
 
-/** Selected POS packaging rows (with RRP) for a product; falls back to B2C retail RRP. */
+/** Selected POS sell-unit rows (with RRP) for a product; falls back to the standard product RRP. */
 export function listSelectedPosMenuUnits(
   product: Product,
   catalogProducts: Product[] = [],
@@ -76,4 +111,72 @@ export function resolvePosMenuRrp(
   const units = listSelectedPosMenuUnits(product, catalogProducts);
   if (units.length > 0 && units[0].rrp > 0) return units[0].rrp;
   return Number(product.rrp ?? 0);
+}
+
+/** POS Menu Sales Unit label — saved value, Product UOM, selected unit, then legacy fallbacks. */
+export function resolvePosSalesUom(
+  product: Product,
+  catalogProducts: Product[] = [],
+): string {
+  const saved = (product.posSalesUom ?? '').trim();
+  if (saved) return saved;
+  const yieldUom = (product.yieldUom ?? '').trim();
+  if (yieldUom) return yieldUom;
+  const units = listSelectedPosMenuUnits(product, catalogProducts);
+  if (units[0]?.unitTitle?.trim()) return units[0].unitTitle.trim();
+  const packageUnit = (product.b2bPackageUnit ?? '').trim();
+  if (packageUnit) return packageUnit;
+  return 'pcs';
+}
+
+/** UOM choices for the POS Menu Sales Unit dropdown (product units + catalog UOMs). */
+export function listPosSalesUomOptions(
+  product: Product,
+  catalogProducts: Product[] = [],
+  systemUoms: string[] = [],
+): string[] {
+  const fromProduct = [
+    ...listSelectedPosMenuUnits(product, catalogProducts).map(u => u.unitTitle),
+    ...collectProductPosUnitRows(product, catalogProducts).map(u => u.unitTitle),
+    product.yieldUom,
+    product.b2bPackageUnit,
+    product.parStockUom,
+    product.posSalesUom,
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...fromProduct, ...systemUoms]) {
+    const value = (raw || '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/**
+ * POS sell price: in-effect promotion RPP when present, otherwise menu RRP.
+ * `promoRppByProductId` comes from `/api/pos-promotions/active-prices`.
+ */
+export function resolvePosMenuSellPrice(
+  product: Product,
+  catalogProducts: Product[] = [],
+  promoRppByProductId?: ReadonlyMap<number, number> | Record<number, number> | null,
+): number {
+  const rrp = resolvePosMenuRrp(product, catalogProducts);
+  if (!promoRppByProductId) return rrp;
+
+  let raw: number | undefined;
+  if (promoRppByProductId instanceof Map) {
+    raw = promoRppByProductId.get(product.id);
+  } else {
+    raw = (promoRppByProductId as Record<number, number>)[product.id];
+  }
+  const rpp = Number(raw);
+  if (!Number.isFinite(rpp) || rpp < 0) return rrp;
+  // Never sell above RRP via promo map; allow 0 for complimentary promos.
+  if (rrp > 0 && rpp > rrp) return rrp;
+  return rpp;
 }

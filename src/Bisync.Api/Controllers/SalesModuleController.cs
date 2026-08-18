@@ -569,9 +569,9 @@ public class SalesModuleController(
     }
 
     /// <summary>
-    /// List Client Update rows for a week/month period (rows with changes only),
-    /// or last week + week-to-date when view is omitted.
-    /// Prefer salesTeamMemberId to scope by Sales Team Hunter.
+    /// List Client Update rows.
+    /// salesTeamMemberId or hunter without view → full attached client list (latest interaction first).
+    /// view=week|month → period rows with changes (optionally scoped by salesTeamMemberId/hunter).
     /// </summary>
     [HttpGet("client-updates")]
     public async Task<ActionResult<IEnumerable<object>>> GetClientUpdates(
@@ -629,6 +629,39 @@ public class SalesModuleController(
                 request.SalesTeamMemberId,
                 ct);
             return Ok(row);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>Delete a Client Update row (duplicate / repeating entries).</summary>
+    [HttpDelete("client-updates/{id:int}")]
+    public async Task<ActionResult<object>> DeleteClientUpdate(int id, CancellationToken ct = default)
+    {
+        if (id <= 0) return BadRequest(new { message = "id is required." });
+        try
+        {
+            return Ok(await clientUpdateService.DeleteAsync(id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Merge duplicate Client Update rows (same team member / hunter + same company/brand)
+    /// into the keeper row, then delete the duplicates.
+    /// </summary>
+    [HttpPost("client-updates/{id:int}/merge-duplicates")]
+    public async Task<ActionResult<object>> MergeClientUpdateDuplicates(int id, CancellationToken ct = default)
+    {
+        if (id <= 0) return BadRequest(new { message = "id is required." });
+        try
+        {
+            return Ok(await clientUpdateService.MergeDuplicatesAsync(id, ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -1212,18 +1245,20 @@ public class SalesModuleController(
     }
 
     /// <summary>
-    /// Import only the "Weekly Update" sheet from Instant Sales Update.xlsx (replaces existing Client Update rows).
+    /// Import Instant Sales Update.xlsx: Weekly Update activity + Client DB customers attached to Sales Team.
     /// </summary>
     [HttpPost("client-updates/import")]
     [RequestSizeLimit(20_000_000)]
     public async Task<ActionResult<object>> ImportClientUpdates(IFormFile file, CancellationToken ct = default)
     {
         if (file is null || file.Length == 0)
-            return BadRequest(new { message = "Upload Instant Sales Update.xlsx (Weekly Update sheet)." });
+            return BadRequest(new { message = "Upload Instant Sales Update.xlsx (Weekly Update + Client DB sheets)." });
         try
         {
             await using var stream = file.OpenReadStream();
             var result = await clientUpdateService.ImportWeeklyUpdateAsync(stream, file.FileName, ct);
+            // Keep controller-side company sync as a second pass for any edge rows.
+            await SyncCompaniesFromClientUpdatesAsync(ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)

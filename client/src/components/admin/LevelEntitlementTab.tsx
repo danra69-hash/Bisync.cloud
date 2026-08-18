@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
@@ -24,24 +24,26 @@ import { ToggleSwitch } from './ToggleSwitch';
 type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'dayOff' | 'break' | 'mealQty' | 'mealAmt' | 'shift' | 'ot' | 'ph' | 'active';
 
 const LEVEL_TABLE_COLUMNS: SortableColumnDef<LevelSortColumn>[] = [
-  { key: 'level', label: 'Level' },
-  { key: 'annual', label: 'Annual' },
-  { key: 'sick', label: 'Sick' },
-  { key: 'hrsPerDay', label: 'Hrs/Day' },
-  { key: 'dayOff', label: 'DayOff/week' },
-  { key: 'break', label: 'Break' },
-  { key: 'mealQty', label: 'Meal Qty' },
-  { key: 'mealAmt', label: 'Meal Amt' },
-  { key: 'shift', label: 'Shift' },
-  { key: 'ot', label: 'OT' },
-  { key: 'ph', label: 'PH' },
-  { key: 'active', label: 'Active', align: 'center' },
+  { key: 'level', label: 'Level', ...tableColWidth('14%') },
+  { key: 'annual', label: 'Annual', ...tableColWidth('10%') },
+  { key: 'sick', label: 'Sick', ...tableColWidth('10%') },
+  { key: 'hrsPerDay', label: 'Hrs/Day', ...tableColWidth('7%') },
+  { key: 'dayOff', label: 'DayOff/week', ...tableColWidth('7%') },
+  { key: 'break', label: 'Break', ...tableColWidth('7%') },
+  { key: 'mealQty', label: 'Meal Qty', ...tableColWidth('7%') },
+  { key: 'mealAmt', label: 'Meal Amt', ...tableColWidth('8%') },
+  { key: 'shift', label: 'Shift', ...tableColWidth(48) },
+  { key: 'ot', label: 'OT', ...tableColWidth(48) },
+  { key: 'ph', label: 'PH', ...tableColWidth(48) },
+  { key: 'active', label: 'Active', align: 'center', ...tableColWidth(72) },
 ];
 
 const emptyForm = {
   levelName: '',
   annualLeaveDays: DEFAULT_LEAVE_TENURE_RULES[0].days,
   sickLeaveDays: DEFAULT_LEAVE_TENURE_RULES[0].days,
+  annualLeaveEnabled: true,
+  sickLeaveEnabled: true,
   annualLeaveRules: cloneLeaveTenureRules(DEFAULT_LEAVE_TENURE_RULES),
   sickLeaveRules: cloneLeaveTenureRules(DEFAULT_LEAVE_TENURE_RULES),
   overtimeEligible: false,
@@ -83,7 +85,7 @@ function LeaveTenureRulesEditor({
   }
 
   return (
-    <div className="col-span-2 space-y-2">
+    <div className="space-y-2 min-w-0">
       <div className="flex items-center justify-between gap-2">
         <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
         <button
@@ -168,6 +170,8 @@ function LevelPanel({
     levelName: level.levelName,
     annualLeaveDays: level.annualLeaveDays,
     sickLeaveDays: level.sickLeaveDays,
+    annualLeaveEnabled: level.annualLeaveEnabled !== false,
+    sickLeaveEnabled: level.sickLeaveEnabled !== false,
     annualLeaveRules: parseLeaveTenureRules(level.annualLeaveRulesJson, level.annualLeaveDays),
     sickLeaveRules: parseLeaveTenureRules(level.sickLeaveRulesJson, level.sickLeaveDays),
     overtimeEligible: level.overtimeEligible,
@@ -204,10 +208,14 @@ function LevelPanel({
       setError('Level name is required.');
       return;
     }
-    const annualError = validateRules('Annual leave', form.annualLeaveRules);
-    if (annualError) { setError(annualError); return; }
-    const sickError = validateRules('Sick leave', form.sickLeaveRules);
-    if (sickError) { setError(sickError); return; }
+    if (form.annualLeaveEnabled) {
+      const annualError = validateRules('Annual leave', form.annualLeaveRules);
+      if (annualError) { setError(annualError); return; }
+    }
+    if (form.sickLeaveEnabled) {
+      const sickError = validateRules('Sick leave', form.sickLeaveRules);
+      if (sickError) { setError(sickError); return; }
+    }
     if (form.dutyMealQtyEnabled && form.dutyMealQtyPerWorkingDay <= 0) {
       setError('Enter Duty Meal QTY per working day, or untick the box.');
       return;
@@ -219,12 +227,18 @@ function LevelPanel({
     setSaving(true);
     setError(null);
     try {
-      const annualLeaveRules = cloneLeaveTenureRules(form.annualLeaveRules);
-      const sickLeaveRules = cloneLeaveTenureRules(form.sickLeaveRules);
+      const annualLeaveRules = form.annualLeaveEnabled
+        ? cloneLeaveTenureRules(form.annualLeaveRules)
+        : [];
+      const sickLeaveRules = form.sickLeaveEnabled
+        ? cloneLeaveTenureRules(form.sickLeaveRules)
+        : [];
       const payload = {
         ...form,
-        annualLeaveDays: annualLeaveRules[0]?.days ?? 0,
-        sickLeaveDays: sickLeaveRules[0]?.days ?? 0,
+        annualLeaveEnabled: form.annualLeaveEnabled,
+        sickLeaveEnabled: form.sickLeaveEnabled,
+        annualLeaveDays: form.annualLeaveEnabled ? (annualLeaveRules[0]?.days ?? 0) : 0,
+        sickLeaveDays: form.sickLeaveEnabled ? (sickLeaveRules[0]?.days ?? 0) : 0,
         annualLeaveRulesJson: JSON.stringify(annualLeaveRules),
         sickLeaveRulesJson: JSON.stringify(sickLeaveRules),
         dayOffPerWeek: Math.max(0, Math.min(7, Number(form.dayOffPerWeek) || 0)),
@@ -276,16 +290,52 @@ function LevelPanel({
                 placeholder="e.g. Management"
               />
             </div>
-            <LeaveTenureRulesEditor
-              label="Annual Leave"
-              rules={form.annualLeaveRules}
-              onChange={annualLeaveRules => setForm({ ...form, annualLeaveRules })}
-            />
-            <LeaveTenureRulesEditor
-              label="Sick Leave"
-              rules={form.sickLeaveRules}
-              onChange={sickLeaveRules => setForm({ ...form, sickLeaveRules })}
-            />
+            <div className="col-span-2 grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.annualLeaveEnabled}
+                  onChange={e => setForm({
+                    ...form,
+                    annualLeaveEnabled: e.target.checked,
+                    annualLeaveRules: e.target.checked && form.annualLeaveRules.length === 0
+                      ? cloneLeaveTenureRules()
+                      : form.annualLeaveRules,
+                  })}
+                  className="rounded border-border"
+                />
+                Include Annual Leave
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.sickLeaveEnabled}
+                  onChange={e => setForm({
+                    ...form,
+                    sickLeaveEnabled: e.target.checked,
+                    sickLeaveRules: e.target.checked && form.sickLeaveRules.length === 0
+                      ? cloneLeaveTenureRules()
+                      : form.sickLeaveRules,
+                  })}
+                  className="rounded border-border"
+                />
+                Include Sick Leave
+              </label>
+            </div>
+            {form.annualLeaveEnabled ? (
+              <LeaveTenureRulesEditor
+                label="Annual Leave"
+                rules={form.annualLeaveRules}
+                onChange={annualLeaveRules => setForm({ ...form, annualLeaveRules })}
+              />
+            ) : null}
+            {form.sickLeaveEnabled ? (
+              <LeaveTenureRulesEditor
+                label="Sick Leave"
+                rules={form.sickLeaveRules}
+                onChange={sickLeaveRules => setForm({ ...form, sickLeaveRules })}
+              />
+            ) : null}
             <div>
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Hours/Day</label>
               <input type="number" min="0" step="0.5" className={`${inputCls} mt-1`} value={form.workingHoursPerDay} onChange={e => setForm({ ...form, workingHoursPerDay: parseFloat(e.target.value) || 0 })} />
@@ -505,10 +555,12 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
         {
           level: l => l.levelName,
           annual: l => {
+            if (l.annualLeaveEnabled === false) return 0;
             const rules = parseLeaveTenureRules(l.annualLeaveRulesJson, l.annualLeaveDays);
             return Math.max(...rules.map(r => r.days), l.annualLeaveDays);
           },
           sick: l => {
+            if (l.sickLeaveEnabled === false) return 0;
             const rules = parseLeaveTenureRules(l.sickLeaveRulesJson, l.sickLeaveDays);
             return Math.max(...rules.map(r => r.days), l.sickLeaveDays);
           },
@@ -553,7 +605,8 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
+          <TableColGroup columns={LEVEL_TABLE_COLUMNS} />
           <thead className="bg-muted/40 border-b border-border">
             <SortableTableHeaderRow
               columns={LEVEL_TABLE_COLUMNS}
@@ -572,10 +625,14 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
               >
                 <td className="px-4 py-3 font-medium text-primary hover:underline">{level.levelName}</td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {summarizeLeaveTenureRules(parseLeaveTenureRules(level.annualLeaveRulesJson, level.annualLeaveDays))}
+                  {level.annualLeaveEnabled === false
+                    ? '—'
+                    : summarizeLeaveTenureRules(parseLeaveTenureRules(level.annualLeaveRulesJson, level.annualLeaveDays))}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {summarizeLeaveTenureRules(parseLeaveTenureRules(level.sickLeaveRulesJson, level.sickLeaveDays))}
+                  {level.sickLeaveEnabled === false
+                    ? '—'
+                    : summarizeLeaveTenureRules(parseLeaveTenureRules(level.sickLeaveRulesJson, level.sickLeaveDays))}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{level.workingHoursPerDay}h</td>
                 <td className="px-4 py-3 text-muted-foreground">

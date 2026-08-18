@@ -46,20 +46,52 @@ export type VendorProductCatalogItem = {
   isPrivate?: boolean;
   /** Location external IDs that can see this product when isPrivate is true. */
   privateLocationIds?: string[];
+  /** When true, orders attach a returnable deposit line. */
+  returnableDeposit?: boolean;
+  returnableItemName?: string;
+  returnableUom?: string;
+  returnableDepositAmount?: number;
 };
 
 export type VendorProductImportDraft = {
+  vendorExternalId?: string;
+  vendorName?: string;
+  /** Optional template column; vendor products persist Group only (Category fills Group when Group blank). */
+  category?: string;
   vendorProductId?: string;
   productName: string;
   group: string;
   specification: string;
   deliveryUnitText: string;
+  principalDeliveryUnit?: string;
+  duBreakdown1?: string;
+  duBreakdown2?: string;
+  duBreakdown1Unit?: string;
+  duBreakdown1Qty?: string;
+  duBreakdown2Unit?: string;
+  duBreakdown2Qty?: string;
   deliveryPrice: number;
   productPolicyTag?: VendorProductPolicyTag;
   active?: boolean;
 };
 
 export const VENDOR_PRODUCT_TEMPLATE_HEADERS = [
+  'Vendor ID',
+  'Vendor Name',
+  'Category',
+  'Group',
+  'Vendor Product',
+  'Vendor Product ID',
+  'Principal Delivery unit',
+  'DU breakdown 1 Unit',
+  'DU breakdown 1 Qty',
+  'DU breakdown 2 Unit',
+  'DU breakdown 2 Qty',
+  'Delivery Unit Price',
+] as const;
+
+/** Legacy per-vendor template (still accepted on upload). */
+export const VENDOR_PRODUCT_TEMPLATE_HEADERS_LEGACY = [
   'Vendor Product ID',
   'Product Name',
   'Group',
@@ -68,10 +100,11 @@ export const VENDOR_PRODUCT_TEMPLATE_HEADERS = [
   'Price',
 ] as const;
 
+/** Sample rows: 1 CTN / 12 BTL / 500 ML style (principal + unit/qty breakdowns). */
 const VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS: string[][] = [
-  ['VP-BEAN001', 'Baked Beans', 'Dry Goods', 'Baked beans in tomato sauce, 400g tins', 'Box/12tin/400gr', '42.00'],
-  ['VP-OIL001', 'Olive Oil Extra Virgin', 'Dry Goods', 'Cold pressed olive oil, 5L tin', 'Tin/5ltr', '165.00'],
-  ['VP-OJ001', 'Fresh Orange Juice', 'Beverages', 'Cold-pressed orange juice, 2L bottle', 'Bottle/2ltr', '18.00'],
+  ['V007', 'Heritage Pantry Supply', '', 'Dry Goods', 'Baked Beans', 'VP-BEAN001', '1 Box', 'Tin', '12', 'Gr', '400', '42.00'],
+  ['V015', 'Mediterranean Oil Co.', '', 'Dry Goods', 'Olive Oil Extra Virgin', 'VP-OIL001', '1 Tin', 'Ltr', '5', '', '', '165.00'],
+  ['V004', 'Wine & Spirits Direct', '', 'Beverages', 'Prosecco DOC (case)', 'VP-WIN002', '1 CTN', 'BTL', '12', 'ML', '500', '720.00'],
 ];
 
 function parseCsvLine(line: string): string[] {
@@ -98,12 +131,205 @@ function parseCsvLine(line: string): string[] {
   return values.map(v => v.replace(/^"|"$/g, '').trim());
 }
 
-function isVendorProductTemplateHeader(cols: string[]): boolean {
-  const first = cols[0]?.toLowerCase() ?? '';
-  return first.includes('vendor product id') || first === 'product name';
+function normalizeTemplateHeader(header: string): string {
+  return header.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | null {
+function isVendorProductTemplateHeader(cols: string[]): boolean {
+  const normalized = cols.map(normalizeTemplateHeader);
+  const first = normalized[0] ?? '';
+  return first.includes('vendor id')
+    || first.includes('vendor product id')
+    || first === 'product name'
+    || first === 'vendor product'
+    || normalized.some(h =>
+      h.includes('principal delivery')
+      || h === 'delivery unit'
+      || h.includes('du breakdown'));
+}
+
+/** Collapse "12 tin" → "12tin" for slash-path parsing. */
+export function normalizeDeliverySegment(raw: string): string {
+  return raw.trim().replace(/\s+/g, '');
+}
+
+/** Build one delivery-path segment from separate Unit + Qty cells (e.g. BTL + 12 → "12 BTL"). */
+export function composeDeliveryBreakdownSegment(unit: string, qty: string | number = ''): string {
+  const u = String(unit ?? '').trim();
+  const qRaw = String(qty ?? '').trim();
+  if (!u && !qRaw) return '';
+  const q = qRaw.replace(/[^0-9.]/g, '');
+  if (!u) return q;
+  if (!q) return u;
+  return `${q} ${u}`;
+}
+
+/** Join Principal + DU breakdown columns into a parseable delivery path (1CTN/12BTL/500ML). */
+export function composeDeliveryUnitText(
+  principal: string,
+  breakdown1 = '',
+  breakdown2 = '',
+): string {
+  return [principal, breakdown1, breakdown2]
+    .map(normalizeDeliverySegment)
+    .filter(Boolean)
+    .join('/');
+}
+
+export type DeliveryTemplateColumns = {
+  principal: string;
+  breakdown1Unit: string;
+  breakdown1Qty: string;
+  breakdown2Unit: string;
+  breakdown2Qty: string;
+  /** Combined legacy-style "12 Tin" / "400 Gr" for display or old importers. */
+  breakdown1: string;
+  breakdown2: string;
+};
+
+/** Split a product delivery into Principal + DU1/DU2 Unit & Qty template columns. */
+export function deliveryTemplateColumns(delivery: DeliveryUnitBreakdown): DeliveryTemplateColumns {
+  const orderQty = Number.isFinite(delivery.orderQty) && delivery.orderQty > 0
+    ? delivery.orderQty
+    : 1;
+  const orderUnit = (delivery.orderUnit || '').trim();
+  const principal = orderUnit
+    ? `${orderQty} ${orderUnit}`.trim()
+    : '';
+
+  const hasPackLevel = Boolean(delivery.packUnit?.trim())
+    && (delivery.packUnit.trim().toLowerCase() !== orderUnit.toLowerCase() || delivery.packQty !== 1);
+
+  let breakdown1Unit = '';
+  let breakdown1Qty = '';
+  if (hasPackLevel) {
+    breakdown1Unit = (delivery.packUnit || '').trim();
+    breakdown1Qty = String(delivery.packQty > 0 ? delivery.packQty : 1);
+  } else if (delivery.orderQty !== 1 && orderUnit) {
+    // Rare: qty-only variance without a distinct pack unit — keep principal authoritative.
+    breakdown1Unit = '';
+    breakdown1Qty = '';
+  }
+
+  let breakdown2Unit = '';
+  let breakdown2Qty = '';
+  if (hasSmallestDeliveryBreakdown(delivery)) {
+    breakdown2Unit = (delivery.unitUnit || '').trim();
+    breakdown2Qty = String(delivery.unitQty > 0 ? delivery.unitQty : 1);
+  }
+
+  return {
+    principal,
+    breakdown1Unit,
+    breakdown1Qty,
+    breakdown2Unit,
+    breakdown2Qty,
+    breakdown1: composeDeliveryBreakdownSegment(breakdown1Unit, breakdown1Qty),
+    breakdown2: composeDeliveryBreakdownSegment(breakdown2Unit, breakdown2Qty),
+  };
+}
+
+function cellAt(cols: string[], indexMap: Map<string, number>, ...aliases: string[]): string {
+  for (const alias of aliases) {
+    const idx = indexMap.get(normalizeTemplateHeader(alias));
+    if (idx !== undefined) return cols[idx] ?? '';
+  }
+  return '';
+}
+
+function buildHeaderIndexMap(headers: string[]): Map<string, number> {
+  const map = new Map<string, number>();
+  headers.forEach((header, index) => {
+    const key = normalizeTemplateHeader(header);
+    if (key && !map.has(key)) map.set(key, index);
+  });
+  return map;
+}
+
+function isLegacyVendorProductTemplate(headers: string[]): boolean {
+  const normalized = headers.map(normalizeTemplateHeader);
+  return normalized.includes('delivery unit')
+    || (normalized.includes('product name') && !normalized.includes('vendor product'))
+    || (normalized[0] === 'vendor product id' && !normalized.includes('vendor id'));
+}
+
+function resolveBreakdownFromColumns(
+  indexMap: Map<string, number>,
+  cols: string[],
+  combinedAliases: string[],
+  unitAliases: string[],
+  qtyAliases: string[],
+): { combined: string; unit: string; qty: string } {
+  const unit = cellAt(cols, indexMap, ...unitAliases).trim();
+  const qty = cellAt(cols, indexMap, ...qtyAliases).trim();
+  const combinedLegacy = cellAt(cols, indexMap, ...combinedAliases).trim();
+  if (unit || qty) {
+    return {
+      unit,
+      qty,
+      combined: composeDeliveryBreakdownSegment(unit, qty),
+    };
+  }
+  return { unit: '', qty: '', combined: combinedLegacy };
+}
+
+function rowToVendorProductDraftFromMap(
+  cols: string[],
+  indexMap: Map<string, number>,
+): VendorProductImportDraft | null {
+  const vendorExternalId = cellAt(cols, indexMap, 'vendor id', 'vendor external id').trim().toUpperCase();
+  const vendorName = cellAt(cols, indexMap, 'vendor name').trim();
+  const category = cellAt(cols, indexMap, 'category').trim();
+  const groupRaw = cellAt(cols, indexMap, 'group').trim();
+  const group = groupRaw || category;
+  const productName = cellAt(cols, indexMap, 'vendor product', 'product name').trim();
+  const vendorProductId = cellAt(cols, indexMap, 'vendor product id').trim().toUpperCase();
+  const specification = cellAt(cols, indexMap, 'specification').trim();
+  const principal = cellAt(cols, indexMap, 'principal delivery unit', 'principal delivery').trim();
+  const du1 = resolveBreakdownFromColumns(
+    indexMap,
+    cols,
+    ['du breakdown 1', 'du breakdown1'],
+    ['du breakdown 1 unit', 'du breakdown1 unit', 'du breakdown unit 1'],
+    ['du breakdown 1 qty', 'du breakdown1 qty', 'du breakdown qty 1', 'du breakdown 1 quantity'],
+  );
+  const du2 = resolveBreakdownFromColumns(
+    indexMap,
+    cols,
+    ['du breakdown 2', 'du breakdown2'],
+    ['du breakdown 2 unit', 'du breakdown2 unit', 'du breakdown unit 2'],
+    ['du breakdown 2 qty', 'du breakdown2 qty', 'du breakdown qty 2', 'du breakdown 2 quantity'],
+  );
+  const legacyDelivery = cellAt(cols, indexMap, 'delivery unit').trim();
+  const deliveryUnitText = legacyDelivery
+    || composeDeliveryUnitText(principal, du1.combined, du2.combined);
+  const priceRaw = cellAt(cols, indexMap, 'delivery unit price', 'price');
+  const deliveryPrice = parseFloat(String(priceRaw).replace(/[^0-9.]/g, '')) || 0;
+
+  if (!productName || !group || !deliveryUnitText || deliveryPrice <= 0) return null;
+
+  return {
+    vendorExternalId: vendorExternalId || undefined,
+    vendorName: vendorName || undefined,
+    category: category || undefined,
+    vendorProductId: vendorProductId || undefined,
+    productName,
+    group,
+    specification,
+    deliveryUnitText,
+    principalDeliveryUnit: principal || undefined,
+    duBreakdown1: du1.combined || undefined,
+    duBreakdown2: du2.combined || undefined,
+    duBreakdown1Unit: du1.unit || undefined,
+    duBreakdown1Qty: du1.qty || undefined,
+    duBreakdown2Unit: du2.unit || undefined,
+    duBreakdown2Qty: du2.qty || undefined,
+    deliveryPrice,
+  };
+}
+
+/** Positional legacy parser (Vendor Product ID | Product Name | Group | Spec | Delivery Unit | Price). */
+function rowToVendorProductDraftLegacy(cols: string[]): VendorProductImportDraft | null {
   if (cols.length >= 6) {
     const deliveryPrice = parseFloat(String(cols[5]).replace(/[^0-9.]/g, '')) || 0;
     const productName = cols[1];
@@ -137,19 +363,37 @@ function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | nul
   return null;
 }
 
+function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | null {
+  return rowToVendorProductDraftLegacy(cols);
+}
+
+export function productToVendorProductTemplateRow(
+  product: VendorProductCatalogItem,
+  countryCode = 'MY',
+): string[] {
+  const columns = deliveryTemplateColumns(product.delivery);
+  return [
+    product.vendorExternalId,
+    product.vendorName,
+    '',
+    product.group,
+    product.productName,
+    product.id,
+    columns.principal,
+    columns.breakdown1Unit,
+    columns.breakdown1Qty,
+    columns.breakdown2Unit,
+    columns.breakdown2Qty,
+    formatCountryNumber(product.deliveryPrice, countryCode),
+  ];
+}
+
 export function buildVendorProductTemplateCsv(
   existingProducts: VendorProductCatalogItem[] = [],
   countryCode = 'MY',
 ): string {
   const rows = existingProducts.length > 0
-    ? existingProducts.map(product => [
-      product.id,
-      product.productName,
-      product.group,
-      product.specification,
-      formatDeliveryUnitPath(product.delivery),
-      formatCountryNumber(product.deliveryPrice, countryCode),
-    ])
+    ? existingProducts.map(product => productToVendorProductTemplateRow(product, countryCode))
     : VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS;
 
   return [VENDOR_PRODUCT_TEMPLATE_HEADERS, ...rows]
@@ -160,21 +404,42 @@ export function buildVendorProductTemplateCsv(
 export function downloadVendorProductTemplateCsv(
   existingProducts: VendorProductCatalogItem[] = [],
   filename = 'vendor-product-template.csv',
+  countryCode = 'MY',
 ): void {
-  const blob = new Blob([buildVendorProductTemplateCsv(existingProducts)], { type: 'text/csv;charset=utf-8;' });
+  const stamp = new Date().toISOString().slice(0, 10);
+  const resolvedName = filename.includes('.csv')
+    ? filename
+    : `vendor-product-template-${stamp}.csv`;
+  const blob = new Blob([buildVendorProductTemplateCsv(existingProducts, countryCode)], {
+    type: 'text/csv;charset=utf-8;',
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = resolvedName;
   link.click();
   URL.revokeObjectURL(url);
 }
 
 export function parseVendorProductTemplateCsv(text: string): VendorProductImportDraft[] {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length <= 1) return [];
+  if (lines.length === 0) return [];
   const firstCols = parseCsvLine(lines[0]);
-  const dataLines = isVendorProductTemplateHeader(firstCols) ? lines.slice(1) : lines.slice(1);
+  const hasHeader = isVendorProductTemplateHeader(firstCols);
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  if (dataLines.length === 0) return [];
+
+  if (hasHeader) {
+    const indexMap = buildHeaderIndexMap(firstCols);
+    const useLegacy = isLegacyVendorProductTemplate(firstCols);
+    return dataLines
+      .map(parseCsvLine)
+      .map(cols => (useLegacy
+        ? rowToVendorProductDraftLegacy(cols)
+        : rowToVendorProductDraftFromMap(cols, indexMap)))
+      .filter((draft): draft is VendorProductImportDraft => draft !== null);
+  }
+
   return dataLines
     .map(parseCsvLine)
     .map(rowToVendorProductDraft)
@@ -433,6 +698,10 @@ function mapApiRow(row: VendorProductCatalogRow): VendorProductCatalogItem {
     productPolicyTag: row.productPolicyTag as VendorProductPolicyTag | undefined,
     isPrivate: row.isPrivate,
     privateLocationIds: row.privateLocationIds ?? [],
+    returnableDeposit: Boolean(row.returnableDeposit),
+    returnableItemName: row.returnableItemName ?? '',
+    returnableUom: row.returnableUom ?? '',
+    returnableDepositAmount: row.returnableDepositAmount ?? 0,
   };
 }
 
@@ -450,6 +719,10 @@ function toUpsertPayload(product: VendorProductCatalogItem): VendorProductCatalo
     productPolicyTag: product.productPolicyTag,
     isPrivate: product.isPrivate,
     privateLocationIds: product.privateLocationIds ?? [],
+    returnableDeposit: Boolean(product.returnableDeposit),
+    returnableItemName: product.returnableDeposit ? (product.returnableItemName ?? '').trim() : '',
+    returnableUom: product.returnableDeposit ? (product.returnableUom ?? '').trim() : '',
+    returnableDepositAmount: product.returnableDeposit ? (product.returnableDepositAmount ?? 0) : 0,
     active: true,
   };
 }
@@ -722,9 +995,37 @@ export function parseDeliveryUnitPath(input: string): DeliveryUnitBreakdown | nu
   if (segments.length === 0) return null;
   const order = parseSegment(segments[0]);
   if (!order) return null;
-  const pack = segments[1] ? parseSegment(segments[1]) : order;
-  const unit = segments[2] ? parseSegment(segments[2]) : pack;
-  if (!pack || !unit) return null;
+
+  // 1 segment: "12tin" → 12 tin (do not cube orderQty across pack/unit).
+  if (segments.length === 1) {
+    return {
+      orderUnit: order.unit,
+      orderQty: order.qty || 1,
+      packUnit: order.unit,
+      packQty: 1,
+      unitUnit: order.unit,
+      unitQty: 1,
+    };
+  }
+
+  const pack = parseSegment(segments[1]);
+  if (!pack) return null;
+
+  // 2 segments: "1tub/3.75ltr" or "Tin/5ltr" → order unit contains pack measure once
+  // (avoid packQty×unitQty double-count when unit mirrors pack).
+  if (segments.length === 2) {
+    return {
+      orderUnit: order.unit,
+      orderQty: order.qty || 1,
+      packUnit: pack.unit,
+      packQty: pack.qty || 1,
+      unitUnit: pack.unit,
+      unitQty: 1,
+    };
+  }
+
+  const unit = parseSegment(segments[2]);
+  if (!unit) return null;
   return {
     orderUnit: order.unit,
     orderQty: order.qty || 1,
@@ -1008,6 +1309,8 @@ export function resolveComponentUomQty(
 }
 
 export function calcComponentPrincipalUomPrice(deliveryPrice: number, principalQty: number): number {
+  // Same Step 1 rule as stock inbound: delivery (package) price ÷ principal qty per package.
+  // Full PO line: (packages × deliveryPrice) ÷ (packages × principalQty) — identical per unit.
   return principalQty > 0 ? deliveryPrice / principalQty : 0;
 }
 

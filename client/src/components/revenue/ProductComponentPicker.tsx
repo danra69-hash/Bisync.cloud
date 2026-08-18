@@ -4,21 +4,32 @@ import { ChevronDown, X } from 'lucide-react';
 import type { Product } from '../../api';
 import type { ComponentRow } from '../../data/componentForm';
 import { filterComponentsForPicker, filterSubProductsForPicker, formatSubProductBatchPackageUnit } from '../../data/productForm';
+import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
+import {
+  bindPickerOptionActivate,
+  eventTargetElement,
+  isEventInsideSelector,
+} from './pickerMenuEvents';
 
 type Props = {
   components: ComponentRow[];
   subProducts?: Product[];
   value: string;
+  /** Shown when value is set but missing from catalogs (inactive/unscoped). */
+  fallbackLabel?: string;
   placeholder?: string;
   disabled?: boolean;
   onComponentSelect: (component: ComponentRow | null) => void;
   onSubProductSelect?: (product: Product | null) => void;
 };
 
+const MENU_SELECTOR = '[data-product-component-picker-menu]';
+
 export function ProductComponentPicker({
   components,
   subProducts = [],
   value,
+  fallbackLabel = '',
   placeholder = 'Search component or sub-product…',
   disabled = false,
   onComponentSelect,
@@ -40,21 +51,37 @@ export function ProductComponentPicker({
     [subProducts, value],
   );
 
-  const filteredComponents = useMemo(
-    () => filterComponentsForPicker(components, query),
-    [components, query],
-  );
+  const filteredComponents = useMemo(() => {
+    const rows = filterComponentsForPicker(components, query);
+    if (
+      selectedComponent
+      && !rows.some(c => c.componentId === selectedComponent.componentId)
+      && !query.trim()
+    ) {
+      return [selectedComponent, ...rows];
+    }
+    return rows;
+  }, [components, query, selectedComponent]);
 
-  const filteredSubProducts = useMemo(
-    () => filterSubProductsForPicker(subProducts, query),
-    [subProducts, query],
-  );
+  const filteredSubProducts = useMemo(() => {
+    const rows = filterSubProductsForPicker(subProducts, query);
+    if (
+      selectedSubProduct
+      && !rows.some(p => p.productId === selectedSubProduct.productId)
+      && !query.trim()
+    ) {
+      return [selectedSubProduct, ...rows];
+    }
+    return rows;
+  }, [subProducts, query, selectedSubProduct]);
 
   const selectedLabel = selectedSubProduct
     ? `${selectedSubProduct.name} (${selectedSubProduct.productId})`
     : selectedComponent
       ? `${selectedComponent.name} (${selectedComponent.componentId})`
-      : '';
+      : value && fallbackLabel
+        ? `${fallbackLabel} (${value})`
+        : value || '';
 
   useEffect(() => {
     if (!open) {
@@ -90,23 +117,40 @@ export function ProductComponentPicker({
 
   useEffect(() => {
     if (!open) return;
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
-      if ((target as Element).closest?.('[data-product-component-picker-menu]')) return;
+    function handlePointerDown(event: PointerEvent) {
+      const el = eventTargetElement(event);
+      if (!el) return;
+      if (rootRef.current?.contains(el)) return;
+      if (isEventInsideSelector(event, MENU_SELECTOR)) return;
       setOpen(false);
     }
-    document.addEventListener('click', handlePointerDown);
-    return () => document.removeEventListener('click', handlePointerDown);
+    // Capture phase so outside-close does not race option selection.
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
   }, [open]);
 
-  function clearSelection() {
+  function clearSelection(options?: { keepOpen?: boolean }) {
     if (selectedSubProduct) {
       onSubProductSelect?.(null);
     } else {
       onComponentSelect(null);
     }
     setQuery('');
+    if (options?.keepOpen) {
+      setOpen(true);
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    setOpen(false);
+  }
+
+  function selectComponent(component: ComponentRow) {
+    onComponentSelect(component);
+    setOpen(false);
+  }
+
+  function selectSubProduct(product: Product) {
+    onSubProductSelect?.(product);
     setOpen(false);
   }
 
@@ -127,16 +171,18 @@ export function ProductComponentPicker({
             setQuery('');
           }}
           onChange={e => {
-            setQuery(e.target.value);
+            const next = e.target.value;
+            setQuery(next);
             setOpen(true);
-            if (!e.target.value.trim()) clearSelection();
+            // Clear selection when emptied, but keep the filter menu open for typing.
+            if (!next.trim()) clearSelection({ keepOpen: true });
           }}
           className="w-full rounded-md border border-border bg-background pl-2.5 pr-7 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
         />
         {value && !disabled ? (
           <button
             type="button"
-            onClick={clearSelection}
+            onClick={() => clearSelection({ keepOpen: true })}
             className="absolute right-6 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground"
             aria-label="Clear selection"
           >
@@ -150,7 +196,7 @@ export function ProductComponentPicker({
         ? createPortal(
             <div
               data-product-component-picker-menu
-              className="fixed z-[120] max-h-56 overflow-y-auto rounded-md border border-border bg-card shadow-lg"
+              className={`fixed ${PICKER_MENU_Z_CLS} max-h-56 overflow-y-auto rounded-md border border-border bg-card shadow-lg`}
               style={{ top: menuStyle.top, left: menuStyle.left, width: menuStyle.width }}
             >
               {!hasResults ? (
@@ -166,10 +212,8 @@ export function ProductComponentPicker({
                         <button
                           key={product.productId}
                           type="button"
-                          onMouseDown={event => event.preventDefault()}
-                          onClick={() => {
-                            onSubProductSelect?.(product);
-                            setOpen(false);
+                          onPointerDown={event => {
+                            bindPickerOptionActivate(event, () => selectSubProduct(product));
                           }}
                           className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 ${
                             product.productId === value ? 'bg-primary/10 text-primary' : ''
@@ -192,10 +236,8 @@ export function ProductComponentPicker({
                         <button
                           key={component.componentId}
                           type="button"
-                          onMouseDown={event => event.preventDefault()}
-                          onClick={() => {
-                            onComponentSelect(component);
-                            setOpen(false);
+                          onPointerDown={event => {
+                            bindPickerOptionActivate(event, () => selectComponent(component));
                           }}
                           className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 ${
                             component.componentId === value ? 'bg-primary/10 text-primary' : ''

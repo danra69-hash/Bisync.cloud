@@ -16,6 +16,7 @@ import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { StockCardSplitUsePanel } from './StockCardSplitUsePanel';
 import { parseDetailConfigJson } from '../../data/componentForm';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { ColGroup } from '../shared/SortableTableHead';
 
 import {
 
@@ -85,33 +86,20 @@ function fmtDateTime(iso: string) {
 
 
 
-function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
-
+function entryTypeLabel(entryType: StockCardLedgerEntry['entryType'], reason?: string) {
   switch (entryType) {
-
     case 'balance_forward':
-
-      return 'B/F';
-
+      return 'B/F'
     case 'purchase':
-
-      return 'Purchase';
-
+      return 'Purchase'
     case 'cash_purchase':
-
-      return 'Cash purchase';
-
+      return 'Cash purchase'
     case 'transfer_in':
-
-      return 'Transfer in';
-
+      return 'Transfer in'
     case 'transfer_out':
-
-      return 'Transfer out';
-
+      return 'Transfer out'
     case 'pos_sale':
-
-      return 'POS sales';
+      return reason && /prepaid/i.test(reason) ? 'Pre-paid consumption' : 'POS sales';
 
     case 'online_order':
 
@@ -156,6 +144,14 @@ function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
     case 'outbound':
 
       return 'Outbound';
+
+    case 'credit_note':
+
+      return 'Credit note';
+
+    case 'store_issue':
+
+      return 'Store issue';
 
     default:
 
@@ -218,12 +214,14 @@ function LedgerEntryRow({
   entry,
   countryCode,
   rm,
+  uomPrice,
   nested = false,
   groupStart = false,
 }: {
   entry: StockCardLedgerEntry;
   countryCode: string;
   rm: (value: number) => string;
+  uomPrice: (value: number) => string;
   nested?: boolean;
   groupStart?: boolean;
 }) {
@@ -245,7 +243,7 @@ function LedgerEntryRow({
         {fmtDateTime(entry.occurredAt)}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
-        {entryTypeLabel(entry.entryType)}
+        {entryTypeLabel(entry.entryType, entry.reason)}
         {entry.isShortage ? (
           <span className="ml-1 text-[10px] uppercase tracking-wide text-destructive">Neg / short</span>
         ) : null}
@@ -257,10 +255,25 @@ function LedgerEntryRow({
       <td className="px-3 py-2.5 text-right tabular-nums">{outbound}</td>
       <td className="px-3 py-2.5">{entry.uom}</td>
       <td className="px-3 py-2.5 text-right tabular-nums">
-        {entry.unitPrice > 0 ? rm(entry.unitPrice) : '—'}
+        {entry.unitPrice > 0 ? uomPrice(entry.unitPrice) : '—'}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">
         {entry.subtotal > 0 ? rm(entry.subtotal) : '—'}
+        {Math.abs(entry.roundingResidual ?? 0) > 0.00005 ? (
+          <span
+            className="block text-[10px] text-muted-foreground font-normal"
+            title={
+              entry.extendedAtUnitPrice && entry.extendedAtUnitPrice > 0
+                ? `PCU extended ${rm(entry.extendedAtUnitPrice)} at 4dp unit price; document ${rm(entry.documentAmount ?? entry.subtotal)}`
+                : entry.entryType === 'credit_note'
+                  ? 'UOM rounding residual — credit note document amount is authority'
+                  : 'UOM conversion rounding residual (document amount is authority)'
+            }
+          >
+            Residual {(entry.roundingResidual ?? 0) > 0 ? '+' : ''}
+            {rm(entry.roundingResidual ?? 0)}
+          </span>
+        ) : null}
       </td>
       <td className="px-5 py-2.5 text-muted-foreground">
         <div>{entry.reason}</div>
@@ -299,14 +312,14 @@ export function StockCardDetailPanel({
 
   onClose,
 
-  onUomModeChange,
+  onUomModeChange: _onUomModeChange,
 
   onAdjusted,
 
 }: Props) {
 
   const countryCode = useOrgCountryCode();
-  const { rm } = useCountryFormatters();
+  const { rm, uomPrice } = useCountryFormatters();
   const [detail, setDetail] = useState<StockCardDetail | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -355,14 +368,14 @@ export function StockCardDetailPanel({
   }, [loadDetail]);
 
   useEffect(() => {
-    if (itemType !== 'component' || !itemKey) {
+    if (itemType !== 'component' || !itemKey || !companyId) {
       setSplitUseIngredient(null);
       return;
     }
-    api.ingredients()
+    api.ingredients(companyId)
       .then(rows => setSplitUseIngredient(rows.find(row => row.componentId === itemKey) ?? null))
       .catch(() => setSplitUseIngredient(null));
-  }, [itemType, itemKey]);
+  }, [itemType, itemKey, companyId]);
 
 
 
@@ -467,21 +480,9 @@ export function StockCardDetailPanel({
 
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
 
-              <select
-
-                value={uomMode}
-
-                onChange={e => onUomModeChange(e.target.value as 'inventory' | 'recipe')}
-
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm font-sans min-w-[160px]"
-
-              >
-
-                <option value="inventory">Inventory UOM</option>
-
-                <option value="recipe">Component UOM</option>
-
-              </select>
+              <div className="h-9 rounded-md border border-border bg-background px-3 text-sm font-sans min-w-[160px] flex items-center text-muted-foreground">
+                Principal Component Unit
+              </div>
 
             </div>
 
@@ -521,14 +522,6 @@ export function StockCardDetailPanel({
 
               <SummaryCell label="Outbound" value={fmtQty(detail.outboundQty, countryCode)} uom={detail.uom} />
 
-              <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty, countryCode)} uom={detail.uom} />
-
-              <SummaryCell
-                label="Avg outbound price"
-                value={detail.averageCogs > 0 ? rm(detail.averageCogs) : '—'}
-                uom={`per ${detail.uom}`}
-              />
-
               <OnHandSummaryCell
                 quantity={detail.onHandQty}
                 uom={detail.uom}
@@ -536,6 +529,14 @@ export function StockCardDetailPanel({
                 onHandAverageCogs={detail.onHandAverageCogs}
                 outboundAverageCogs={detail.averageCogs}
                 onAdjust={() => setAdjustmentOpen(true)}
+              />
+
+              <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty, countryCode)} uom={detail.uom} />
+
+              <SummaryCell
+                label="Avg outbound price"
+                value={detail.averageCogs > 0 ? uomPrice(detail.averageCogs) : '—'}
+                uom={`per ${detail.uom}`}
               />
 
             </div>
@@ -574,13 +575,13 @@ export function StockCardDetailPanel({
             <div className="flex-1 overflow-auto">
 
               <table className="w-full text-sm font-sans">
-
+                <ColGroup widths={['12%', '9%', '8%', '8%', '7%', '9%', '9%', '16%', '14%', '8%']} />
                 <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
 
                   <tr>
-                    <th className={tableHeaderCls('left', 'px-5')}>Date &amp; time</th>
+                    <th className={tableHeaderCls('left', 'px-5')}>Date</th>
                     <th className={tableHeaderCls('left')}>Type</th>
-                    <th className={tableHeaderCls('right')}>Inbound</th>
+                    <th className={tableHeaderCls('right')}>Stock QTY</th>
                     <th className={tableHeaderCls('right')}>Outbound</th>
                     <th className={tableHeaderCls('left')}>UOM</th>
                     <th className={tableHeaderCls('right')}>UOM price</th>
@@ -607,6 +608,7 @@ export function StockCardDetailPanel({
                           entry={group.entry}
                           countryCode={countryCode}
                           rm={rm}
+                          uomPrice={uomPrice}
                           nested={group.entry.entryType === 'split_use' || group.entry.entryType === 'split_use_in'}
                         />,
                       ];
@@ -619,6 +621,7 @@ export function StockCardDetailPanel({
                         entry={parent}
                         countryCode={countryCode}
                         rm={rm}
+                        uomPrice={uomPrice}
                         nested={false}
                         groupStart={children.length > 0}
                       />,
@@ -651,7 +654,7 @@ export function StockCardDetailPanel({
                                       {qty} {entry.uom}
                                     </span>
                                     {entry.unitPrice > 0 ? (
-                                      <span className="tabular-nums">{rm(entry.unitPrice)} / {entry.uom}</span>
+                                      <span className="tabular-nums">{uomPrice(entry.unitPrice)} / {entry.uom}</span>
                                     ) : null}
                                   </div>
                                 );
@@ -723,7 +726,7 @@ function OnHandSummaryCell({
   onAdjust?: () => void;
 }) {
   const countryCode = useOrgCountryCode();
-  const { rm } = useCountryFormatters();
+  const { uomPrice } = useCountryFormatters();
   const activeLayers = layers.filter(l => l.quantity > 0);
   const resolvedOnHandAverageCogs =
     onHandAverageCogs > 0 ? onHandAverageCogs : computeOnHandAverageCogs(layers);
@@ -757,7 +760,7 @@ function OnHandSummaryCell({
               key={`${layer.unitPrice}-${layer.quantity}`}
               className="text-[11px] tabular-nums text-muted-foreground leading-snug"
             >
-              {fmtQty(layer.quantity, countryCode)} @ {rm(layer.unitPrice)}
+              {fmtQty(layer.quantity, countryCode)} @ {uomPrice(layer.unitPrice)}
             </li>
           ))}
         </ul>

@@ -24,6 +24,9 @@ export function resolveDefaultProductParStockUom(options: {
   if (options.isSubProduct && options.yieldUom?.trim()) {
     return fromApiUom(options.yieldUom) || options.yieldUom;
   }
+  if (!options.b2bEnabled && options.yieldUom?.trim()) {
+    return fromApiUom(options.yieldUom) || options.yieldUom;
+  }
   if (options.b2bEnabled && options.b2bSalesConfig) {
     const deliveryLabel = formatDeliveryUnitPath(options.b2bSalesConfig.principal.delivery).trim();
     if (deliveryLabel) {

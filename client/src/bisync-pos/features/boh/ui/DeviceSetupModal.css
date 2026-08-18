@@ -1,0 +1,540 @@
+.device-setup-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  background: var(--color-surface);
+}
+
+.device-setup-modal__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.device-setup-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.device-setup-modal__header h2 {
+  margin: 0 0 2px;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.device-setup-modal__header p {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.device-setup-modal__close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.device-setup-modal__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.device-setup-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.device-setup-block h3 {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.device-setup-block h4 {
+  margin: 6px 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-ink-muted);
+}
+
+.device-setup-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.device-setup-hint,
+.device-setup-note,
+.device-setup-empty,
+.device-setup-status,
+.device-setup-error {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-ink-muted);
+}
+
+.device-setup-error {
+  color: #b42318;
+}
+
+.device-setup-status {
+  color: #027a48;
+}
+
+.device-setup-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.device-setup-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.device-setup-btn--ghost {
+  background: transparent;
+}
+
+.device-setup-btn--primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text, #fff);
+}
+
+.device-setup-btn--danger {
+  background: transparent;
+  border-color: #b42318;
+  color: #b42318;
+}
+
+.device-setup-btn--danger:hover:not(:disabled) {
+  background: rgba(180, 35, 24, 0.08);
+}
+
+.device-setup-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.75rem;
+  box-sizing: border-box;
+}
+
+.device-setup-input--compact {
+  width: auto;
+  min-width: 120px;
+  height: 28px;
+}
+
+.device-setup-lan {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.device-setup-lan__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.device-setup-lan ul {
+  margin: 0;
+  padding-left: 14px;
+  font-size: 0.72rem;
+}
+
+.device-setup-device-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.device-setup-device-list li {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+}
+
+.device-setup-device-list em {
+  font-size: 0.65rem;
+  font-style: normal;
+  color: var(--color-ink-muted);
+}
+
+.device-setup-assign-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.device-setup-assign-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.device-setup-assign-row.is-same-subnet,
+.device-setup-assign-row.is-discovered {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.device-setup-assign-row.is-station {
+  border-style: dashed;
+}
+
+.device-setup-assign-row.is-registered:not(.is-discovered) {
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+}
+
+.device-setup-assign-row.is-inactive {
+  opacity: 0.72;
+}
+
+.device-setup-assign-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 160px;
+  font-size: 0.72rem;
+}
+
+.device-setup-assign-row__info strong {
+  font-size: 0.78rem;
+}
+
+.device-setup-assign-row__info code,
+.device-setup-assign-row__meta {
+  color: var(--color-ink-muted);
+  font-size: 0.68rem;
+}
+
+.device-setup-assign-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px;
+}
+
+.device-setup-assign-row__role {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.65rem;
+  font-weight: 650;
+  color: var(--color-ink-muted);
+}
+
+.device-setup-link-new {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  margin-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.device-setup-link-new label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.device-setup-link-new .device-setup-btn {
+  align-self: end;
+}
+
+.device-setup-add {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  margin: 6px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.device-setup-add label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.device-setup-add .device-setup-btn {
+  align-self: end;
+}
+
+.device-setup-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.device-setup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.device-setup-row.is-disabled {
+  opacity: 0.65;
+}
+
+.device-setup-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 160px;
+  font-size: 0.72rem;
+}
+
+.device-setup-row__main strong {
+  font-size: 0.78rem;
+}
+
+.device-setup-row__main code {
+  font-size: 0.68rem;
+  color: var(--color-ink-muted);
+}
+
+.device-setup-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.device-setup-sdk-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.device-setup-sdk-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.device-setup-sdk-list strong {
+  display: block;
+  font-size: 0.78rem;
+}
+
+.device-setup-sdk-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0b3d2e;
+  background: #d8efe4;
+  vertical-align: middle;
+}
+
+.device-setup-sdk-list span,
+.device-setup-sdk-list em {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--color-ink-muted);
+  font-style: normal;
+}
+
+.device-setup-sdk-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+@media (max-width: 960px), (max-height: 760px) {
+  .device-setup-lan__grid,
+  .device-setup-add,
+  .device-setup-link-new {
+    grid-template-columns: 1fr;
+  }
+
+  .device-setup-device-list li {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .device-setup-assign-row__actions {
+    width: 100%;
+  }
+
+  .device-setup-assign-row__role {
+    flex: 1 1 auto;
+  }
+
+  .device-setup-assign-row__role .device-setup-input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.device-setup-station-ip {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface, #fff);
+  display: grid;
+  gap: 6px;
+}
+
+.device-setup-station-ip label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.device-setup-hint--tight {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.device-setup-printer-tools {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface, #fff);
+  display: grid;
+  gap: 8px;
+}
+
+.device-setup-printer-tools h4 {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+}
+
+.device-setup-printer-tools__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+
+.device-setup-printer-tools__row label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  min-width: 140px;
+  flex: 1;
+}
+
+.device-setup-input--json {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  min-height: 72px;
+  resize: vertical;
+}

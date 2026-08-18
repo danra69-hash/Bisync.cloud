@@ -43,6 +43,8 @@ WORKDIR /src
 COPY src/Bisync.Api/Bisync.Api.csproj src/Bisync.Api/
 RUN dotnet restore src/Bisync.Api/Bisync.Api.csproj
 COPY src/Bisync.Api/ src/Bisync.Api/
+# Canonical floor plans referenced by Bisync.Api.csproj (../../data/floor-plans).
+COPY data/floor-plans/ data/floor-plans/
 # Wipe any accidental local/committed wwwroot so only this build's SPA ships.
 RUN rm -rf src/Bisync.Api/wwwroot
 COPY --from=client-build /src/client/dist/ src/Bisync.Api/wwwroot/
@@ -55,7 +57,9 @@ RUN test -f src/Bisync.Api/wwwroot/favicon.svg \
   && test ! -e src/Bisync.Api/wwwroot/react.svg \
   && test ! -e src/Bisync.Api/wwwroot/icons.svg \
   && test -f src/Bisync.Api/wwwroot/Attendance/app/index.html \
-  && dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
+  && test -f data/floor-plans/weissbrau-pavilion-kuala-lumpur.json \
+  && dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /p:UseAppHost=false \
+  && test -f /app/publish/data/floor-plans/weissbrau-pavilion-kuala-lumpur.json
 
 # ── Stage 3: Runtime (Cloud Run) ───────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
@@ -70,10 +74,13 @@ RUN apt-get update \
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=api-build --chown=app:app /app/publish .
+# Canonical venue floor plans — restored on startup when DB is empty/stock.
+COPY --chown=app:app data/floor-plans/ /app/data/floor-plans/
 # /app itself is created as root; give the runtime user ownership so ephemeral
 # archives (COGS audit history, stock-card archive) can be created under ContentRoot.
 RUN mkdir -p /app/data-archives/cogs-audit-history/system \
              /app/data-archives/stock-card \
+             /app/data/floor-plans \
   && chown -R app:app /app
 USER $APP_UID
 EXPOSE 8080

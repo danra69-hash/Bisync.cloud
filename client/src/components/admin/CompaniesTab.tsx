@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
@@ -31,6 +31,16 @@ import { CompanyProfileFields } from './CompanyProfileFields';
 import { ToggleSwitch } from './ToggleSwitch';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import {
+  BUSINESS_HALF_HOUR_TIMES,
+  BUSINESS_WEEKDAYS,
+  BUSINESS_WEEKDAY_LABELS,
+  defaultBusinessHours,
+  parseBusinessHoursJson,
+  serializeBusinessHours,
+  validateBusinessHours,
+  type CompanyBusinessHours,
+} from '../../data/companyBusinessHours';
+import {
   defaultsForOutboundProvider,
   isMailRetrievalPort,
   normalizeOutboundProviderMode,
@@ -45,14 +55,14 @@ type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'loca
 type CompanyTableColumn = CompanySortColumn | 'accessControl';
 
 const COMPANY_TABLE_COLUMNS: SortableColumnDef<CompanyTableColumn>[] = [
-  { key: 'name', label: 'Company' },
-  { key: 'brn', label: 'BRN' },
-  { key: 'gstTin', label: 'GST/TIN' },
-  { key: 'country', label: 'Country' },
-  { key: 'accessControl', label: 'Access Control', sortable: false, className: 'w-[11.5rem]' },
-  { key: 'email', label: 'Email' },
-  { key: 'locations', label: 'Locations', align: 'center' },
-  { key: 'status', label: 'Status' },
+  { key: 'name', label: 'Company', ...tableColWidth('16%') },
+  { key: 'brn', label: 'BRN', ...tableColWidth('10%') },
+  { key: 'gstTin', label: 'GST/TIN', ...tableColWidth('10%') },
+  { key: 'country', label: 'Country', ...tableColWidth('8%') },
+  { key: 'accessControl', label: 'Access Control', sortable: false, ...tableColWidth('11.5rem') },
+  { key: 'email', label: 'Email', ...tableColWidth('16%') },
+  { key: 'locations', label: 'Locations', align: 'center', ...tableColWidth('8%') },
+  { key: 'status', label: 'Status', ...tableColWidth('8%') },
 ];
 
 function CompanyAccessControlCell({
@@ -163,6 +173,7 @@ const blankCompany = (): CompanyDraft => ({
   businessTypesJson: '[]',
   vendorPolicyTagsJson: '[]',
   modulesJson: '[]',
+  businessHoursJson: serializeBusinessHours(defaultBusinessHours()),
   logoFileName: '',
   logoContentType: '',
   logoBase64: '',
@@ -200,6 +211,13 @@ function CompanyPanel({
   const [modules, setModules] = useState<AccessModule[]>(
     () => parseCompanyModules(company.modulesJson),
   );
+  const [businessHours, setBusinessHours] = useState<CompanyBusinessHours>(() => {
+    const parsed = parseBusinessHoursJson(company.businessHoursJson);
+    const configured = BUSINESS_WEEKDAYS.some(
+      day => parsed[day].closed || parsed[day].openFrom || parsed[day].openTo,
+    );
+    return configured ? parsed : defaultBusinessHours();
+  });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [smtpPasswordDraft, setSmtpPasswordDraft] = useState('');
@@ -244,6 +262,13 @@ function CompanyPanel({
     setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
     setVendorPolicyTags(parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
     setModules(parseCompanyModules(company.modulesJson));
+    {
+      const parsed = parseBusinessHoursJson(company.businessHoursJson);
+      const configured = BUSINESS_WEEKDAYS.some(
+        day => parsed[day].closed || parsed[day].openFrom || parsed[day].openTo,
+      );
+      setBusinessHours(configured ? parsed : defaultBusinessHours());
+    }
     setSmtpPasswordDraft('');
     setGraphClientSecretDraft('');
     setTestToEmail(company.email || company.smtpFromEmail || '');
@@ -301,6 +326,7 @@ function CompanyPanel({
       businessTypesJson: serializeStringArray(businessTypes),
       vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
       modulesJson: serializeStringArray(modules),
+      businessHoursJson: serializeBusinessHours(businessHours),
       logoFileName: logoBase64 ? (form.logoFileName ?? '').trim() : '',
       logoContentType: logoBase64 ? (form.logoContentType ?? '').trim() : '',
       logoBase64,
@@ -420,6 +446,11 @@ function CompanyPanel({
     const modulesError = validateCompanyModules(modules);
     if (modulesError) {
       setError(modulesError);
+      return;
+    }
+    const hoursError = validateBusinessHours(businessHours);
+    if (hoursError) {
+      setError(hoursError);
       return;
     }
 
@@ -703,6 +734,106 @@ function CompanyPanel({
 
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">General Email</label>
             <input type="email" className={inputCls} value={form.email} onChange={e => set('email', e.target.value)} placeholder="hq@company.com" />
+
+            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+              <div>
+                <p className="text-xs font-semibold text-foreground">Business Hours (office)</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  HQ office hours for admin / non-shift staff attendance in HR.
+                  Separate from location operating hours. Minutes are :00 or :30 only.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[22rem]">
+                  <colgroup>
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '28%' }} />
+                    <col style={{ width: '28%' }} />
+                    <col style={{ width: 72 }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="py-1.5 pr-2 text-left font-medium">Day</th>
+                      <th className="py-1.5 px-1 text-left font-medium">From</th>
+                      <th className="py-1.5 px-1 text-left font-medium">To</th>
+                      <th className="py-1.5 pl-1 text-center font-medium">Closed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {BUSINESS_WEEKDAYS.map(day => {
+                      const row = businessHours[day];
+                      return (
+                        <tr key={day} className="border-b border-border/50">
+                          <td className="py-1.5 pr-2 font-medium whitespace-nowrap">
+                            {BUSINESS_WEEKDAY_LABELS[day]}
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <select
+                              className={`${selectCls} min-w-[6.5rem]`}
+                              value={row.openFrom}
+                              disabled={row.closed}
+                              onChange={e => {
+                                const openFrom = e.target.value;
+                                setBusinessHours(prev => ({
+                                  ...prev,
+                                  [day]: { ...prev[day], openFrom },
+                                }));
+                                setError(null);
+                              }}
+                              aria-label={`${BUSINESS_WEEKDAY_LABELS[day]} office from`}
+                            >
+                              <option value="">—</option>
+                              {BUSINESS_HALF_HOUR_TIMES.map(t => (
+                                <option key={`biz-from-${day}-${t}`} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <select
+                              className={`${selectCls} min-w-[6.5rem]`}
+                              value={row.openTo}
+                              disabled={row.closed}
+                              onChange={e => {
+                                const openTo = e.target.value;
+                                setBusinessHours(prev => ({
+                                  ...prev,
+                                  [day]: { ...prev[day], openTo },
+                                }));
+                                setError(null);
+                              }}
+                              aria-label={`${BUSINESS_WEEKDAY_LABELS[day]} office to`}
+                            >
+                              <option value="">—</option>
+                              {BUSINESS_HALF_HOUR_TIMES.map(t => (
+                                <option key={`biz-to-${day}-${t}`} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-1.5 pl-1 text-center">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary"
+                              checked={row.closed}
+                              onChange={e => {
+                                const closed = e.target.checked;
+                                setBusinessHours(prev => ({
+                                  ...prev,
+                                  [day]: closed
+                                    ? { openFrom: '', openTo: '', closed: true }
+                                    : { ...prev[day], closed: false },
+                                }));
+                                setError(null);
+                              }}
+                              aria-label={`${BUSINESS_WEEKDAY_LABELS[day]} closed`}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
             <div className="rounded-lg border border-border bg-card p-4 space-y-3">
               <div className="flex items-start gap-2">
@@ -1072,13 +1203,14 @@ function CompanyPanel({
 export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => void }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewDeactivated, setViewDeactivated] = useState(false);
   const [panelDraft, setPanelDraft] = useState<Company | CompanyDraft | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [togglingCompanyId, setTogglingCompanyId] = useState<number | null>(null);
 
-  function refreshList() {
+  function refreshList(includeInactive = viewDeactivated) {
     setLoading(true);
-    api.companies()
+    api.companies({ includeInactive })
       .then(rows => {
         setCompanies(rows);
         // Keep the open panel in sync without remounting (companyKey stays the same,
@@ -1119,16 +1251,21 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
     }
   }
 
-  useEffect(() => { refreshList(); }, []);
+  useEffect(() => { refreshList(viewDeactivated); }, [viewDeactivated]);
 
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CompanySortColumn>();
 
-  useEffect(() => { resetSort(); }, [companies, resetSort]);
+  useEffect(() => { resetSort(); }, [companies, viewDeactivated, resetSort]);
+
+  const visibleCompanies = useMemo(
+    () => (viewDeactivated ? companies : companies.filter(c => c.active)),
+    [companies, viewDeactivated],
+  );
 
   const sortedCompanies = useMemo(
     () =>
       sortTableRows(
-        companies,
+        visibleCompanies,
         sortColumn,
         sortDirection,
         {
@@ -1142,7 +1279,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
-    [companies, sortColumn, sortDirection],
+    [visibleCompanies, sortColumn, sortDirection],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -1156,8 +1293,24 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
   return (
     <div className="space-y-4">
       <PageStickyFilters opaque className="py-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">{companies.length} registered companies</p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
+            <p className="text-xs text-muted-foreground">{visibleCompanies.length} registered companies</p>
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={viewDeactivated}
+                onChange={e => setViewDeactivated(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>
+                View deactivated companies
+                <span className="block text-[10px] font-normal">
+                  Include inactive companies in this list
+                </span>
+              </span>
+            </label>
+          </div>
           <button
             type="button"
             onClick={() => { setIsNew(true); setPanelDraft(blankCompany()); }}
@@ -1172,7 +1325,8 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
           <MillstoneLoader size="sm" layout="block" label="Loading companies…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
+            <TableColGroup columns={COMPANY_TABLE_COLUMNS as SortableColumnDef<CompanySortColumn>[]} />
             <thead>
               <SortableTableHeaderRow
                 columns={COMPANY_TABLE_COLUMNS as SortableColumnDef<CompanySortColumn>[]}

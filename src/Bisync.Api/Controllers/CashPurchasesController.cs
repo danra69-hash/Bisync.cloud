@@ -77,9 +77,56 @@ public class CashPurchasesController(
         if (!string.IsNullOrEmpty(locationExternalId))
             await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
 
+        // DeliveryPrice is the PO/cash line amount; Quantity is the entered delivery/stock qty.
+        // Principal unit price is derived once as round4(lineAmount ÷ principalQty) inside the bridge.
         var unitCost = request.Quantity > 0
-            ? Math.Round(request.DeliveryPrice / request.Quantity, 4, MidpointRounding.AwayFromZero)
+            ? request.DeliveryPrice / request.Quantity
             : request.DeliveryPrice;
+
+        var vendorProductId = request.VendorProductId?.Trim() ?? string.Empty;
+        decimal? pathPrincipal = null;
+        string? pathPrincipalUom = null;
+        if (!string.IsNullOrEmpty(vendorProductId))
+        {
+            var vendorProduct = await db.VendorProducts.AsNoTracking()
+                .FirstOrDefaultAsync(v => v.ExternalId == vendorProductId);
+            if (DeliveryPrincipalResolver.TryResolveFromVendorProduct(
+                    vendorProduct,
+                    ingredient,
+                    out var resolvedPrincipal,
+                    out var resolvedUom))
+            {
+                pathPrincipal = resolvedPrincipal;
+                pathPrincipalUom = resolvedUom;
+            }
+        }
+
+        if (pathPrincipal is null
+            && DeliveryPrincipalResolver.TryResolveFromDeliveryPath(
+                deliveryUnit,
+                ingredient,
+                out var pathFromLabel,
+                out var pathFromLabelUom))
+        {
+            pathPrincipal = pathFromLabel;
+            pathPrincipalUom = pathFromLabelUom;
+        }
+
+        var stockQty = request.Quantity;
+        var stockUom = componentUom;
+        // Quantity is delivery packages; prefer delivery unit as the conversion basis.
+        var inbound = IngredientUomBridge.ToInboundPrincipal(
+            ingredient,
+            request.Quantity,
+            string.IsNullOrWhiteSpace(deliveryUnit) ? componentUom : deliveryUnit,
+            unitCost,
+            vendorProductId: string.IsNullOrEmpty(vendorProductId) ? null : vendorProductId,
+            deliveryUom: deliveryUnit,
+            fallbackPrincipalPerPackage: pathPrincipal,
+            fallbackPrincipalUom: pathPrincipalUom);
+        stockQty = inbound.Quantity;
+        stockUom = inbound.Uom;
+        unitCost = inbound.UnitPrice;
 
         var receiptBase64 = request.ReceiptFileBase64?.Trim() ?? string.Empty;
         if (receiptBase64.Length > 2_000_000)
@@ -116,8 +163,8 @@ public class CashPurchasesController(
             {
                 var posting = await splitUse.PostInboundAsync(
                     ingredient,
-                    request.Quantity,
-                    componentUom,
+                    stockQty,
+                    stockUom,
                     unitCost,
                     request.DatePurchased,
                     cashPurchase.CreatedAt,
@@ -127,7 +174,10 @@ public class CashPurchasesController(
                     locationIdsJson,
                     locationExternalId,
                     "cash-purchase",
-                    cashPurchase.Id);
+                    cashPurchase.Id,
+                    remarks: null,
+                    documentAmount: inbound.DocumentAmount,
+                    roundingResidual: inbound.RoundingResidual);
                 inventoryPurchase = posting.ParentPurchase;
             }
             else
@@ -136,9 +186,11 @@ public class CashPurchasesController(
                 {
                     ComponentId = componentId,
                     ComponentName = componentName,
-                    Quantity = request.Quantity,
-                    Uom = componentUom,
+                    Quantity = stockQty,
+                    Uom = stockUom,
                     UnitPrice = unitCost,
+                    DocumentAmount = inbound.DocumentAmount,
+                    RoundingResidual = inbound.RoundingResidual,
                     DateOrdered = request.DatePurchased,
                     DateCreatedInStock = cashPurchase.CreatedAt,
                     PurchaseOrderId = 0,
@@ -148,10 +200,19 @@ public class CashPurchasesController(
                     LocationExternalId = locationExternalId,
                 };
                 db.InventoryPurchases.Add(inventoryPurchase);
-                ingredient.LastPriceInventory = unitCost;
-                if (ingredient.InventoryUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase)
-                    && ingredient.RecipeUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase))
-                    ingredient.LastPriceRecipe = unitCost;
+                ingredient.LastPriceRecipe = unitCost;
+                if (ingredient.InventoryUom.Equals(stockUom, StringComparison.OrdinalIgnoreCase)
+                    || ingredient.RecipeUom.Equals(ingredient.InventoryUom, StringComparison.OrdinalIgnoreCase))
+                    ingredient.LastPriceInventory = unitCost;
+                else if (IngredientUomBridge.TryConvertToUom(
+                             ingredient,
+                             1m,
+                             unitCost,
+                             stockUom,
+                             ingredient.InventoryUom,
+                             out _,
+                             out var inventoryUnitCost))
+                    ingredient.LastPriceInventory = inventoryUnitCost;
             }
 
             await db.SaveChangesAsync();

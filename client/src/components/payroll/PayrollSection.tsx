@@ -33,7 +33,7 @@ export function PayrollSection({ defaultTab = 'directory', embedded = false, sel
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
 
   return (
-    <PayrollPinGate embedded={embedded}>
+    <PayrollPinGate embedded={embedded} title="Payroll">
       <div className={pageShellClass({ embedded, spacing: 'wide' })}>
         {!embedded && (
           <div>

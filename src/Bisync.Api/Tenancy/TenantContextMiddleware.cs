@@ -40,14 +40,24 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
                     || role.Equals("DRA Super Admin", StringComparison.OrdinalIgnoreCase);
 
                 if (!tenant.IsPlatformAdmin && user.CompanyId is > 0)
+                    tenant.CompanyId = user.CompanyId;
+                else if (user.CompanyId is > 0)
                     tenant.CompanyId ??= user.CompanyId;
             }
         }
 
         if (TryParsePositiveInt(http.Request.Headers[CompanyHeader].FirstOrDefault(), out var headerCompany))
-            tenant.CompanyId = headerCompany;
-        else if (TryParsePositiveInt(http.Request.Query["companyId"].FirstOrDefault(), out var queryCompany))
-            tenant.CompanyId ??= queryCompany;
+        {
+            // Platform admins may switch company. Everyone else is locked to their home tenant.
+            if (tenant.IsPlatformAdmin || tenant.CompanyId is null or <= 0)
+                tenant.CompanyId = headerCompany;
+        }
+        else if (tenant.CompanyId is null or <= 0
+                 && TryParsePositiveInt(http.Request.Query["companyId"].FirstOrDefault(), out var queryCompany)
+                 && tenant.IsPlatformAdmin)
+        {
+            tenant.CompanyId = queryCompany;
+        }
 
         await next(http);
     }

@@ -27,14 +27,17 @@ import {
 import { fromApiUom, resolveDetailConfigForRow } from '../../data/componentForm';
 import {
   catalogProductAllowedByOrgPolicy,
+  commitmentVendorProductLabel,
   componentMatchesLocations,
   resolveTaggedProductsForComponent,
   resolveVendorsForSelectedLocations,
+  type OrderCartVendorGroup,
 } from '../../data/createOrder';
 import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { ingredientToRow } from './smartIngredientShared';
 import { OrderTemplateVendorProductPickerModal } from './OrderTemplateVendorProductPickerModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { resolvePurchaseOrderSignatories } from '../../data/purchaseOrderSignatories';
@@ -45,13 +48,14 @@ import {
   type PurchaseOrderPdfData,
 } from '../../data/generatePurchaseOrderPdf';
 import { PurchaseOrderPdfPreview } from './PurchaseOrderPdfPreview';
+import { PreCommittedProgressSummary } from './PreCommittedProgressSummary';
 import {
   buildVendorOrderShareUrl,
   buildVendorOrderWhatsAppUrl,
   copyVendorOrderShareLink,
 } from '../../data/vendorOrderShare';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
-import type { OrderCartVendorGroup } from '../../data/createOrder';
+import { formatCommitmentDate } from '../../data/preCommittedProgress';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -124,11 +128,35 @@ export function PreCommittedPoPage({
   } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeCommitments, setActiveCommitments] = useState<PurchaseOrder[]>([]);
+  const [commitmentsLoading, setCommitmentsLoading] = useState(false);
+  const [commitmentsError, setCommitmentsError] = useState<string | null>(null);
 
   const companyLocations = useMemo(
     () => allLocations.filter(loc => loc.companyId === selectedCompanyId),
     [allLocations, selectedCompanyId],
   );
+
+  async function loadActiveCommitments(companyId: number) {
+    setCommitmentsLoading(true);
+    setCommitmentsError(null);
+    try {
+      const rows = await api.activePurchaseOrders(companyId);
+      const masters = rows
+        .filter(o => o.isPreCommitted)
+        .sort((a, b) => {
+          const endA = a.commitmentEndDate ?? '';
+          const endB = b.commitmentEndDate ?? '';
+          return endA.localeCompare(endB) || a.poNumber.localeCompare(b.poNumber);
+        });
+      setActiveCommitments(masters);
+    } catch (err) {
+      setActiveCommitments([]);
+      setCommitmentsError(err instanceof Error ? err.message : 'Failed to load active commitments.');
+    } finally {
+      setCommitmentsLoading(false);
+    }
+  }
 
   // Catalog scope = drawdown locations (company commitment), not header outlet alone.
   const catalogLocationIds = drawdownLocationIds.length > 0
@@ -148,6 +176,31 @@ export function PreCommittedPoPage({
 
   useEffect(() => {
     if (!selectedCompanyId) {
+      setActiveCommitments([]);
+      setCommitmentsError(null);
+      return;
+    }
+    void loadActiveCommitments(selectedCompanyId);
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    const companyId = selectedCompanyId;
+    function handleVisibilityRefresh() {
+      if (document.visibilityState === 'visible') {
+        void loadActiveCommitments(companyId);
+      }
+    }
+    window.addEventListener('focus', handleVisibilityRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    return () => {
+      window.removeEventListener('focus', handleVisibilityRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
       setCompany(null);
       setVendors([]);
       setComponents([]);
@@ -158,7 +211,7 @@ export function PreCommittedPoPage({
     Promise.all([
       api.companies(),
       api.locationsConfig(),
-      api.vendors(true),
+      api.vendors(true, selectedCompanyId),
       api.ingredients(),
     ])
       .then(([companies, locations, vendorRows, ingredientRows]) => {
@@ -191,8 +244,9 @@ export function PreCommittedPoPage({
       catalogLocationIds,
       vendors,
       orgPolicyTags,
+      selectedCompanyId,
     ),
-    [components, catalogLocationIds, vendors, orgPolicyTags],
+    [components, catalogLocationIds, vendors, orgPolicyTags, selectedCompanyId],
   );
 
   const selectedVendor = useMemo(
@@ -424,7 +478,8 @@ export function PreCommittedPoPage({
         vendor: findVendorForGroup(vendors, group),
         orderDateLabel: formatDisplayDate(new Date()),
         deliveryDateLabel: `${formatDisplayDate(startDate)} → ${formatDisplayDate(endDate)}`,
-        deliveryDateHeading: 'Commitment Date',
+        deliveryDateHeading: 'Commitment Period',
+        isPreCommitted: true,
         initiatedBy: signatories.initiatedBy,
         approvedBy: signatories.approvedBy,
         documentKind: 'purchase_order',
@@ -442,6 +497,7 @@ export function PreCommittedPoPage({
 
       setCreated({ order: po, pdf, shareToken: token });
       setLines([]);
+      if (selectedCompanyId) void loadActiveCommitments(selectedCompanyId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create Pre-committed PO.');
     } finally {
@@ -462,7 +518,7 @@ export function PreCommittedPoPage({
   if (created) {
     return createPortal(
       <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40">
-        <div className="w-full max-w-5xl bg-card border border-border rounded-xl shadow-xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="w-full max-w-5xl bg-card border border-border rounded-xl shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Pre-committed PO</p>
@@ -571,12 +627,124 @@ export function PreCommittedPoPage({
 
   return (
     <div className={pageShellClass({ embedded })}>
+      <section className="rounded-lg border border-border bg-card overflow-hidden mb-4">
+        <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">Active commitments</h2>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Issued (drawn), received versus total committed, and commitment expiry for each open blanket PO.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => selectedCompanyId && void loadActiveCommitments(selectedCompanyId)}
+            disabled={!selectedCompanyId || commitmentsLoading}
+            className="text-xs border border-border rounded-md px-2.5 py-1.5 hover:bg-muted disabled:opacity-50 shrink-0"
+          >
+            {commitmentsLoading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+        <div className="px-4 py-3 space-y-3">
+          {commitmentsError ? (
+            <p className="text-xs text-red-600">{commitmentsError}</p>
+          ) : commitmentsLoading && activeCommitments.length === 0 ? (
+            <div className="py-4">
+              <MillstoneLoader size="sm" layout="block" label="Loading commitments…" />
+            </div>
+          ) : activeCommitments.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              No active pre-committed POs for this company yet. Create one below.
+            </p>
+          ) : (
+            activeCommitments.map(order => (
+              <article
+                key={order.id}
+                className="rounded-lg border border-border bg-background/40 px-3 py-3 space-y-2"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold">
+                      <span className="font-sans text-primary">{order.poNumber}</span>
+                      <span className="text-muted-foreground font-normal"> · {order.vendorName}</span>
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 font-sans">
+                      {formatCommitmentDate(order.commitmentStartDate)} → {formatCommitmentDate(order.commitmentEndDate)}
+                    </p>
+                  </div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+                    {order.status}
+                  </p>
+                </div>
+                {order.items.length > 0 ? (
+                  <ul className="rounded-md border border-border/70 bg-background/70 divide-y divide-border/60">
+                    {order.items.map(item => {
+                      const remaining = item.remainingCommitmentQuantity
+                        ?? item.remainingQuantity
+                        ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+                      const issued = item.drawnQuantity ?? 0;
+                      const received = item.consolidatedQuantity ?? 0;
+                      const productLabel = commitmentVendorProductLabel(item);
+                      const receivedTone = received > 0.0001
+                        ? 'text-teal-800 dark:text-teal-300'
+                        : 'text-muted-foreground';
+                      return (
+                        <li
+                          key={item.id}
+                          className="px-2.5 py-1.5 flex items-start justify-between gap-3 text-[11px]"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground truncate" title={productLabel}>
+                              {productLabel}
+                            </p>
+                            <p className="text-muted-foreground truncate mt-0.5">
+                              {[
+                                item.componentName && item.componentName !== productLabel
+                                  ? item.componentName
+                                  : null,
+                                item.deliveryPackage || item.unit || null,
+                                item.vendorProductId ? `ID ${item.vendorProductId}` : null,
+                              ].filter(Boolean).join(' · ') || 'Committed line'}
+                            </p>
+                            <p className={`mt-1 tabular-nums font-sans ${receivedTone}`}>
+                              {received > 0.0001 ? (
+                                <>
+                                  <span className="font-semibold">Received {received}</span>
+                                  <span className="text-muted-foreground"> · </span>
+                                </>
+                              ) : (
+                                <span>Received 0 · </span>
+                              )}
+                              <span className="text-muted-foreground">
+                                Issued {issued} · {remaining} left of {item.quantity}
+                              </span>
+                            </p>
+                          </div>
+                          <p className="shrink-0 text-right tabular-nums text-muted-foreground font-sans leading-snug">
+                            <span className="text-foreground font-medium">{remaining}</span>
+                            <span className="text-[10px]"> left</span>
+                            <br />
+                            <span className="text-[10px]">of {item.quantity}</span>
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No vendor products on this commitment.</p>
+                )}
+                <PreCommittedProgressSummary order={order} />
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
       <section className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Handshake size={16} className="text-primary" />
-              <h2 className="text-sm font-semibold">Pre-committed PO</h2>
+              <h2 className="text-sm font-semibold">Create Pre-committed PO</h2>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
               Company-level commitment at a bulk/special price. Choose which locations may draw down,
@@ -818,7 +986,8 @@ export function PreCommittedPoPage({
                     Add vendor products from the list. Bulk price may differ from small-purchase price.
                   </p>
                 ) : (
-                  <table className="w-full table-fixed">
+                  <table className="w-full">
+                    <ColGroup widths={['40%', '15%', '15%', '15%', 88]} />
                     <thead className="bg-muted/20 sticky top-0">
                       <tr>
                         <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal">Product</th>

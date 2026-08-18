@@ -3,14 +3,17 @@ import React from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
-import { SortableTableHead } from '../../components/shared/SortableTableHead';
+import { SortableTableHead, ColGroup, tableColWidth } from '../../components/shared/SortableTableHead';
 import { tableHeaderCls, tableHeaderCompactCls } from '../../components/shared/tableHeaderStyles';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
-import { api as bisyncApi, type AppUser } from '../../api';
+import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings, UserCheck } from 'lucide-react';
+import { api as bisyncApi, type AppUser, type Company } from '../../api';
 import { hrApi as api } from './api';
 import EmployeePortal from './EmployeePortal';
+import TeamPortal from './TeamPortal';
 import { PayrollSection } from '../../components/payroll/PayrollSection';
+import { PayrollPinGate } from '../../components/payroll/PayrollPinGate';
+import { HR_CONFIG_ACCESS_ROW_KEYS } from '../../data/hrAdminAccess';
 import ShiftScheduleGrid, { initialScheduleWeekStart } from './ShiftScheduleGrid';
 import { AttendanceDatePicker } from './AttendanceDatePicker';
 import { EmployeeTab } from '../../components/admin/EmployeeTab';
@@ -100,10 +103,10 @@ type AttendanceEmployeeSortColumn = 'name' | `day:${string}`;
 type LeaveBalanceSortColumn = 'employee' | 'rdo' | 'rph' | 'al';
 
 const LEAVE_BALANCE_COLUMNS = [
-  { key: 'employee' as const, label: 'Employee' },
-  { key: 'rdo' as const, label: 'RDO', align: 'center' as const },
-  { key: 'rph' as const, label: 'RPH', align: 'center' as const },
-  { key: 'al' as const, label: 'AL', align: 'center' as const },
+  { key: 'employee' as const, label: 'Employee', align: 'left' as const, ...tableColWidth('40%') },
+  { key: 'rdo' as const, label: 'RDO', align: 'center' as const, ...tableColWidth('20%') },
+  { key: 'rph' as const, label: 'RPH', align: 'center' as const, ...tableColWidth('20%') },
+  { key: 'al' as const, label: 'AL', align: 'center' as const, ...tableColWidth('20%') },
 ];
 
 // ---------- app ----------
@@ -111,7 +114,7 @@ const LEAVE_BALANCE_COLUMNS = [
 type HrModuleProps = { embedded?: boolean; selectedCompanyId?: number | null };
 
 export default function HrModule({ embedded = false, selectedCompanyId = null }: HrModuleProps) {
-  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'hrconfig' | 'portal' | 'payroll'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'hrconfig' | 'team' | 'portal' | 'payroll'>('employees');
   const [hrConfigTab, setHrConfigTab] = useState<HrConfigTabId>('ph');
 
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -124,6 +127,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
   const [employeeLevels, setEmployeeLevels] = useState<EmployeeLevel[]>([]);
   const [orgTree, setOrgTree] = useState<DivisionTreeNode[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [companyBusinessHoursJson, setCompanyBusinessHoursJson] = useState<string | null>(null);
 
   const [attendanceView, setAttendanceView] = useState<'month' | 'week'>('week');
   const [attendanceAnchorDate, setAttendanceAnchorDate] = useState(() => iso(new Date()));
@@ -295,6 +299,26 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
     }
   }, [activeTab, attendanceView, attendanceDates.length, scrollAttendanceTablesRight]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCompanyHours() {
+      if (!selectedCompanyId) {
+        setCompanyBusinessHoursJson(null);
+        return;
+      }
+      try {
+        const companies = await bisyncApi.companies();
+        if (cancelled) return;
+        const company = companies.find((c: Company) => c.id === selectedCompanyId);
+        setCompanyBusinessHoursJson(company?.businessHoursJson ?? null);
+      } catch {
+        if (!cancelled) setCompanyBusinessHoursJson(null);
+      }
+    }
+    void loadCompanyHours();
+    return () => { cancelled = true; };
+  }, [selectedCompanyId]);
+
   const platformUserFor = useCallback(
     (employee: Employee) =>
       platformUsers.find(u => u.employeeId === employee.id)
@@ -304,7 +328,11 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
 
   const companyEmployees = useMemo(() => {
     if (!selectedCompanyId) return [];
-    return employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
+    const linked = employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
+    if (linked.length > 0) return linked;
+    // If platform user links are incomplete, still show active employees so QR punches are visible.
+    if (platformUsers.length === 0) return employees.filter(e => e.active !== false);
+    return linked;
   }, [employees, platformUsers, selectedCompanyId, platformUserFor]);
 
   useEffect(() => {
@@ -568,14 +596,15 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
       {/* Navigation Tabs */}
       <div className="bg-white border-b border-gray-200">
         <div className={embedded ? 'px-4' : 'px-8'}>
-          <div className="flex gap-4 md:gap-8 ">
+          <div className="flex gap-4 md:gap-8">
             {([
               ['employees', Users, 'Employee Directory'],
               ['attendance', Calendar, 'Attendance'],
               ['leave', FileText, 'Leave Requests'],
               ['schedule', Clock, 'Schedule'],
-              ['hrconfig', Settings, 'HR Config'],
+              ['team', UserCheck, 'Team'],
               ['portal', LayoutDashboard, 'Employee Portal'],
+              ['hrconfig', Settings, 'HR Config'],
               ['payroll', Wallet, 'Payroll'],
             ] as const).map(([tab, Icon, label]) => (
               <button
@@ -602,7 +631,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
         </div>
       )}
 
-      <div className={embedded ? 'p-4' : 'p-8'}>
+      <div className={activeTab === 'team' ? 'p-0' : embedded ? 'p-4' : 'p-8'}>
         {/* Employees Tab */}
         {activeTab === 'employees' && (
           <EmployeeTab
@@ -616,16 +645,22 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
         )}
 
         {activeTab === 'hrconfig' && (
-          <HrEmployeeConfigSection
-            tab={hrConfigTab}
-            onTabChange={setHrConfigTab}
-            selectedCompanyId={selectedCompanyId}
-            onDataChanged={() => {
-              void refreshHrConfigData();
-              void refreshEmployees();
-              void refreshLeave();
-            }}
-          />
+          <PayrollPinGate
+            embedded={embedded}
+            title="HR Config"
+            requiredRowKeys={HR_CONFIG_ACCESS_ROW_KEYS}
+          >
+            <HrEmployeeConfigSection
+              tab={hrConfigTab}
+              onTabChange={setHrConfigTab}
+              selectedCompanyId={selectedCompanyId}
+              onDataChanged={() => {
+                void refreshHrConfigData();
+                void refreshEmployees();
+                void refreshLeave();
+              }}
+            />
+          </PayrollPinGate>
         )}
 
         {/* Attendance Tab */}
@@ -683,7 +718,16 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 ref={shiftAttendanceScrollRef}
                 className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
-                <table className="w-full table-fixed">
+                <table className="w-full">
+                  <ColGroup
+                    widths={[
+                      '11%',
+                      ...Array.from(
+                        { length: attendanceDates.length * 4 },
+                        () => `${(89 / Math.max(attendanceDates.length * 4, 1)).toFixed(2)}%`,
+                      ),
+                    ]}
+                  />
                   <thead className="bg-gray-50">
                     <tr>
                       <SortableTableHead
@@ -795,7 +839,16 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 ref={nonShiftAttendanceScrollRef}
                 className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
-                <table className="w-full table-fixed">
+                <table className="w-full">
+                  <ColGroup
+                    widths={[
+                      '11%',
+                      ...Array.from(
+                        { length: attendanceDates.length },
+                        () => `${(89 / Math.max(attendanceDates.length, 1)).toFixed(2)}%`,
+                      ),
+                    ]}
+                  />
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <SortableTableHead
@@ -833,10 +886,18 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                         {attendanceDates.map((date) => {
                           const record = recordFor(employee.id, date);
                           return (
-                            <td key={date} className="px-0.5 py-2 text-center text-xs border-l border-gray-200">
-                              {record?.status === 'Present' ? <span className="text-green-600">P</span>
-                                : record?.status === 'Absent' ? <span className="text-red-600">A</span>
-                                : record?.status === 'Late' ? <span className="text-orange-600">L</span>
+                            <td key={date} className="px-0.5 py-2 text-center text-[11px] border-l border-gray-200">
+                              {record?.status === 'Present' || record?.status === 'Late' ? (
+                                <span
+                                  className={record.status === 'Late' ? 'text-orange-600' : 'text-green-600'}
+                                  title={`${record.status}${hm(record.scheduledIn) ? ` · due ${hm(record.scheduledIn)}` : ''}${hm(record.actualIn) ? ` · in ${hm(record.actualIn)}` : ''}${hm(record.actualOut) ? ` · out ${hm(record.actualOut)}` : ''}`}
+                                >
+                                  {hm(record.actualIn) || (record.status === 'Late' ? 'L' : 'P')}
+                                  {hm(record.actualOut) ? (
+                                    <span className="block text-[10px] text-gray-500">{hm(record.actualOut)}</span>
+                                  ) : null}
+                                </span>
+                              ) : record?.status === 'Absent' ? <span className="text-red-600">A</span>
                                 : record?.status === 'HalfDay' ? <span className="text-herme">½</span>
                                 : <span className="text-gray-400">-</span>}
                             </td>
@@ -946,7 +1007,8 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col">
                 <h3 className="text-lg text-gray-900 mb-4">Leave Balance Summary</h3>
                 <div ref={leaveBalanceScrollRef} className="overflow-auto flex-1 max-h-[calc(100vh-12rem)]">
-                  <table className="w-full table-fixed">
+                  <table className="w-full">
+                    <ColGroup widths={['40%', '20%', '20%', '20%']} />
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         {LEAVE_BALANCE_COLUMNS.map(column => (
@@ -1058,6 +1120,18 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
         )}
 
 
+        {activeTab === 'team' && (
+          <TeamPortal
+            employees={employees}
+            leaveBalances={leaveBalances}
+            leaveRequests={leaveRequests}
+            shiftSchedules={shiftSchedules}
+            publicHolidays={publicHolidays}
+            businessHoursJson={companyBusinessHoursJson}
+            onSubmitLeave={handlePortalSubmitLeave}
+          />
+        )}
+
         {activeTab === 'portal' && (
           <EmployeePortal
             employees={employees}
@@ -1065,6 +1139,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
             leaveRequests={leaveRequests}
             shiftSchedules={shiftSchedules}
             publicHolidays={publicHolidays}
+            businessHoursJson={companyBusinessHoursJson}
             onSubmitLeave={handlePortalSubmitLeave}
           />
         )}
@@ -1076,7 +1151,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
     {/* Attendance Detail Modal */}
     {selectedAttendanceEmployee && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-auto">
+        <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[var(--app-modal-max-h)] overflow-auto">
           <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 flex justify-between items-start z-10">
             <div>
               <h2 className="text-2xl text-gray-900">{selectedAttendanceEmployee.name}</h2>
@@ -1143,7 +1218,8 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
             <div>
               <h3 className="text-xl text-gray-900 mb-4">Detailed Attendance Records</h3>
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-auto">
-                <table className="w-full table-fixed">
+                <table className="w-full">
+                  <ColGroup widths={['14%', '12%', '12%', '12%', '12%', '14%', '12%', '12%']} />
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className={tableHeaderCls('left', 'px-6 text-gray-700')}>Date</th>

@@ -1,18 +1,34 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api as bisyncApi, type AppUser, type Company, type UserUpsert } from '../../api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api as bisyncApi, type AppUser, type Company, type LocationConfig, type UserUpsert } from '../../api';
 import { hrApi as api, toEmployeeRequest } from '../../modules/hr/api';
-import type { DivisionTreeNode, Employee, EmployeeLevel } from '../../modules/hr/types';
+import type { DivisionTreeNode, Employee, EmployeeLevel, LeaveBalanceRow, LeaveRequest } from '../../modules/hr/types';
 import { EmployeeDetailPanel } from './EmployeeDetailPanel';
-import { EmployeeDirectoryTab } from './EmployeeDirectoryTab';
+import { EmployeeDirectoryTab, type EmployeeLeaveStats } from './EmployeeDirectoryTab';
 import { emptyEmployeeForm, iso } from './employeeTabShared';
 import { orgSelectionPatch, resolveEmployeeOrg } from './orgSelectShared';
 import { PlatformAccessPanel, userUpsertForEmployee } from './UsersTab';
 import { checkinMethodLabel } from './employeeTabShared';
 import { getPhoneValidationError } from '../shared/CountryPhoneInput';
-import { getAddressValidationError } from '../shared/CountryAddressFields';
+import { formatPhoneInput } from '../../utils/countryFormat';
 import { parseUserAccess, setAccessControlType } from '../../data/userAccess';
-import { parseAddress } from '../../utils/countryFormat';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const EMPTY_LEAVE: EmployeeLeaveStats = {
+  outstandingRdo: 0,
+  outstandingRph: 0,
+  outstandingAl: 0,
+  unpaidLeaveTaken: 0,
+  medicalLeaveTaken: 0,
+};
+
+function inclusiveLeaveDays(startDate: string, endDate: string): number {
+  const start = Date.parse(`${startDate.slice(0, 10)}T00:00:00Z`);
+  const end = Date.parse(`${endDate.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
 
 type Props = {
   onDataChanged?: () => void;
@@ -25,26 +41,45 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   const [employeeLevels, setEmployeeLevels] = useState<EmployeeLevel[]>([]);
   const [orgTree, setOrgTree] = useState<DivisionTreeNode[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [locations, setLocations] = useState<LocationConfig[]>([]);
+  const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceRow[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [operatingCountryCode, setOperatingCountryCode] = useState('MY');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailSaving, setDetailSaving] = useState(false);
+
+  const [companyFilter, setCompanyFilter] = useState<number | ''>(selectedCompanyId ?? '');
+  const [locationFilter, setLocationFilter] = useState<number | ''>('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
+  const detailDraftRef = useRef<Employee | null>(null);
+  detailDraftRef.current = detailDraft;
   const [formData, setFormData] = useState({ ...emptyEmployeeForm });
   const [accessPanel, setAccessPanel] = useState<{ user: AppUser | UserUpsert; isNew: boolean } | null>(null);
   const [accessControlSaving, setAccessControlSaving] = useState(false);
 
   const today = new Date();
 
+  useEffect(() => {
+    setCompanyFilter(selectedCompanyId ?? '');
+    setLocationFilter('');
+  }, [selectedCompanyId]);
+
   const load = useCallback(async () => {
-    const [emps, users, levels, tree, settings, comps] = await Promise.all([
+    const [emps, users, levels, tree, settings, comps, locs, bals, reqs] = await Promise.all([
       api.employees.list(),
       bisyncApi.users().catch(() => [] as AppUser[]),
       api.levels.list(),
       api.org.tree(),
       api.settings.get().catch(() => ({ operatingCountryCode: 'MY' } as const)),
       bisyncApi.companies().catch(() => [] as Company[]),
+      bisyncApi.locationsConfig().catch(() => [] as LocationConfig[]),
+      api.leaveBalances.list().catch(() => [] as LeaveBalanceRow[]),
+      api.leaveRequests.list().catch(() => [] as LeaveRequest[]),
     ]);
     setEmployees(emps);
     setPlatformUsers(users);
@@ -52,6 +87,9 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
     setOrgTree(tree);
     setOperatingCountryCode(settings.operatingCountryCode || 'MY');
     setCompanies(comps);
+    setLocations(locs);
+    setLeaveBalances(bals);
+    setLeaveRequests(reqs);
   }, []);
 
   useEffect(() => {
@@ -104,23 +142,47 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
     return employee.isShiftEmployee;
   };
 
-  const platformUserFor = (employee: Employee) =>
-    platformUsers.find(u => u.employeeId === employee.id)
-    ?? platformUsers.find(u => u.email.toLowerCase() === employee.email.toLowerCase());
+  const platformUserFor = useCallback(
+    (employee: Employee) => platformUsers.find(u => u.employeeId === employee.id),
+    [platformUsers],
+  );
 
-  const filteredEmployees = useMemo(() => {
-    if (!selectedCompanyId) return [];
-    return employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
-  }, [employees, platformUsers, selectedCompanyId]);
+  const leaveStatsByEmployeeId = useMemo(() => {
+    const map = new Map<number, EmployeeLeaveStats>();
+    for (const balance of leaveBalances) {
+      map.set(balance.employeeId, {
+        outstandingRdo: Number(balance.rdoBalance) || 0,
+        outstandingRph: Number(balance.rphBalance) || 0,
+        outstandingAl: Number(balance.alBalance) || 0,
+        unpaidLeaveTaken: 0,
+        medicalLeaveTaken: 0,
+      });
+    }
+    for (const request of leaveRequests) {
+      if (request.status !== 'Approved') continue;
+      const days = inclusiveLeaveDays(request.startDate, request.endDate);
+      if (days <= 0) continue;
+      const current = map.get(request.employeeId) ?? { ...EMPTY_LEAVE };
+      if (request.type === 'UPL') {
+        current.unpaidLeaveTaken += days;
+      }
+      map.set(request.employeeId, current);
+    }
+    return map;
+  }, [leaveBalances, leaveRequests]);
 
-  const employeeCompanyName = (employee: Employee) => platformUserFor(employee)?.companyName ?? '—';
-  const employeeLocationLabel = (employee: Employee) => {
-    const names = platformUserFor(employee)?.locationNames;
-    if (!names?.length) return '—';
-    return names.join(', ');
-  };
+  const leaveStatsFor = useCallback(
+    (employeeId: number): EmployeeLeaveStats => leaveStatsByEmployeeId.get(employeeId) ?? EMPTY_LEAVE,
+    [leaveStatsByEmployeeId],
+  );
+
+  const effectiveCompanyId = typeof companyFilter === 'number' ? companyFilter : selectedCompanyId;
 
   const openAddEmployeeForm = () => {
+    if (typeof companyFilter !== 'number') {
+      setError('Select a company before adding an employee.');
+      return;
+    }
     setShowEmployeeForm(true);
     setFormData({ ...emptyEmployeeForm, joinDate: iso(today) });
   };
@@ -167,7 +229,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
       departmentId,
       position: position.trim(),
       joinDate,
-      companyId: selectedCompanyId ?? undefined,
+      companyId: effectiveCompanyId ?? undefined,
       fingerprintEnrolled: false,
       faceRecognitionEnrolled: false,
       isShiftEmployee: false,
@@ -220,28 +282,69 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   const closeEmployeeDetail = () => setDetailDraft(null);
 
   const saveEmployeeDetail = () => run(async () => {
-    if (!detailDraft) return;
-    if (!detailDraft.divisionId || !detailDraft.departmentId) {
+    const draft = detailDraftRef.current;
+    if (!draft) return;
+    setSuccessMessage(null);
+
+    const joinDate = (draft.joinDate ?? '').trim().match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? '';
+    const name = draft.name?.trim() ?? '';
+    const email = draft.email?.trim() ?? '';
+    const position = draft.position?.trim() ?? '';
+    const personalEmail = draft.personalEmail?.trim() ?? '';
+    const countryCode = countryCodeForEmployee(draft);
+    const mobile = formatPhoneInput(countryCode, draft.mobile ?? '');
+
+    if (!draft.divisionId || !draft.departmentId) {
       setError('Please select Division and Department.');
       return;
     }
-    const countryCode = countryCodeForEmployee(detailDraft);
-    const phoneError = getPhoneValidationError(countryCode, detailDraft.mobile, 'Mobile number', true);
+    if (!joinDate) {
+      setError('Join Date is required.');
+      return;
+    }
+    if (!name || !email || !position) {
+      setError('Name, work email, and position are required.');
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      setError('Work email is not a valid e-mail address.');
+      return;
+    }
+    if (personalEmail && !EMAIL_RE.test(personalEmail)) {
+      setError('Personal email is not a valid e-mail address.');
+      return;
+    }
+    const phoneError = getPhoneValidationError(countryCode, mobile, 'Mobile number', true);
     if (phoneError) {
       setError(phoneError);
       return;
     }
-    const addressError = getAddressValidationError(countryCode, parseAddress(detailDraft.permanentAddress));
-    if (addressError) {
-      setError(addressError);
-      return;
+
+    const normalized: Employee = {
+      ...draft,
+      name,
+      email,
+      position,
+      mobile,
+      joinDate,
+      personalEmail: personalEmail || null,
+    };
+    // Keep the open panel in sync if we normalized phone/date while saving.
+    setDetailDraft(normalized);
+    detailDraftRef.current = normalized;
+
+    setDetailSaving(true);
+    try {
+      await api.employees.update(normalized.id, {
+        ...toEmployeeRequest(normalized),
+        companyId: platformUserFor(normalized)?.companyId ?? effectiveCompanyId ?? undefined,
+      });
+      closeEmployeeDetail();
+      setSuccessMessage('Detail saved');
+      await notifyChanged();
+    } finally {
+      setDetailSaving(false);
     }
-    const saved = await api.employees.update(detailDraft.id, {
-      ...toEmployeeRequest(detailDraft),
-      companyId: platformUserFor(detailDraft)?.companyId ?? selectedCompanyId ?? undefined,
-    });
-    setDetailDraft(resolveEmployeeOrg(saved, orgTree));
-    await notifyChanged();
   });
 
   const handleDeleteEmployee = () => run(async () => {
@@ -299,20 +402,22 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   });
 
   const updateDetailDraft = (patch: Partial<Employee>) => {
-    if (!detailDraft) return;
-    let next = { ...detailDraft, ...patch };
-    if ('divisionId' in patch || 'departmentId' in patch) {
-      next = {
-        ...next,
-        ...orgSelectionPatch(orgTree, next.divisionId ?? null, next.departmentId ?? null),
-      };
-    }
-    if ('permanentAddress' in patch && typeof patch.permanentAddress === 'string') {
-      next.permanentAddress = patch.permanentAddress || null;
-    }
-    if (patch.checkinMethod === 'POS') next.posEnabled = true;
-    if (patch.checkinMethod && patch.checkinMethod !== 'POS') next.posEnabled = false;
-    setDetailDraft(next);
+    setDetailDraft(prev => {
+      if (!prev) return prev;
+      let next = { ...prev, ...patch };
+      if ('divisionId' in patch || 'departmentId' in patch) {
+        next = {
+          ...next,
+          ...orgSelectionPatch(orgTree, next.divisionId ?? null, next.departmentId ?? null),
+        };
+      }
+      if ('permanentAddress' in patch && typeof patch.permanentAddress === 'string') {
+        next.permanentAddress = patch.permanentAddress || null;
+      }
+      if (patch.checkinMethod === 'POS') next.posEnabled = true;
+      if (patch.checkinMethod && patch.checkinMethod !== 'POS') next.posEnabled = false;
+      return next;
+    });
   };
 
   const handleAccessPanelSaved = async () => {
@@ -331,16 +436,23 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   return (
     <>
       <EmployeeDirectoryTab
-        employees={filteredEmployees}
+        employees={employees}
+        companies={companies}
+        locations={locations}
+        companyFilter={companyFilter}
+        locationFilter={locationFilter}
+        searchQuery={searchQuery}
+        onCompanyFilterChange={setCompanyFilter}
+        onLocationFilterChange={setLocationFilter}
+        onSearchQueryChange={setSearchQuery}
         employeeLevels={employeeLevels}
         orgTree={orgTree}
         formData={formData}
         showEmployeeForm={showEmployeeForm}
         error={error}
-        noCompanySelected={!selectedCompanyId}
+        successMessage={successMessage}
+        leaveStatsFor={leaveStatsFor}
         platformUserFor={platformUserFor}
-        employeeCompanyName={employeeCompanyName}
-        employeeLocationLabel={employeeLocationLabel}
         employeeDivisionName={employeeDivisionName}
         departmentName={departmentName}
         countryCode={operatingCountryCode}
@@ -352,9 +464,13 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
         onFormChange={data => setFormData(prev => ({ ...prev, ...data }))}
         onSubmit={submitEmployeeForm}
         onSubmitWithGrantAccess={submitEmployeeFormWithGrantAccess}
-        onOpenDetail={id => void openEmployeeDetail(id)}
+        onOpenDetail={id => {
+          setSuccessMessage(null);
+          void openEmployeeDetail(id);
+        }}
         onToggleActive={toggleEmployeeActive}
         onClearError={() => setError(null)}
+        onClearSuccess={() => setSuccessMessage(null)}
       />
 
       {detailDraft && (
@@ -367,17 +483,18 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
           departmentName={departmentName}
           countryCode={countryCodeForEmployee(detailDraft)}
           employeeIsShift={employeeIsShift}
+          saving={detailSaving}
+          error={error}
           onClose={closeEmployeeDetail}
-          onSave={saveEmployeeDetail}
-          onDelete={() => {
-            if (confirm('Delete this employee permanently?')) handleDeleteEmployee();
-          }}
+          onSave={() => void saveEmployeeDetail()}
+          onDelete={handleDeleteEmployee}
           onUpdate={updateDetailDraft}
           onGrantAccess={() => openGrantAccessForEmployee(detailDraft)}
           onAccessControlTypeChange={updateAccessControlType}
           accessControlSaving={accessControlSaving}
           onResetPosPin={resetPosPin}
           onResetPayrollPin={resetPayrollPin}
+          onClearError={() => setError(null)}
         />
       )}
 

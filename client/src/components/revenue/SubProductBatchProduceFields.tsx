@@ -186,7 +186,7 @@ export function SubProductBatchProduceFields({
           </div>
 
           {cogsLabel ? (
-            <div className="space-y-1 min-w-[7rem] ml-auto">
+            <div className="space-y-1 min-w-[7rem] shrink-0 rounded-md border border-border/70 bg-background px-2.5 py-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS</p>
               <p className="text-sm font-semibold">{cogsLabel}</p>
               {cogsHint ? (

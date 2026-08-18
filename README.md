@@ -11,7 +11,20 @@ Hospitality operations platform — restaurant dashboard, revenue management, in
 | Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 |
 | Backend | ASP.NET Core 10 Web API |
 | Database | PostgreSQL 16 (Entity Framework Core + Npgsql) |
+| Desktop | Electron shell in `desktop/` (Windows / macOS / Linux) |
 | Dev | localhost API `:5299` + client `:5173` |
+
+### Desktop app
+
+```bash
+cd desktop
+npm install
+npm start          # cloud URL
+npm run dev        # local Vite at :5173
+npm run dist:win   # Windows installer (on Windows)
+```
+
+See `desktop/README.md` for packaging and `BISYNC_DESKTOP_URL` overrides.
 
 ## Quick start (localhost)
 
@@ -27,7 +40,7 @@ Hospitality operations platform — restaurant dashboard, revenue management, in
 docker compose up -d
 ```
 
-This starts PostgreSQL on `127.0.0.1:5432` with databases `bisync`, `bisync_archive`, and `bisync_audit` (user/password: `bisync`/`bisync`).
+This starts PostgreSQL on `127.0.0.1:5432` with databases `bisync`, `bisync_archive`, `bisync_audit`, and `bisync_tag_suggestions` (user/password: `bisync`/`bisync`).
 
 If the API crashes with `permission denied to create database`, something else (often native Windows PostgreSQL) is bound to port 5432. Stop that service and re-run `docker compose up -d`, or provision with `.\scripts\setup-local-postgres.ps1`.
 
@@ -101,6 +114,14 @@ For production, configure `ConnectionStrings__DefaultConnection` and `Connection
 | GET | `/api/inventory/alerts` | Low-stock alerts |
 | GET | `/api/revenue?period=week` | Revenue trend data |
 | GET | `/api/progress` | Development milestones |
+
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [`docs/SAAS_DB_TENANCY.md`](./docs/SAAS_DB_TENANCY.md) | Company DB promotion + location partitions |
+| [`docs/PRODUCT_TARGET_ARCHITECTURE.md`](./docs/PRODUCT_TARGET_ARCHITECTURE.md) | B2C / B2B / Sub-Product / FIFO rules |
+| [`docs/ACCOUNTING_ARCHITECTURE.md`](./docs/ACCOUNTING_ARCHITECTURE.md) | Accounting module: live payroll/bridges vs statutory GL roadmap |
 
 ## Development progress
 

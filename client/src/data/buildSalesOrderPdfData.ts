@@ -63,10 +63,22 @@ export function buildSalesOrderPdfData(params: {
       phone: params.company.phone || undefined,
       email: params.company.email || undefined,
     },
+    companyLogo: params.company.logoBase64
+      ? {
+          contentType: params.company.logoContentType,
+          base64: params.company.logoBase64,
+        }
+      : null,
     deliveryLocations: params.productionLocation
       ? [{
           name: params.productionLocation.name,
           address: formatLocationAddress(params.productionLocation),
+          logo: params.productionLocation.logoBase64
+            ? {
+                contentType: params.productionLocation.logoContentType,
+                base64: params.productionLocation.logoBase64,
+              }
+            : null,
         }]
       : [],
     vendor: {

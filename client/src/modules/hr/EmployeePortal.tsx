@@ -4,6 +4,7 @@ import {
   Lock, Eye, EyeOff, LayoutDashboard, Send,
 } from 'lucide-react';
 import type { Employee, LeaveBalanceRow, LeaveRequest, PublicHoliday, ShiftSchedule, LeaveType } from './types';
+import { resolveOfficeHoursForDate } from '../../data/companyBusinessHours';
 
 interface EmployeePortalProps {
   employees: Employee[];
@@ -11,6 +12,8 @@ interface EmployeePortalProps {
   leaveRequests: LeaveRequest[];
   shiftSchedules: ShiftSchedule[];
   publicHolidays: PublicHoliday[];
+  /** Company office hours for admin / non-shift calendar. */
+  businessHoursJson?: string | null;
   onSubmitLeave: (leave: { employeeId: number; type: LeaveType; startDate: string; endDate: string; reason?: string }) => Promise<void>;
 }
 
@@ -21,7 +24,7 @@ const fmt = (d: Date) =>
 const STANDARD_PW = 'Pass@123';
 
 export default function EmployeePortal({
-  employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, onSubmitLeave,
+  employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, businessHoursJson = null, onSubmitLeave,
 }: EmployeePortalProps) {
   const [step, setStep] = useState<'select' | 'login' | 'change-password' | 'dashboard'>('select');
   const [portalEmp, setPortalEmp] = useState<Employee | null>(null);
@@ -104,6 +107,14 @@ export default function EmployeePortal({
       }
       if (dow === 0) return { type: 'do' as const, label: 'Day Off' };
       return { type: 'work' as const, label: emp.shiftType || 'Work Day' };
+    }
+    const office = resolveOfficeHoursForDate(businessHoursJson, dateStr);
+    if (office) {
+      if (office.closed) return { type: 'weekend' as const, label: 'Closed' };
+      if (office.openFrom && office.openTo) {
+        return { type: 'work' as const, label: `${office.openFrom}–${office.openTo}` };
+      }
+      return { type: 'work' as const, label: 'Work Day' };
     }
     if (dow === 0 || dow === 6) return { type: 'weekend' as const, label: 'Weekend' };
     return { type: 'work' as const, label: 'Work Day' };

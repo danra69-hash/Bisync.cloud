@@ -169,7 +169,7 @@ export function VendorRatingDetailPage({ vendor, selectedCompanyId, onClose }: P
     <>
       <div className={MODAL_OVERLAY_CLS} onClick={onClose} role="presentation" aria-hidden />
       <div
-        className={`${MODAL_SHELL_CLS} w-[min(720px,94vw)] max-h-[90vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden`}
+        className={`${MODAL_SHELL_CLS} w-[min(720px,94vw)] max-h-[var(--app-modal-max-h)] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="vendor-rating-title"

@@ -20,13 +20,27 @@ export function productToUpsertPayload(
     category: product.category,
     group: product.group,
     isSubProduct: product.isSubProduct,
+    isVariableProduct: product.isVariableProduct,
+    variableMode: product.variableMode === 'combination' || product.variableMode === 'weight'
+      ? product.variableMode
+      : undefined,
+    variableChoiceQty: product.variableChoiceQty,
+    variableOptionsJson: product.variableOptionsJson,
+    variableMinCost: product.variableMinCost,
+    variableMaxCost: product.variableMaxCost,
+    isVariableComponent: product.isVariableComponent,
+    variableComponentOptionsJson: product.variableComponentOptionsJson,
     b2cEnabled: product.b2cEnabled,
     b2bEnabled: product.b2bEnabled,
     b2bPackageUnit: product.b2bPackageUnit,
     b2bSalesConfigJson: product.b2bSalesConfigJson,
     rrp: product.rrp,
-    yieldQuantity: product.isSubProduct ? product.yieldQuantity : undefined,
-    yieldUom: product.isSubProduct && product.yieldUom ? product.yieldUom : undefined,
+    yieldQuantity: product.isSubProduct || (product.b2cEnabled && !product.b2bEnabled)
+      ? (product.yieldQuantity > 0 ? product.yieldQuantity : 1)
+      : undefined,
+    yieldUom: (product.isSubProduct || (product.b2cEnabled && !product.b2bEnabled)) && product.yieldUom
+      ? product.yieldUom
+      : undefined,
     yieldAltUnitsJson: product.yieldAltUnitsJson,
     expiryPeriodDays: product.expiryPeriodDays,
     activationPeriodHours: product.activationPeriodHours,
