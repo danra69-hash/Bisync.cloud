@@ -79,11 +79,21 @@ public sealed class LedgerPostingService(BisyncDbContext db, MalaysiaAccountingP
         await SchemaPatcher.EnsureGlLedgerTablesAsync(db);
         await SchemaPatcher.EnsureGlBooksTablesAsync(db);
         await ResolveFunctionalCurrencyAsync(companyId, countryCode, persist: true, ct);
+        // Seed COA before pack extras so Chart of Accounts always has a baseline list
+        // even if localisation pack / SLA seeding fails on a tenant DB.
         await EnsureSeedAccountsAsync(companyId, ct);
         if (!string.IsNullOrWhiteSpace(countryCode)
             && countryCode.Equals("MY", StringComparison.OrdinalIgnoreCase))
         {
-            await malaysiaPack.EnsureMalaysiaPackAsync(companyId, ct);
+            try
+            {
+                await malaysiaPack.EnsureMalaysiaPackAsync(companyId, ct);
+            }
+            catch (Exception)
+            {
+                // Pack extras (roles/SLA/tax) must not block COA listing or Books bootstrap.
+                // EnsureCoreRolesAndSlaAsync can still be retried from pack UI / Scale.
+            }
         }
 
         await EnsurePeriodsForYearAsync(companyId, ResolveFiscalYear(await FiscalYearStartMonthAsync(companyId, ct), DateOnly.FromDateTime(DateTime.UtcNow)), ct);

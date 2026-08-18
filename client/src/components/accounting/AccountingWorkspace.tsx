@@ -80,7 +80,7 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<AccountingJournalDetail | null>(null);
 
-  const load = useCallback(async () => {
+    const load = useCallback(async () => {
     if (!companyId) {
       setStatus(null);
       setAccounts([]);
@@ -96,14 +96,22 @@ export function AccountingWorkspace({ companyId }: { companyId: number | null })
     setLoading(true);
     setError(null);
     try {
-      const [st, ac, j, p] = await Promise.all([
+      // Load COA independently so a journals/periods failure cannot blank the chart list.
+      let ac: AccountingAccount[] = [];
+      try {
+        ac = await api.accountingAccounts(companyId);
+        setAccounts(Array.isArray(ac) ? ac : []);
+      } catch (e) {
+        setAccounts([]);
+        setError(e instanceof Error ? e.message : 'Failed to load chart of accounts');
+      }
+
+      const [st, j, p] = await Promise.all([
         api.accountingStatus(companyId),
-        api.accountingAccounts(companyId),
         api.accountingJournals(companyId, 80),
         api.accountingPeriods(companyId),
       ]);
       setStatus(st);
-      setAccounts(ac);
       setJournals(j);
       setPeriods(p);
       const current =
@@ -396,7 +404,7 @@ function OverviewPanel({
 
 function ChartOfAccountsPanel({
   companyId,
-  accounts,
+  accounts: accountsProp,
   onChanged,
   onError,
 }: {
@@ -405,11 +413,34 @@ function ChartOfAccountsPanel({
   onChanged: () => void;
   onError: (msg: string | null) => void;
 }) {
+  const [rows, setRows] = useState<AccountingAccount[]>(accountsProp);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [accountType, setAccountType] = useState('expense');
   const [normalBalance, setNormalBalance] = useState('D');
   const [busy, setBusy] = useState(false);
+  const [loadingList, setLoadingList] = useState(false);
+
+  const refreshList = async () => {
+    setLoadingList(true);
+    try {
+      const list = await api.accountingAccounts(companyId);
+      setRows(Array.isArray(list) ? list : []);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to load chart of accounts');
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  useEffect(() => {
+    if (accountsProp.length > 0) setRows(accountsProp);
+  }, [accountsProp]);
+
+  useEffect(() => {
+    void refreshList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   const create = async () => {
     setBusy(true);
@@ -418,6 +449,7 @@ function ChartOfAccountsPanel({
       await api.accountingCreateAccount(companyId, { code, name, accountType, normalBalance });
       setCode('');
       setName('');
+      await refreshList();
       onChanged();
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Create account failed');
@@ -429,6 +461,7 @@ function ChartOfAccountsPanel({
   const toggleActive = async (a: AccountingAccount) => {
     try {
       await api.accountingUpdateAccount(companyId, a.id, { active: !a.active });
+      await refreshList();
       onChanged();
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Update failed');
@@ -437,7 +470,24 @@ function ChartOfAccountsPanel({
 
   return (
     <div className="space-y-4 max-w-5xl">
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs items-end border-t border-border pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <p className="text-xs font-semibold">
+          Chart of accounts
+          <span className="font-normal text-muted-foreground">
+            {' '}· {rows.length} account{rows.length === 1 ? '' : 's'}
+            {loadingList ? ' · refreshing…' : ''}
+          </span>
+        </p>
+        <button
+          type="button"
+          onClick={() => void refreshList()}
+          className="text-xs font-semibold border border-border px-3 py-1.5 rounded-md hover:bg-muted/40"
+        >
+          Refresh list
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs items-end">
         <label className="space-y-1">
           <span className="text-muted-foreground">Code</span>
           <input className="w-full border border-border rounded-md px-2 py-1.5 bg-background font-sans" value={code} onChange={e => setCode(e.target.value)} placeholder="6000" />
@@ -468,31 +518,39 @@ function ChartOfAccountsPanel({
         </button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto border border-border rounded-md">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="text-left text-muted-foreground border-b border-border">
-              <th className="py-1 pr-2 font-sans">Code</th>
-              <th className="py-1 pr-2">Name</th>
-              <th className="py-1 pr-2 font-sans">Type</th>
-              <th className="py-1 pr-2 font-sans">Bal</th>
-              <th className="py-1 font-sans">Active</th>
+            <tr className="text-left text-muted-foreground border-b border-border bg-muted/30">
+              <th className="py-2 px-2 font-sans">Code</th>
+              <th className="py-2 px-2">Name</th>
+              <th className="py-2 px-2 font-sans">Type</th>
+              <th className="py-2 px-2 font-sans">Bal</th>
+              <th className="py-2 px-2 font-sans">Active</th>
             </tr>
           </thead>
           <tbody>
-            {accounts.map(a => (
-              <tr key={a.id} className="border-b border-border/60">
-                <td className="py-1 pr-2 font-sans">{a.code}</td>
-                <td className="py-1 pr-2">{a.name}</td>
-                <td className="py-1 pr-2 font-sans">{a.accountType}</td>
-                <td className="py-1 pr-2 font-sans">{a.normalBalance}</td>
-                <td className="py-1">
-                  <button type="button" className="underline text-muted-foreground hover:text-foreground" onClick={() => void toggleActive(a)}>
-                    {a.active ? 'Yes' : 'No'}
-                  </button>
+            {rows.length === 0 && !loadingList ? (
+              <tr>
+                <td colSpan={5} className="py-6 px-2 text-muted-foreground">
+                  No accounts yet. Refresh to seed the hospitality default chart, or add an account above.
                 </td>
               </tr>
-            ))}
+            ) : (
+              rows.map(a => (
+                <tr key={a.id} className="border-b border-border/60">
+                  <td className="py-1.5 px-2 font-sans">{a.code}</td>
+                  <td className="py-1.5 px-2">{a.name}</td>
+                  <td className="py-1.5 px-2 font-sans">{a.accountType}</td>
+                  <td className="py-1.5 px-2 font-sans">{a.normalBalance}</td>
+                  <td className="py-1.5 px-2">
+                    <button type="button" className="underline text-muted-foreground hover:text-foreground" onClick={() => void toggleActive(a)}>
+                      {a.active ? 'Yes' : 'No'}
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
