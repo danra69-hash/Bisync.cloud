@@ -22,7 +22,7 @@ type Props = {
 
 export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClose, onNavigate }: Props) {
   const { t, navLabel } = useAppTranslation();
-  const { currentUser, users, setCurrentUserId, logout } = useCurrentUser();
+  const { currentUser, logout } = useCurrentUser();
   const [deviceUnlockOpen, setDeviceUnlockOpen] = useState(false);
   const displayName = currentUser?.fullName ?? t('common.unknownUser');
   const displayRole = currentUser?.role ?? '—';
@@ -85,21 +85,6 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
               <p className="text-xs text-white/45 truncate">{displayRole}</p>
             </div>
           </div>
-          {users.length > 1 && (
-            <select
-              value={currentUser?.id ?? ''}
-              onChange={e => setCurrentUserId(Number(e.target.value))}
-              className="w-full rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
-              style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
-              title={t('common.switchUser')}
-            >
-              {users.map(user => (
-                <option key={user.id} value={user.id} style={{ color: '#1a1a1a', background: '#ffffff' }}>
-                  {user.fullName}
-                </option>
-              ))}
-            </select>
-          )}
           <button
             type="button"
             onClick={() => {
