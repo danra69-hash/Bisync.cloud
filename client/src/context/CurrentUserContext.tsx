@@ -37,9 +37,8 @@ function resolveDefaultUserId(users: AppUser[]): number | null {
   return james?.id ?? active[0]?.id ?? null;
 }
 
-function upsertUser(list: AppUser[], user: AppUser): AppUser[] {
-  const next = list.filter(u => u.id !== user.id);
-  return [...next, user];
+function sessionUsersFor(user: AppUser | null | undefined): AppUser[] {
+  return user ? [user] : [];
 }
 
 export function CurrentUserProvider({ children }: { children: ReactNode }) {
@@ -51,23 +50,48 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    const authenticated = !REQUIRE_PLATFORM_LOGIN || localStorage.getItem(AUTH_KEY) === 'true';
+    if (!authenticated) {
+      setUsers([]);
+      setIsAuthenticated(false);
+      setCurrentUserIdState(null);
+      setLoading(false);
+      return;
+    }
+
     api.users()
       .then(list => {
         const active = list.filter(user => user.active);
-        setUsers(active);
 
-        const authenticated = !REQUIRE_PLATFORM_LOGIN || localStorage.getItem(AUTH_KEY) === 'true';
-        if (!authenticated) {
-          setIsAuthenticated(false);
-          setCurrentUserIdState(null);
+        if (REQUIRE_PLATFORM_LOGIN) {
+          // Production sessions are bound to the signed-in account only.
+          // Never keep the full user directory in session state (that powered the old sidebar switcher).
+          const storedRaw = localStorage.getItem(STORAGE_KEY);
+          const storedId = storedRaw ? Number(storedRaw) : null;
+          const match = storedId ? active.find(user => user.id === storedId) : undefined;
+          if (!match) {
+            localStorage.removeItem(AUTH_KEY);
+            localStorage.removeItem(STORAGE_KEY);
+            setUsers([]);
+            setIsAuthenticated(false);
+            setCurrentUserIdState(null);
+            return;
+          }
+          setUsers(sessionUsersFor(match));
+          setCurrentUserIdState(match.id);
+          localStorage.setItem(STORAGE_KEY, String(match.id));
+          setIsAuthenticated(true);
+          markUserActivity();
           return;
         }
 
+        // Local UI bypass only: pick a default active user without a password gate.
+        setUsers(active);
         const defaultId = resolveDefaultUserId(active);
         if (defaultId) {
           setCurrentUserIdState(defaultId);
           localStorage.setItem(STORAGE_KEY, String(defaultId));
-          if (!REQUIRE_PLATFORM_LOGIN) localStorage.setItem(AUTH_KEY, 'true');
+          localStorage.setItem(AUTH_KEY, 'true');
           setIsAuthenticated(true);
           markUserActivity();
         } else {
@@ -84,7 +108,12 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  /** Kept for context API compatibility — does not switch identity when platform login is required. */
   const setCurrentUserId = (id: number) => {
+    if (REQUIRE_PLATFORM_LOGIN) {
+      if (currentUserId != null && id !== currentUserId) return;
+      if (!users.some(u => u.id === id)) return;
+    }
     setCurrentUserIdState(id);
     localStorage.setItem(STORAGE_KEY, String(id));
   };
@@ -95,7 +124,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     const user = await api.login(email, password);
     if (!user.active) throw new Error('Invalid email or password.');
 
-    setUsers(prev => upsertUser(prev, user));
+    setUsers(sessionUsersFor(user));
     localStorage.setItem(AUTH_KEY, 'true');
     localStorage.setItem(STORAGE_KEY, String(user.id));
     setApiTenantCompanyId(user.companyId ?? null);
@@ -116,7 +145,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       locationIdsJson: user.locationIdsJson ?? '[]',
       accessJson: user.accessJson ?? '{"modules":[]}',
     };
-    setUsers(prev => upsertUser(prev, normalized));
+    setUsers(sessionUsersFor(normalized));
     localStorage.setItem(AUTH_KEY, 'true');
     localStorage.setItem(STORAGE_KEY, String(normalized.id));
     setApiTenantCompanyId(normalized.companyId ?? null);
@@ -136,13 +165,14 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
 
     const list = await api.users();
     const active = list.filter(user => user.active);
-    setUsers(active);
     const match = active.find(
       u => u.id === userId || u.email.toLowerCase() === email.trim().toLowerCase(),
     );
     if (!match) {
       throw new Error('The account linked on this device is no longer available.');
     }
+    // Do not retain the full directory — only the unlocked account belongs in session.
+    setUsers(sessionUsersFor(match));
     return match;
   }, [users]);
 
@@ -225,6 +255,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(AUTH_KEY);
     clearAllOnboardingFlags();
     clearUserActivity();
+    setUsers([]);
     setIsAuthenticated(false);
     setCurrentUserIdState(null);
   }, [users, currentUserId]);

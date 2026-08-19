@@ -9,6 +9,7 @@ export type CurrentUserContextValue = {
   users: AppUser[];
   loading: boolean;
   isAuthenticated: boolean;
+  /** @deprecated No UI switcher — when platform login is on, identity changes only via login/logout. */
   setCurrentUserId: (id: number) => void;
   login: (email: string, password: string) => Promise<void>;
   /** Unlock with OS Face ID / fingerprint / Windows Hello (or device unlock PIN via WebAuthn). */
