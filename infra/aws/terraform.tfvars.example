@@ -1,0 +1,13 @@
+aws_region  = "ap-southeast-1"
+name_prefix = "bisync-cloud"
+domain_name = "bisync.ai"
+
+# Leave blank to auto-discover the Route53 hosted zone for domain_name.
+hosted_zone_id = ""
+
+github_org  = "danra69-hash"
+github_repo = "Bisync.cloud"
+
+desired_count        = 0
+db_instance_class    = "db.t4g.medium"
+db_allocated_storage = 50

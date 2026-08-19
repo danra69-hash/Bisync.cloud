@@ -17,20 +17,18 @@ When you finish **implementing** changes in this repo, or after **any successful
    Do **not** merge/deploy if this fails. See `.cursor/rules/deploy-simulation-tests.mdc`.
 3. **Commit** — Stage relevant code changes only; never commit secrets (`.env`, credentials). Skip if working tree is clean.
 4. **Push** — `git push -u origin <branch>` (feature branches use `cursor/<name>-ebcb`). Open/update the PR into `master`.
-5. **Deploy** — Prefer **GitHub Actions CD** (`.github/workflows/deploy.yml`):
-   - Merging (or pushing) to **`master`** runs **pre-sim → build → deploy → post-sim**.
+5. **Deploy** — Prefer **GitHub Actions CD**:
+   - **GCP (current demo / Cloud Run):** `.github/workflows/deploy.yml` on merge to `master`.
+   - **AWS (`bisync.ai` Prod target):** `.github/workflows/deploy-aws.yml` (`workflow_dispatch` until cutover). See `docs/AWS_DEPLOY.md`.
    - Do **not** run `deploy-gcp.ps1` from Cloud Agents (no GCP credentials).
    - Manual Windows fallback only if CD is broken or the user asks:
      ```powershell
      powershell -ExecutionPolicy Bypass -File .\scripts\deploy-gcp.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
      ```
-6. **One-time CD setup** (human, Windows, once per repo):
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-deploy.ps1
-   ```
-   Creates Workload Identity Federation + deploy SA, and sets GitHub variables
-   `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` (no JSON keys).
-7. **Verify cloud** — After master deploy finishes, confirm Actions post-sim passed and `GET /api/health` returns 200 on the live URL.
+6. **One-time CD setup**
+   - GCP (human, Windows, once): `powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-deploy.ps1`
+   - AWS (human, once): `./scripts/setup-github-aws-deploy.sh` then `terraform apply` in `infra/aws` (see `docs/AWS_DEPLOY.md`).
+7. **Verify cloud** — After deploy finishes, confirm `GET /api/health` returns 200 on the live URL (`bisync.ai` on AWS; Cloud Run URL on GCP).
 
 ## Skip deploy only when
 
@@ -42,9 +40,10 @@ When you finish **implementing** changes in this repo, or after **any successful
 ## Project details
 
 - **GitHub:** `danra69-hash/Bisync.cloud`
-- **GCP project:** `project-8d670aa9-f439-44d9-8e1`
+- **AWS Prod domain (target):** `https://bisync.ai` — see `docs/AWS_DEPLOY.md`
+- **GCP project (demo):** `project-8d670aa9-f439-44d9-8e1`
 - **Cloud Run:** `bisync-cloud` in `asia-southeast1`
-- **Live URL:** https://bisync-cloud-389272498937.asia-southeast1.run.app
-- **CD workflow:** Actions → **Deploy Cloud Run**
+- **GCP live URL:** https://bisync-cloud-389272498937.asia-southeast1.run.app
+- **CD:** Actions → **Deploy Cloud Run** (GCP) / **Deploy AWS** (ECS)
 
 Report the commit hash, pushed branch, PR link, and that deploy will run on merge to `master` (or the Actions run URL if already on master).
