@@ -35,6 +35,16 @@ assert.match(controller, /Route\("api\/pos-sales"\)/, 'API route api/pos-sales')
 assert.match(controller, /preview/, 'Preview endpoint');
 assert.match(controller, /header-map/, 'Header map endpoint');
 
+const patcher = fs.readFileSync(
+  path.join(root, 'src/Bisync.Api/Data/SchemaPatcher.cs'),
+  'utf8',
+);
+assert.match(
+  patcher,
+  /EnsurePosSalesImportTablesAsync[\s\S]*MappingJson[\s\S]*DEFAULT '\{\{\}\}'/,
+  'MappingJson default must escape braces for ExecuteSqlRawAsync',
+);
+
 const service = fs.readFileSync(
   path.join(root, 'src/Bisync.Api/Services/PosSalesImportService.cs'),
   'utf8',
