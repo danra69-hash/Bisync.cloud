@@ -6,15 +6,23 @@ import {
   EULA_TITLE,
 } from '../../data/eula';
 
-export function EulaDocument({ className = '' }: { className?: string }) {
+export function EulaDocument({
+  className = '',
+  hideChrome = false,
+}: {
+  className?: string;
+  hideChrome?: boolean;
+}) {
   return (
     <article className={`space-y-5 text-sm leading-relaxed text-herme-ink/85 ${className}`}>
-      <header className="space-y-1 border-b border-herme-muted/50 pb-4">
-        <h1 className="text-lg font-bold text-herme-ink">{EULA_TITLE}</h1>
-        <p className="text-xs text-herme-ink/55">
-          Version {CURRENT_EULA_VERSION} · Effective {EULA_EFFECTIVE_DATE}
-        </p>
-      </header>
+      {!hideChrome ? (
+        <header className="space-y-1 border-b border-herme-muted/50 pb-4">
+          <h1 className="text-lg font-bold text-herme-ink">{EULA_TITLE}</h1>
+          <p className="text-xs text-herme-ink/55">
+            Version {CURRENT_EULA_VERSION} · Effective {EULA_EFFECTIVE_DATE}
+          </p>
+        </header>
+      ) : null}
 
       {EULA_INTRO.map(paragraph => (
         <p key={paragraph.slice(0, 48)}>{paragraph}</p>

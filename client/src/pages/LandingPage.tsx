@@ -327,19 +327,19 @@ export function LandingPage() {
             <p>{t('landing.footer')}</p>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-end">
               <a
-                href="/legal/eula"
+                href="/eula"
                 className="text-xs text-[#F37021] hover:text-[#D4550A] underline underline-offset-2"
               >
                 {t('landing.eulaLink')}
               </a>
               <a
-                href="/legal/privacy"
+                href="/privacy"
                 className="text-xs text-[#F37021] hover:text-[#D4550A] underline underline-offset-2"
               >
                 {t('landing.privacyLink')}
               </a>
               <a
-                href="/legal/dpa"
+                href="/dpa"
                 className="text-xs text-[#F37021] hover:text-[#D4550A] underline underline-offset-2"
               >
                 {t('landing.dpaLink')}

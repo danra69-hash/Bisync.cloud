@@ -41,9 +41,9 @@ export function AppRoot() {
   const salesOrderShare = parseSalesOrderShareTarget(window.location.pathname);
   const isDevConsole = matchDevConsolePath(window.location.pathname);
   const legalPath = window.location.pathname.replace(/\/+$/, '') || '/';
-  const isEulaPage = /^\/legal\/eula$/i.test(legalPath);
-  const isPrivacyPage = /^\/legal\/privacy$/i.test(legalPath);
-  const isDpaPage = /^\/legal\/dpa$/i.test(legalPath);
+  const isEulaPage = /^\/(legal\/)?eula$/i.test(legalPath);
+  const isPrivacyPage = /^\/(legal\/)?privacy$/i.test(legalPath);
+  const isDpaPage = /^\/(legal\/)?dpa$/i.test(legalPath);
   const isTeamApp = /^\/TEAM$/i.test(legalPath);
   const isPosApp = /^\/POS$/i.test(legalPath);
   const isKdsApp = /^\/KDS$/i.test(legalPath);

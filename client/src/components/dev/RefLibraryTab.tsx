@@ -646,19 +646,19 @@ export function RefLibraryTab() {
     switch (id) {
       case 'eula':
         return (
-          <LegalDetails intro={EULA_INTRO} version={CURRENT_EULA_VERSION} path="/legal/eula" />
+          <LegalDetails intro={EULA_INTRO} version={CURRENT_EULA_VERSION} path="/eula" />
         );
       case 'privacy':
         return (
           <LegalDetails
             intro={PRIVACY_POLICY_INTRO}
             version={CURRENT_PRIVACY_POLICY_VERSION}
-            path="/legal/privacy"
+            path="/privacy"
           />
         );
       case 'dpa':
         return (
-          <LegalDetails intro={DPA_INTRO} version={CURRENT_DPA_VERSION} path="/legal/dpa" />
+          <LegalDetails intro={DPA_INTRO} version={CURRENT_DPA_VERSION} path="/dpa" />
         );
       case 'platform-glossary':
         return <PlatformGlossaryDetails />;

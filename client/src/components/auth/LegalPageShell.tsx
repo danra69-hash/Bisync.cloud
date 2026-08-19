@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { LEGAL_PUBLIC_PATHS } from '../../data/legalShared';
 import { BrandEngineLockup } from '../layout/BrandEngineLockup';
 import { BisyncMarkTile } from '../layout/BisyncMark';
 
@@ -6,10 +7,26 @@ type Props = {
   title: string;
   version: string;
   effectiveDate: string;
+  /** Which legal doc this page is — used for related-link highlighting. */
+  doc?: 'eula' | 'privacy' | 'dpa';
   children: ReactNode;
 };
 
-export function LegalPageShell({ title, version, effectiveDate, children }: Props) {
+const RELATED = [
+  { id: 'eula' as const, label: 'EULA', href: LEGAL_PUBLIC_PATHS.eula },
+  { id: 'privacy' as const, label: 'Privacy Policy', href: LEGAL_PUBLIC_PATHS.privacy },
+  { id: 'dpa' as const, label: 'DPA', href: LEGAL_PUBLIC_PATHS.dpa },
+];
+
+export function LegalPageShell({ title, version, effectiveDate, doc, children }: Props) {
+  useEffect(() => {
+    const previous = document.title;
+    document.title = `${title} · Bisync.cloud`;
+    return () => {
+      document.title = previous;
+    };
+  }, [title]);
+
   return (
     <div className="min-h-screen bg-[#f7f5f2] text-herme-ink">
       <header className="border-b border-[#e8e8e8] bg-white">
@@ -34,6 +51,28 @@ export function LegalPageShell({ title, version, effectiveDate, children }: Prop
           <p className="mt-1 text-sm text-herme-ink/55">
             Version {version} · Effective {effectiveDate}
           </p>
+          <nav
+            aria-label="Legal documents"
+            className="mt-4 flex flex-wrap gap-x-3 gap-y-1 border-b border-[#e8e8e8] pb-4 text-xs"
+          >
+            {RELATED.map(item => {
+              const active = doc === item.id;
+              return (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={
+                    active
+                      ? 'font-semibold text-[#F37021]'
+                      : 'text-herme-ink/55 hover:text-[#F37021]'
+                  }
+                >
+                  {item.label}
+                </a>
+              );
+            })}
+          </nav>
           <div className="mt-6">{children}</div>
         </div>
       </main>

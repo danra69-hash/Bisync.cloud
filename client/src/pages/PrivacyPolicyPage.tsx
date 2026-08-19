@@ -9,8 +9,9 @@ export function PrivacyPolicyPage() {
       title={PRIVACY_POLICY_TITLE}
       version={CURRENT_PRIVACY_POLICY_VERSION}
       effectiveDate={LEGAL_EFFECTIVE_DATE}
+      doc="privacy"
     >
-      <PrivacyPolicyDocument />
+      <PrivacyPolicyDocument hideChrome />
     </LegalPageShell>
   );
 }

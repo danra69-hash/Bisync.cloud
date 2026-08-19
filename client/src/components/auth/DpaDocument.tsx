@@ -7,7 +7,13 @@ import {
   DPA_TITLE,
 } from '../../data/dpa';
 
-export function DpaDocument({ className = '' }: { className?: string }) {
+export function DpaDocument({
+  className = '',
+  hideChrome = false,
+}: {
+  className?: string;
+  hideChrome?: boolean;
+}) {
   return (
     <LegalDocument
       title={DPA_TITLE}
@@ -16,6 +22,7 @@ export function DpaDocument({ className = '' }: { className?: string }) {
       intro={DPA_INTRO}
       sections={DPA_SECTIONS}
       className={className}
+      hideChrome={hideChrome}
     />
   );
 }

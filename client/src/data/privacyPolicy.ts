@@ -1,4 +1,4 @@
-import { LEGAL_EFFECTIVE_DATE, LEGAL_PRODUCT, LEGAL_PROVIDER, type LegalSection } from './legalShared';
+import { LEGAL_CONTACT_EMAIL, LEGAL_EFFECTIVE_DATE, LEGAL_PRODUCT, LEGAL_PROVIDER, type LegalSection } from './legalShared';
 
 export const CURRENT_PRIVACY_POLICY_VERSION = '2026-07-24';
 
@@ -112,7 +112,7 @@ export const PRIVACY_POLICY_SECTIONS: LegalSection[] = [
     id: 'contact',
     heading: '13. Contact',
     paragraphs: [
-      `Privacy contact: ${LEGAL_PROVIDER}, operating ${LEGAL_PRODUCT}. Use in-product support or published website contact channels.`,
+      `Privacy contact: ${LEGAL_PROVIDER}, operating ${LEGAL_PRODUCT}. Email ${LEGAL_CONTACT_EMAIL}, or use in-product support and published website contact channels.`,
     ],
   },
 ];

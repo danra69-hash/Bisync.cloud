@@ -7,6 +7,8 @@ type Props = {
   intro: string[];
   sections: LegalSection[];
   className?: string;
+  /** When embedded in LegalPageShell, skip the duplicate title block. */
+  hideChrome?: boolean;
 };
 
 export function LegalDocument({
@@ -16,15 +18,18 @@ export function LegalDocument({
   intro,
   sections,
   className = '',
+  hideChrome = false,
 }: Props) {
   return (
     <article className={`space-y-5 text-sm leading-relaxed text-herme-ink/85 ${className}`}>
-      <header className="space-y-1 border-b border-herme-muted/50 pb-4">
-        <h1 className="text-lg font-bold text-herme-ink">{title}</h1>
-        <p className="text-xs text-herme-ink/55">
-          Version {version} · Effective {effectiveDate}
-        </p>
-      </header>
+      {!hideChrome ? (
+        <header className="space-y-1 border-b border-herme-muted/50 pb-4">
+          <h1 className="text-lg font-bold text-herme-ink">{title}</h1>
+          <p className="text-xs text-herme-ink/55">
+            Version {version} · Effective {effectiveDate}
+          </p>
+        </header>
+      ) : null}
 
       {intro.map((paragraph, index) => (
         <p key={`intro-${index}`}>{paragraph}</p>

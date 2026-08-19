@@ -9,8 +9,9 @@ export function DpaPage() {
       title={DPA_TITLE}
       version={CURRENT_DPA_VERSION}
       effectiveDate={LEGAL_EFFECTIVE_DATE}
+      doc="dpa"
     >
-      <DpaDocument />
+      <DpaDocument hideChrome />
     </LegalPageShell>
   );
 }
