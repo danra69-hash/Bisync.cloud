@@ -5287,6 +5287,7 @@ export const api = {
     if (opts.to) params.set('to', opts.to);
     return fetchJson<PosSalesListResult>(`/api/pos-sales?${params.toString()}`);
   },
+  posSalesFields: () => fetchJson<PosSalesSystemField[]>('/api/pos-sales/fields'),
   posSalesPreview: async (payload: { file: File; companyId: number }) => {
     const form = new FormData();
     form.append('file', payload.file);

@@ -503,11 +503,12 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           <h2 className="text-sm font-semibold">Automated QA</h2>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
             RMS-only Automated QA under ms@cubevalue.com — Setup & Tenancy, System Configuration
-            (incl. delivery locations), Component (Principal/Alternate UOMs + tag suggestions), Vendors
-            (State/City filters), Products, Operation (Order incl. Store Requisition & Team RMS PO counts /
-            Inventory / Production), Sales, and Reports. HR / Accounting / POS modules are out of scope.
-            Coming-soon RMS surfaces skip cleanly. On a successful pass, temporary QA data is deleted; QA
-            History is kept.
+            (incl. delivery locations), Component (Category/Group/Storage, Vendor Product suggestions,
+            Principal/Alternate UOMs), Vendors (State/City filters), Products, Operation (Order incl.
+            Store Requisition, Returnable Goods, Credit Notes, Team RMS PO counts / Inventory /
+            Production), Sales (B2B + POS Sales upload/header map), and Reports (incl. BCG Matrix &
+            Ops Expenses). HR / Accounting / POS modules are out of scope. Coming-soon Account Mapping
+            surfaces skip cleanly. On a successful pass, temporary QA data is deleted; QA History is kept.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

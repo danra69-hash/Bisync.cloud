@@ -510,6 +510,45 @@ public class DevConsoleController(
                 || locationExternalIds.Contains(m.LocationExternalId))
             .ExecuteDeleteAsync(ct));
 
+        await TrackAsync("posSalesImportLines", () => db.PosSalesImportLines
+            .Where(l => companyIds.Contains(l.CompanyId))
+            .ExecuteDeleteAsync(ct));
+        await TrackAsync("posSalesImportBatches", () => db.PosSalesImportBatches
+            .Where(b => companyIds.Contains(b.CompanyId))
+            .ExecuteDeleteAsync(ct));
+        await TrackAsync("posSalesHeaderMaps", () => db.PosSalesHeaderMaps
+            .Where(m => companyIds.Contains(m.CompanyId))
+            .ExecuteDeleteAsync(ct));
+
+        await TrackAsync("creditNotes", () => db.CreditNotes
+            .Where(c => c.CompanyId != null && companyIds.Contains(c.CompanyId.Value))
+            .ExecuteDeleteAsync(ct));
+        await TrackAsync("returnableGoodsReturns", () => db.ReturnableGoodsReturns
+            .Where(r => r.CompanyId != null && companyIds.Contains(r.CompanyId.Value))
+            .ExecuteDeleteAsync(ct));
+        await TrackAsync("wastageEntries", () => db.WastageEntries
+            .Where(w => w.CompanyId != null && companyIds.Contains(w.CompanyId.Value))
+            .ExecuteDeleteAsync(ct));
+
+        var promoIds = await db.Promotions.AsNoTracking()
+            .Where(p => companyIds.Contains(p.CompanyId))
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+        if (promoIds.Count > 0)
+        {
+            await TrackAsync("promotionProducts", () => db.PromotionProducts
+                .Where(pp => promoIds.Contains(pp.PromotionId))
+                .ExecuteDeleteAsync(ct));
+            await TrackAsync("promotions", () => db.Promotions
+                .Where(p => promoIds.Contains(p.Id))
+                .ExecuteDeleteAsync(ct));
+        }
+        else
+        {
+            counts["promotionProducts"] = 0;
+            counts["promotions"] = 0;
+        }
+
         await TrackAsync("cashPurchases", () => db.CashPurchases
             .Where(c => c.CompanyId != null && companyIds.Contains(c.CompanyId.Value))
             .ExecuteDeleteAsync(ct));
