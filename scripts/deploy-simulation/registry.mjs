@@ -60,6 +60,13 @@ export const SUITES = [
     run: 'node scripts/deploy-simulation/suites/pre-client-build.mjs',
   },
   {
+    id: 'pre-pulse',
+    title: 'Pulse fitness membership platform (domain + web build)',
+    phase: 'pre',
+    match: [/^pulse\//],
+    run: 'node scripts/deploy-simulation/suites/pre-pulse.mjs',
+  },
+  {
     id: 'post-live-smoke',
     title: 'Live health + SPA smoke after deploy',
     phase: 'post',

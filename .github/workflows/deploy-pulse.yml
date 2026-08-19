@@ -1,0 +1,212 @@
+# Deploy Pulse to its OWN GCP project / Cloud Run / Cloud SQL.
+# NOT Bisync. Does NOT run on Bisync master.
+#
+# Triggers:
+#   - push to branch `pulse` (Pulse release branch only)
+#   - workflow_dispatch (manual)
+#
+# Required GitHub VARIABLES (set by pulse/scripts/setup-gcp.sh):
+#   PULSE_GCP_PROJECT_ID
+#   PULSE_GCP_WORKLOAD_IDENTITY_PROVIDER
+#   PULSE_GCP_SERVICE_ACCOUNT
+#   PULSE_GCP_REGION (optional, default asia-southeast1)
+
+name: Deploy Pulse
+
+on:
+  push:
+    branches: [pulse]
+    paths:
+      - 'pulse/**'
+      - '.github/workflows/deploy-pulse.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pulse-standalone
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SERVICE_NAME: pulse-cloud
+  AR_REPO: pulse
+  IMAGE_NAME: pulse-cloud
+  SQL_INSTANCE: pulse-pg
+  DB_USER: pulse
+  PULSE_DB_NAME: pulse
+  SECRET_ID: pulse-db-password
+
+jobs:
+  deploy:
+    name: Build & deploy Pulse (standalone GCP)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Require Pulse GCP variables
+        env:
+          PROJECT_ID: ${{ vars.PULSE_GCP_PROJECT_ID }}
+          WIF: ${{ vars.PULSE_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SA: ${{ vars.PULSE_GCP_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PROJECT_ID}" || -z "${WIF}" || -z "${SA}" ]]; then
+            echo "Missing Pulse GCP GitHub variables." >&2
+            echo "Create a NEW GCP project (not Bisync), then run:" >&2
+            echo "  ./pulse/scripts/setup-gcp.sh --project=YOUR_PULSE_PROJECT_ID" >&2
+            echo "See pulse/DEPLOY.md" >&2
+            exit 1
+          fi
+          echo "Pulse project: ${PROJECT_ID}"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Pre-deploy Pulse simulation
+        run: node scripts/deploy-simulation/suites/pre-pulse.mjs
+
+      - name: Authenticate to Pulse GCP (WIF — not Bisync)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.PULSE_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PULSE_GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve image + SQL
+        id: meta
+        env:
+          PROJECT_ID: ${{ vars.PULSE_GCP_PROJECT_ID }}
+          REGION_VAR: ${{ vars.PULSE_GCP_REGION }}
+        run: |
+          set -euo pipefail
+          REGION="${REGION_VAR:-asia-southeast1}"
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-12)"
+          REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}"
+          IMAGE_LATEST="${REGISTRY}/${IMAGE_NAME}:latest"
+          IMAGE_SHA="${REGISTRY}/${IMAGE_NAME}:${SHORT_SHA}"
+          CONN="$(gcloud sql instances describe "${SQL_INSTANCE}" \
+            --project="${PROJECT_ID}" \
+            --format='value(connectionName)')"
+          if [[ -z "${CONN}" ]]; then
+            echo "Cloud SQL '${SQL_INSTANCE}' not found in ${PROJECT_ID}. Run pulse/scripts/setup-gcp.sh first." >&2
+            exit 1
+          fi
+          {
+            echo "project_id=${PROJECT_ID}"
+            echo "region=${REGION}"
+            echo "image_latest=${IMAGE_LATEST}"
+            echo "image_sha=${IMAGE_SHA}"
+            echo "sql_connection=${CONN}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure database exists
+        env:
+          PROJECT_ID: ${{ steps.meta.outputs.project_id }}
+        run: |
+          set -euo pipefail
+          if gcloud sql databases describe "${PULSE_DB_NAME}" \
+            --instance="${SQL_INSTANCE}" \
+            --project="${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "Database ${PULSE_DB_NAME} OK"
+          else
+            gcloud sql databases create "${PULSE_DB_NAME}" \
+              --instance="${SQL_INSTANCE}" \
+              --project="${PROJECT_ID}"
+          fi
+
+      - name: Build Pulse image
+        env:
+          PROJECT_ID: ${{ steps.meta.outputs.project_id }}
+          IMAGE: ${{ steps.meta.outputs.image_latest }}
+          IMAGE_SHA: ${{ steps.meta.outputs.image_sha }}
+        run: |
+          set -euo pipefail
+          BUILD_ID="$(gcloud builds submit \
+            --project="${PROJECT_ID}" \
+            --config=pulse/cloudbuild.yaml \
+            --substitutions="_IMAGE=${IMAGE},_IMAGE_SHA=${IMAGE_SHA}" \
+            --async \
+            --format='value(id)')"
+          echo "Cloud Build: ${BUILD_ID}"
+          for _ in $(seq 1 60); do
+            STATUS="$(gcloud builds describe "${BUILD_ID}" \
+              --project="${PROJECT_ID}" \
+              --format='value(status)')"
+            echo "status=${STATUS}"
+            case "${STATUS}" in
+              SUCCESS) exit 0 ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED)
+                gcloud builds log "${BUILD_ID}" --project="${PROJECT_ID}" || true
+                exit 1
+                ;;
+            esac
+            sleep 20
+          done
+          exit 1
+
+      - name: Deploy pulse-cloud
+        env:
+          PROJECT_ID: ${{ steps.meta.outputs.project_id }}
+          REGION: ${{ steps.meta.outputs.region }}
+          SQL_CONNECTION: ${{ steps.meta.outputs.sql_connection }}
+          IMAGE: ${{ steps.meta.outputs.image_sha }}
+        run: |
+          set -euo pipefail
+          gcloud run deploy "${SERVICE_NAME}" \
+            --project="${PROJECT_ID}" \
+            --image="${IMAGE}" \
+            --region="${REGION}" \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=2 \
+            --timeout=300 \
+            --cpu-boost \
+            --startup-probe=tcpSocket.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=36 \
+            --add-cloudsql-instances="${SQL_CONNECTION}" \
+            --set-secrets="DB_PASSWORD=${SECRET_ID}:latest" \
+            --set-env-vars="NODE_ENV=production" \
+            --set-env-vars="PULSE_DB_NAME=${PULSE_DB_NAME}" \
+            --set-env-vars="PULSE_DB_USER=${DB_USER}" \
+            --set-env-vars="PULSE_CLOUDSQL_CONNECTION=${SQL_CONNECTION}" \
+            --set-env-vars="PULSE_GIT_SHA=${GITHUB_SHA}"
+
+      - name: Print live URL + health
+        env:
+          PROJECT_ID: ${{ steps.meta.outputs.project_id }}
+          REGION: ${{ steps.meta.outputs.region }}
+        run: |
+          set -euo pipefail
+          URL="$(gcloud run services describe "${SERVICE_NAME}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --format='value(status.url)')"
+          echo "PULSE_LIVE_URL=${URL}"
+          echo "### Pulse live URL" >> "${GITHUB_STEP_SUMMARY}"
+          echo "${URL}" >> "${GITHUB_STEP_SUMMARY}"
+          for i in 1 2 3 4 5 6 7 8; do
+            if curl -fsS "${URL}/api/health" | tee /tmp/pulse-health.json; then
+              grep -q '"ok":true' /tmp/pulse-health.json
+              CODE="$(curl -sS -o /tmp/pulse-index.html -w '%{http_code}' "${URL}/")"
+              test "${CODE}" = "200"
+              echo "Pulse healthy at ${URL}"
+              exit 0
+            fi
+            sleep 15
+          done
+          exit 1
