@@ -242,13 +242,14 @@ public sealed class ComponentVendorTagSuggestionService(
                 p.DeliveryPrice,
                 p.Group,
                 p.Specification,
+                p.DeliveryJson,
             })
             .ToListAsync(cancellationToken);
 
         var vendorIds = products.Select(p => p.VendorExternalId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var vendors = await tenantDb.Vendors.AsNoTracking()
             .Where(v => vendorIds.Contains(v.ExternalId))
-            .Select(v => new { v.ExternalId, v.Engaged, v.EngagedLocationIdsJson, v.Name })
+            .Select(v => new { v.ExternalId, v.Engaged, v.EngagedLocationIdsJson, v.Name, v.Type, v.EngagementStatus })
             .ToListAsync(cancellationToken);
         var vendorById = vendors.ToDictionary(v => v.ExternalId, StringComparer.OrdinalIgnoreCase);
 
@@ -300,15 +301,23 @@ public sealed class ComponentVendorTagSuggestionService(
                 if (!seenLocalIds.Add(local.ExternalId)) continue;
 
                 var engaged = IsEngaged(local.VendorExternalId);
+                vendorById.TryGetValue(local.VendorExternalId, out var vendorRow);
+                var vendorType = string.IsNullOrWhiteSpace(vendorRow?.Type) ? "offline" : vendorRow!.Type.Trim().ToLowerInvariant();
+                var engagementStatus = string.IsNullOrWhiteSpace(vendorRow?.EngagementStatus)
+                    ? "none"
+                    : vendorRow!.EngagementStatus.Trim().ToLowerInvariant();
                 matched.Add((engaged, suggestion.Probability, new
                 {
                     vendorProductId = local.ExternalId,
                     productName = local.ProductName,
                     vendorExternalId = local.VendorExternalId,
                     vendorName = string.IsNullOrWhiteSpace(local.VendorName)
-                        ? (vendorById.TryGetValue(local.VendorExternalId, out var vn) ? vn.Name : suggestion.VendorName)
+                        ? (vendorRow?.Name ?? suggestion.VendorName)
                         : local.VendorName,
                     vendorEngaged = engaged,
+                    vendorType,
+                    engagementStatus,
+                    packaging = FormatDeliveryPackaging(local.DeliveryJson),
                     probability = suggestion.Probability,
                     tagCount = suggestion.TagCount,
                     observationCount = component.ObservationCount,
@@ -541,6 +550,67 @@ public sealed class ComponentVendorTagSuggestionService(
         catch (JsonException)
         {
             return [];
+        }
+    }
+
+    /// <summary>Compact packaging path from DeliveryJson (e.g. 1box/12tin/400gr).</summary>
+    static string FormatDeliveryPackaging(string? deliveryJson)
+    {
+        if (string.IsNullOrWhiteSpace(deliveryJson)) return string.Empty;
+        try
+        {
+            using var doc = JsonDocument.Parse(deliveryJson);
+            var root = doc.RootElement;
+            static string Str(JsonElement el, params string[] names)
+            {
+                foreach (var n in names)
+                {
+                    if (el.TryGetProperty(n, out var p) && p.ValueKind == JsonValueKind.String)
+                        return (p.GetString() ?? string.Empty).Trim();
+                }
+                return string.Empty;
+            }
+            static decimal Num(JsonElement el, params string[] names)
+            {
+                foreach (var n in names)
+                {
+                    if (!el.TryGetProperty(n, out var p)) continue;
+                    if (p.ValueKind == JsonValueKind.Number && p.TryGetDecimal(out var d)) return d;
+                    if (p.ValueKind == JsonValueKind.String
+                        && decimal.TryParse(p.GetString(), System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var d2))
+                        return d2;
+                }
+                return 0;
+            }
+
+            var orderUnit = Str(root, "orderUnit", "OrderUnit");
+            if (string.IsNullOrWhiteSpace(orderUnit)) return string.Empty;
+            var orderQty = Num(root, "orderQty", "OrderQty");
+            if (orderQty <= 0) orderQty = 1;
+            var packUnit = Str(root, "packUnit", "PackUnit");
+            var packQty = Num(root, "packQty", "PackQty");
+            var unitUnit = Str(root, "unitUnit", "UnitUnit");
+            var unitQty = Num(root, "unitQty", "UnitQty");
+
+            static string Seg(decimal qty, string unit) =>
+                $"{(qty == Math.Truncate(qty) ? ((int)qty).ToString() : qty.ToString(System.Globalization.CultureInfo.InvariantCulture))}{unit.ToLowerInvariant()}";
+
+            var parts = new List<string> { Seg(orderQty, orderUnit) };
+            var hasPack = !string.IsNullOrWhiteSpace(packUnit)
+                && (!string.Equals(packUnit, orderUnit, StringComparison.OrdinalIgnoreCase) || packQty != 1);
+            if (hasPack && packQty > 0)
+                parts.Add(Seg(packQty, packUnit));
+            var hasUnit = !string.IsNullOrWhiteSpace(unitUnit)
+                && hasPack
+                && (!string.Equals(unitUnit, packUnit, StringComparison.OrdinalIgnoreCase) || unitQty != 1);
+            if (hasUnit && unitQty > 0)
+                parts.Add(Seg(unitQty, unitUnit));
+            return string.Join('/', parts);
+        }
+        catch (JsonException)
+        {
+            return string.Empty;
         }
     }
 }

@@ -38,9 +38,9 @@ import {
   resolveScopedTaggedVendorProducts,
   VendorProductTable,
   VendorProductTaggedSection,
-  VendorProductSuggestedSection,
   type CompanyLocationOption,
 } from './VendorProductTable';
+import { VendorProductSuggestionBox } from './VendorProductSuggestionBox';
 import { isVendorProductTagReady, countComponentTaggedVendors } from '../../data/vendorProductTagging';
 import {
   formatParStock,
@@ -691,9 +691,20 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
 
   function handleToggleVendorProductTag(product: VendorProductCatalogItem, tagged: boolean) {
     const activeLocationIds = selectedLocationIds;
+    const componentUom = form.vendorProductComponentUom[product.id] ?? form.recipeUnit;
+    let principalQty = form.vendorProductPrincipalQty[product.id] ?? '';
 
     if (tagged) {
-      const componentUom = form.vendorProductComponentUom[product.id] ?? form.recipeUnit;
+      // Auto-fill principal qty from delivery → component UOM so suggestion ticks work immediately.
+      if (!principalQty.trim()) {
+        const resolved = resolveComponentUomQty(
+          product.delivery,
+          form.recipeUnit,
+          form.altRecipeUnits,
+          componentUom,
+        );
+        if (resolved.qty != null) principalQty = String(resolved.qty);
+      }
       const assignedLocations = form.vendorProductLocations[product.id] ?? [];
       const tagReadyLocations = activeLocationIds.length > 0
         ? [...new Set([...assignedLocations, ...activeLocationIds])]
@@ -702,7 +713,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         recipeUnit: form.recipeUnit,
         altRecipeUnits: form.altRecipeUnits,
         componentUom,
-        principalQty: form.vendorProductPrincipalQty[product.id],
+        principalQty,
         productLocationIds: tagReadyLocations.length > 0
           ? tagReadyLocations
           : companyLocations.map(location => location.externalId),
@@ -714,11 +725,19 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     setForm(f => {
       let taggedVendorProductIds = [...f.taggedVendorProductIds];
       const vendorProductLocations = { ...f.vendorProductLocations };
+      const vendorProductPrincipalQty = { ...f.vendorProductPrincipalQty };
+      const vendorProductComponentUom = { ...f.vendorProductComponentUom };
       let productLocations = [...(vendorProductLocations[product.id] ?? [])];
 
       if (tagged) {
         if (!taggedVendorProductIds.includes(product.id)) {
           taggedVendorProductIds.push(product.id);
+        }
+        if (principalQty.trim()) {
+          vendorProductPrincipalQty[product.id] = principalQty;
+        }
+        if (!vendorProductComponentUom[product.id]) {
+          vendorProductComponentUom[product.id] = componentUom;
         }
         if (activeLocationIds.length > 0) {
           productLocations = [...new Set([...productLocations, ...activeLocationIds])];
@@ -740,13 +759,16 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       }
 
       const primary = taggedVendorProductIds.length > 0
-        ? VENDOR_PRODUCT_CATALOG.find(p => taggedVendorProductIds.includes(p.id))
+        ? applyVendorProductOverrides().find(p => taggedVendorProductIds.includes(p.id))
+          ?? VENDOR_PRODUCT_CATALOG.find(p => taggedVendorProductIds.includes(p.id))
         : undefined;
 
       return {
         ...f,
         taggedVendorProductIds,
         vendorProductLocations,
+        vendorProductPrincipalQty,
+        vendorProductComponentUom,
         vendor: primary?.vendorName ?? '',
         vendorProduct: primary?.productName ?? '',
         deliveryUnitPrice: primary ? String(primary.deliveryPrice) : f.deliveryUnitPrice,
@@ -766,35 +788,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     () => getComponentUomChoices(form.recipeUnit, form.altRecipeUnits),
     [form.recipeUnit, form.altRecipeUnits],
   );
-
-  const suggestedVendorProducts = useMemo(() => {
-    const catalog = applyVendorProductOverrides();
-    const tagged = new Set(form.taggedVendorProductIds);
-    const seen = new Set<string>();
-    const products: VendorProductCatalogItem[] = [];
-    for (const suggestion of tagSuggestions) {
-      if (suggestion.alreadyTagged) continue;
-      const id = suggestion.vendorProductId;
-      if (!id || tagged.has(id) || seen.has(id)) continue;
-      const product = catalog.find(p => p.id === id) ?? VENDOR_PRODUCT_CATALOG.find(p => p.id === id);
-      if (!product) continue;
-      seen.add(id);
-      products.push(product);
-    }
-    return products;
-  }, [tagSuggestions, form.taggedVendorProductIds]);
-
-  const suggestionProbabilityByProductId = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const suggestion of tagSuggestions) {
-      if (!suggestion.vendorProductId || suggestion.alreadyTagged) continue;
-      const prev = map[suggestion.vendorProductId];
-      if (prev == null || suggestion.probability > prev) {
-        map[suggestion.vendorProductId] = suggestion.probability;
-      }
-    }
-    return map;
-  }, [tagSuggestions]);
 
   const taggedPricing = useMemo(() => {
     const primaryId = form.taggedVendorProductIds[0];
@@ -962,7 +955,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-6">
           <div>
             <SectionTitle>Basic Info</SectionTitle>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField label="Component Name">
                 <input
                   className={`${inputCls}${nameError || hasExactCatalogNameMatch(similarComponentNameMatches) ? ' border-red-500 focus:ring-red-500' : ''}`}
@@ -972,6 +965,36 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 />
                 {nameError && <p className="text-xs text-red-500 mt-0.5">{nameError}</p>}
                 <SimilarNameMatchesNotice matches={similarComponentNameMatches} entityLabel="component" />
+                {selectedCompanyId && form.name.trim() ? (
+                  <VendorProductSuggestionBox
+                    componentName={form.name}
+                    suggestions={tagSuggestions}
+                    loading={suggestionLoading}
+                    error={suggestionError}
+                    taggedProductIds={form.taggedVendorProductIds}
+                    vendors={vendors}
+                    onTagProduct={handleToggleVendorProductTag}
+                    onVendorUpdated={updated => {
+                      setVendors(prev => {
+                        const idx = prev.findIndex(v => v.externalId === updated.externalId);
+                        if (idx < 0) return [...prev, updated];
+                        const next = [...prev];
+                        next[idx] = { ...next[idx], ...updated };
+                        return next;
+                      });
+                      setTagSuggestions(prev => prev.map(s =>
+                        s.vendorExternalId === updated.externalId
+                          ? {
+                              ...s,
+                              vendorEngaged: updated.engaged,
+                              vendorType: updated.type,
+                              engagementStatus: updated.engagementStatus,
+                            }
+                          : s,
+                      ));
+                    }}
+                  />
+                ) : null}
               </FormField>
               <FormField label="Component ID">
                 <input className={`${inputCls} bg-muted text-muted-foreground`} value={form.componentId} readOnly />
@@ -981,6 +1004,9 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                   </p>
                 )}
               </FormField>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 items-start">
               <FormField label="Category">
                 <select className={selectCls} value={form.category} onChange={e => handleCategoryChange(e.target.value)}>
                   {categoryOptions.map(category => <option key={category}>{category}</option>)}
@@ -995,13 +1021,10 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                   onChange={group => set('group', group)}
                 />
               </FormField>
-            </div>
-
-            <div className="mt-3 space-y-3">
               <FormField label="Storage Location">
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {form.storages.map((s, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div key={i} className="flex items-center gap-1.5">
                       <select
                         value={s}
                         onChange={e => {
@@ -1009,7 +1032,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                           updated[i] = e.target.value;
                           set('storages', updated);
                         }}
-                        className={`${selectCls} flex-1 max-w-md`}
+                        className={`${selectCls} flex-1 min-w-0`}
                       >
                         {storageOptions.map(option => <option key={option}>{option}</option>)}
                       </select>
@@ -1017,7 +1040,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                         <button
                           type="button"
                           onClick={() => set('storages', form.storages.filter((_, j) => j !== i))}
-                          className="p-1 text-muted-foreground hover:text-accent transition-colors"
+                          className="p-1 text-muted-foreground hover:text-accent transition-colors shrink-0"
                         >
                           <X size={12} />
                         </button>
@@ -1027,13 +1050,15 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                   <button
                     type="button"
                     onClick={() => set('storages', [...form.storages, storageOptions.find(option => !form.storages.includes(option)) ?? storageOptions[0]])}
-                    className="text-xs font-sans text-primary hover:underline flex items-center gap-1"
+                    className="text-[11px] font-sans text-primary hover:underline"
                   >
-                    + Add storage location
+                    + Add storage
                   </button>
                 </div>
               </FormField>
+            </div>
 
+            <div className="mt-3 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField label="Expiry (days)">
                   <input
@@ -1174,34 +1199,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 onProductLocationsChange: handleProductLocationsChange,
               }}
             />
-
-            {selectedCompanyId && form.name.trim() ? (
-              <VendorProductSuggestedSection
-                products={suggestedVendorProducts}
-                companyLocations={companyLocations}
-                hideYieldLoss={form.splitUse.enabled}
-                loading={suggestionLoading}
-                error={suggestionError}
-                probabilityByProductId={suggestionProbabilityByProductId}
-                handlers={{
-                  defaultComponentUom: form.recipeUnit,
-                  principalComponentUom: form.recipeUnit,
-                  altRecipeUnits: form.altRecipeUnits,
-                  componentUomChoices,
-                  componentUomByProduct: form.vendorProductComponentUom,
-                  principalQtyByProduct: form.vendorProductPrincipalQty,
-                  lossYieldByProduct: form.vendorProductLossYield,
-                  locationsByProduct: form.vendorProductLocations,
-                  taggedProductIds: form.taggedVendorProductIds,
-                  activeLocationIds: selectedLocationIds,
-                  onPrincipalQtyChange: handlePrincipalQtyChange,
-                  onLossYieldChange: handleLossYieldChange,
-                  onComponentUomChange: handleVendorProductComponentUomChange,
-                  onToggleTag: handleToggleVendorProductTag,
-                  onProductLocationsChange: handleProductLocationsChange,
-                }}
-              />
-            ) : null}
 
             <SectionTitle>Vendor &amp; Pricing</SectionTitle>
 

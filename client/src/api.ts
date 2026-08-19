@@ -2644,6 +2644,11 @@ export interface ComponentTagSuggestion {
   vendorExternalId: string;
   vendorName: string;
   vendorEngaged: boolean;
+  /** online | offline */
+  vendorType?: string;
+  engagementStatus?: string;
+  /** Compact packaging path e.g. 1box/12tin/400gr */
+  packaging?: string;
   probability: number;
   tagCount?: number;
   observationCount?: number;
