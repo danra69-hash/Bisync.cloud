@@ -1,0 +1,146 @@
+# Deploy Bisync.cloud to AWS ECS (bisync.ai).
+# One-time: terraform apply in infra/aws + set GitHub variables (see docs/AWS_DEPLOY.md).
+#
+# Does not replace GCP Cloud Run until you cut DNS / stop the GCP workflow.
+
+name: Deploy AWS
+
+on:
+  workflow_dispatch:
+  # Uncomment after AWS is primary:
+  # push:
+  #   branches: [master]
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build → ECR → ECS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+      ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY || 'bisync-cloud' }}
+      ECS_CLUSTER: ${{ vars.AWS_ECS_CLUSTER || 'bisync-cloud' }}
+      ECS_SERVICE: ${{ vars.AWS_ECS_SERVICE || 'bisync-cloud' }}
+      PUBLIC_BASE_URL: ${{ vars.AWS_PUBLIC_BASE_URL || 'https://bisync.ai' }}
+      DEV_CONSOLE_PATH: /dev/console
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+
+      - name: Require AWS_ROLE_ARN
+        run: |
+          if [[ -z "${{ vars.AWS_ROLE_ARN }}" ]]; then
+            echo "Set GitHub Actions variable AWS_ROLE_ARN (see docs/AWS_DEPLOY.md)." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1b24058444 # v2.0.1
+
+      - name: Build & push image
+        id: build
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          SHA_SHORT="${GITHUB_SHA::7}"
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}"
+          docker build \
+            --build-arg "VITE_DEV_CONSOLE_PATH=${DEV_CONSOLE_PATH}" \
+            -t "${IMAGE_URI}:${SHA_SHORT}" \
+            -t "${IMAGE_URI}:latest" \
+            .
+          docker push "${IMAGE_URI}:${SHA_SHORT}"
+          docker push "${IMAGE_URI}:latest"
+          echo "image=${IMAGE_URI}:${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Render new task definition
+        id: task
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          set -euo pipefail
+          TASK_ARN="$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+          aws ecs describe-task-definition --task-definition "${TASK_ARN}" \
+            --query 'taskDefinition' > /tmp/task.json
+
+          python3 <<'PY'
+          import json, os
+          with open("/tmp/task.json") as f:
+              td = json.load(f)
+          image = os.environ["IMAGE"]
+          for key in (
+              "taskDefinitionArn", "revision", "status", "requiresAttributes",
+              "compatibilities", "registeredAt", "registeredBy",
+          ):
+              td.pop(key, None)
+          for c in td.get("containerDefinitions", []):
+              if c.get("name") == "app":
+                  c["image"] = image
+                  envs = {e["name"]: e["value"] for e in c.get("environment", [])}
+                  envs["App__PublicBaseUrl"] = os.environ.get("PUBLIC_BASE_URL", envs.get("App__PublicBaseUrl", ""))
+                  c["environment"] = [{"name": k, "value": v} for k, v in envs.items()]
+          with open("/tmp/task-new.json", "w") as f:
+              json.dump(td, f)
+          PY
+
+          NEW_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/task-new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+          echo "task_definition=${NEW_ARN}" >> "$GITHUB_OUTPUT"
+
+      - name: Update ECS service
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${{ steps.task.outputs.task_definition }}" \
+            --desired-count 1 \
+            --force-new-deployment >/dev/null
+
+          echo "Waiting for service stability..."
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}"
+
+      - name: Smoke health
+        run: |
+          set -euo pipefail
+          URL="${PUBLIC_BASE_URL%/}/api/health"
+          echo "GET ${URL}"
+          for i in 1 2 3 4 5 6 7 8; do
+            CODE="$(curl -sS -o /tmp/health.json -w "%{http_code}" "${URL}" || true)"
+            echo "attempt ${i}: HTTP ${CODE}"
+            if [[ "${CODE}" == "200" ]]; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Health check failed" >&2
+          cat /tmp/health.json >&2 || true
+          exit 1
