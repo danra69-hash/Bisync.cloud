@@ -408,7 +408,7 @@ export const id = {
     privacyLink: 'Privacy Policy',
     dpaLink: 'Data Processing Addendum (DPA)',
     eulaAcceptSuffix: 'for Bisync.cloud SaaS subscription services.',
-    eulaVersionHint: 'Current version {{version}}. You can also open /legal/eula anytime.',
+    eulaVersionHint: 'Current version {{version}}. You can also open /eula anytime.',
     legalVersionHint: 'Versions — EULA {{eula}}, Privacy {{privacy}}, DPA {{dpa}}.',
     checkEmailTitle: 'Confirm your email',
     checkEmailBody: 'We prepared an activation link for {{email}}. Open it to activate your account (email delivery will be connected later).',

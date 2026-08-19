@@ -207,7 +207,7 @@ public class AuthController(
         });
     }
 
-    /// <summary>Public current SaaS EULA metadata (full text is also published at /legal/eula).</summary>
+    /// <summary>Public current SaaS EULA metadata (full text is also published at /eula).</summary>
     [HttpGet("eula")]
     public ActionResult<object> GetEula() => Ok(new
     {
@@ -215,7 +215,7 @@ public class AuthController(
         title = CurrentEulaTitle,
         effectiveDate = CurrentEulaEffectiveDate,
         provider = CurrentEulaProvider,
-        url = "/legal/eula",
+        url = "/eula",
     });
 
     /// <summary>Public metadata for all registration legal documents.</summary>
@@ -227,21 +227,21 @@ public class AuthController(
             version = CurrentEulaVersion,
             title = CurrentEulaTitle,
             effectiveDate = CurrentEulaEffectiveDate,
-            url = "/legal/eula",
+            url = "/eula",
         },
         privacyPolicy = new
         {
             version = CurrentPrivacyPolicyVersion,
             title = CurrentPrivacyPolicyTitle,
             effectiveDate = CurrentEulaEffectiveDate,
-            url = "/legal/privacy",
+            url = "/privacy",
         },
         dpa = new
         {
             version = CurrentDpaVersion,
             title = CurrentDpaTitle,
             effectiveDate = CurrentEulaEffectiveDate,
-            url = "/legal/dpa",
+            url = "/dpa",
         },
         provider = CurrentEulaProvider,
     });

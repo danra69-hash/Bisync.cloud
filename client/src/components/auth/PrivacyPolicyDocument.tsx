@@ -7,7 +7,13 @@ import {
   PRIVACY_POLICY_TITLE,
 } from '../../data/privacyPolicy';
 
-export function PrivacyPolicyDocument({ className = '' }: { className?: string }) {
+export function PrivacyPolicyDocument({
+  className = '',
+  hideChrome = false,
+}: {
+  className?: string;
+  hideChrome?: boolean;
+}) {
   return (
     <LegalDocument
       title={PRIVACY_POLICY_TITLE}
@@ -16,6 +22,7 @@ export function PrivacyPolicyDocument({ className = '' }: { className?: string }
       intro={PRIVACY_POLICY_INTRO}
       sections={PRIVACY_POLICY_SECTIONS}
       className={className}
+      hideChrome={hideChrome}
     />
   );
 }
