@@ -20,6 +20,7 @@ const required = [
   'infra/aws/terraform.tfvars.example',
   '.github/workflows/deploy-aws.yml',
   'scripts/setup-github-aws-deploy.sh',
+  'scripts/setup-github-aws-deploy.ps1',
 ];
 
 for (const rel of required) {

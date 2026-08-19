@@ -19,12 +19,52 @@ GCP Cloud Run stays available for demos. **Prod for `bisync.ai` is AWS.**
 
 Default region: **`ap-southeast-1`** (Singapore).
 
+## Windows quick start (PowerShell)
+
+Do **not** run these from `C:\WINDOWS\System32`. Open PowerShell in your **Bisync.cloud repo folder**.
+
+```powershell
+# 0) Install tools (once), then CLOSE and reopen PowerShell
+winget install Amazon.AWSCLI
+winget install Hashicorp.Terraform
+winget install Docker.DockerDesktop   # needed later to build/push the image
+
+# 1) Go to the repo (edit the path to match your machine)
+cd C:\Users\<you>\path\to\Bisync.cloud
+# If you don't have the AWS branch yet:
+#   git fetch origin
+#   git checkout cursor/aws-bisync-ai-deploy-ebcb
+
+# 2) Log in to AWS (creates ~/.aws/credentials)
+aws configure
+#   Access Key ID / Secret → IAM → your user → Security credentials
+#   Default region name → ap-southeast-1
+#   Default output format → json
+
+# 3) One-time GitHub OIDC role
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-aws-deploy.ps1
+
+# 4) Create VPC / ECR / RDS / ALB / ECS / Route53 for bisync.ai
+cd infra\aws
+Copy-Item terraform.tfvars.example terraform.tfvars
+# edit terraform.tfvars if needed (domain_name = "bisync.ai")
+terraform init
+terraform apply
+```
+
+PowerShell tip: use `;` between commands, not `&&` (unless you are on PowerShell 7+).
+
 ## Prerequisites (your AWS account)
+
 
 1. AWS account with billing enabled.
 2. Domain **`bisync.ai`** in **Route53** (hosted zone). If DNS is elsewhere, create the hosted zone and update registrar NS records first.
-3. Local tools (one-time bootstrap): `aws` CLI v2, Terraform ≥ 1.5, Docker.
+3. Local tools (one-time bootstrap on Windows):
+   - AWS CLI v2 — `winget install Amazon.AWSCLI`
+   - Terraform ≥ 1.5 — `winget install Hashicorp.Terraform`
+   - Docker Desktop — for the first image push
 4. GitHub repo admin access to set Actions variables.
+5. Work inside the **cloned repo directory**, not `System32`.
 
 You do **not** need to change application code for the first lift — the Production image already reads:
 
@@ -45,6 +85,8 @@ export AWS_REGION=ap-southeast-1
 aws route53 list-hosted-zones-by-name --dns-name bisync.ai.
 
 # 3) Create GitHub OIDC + deploy role + print GitHub variables
+#    Windows:  powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-aws-deploy.ps1
+#    macOS/Linux:
 ./scripts/setup-github-aws-deploy.sh
 
 # 4) Terraform (VPC, ECR, RDS, ALB, ECS, ACM, DNS)
