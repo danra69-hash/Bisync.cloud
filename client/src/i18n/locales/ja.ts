@@ -196,6 +196,7 @@ export const ja = {
       productAudit: 'Product Audit',
       externalPosMapping: '外部POSマッピング',
       activeSalesOrder: 'Sales Order',
+      posSales: 'POS売上',
 
       customerList: '顧客一覧',
       customerGroup: '顧客グループ',

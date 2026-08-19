@@ -121,6 +121,7 @@ builder.Services.AddScoped<CogsAuditService>();
 builder.Services.AddSingleton<SystemCogsAuditHistoryStore>();
 builder.Services.AddScoped<SystemCogsAuditSnapshotService>();
 builder.Services.AddScoped<SalesDataService>();
+builder.Services.AddScoped<PosSalesImportService>();
 builder.Services.AddScoped<ReportsService>();
 builder.Services.AddScoped<B2bSalesOrderService>();
 builder.Services.AddScoped<PurchaseOrderAcceptExpiryService>();

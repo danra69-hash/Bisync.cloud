@@ -196,6 +196,7 @@ export const ko = {
       productAudit: 'Product Audit',
       externalPosMapping: '외부 POS 매핑',
       activeSalesOrder: 'Sales Order',
+      posSales: 'POS 매출',
 
       customerList: '고객 목록',
       customerGroup: '고객 그룹',

@@ -6,6 +6,7 @@ import { SmartIngredientPage } from './SmartIngredientPage';
 import { ComponentConfigPage } from './ComponentConfigPage';
 import { CustomerListPage } from './CustomerListPage';
 import { ActiveSalesOrderPage } from './ActiveSalesOrderPage';
+import { PosSalesPage } from './PosSalesPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
 import { OrderPage } from './OrderPage';
@@ -124,6 +125,13 @@ function renderRevMgmtContent(
     case 'Active Sales Order':
       return (
         <ActiveSalesOrderPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'POS Sales':
+      return (
+        <PosSalesPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

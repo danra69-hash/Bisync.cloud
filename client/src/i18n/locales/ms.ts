@@ -196,6 +196,7 @@ export const ms = {
       productAudit: 'Product Audit',
       externalPosMapping: 'Pemetaan POS Luaran',
       activeSalesOrder: 'Sales Order',
+      posSales: 'Jualan POS',
 
       customerList: 'Senarai Pelanggan',
       customerGroup: 'Kumpulan Pelanggan',

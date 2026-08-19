@@ -3219,6 +3219,91 @@ export interface SalesDataResult {
   rows: SalesDataRow[];
 }
 
+export interface PosSalesSystemField {
+  key: string;
+  label: string;
+  requiredHint: boolean;
+  description: string;
+}
+
+export interface PosSalesHeaderMap {
+  companyId: number;
+  headerFingerprint: string;
+  mapping: Record<string, string>;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface PosSalesPreview {
+  fileName: string;
+  fileKind: string;
+  headerFingerprint: string;
+  headers: string[];
+  sampleRows: string[][];
+  totalDataRows: number;
+  suggestedMapping: Record<string, string>;
+  savedMapping?: Record<string, string> | null;
+  effectiveMapping: Record<string, string>;
+  requiresMapping: boolean;
+  systemFields: PosSalesSystemField[];
+}
+
+export interface PosSalesImportResult {
+  batchId: number;
+  businessDate: string;
+  importedCount: number;
+  skippedCount: number;
+  totalQuantity: number;
+  totalGross: number;
+  message: string;
+  requiresMapping: boolean;
+}
+
+export interface PosSalesLine {
+  id: number;
+  batchId: number;
+  businessDate: string;
+  saleAt?: string | null;
+  checkNumber: string;
+  productCode: string;
+  productName: string;
+  resolvedProductId?: number | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  discount: number;
+  tax: number;
+  covers: number;
+  paymentMethod: string;
+  tableLabel: string;
+  locationExternalId: string;
+}
+
+export interface PosSalesListResult {
+  batches: Array<{
+    id: number;
+    fileName: string;
+    fileKind: string;
+    businessDate: string;
+    locationExternalId: string;
+    importedCount: number;
+    skippedCount: number;
+    totalQuantity: number;
+    totalGross: number;
+    status: string;
+    message: string;
+    createdAt: string;
+    createdBy: string;
+  }>;
+  lines: PosSalesLine[];
+  summary: {
+    lineCount: number;
+    batchCount: number;
+    totalQuantity: number;
+    totalGross: number;
+  };
+}
+
 /** Shared payload for RMS common reports (`/api/reports/*`). */
 export interface ReportPayload {
   title: string;
@@ -5183,6 +5268,77 @@ export const api = {
     params.set('month', month);
     params.set('viewBy', viewBy);
     return fetchJson<SalesDataResult>(`/api/sales-data?${params.toString()}`);
+  },
+  posSalesList: (opts: {
+    companyId: number;
+    locationIds: string[];
+    from?: string;
+    to?: string;
+  }) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(opts.companyId));
+    if (opts.locationIds.length > 0) params.set('locationIds', opts.locationIds.join(','));
+    if (opts.from) params.set('from', opts.from);
+    if (opts.to) params.set('to', opts.to);
+    return fetchJson<PosSalesListResult>(`/api/pos-sales?${params.toString()}`);
+  },
+  posSalesPreview: async (payload: { file: File; companyId: number }) => {
+    const form = new FormData();
+    form.append('file', payload.file);
+    form.append('companyId', String(payload.companyId));
+    const res = await fetch(`${API_BASE}/api/pos-sales/preview`, {
+      method: 'POST',
+      headers: tenantHeaders(),
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text || `Preview failed (${res.status})`;
+      try {
+        const parsed = JSON.parse(text) as { message?: string };
+        if (parsed.message) message = parsed.message;
+      } catch { /* keep */ }
+      throw new Error(message);
+    }
+    return res.json() as Promise<PosSalesPreview>;
+  },
+  posSalesSaveHeaderMap: (payload: {
+    companyId: number;
+    headerFingerprint: string;
+    mapping: Record<string, string>;
+    updatedBy?: string;
+  }) =>
+    fetchJsonWithMethod<PosSalesHeaderMap>('/api/pos-sales/header-map', 'PUT', payload),
+  posSalesImport: async (payload: {
+    file: File;
+    companyId: number;
+    locationExternalId: string;
+    businessDate?: string;
+    mapping?: Record<string, string>;
+    createdBy?: string;
+  }) => {
+    const form = new FormData();
+    form.append('file', payload.file);
+    form.append('companyId', String(payload.companyId));
+    form.append('locationExternalId', payload.locationExternalId);
+    if (payload.businessDate) form.append('businessDate', payload.businessDate);
+    if (payload.mapping) form.append('mappingJson', JSON.stringify(payload.mapping));
+    if (payload.createdBy) form.append('createdBy', payload.createdBy);
+    const res = await fetch(`${API_BASE}/api/pos-sales/import`, {
+      method: 'POST',
+      headers: tenantHeaders(),
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text || `Import failed (${res.status})`;
+      try {
+        const parsed = JSON.parse(text) as { message?: string };
+        if (parsed.message) message = parsed.message;
+      } catch { /* keep */ }
+      throw new Error(message);
+    }
+    return res.json() as Promise<PosSalesImportResult>;
   },
   stockCards: (
     companyId: number | undefined,

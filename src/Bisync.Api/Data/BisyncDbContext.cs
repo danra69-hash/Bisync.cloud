@@ -45,6 +45,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosCancel> PosCancels => Set<PosCancel>();
     public DbSet<PosEodSession> PosEodSessions => Set<PosEodSession>();
     public DbSet<PosSaleDetail> PosSaleDetails => Set<PosSaleDetail>();
+    public DbSet<PosSalesHeaderMap> PosSalesHeaderMaps => Set<PosSalesHeaderMap>();
+    public DbSet<PosSalesImportBatch> PosSalesImportBatches => Set<PosSalesImportBatch>();
+    public DbSet<PosSalesImportLine> PosSalesImportLines => Set<PosSalesImportLine>();
     public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
     public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
     public DbSet<SalesModuleCalendarSettings> SalesModuleCalendarSettings => Set<SalesModuleCalendarSettings>();
@@ -294,6 +297,31 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.SalesChannel).HasMaxLength(20);
             e.Property(x => x.VariableMode).HasMaxLength(40);
             e.Property(x => x.WeightUom).HasMaxLength(40);
+        });
+        modelBuilder.Entity<PosSalesHeaderMap>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.HeaderFingerprint }).IsUnique();
+            e.Property(x => x.HeaderFingerprint).HasMaxLength(64);
+        });
+        modelBuilder.Entity<PosSalesImportBatch>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.BusinessDate });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.FileName).HasMaxLength(260);
+            e.Property(x => x.FileKind).HasMaxLength(16);
+            e.Property(x => x.HeaderFingerprint).HasMaxLength(64);
+            e.Property(x => x.Status).HasMaxLength(32);
+        });
+        modelBuilder.Entity<PosSalesImportLine>(e =>
+        {
+            e.HasIndex(x => x.BatchId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.BusinessDate });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.CheckNumber).HasMaxLength(64);
+            e.Property(x => x.ProductCode).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.PaymentMethod).HasMaxLength(64);
+            e.Property(x => x.TableLabel).HasMaxLength(64);
         });
         modelBuilder.Entity<PosEodSession>(e =>
         {

@@ -52,6 +52,7 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'External POS Mapping': 'revMgmt.items.externalPosMapping',
   'Sales Order': 'revMgmt.items.activeSalesOrder',
   'Active Sales Order': 'revMgmt.items.activeSalesOrder',
+  'POS Sales': 'revMgmt.items.posSales',
   'Customer List': 'revMgmt.items.customerList',
   'Customer Group': 'revMgmt.items.customerGroup',
   'Customer Management': 'revMgmt.items.customerManagement',

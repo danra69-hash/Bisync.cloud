@@ -196,6 +196,7 @@ export const id = {
       productAudit: 'Product Audit',
       externalPosMapping: 'Pemetaan POS Eksternal',
       activeSalesOrder: 'Sales Order',
+      posSales: 'Penjualan POS',
 
       customerList: 'Daftar Pelanggan',
       customerGroup: 'Grup Pelanggan',

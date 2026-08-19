@@ -196,6 +196,7 @@ export const es = {
       productAudit: 'Product Audit',
       externalPosMapping: 'Asignación de TPV externo',
       activeSalesOrder: 'Sales Order',
+      posSales: 'Ventas POS',
 
       customerList: 'Lista de clientes',
       customerGroup: 'Grupo de clientes',

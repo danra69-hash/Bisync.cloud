@@ -196,6 +196,7 @@ export const fr = {
       productAudit: 'Product Audit',
       externalPosMapping: 'Correspondance POS externe',
       activeSalesOrder: 'Sales Order',
+      posSales: 'Ventes POS',
 
       customerList: 'Liste des clients',
       customerGroup: 'Groupe de clients',

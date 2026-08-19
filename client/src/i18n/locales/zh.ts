@@ -196,6 +196,7 @@ export const zh = {
       productAudit: 'Product Audit',
       externalPosMapping: '外部 POS 映射',
       activeSalesOrder: 'Sales Order',
+      posSales: 'POS 销售',
 
       customerList: '客户列表',
       customerGroup: '客户分组',

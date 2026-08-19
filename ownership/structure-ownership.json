@@ -507,6 +507,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.pos-sales",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosSalesPage.tsx",
+      "symbol": "PosSalesPage",
+      "route": "/revenue/pos-sales",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-19",
+      "notes": "RMS Sales — upload PDF/CSV/Excel POS detailed sales with header mapping"
+    },
+    {
       "id": "dr.page.transfer",
       "kind": "client-page",
       "path": "client/src/components/revenue/TransferPage.tsx",
@@ -1315,6 +1326,17 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.pos-sales",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosSalesController.cs",
+      "symbol": "PosSalesController",
+      "route": "api/pos-sales",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-19",
+      "notes": "POS sales upload, header map, and import into POS DB"
     },
     {
       "id": "dr.api.b2b-customers",

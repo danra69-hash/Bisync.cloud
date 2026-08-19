@@ -196,6 +196,7 @@ export const th = {
       productAudit: 'Product Audit',
       externalPosMapping: 'การแมป POS ภายนอก',
       activeSalesOrder: 'Sales Order',
+      posSales: 'ยอดขาย POS',
 
       customerList: 'รายชื่อลูกค้า',
       customerGroup: 'กลุ่มลูกค้า',
