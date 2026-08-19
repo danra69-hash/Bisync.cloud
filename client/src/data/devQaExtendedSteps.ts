@@ -401,6 +401,14 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           `Expected minProbability ≥ 0.5, got ${suggestions.minProbability}`,
         );
         await assert(Array.isArray(suggestions.suggestions), 'Suggestions array missing');
+        const withPackaging = suggestions.suggestions.filter(s =>
+          typeof s.vendorProductId === 'string' && s.vendorProductId.length > 0,
+        );
+        const hasVendorMeta = withPackaging.some(s =>
+          typeof s.vendorEngaged === 'boolean'
+          || typeof s.vendorType === 'string'
+          || typeof s.packaging === 'string',
+        );
         update({
           detail: `Tag suggestions for ${sample.name} · ${suggestions.count} hit(s) (≥${Math.round(suggestions.minProbability * 100)}%)`,
           facts: {
@@ -409,8 +417,87 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
             minProbability: suggestions.minProbability,
             namesQueried: names.length,
             countsKeys: Object.keys(counts.counts).length,
+            suggestionRowsWithId: withPackaging.length,
+            hasVendorMeta: hasVendorMeta || suggestions.count === 0,
           },
           fixActions: defaultFixActions('component-tag-suggestions'),
+        });
+      },
+    },
+    {
+      id: 'component-category-group-storage',
+      label: 'My Component Category / Group / Storage one-line fields',
+      group: 'component',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId && ctx.components.length >= 1, 'Components missing');
+        const sample = ctx.components[0];
+        const list = await api.ingredients(ctx.companyId!);
+        const current = list.find(i => i.id === sample.ingredientId);
+        await assert(!!current?.id, `Ingredient #${sample.ingredientId} missing`);
+        const nextCategory = 'Dairy';
+        const nextGroup = 'QA Power Storage';
+        const nextStorage = ['Cold Room', 'Dry Store'];
+        const updated = await api.updateIngredient(current!.id, {
+          ...current!,
+          category: nextCategory,
+          group: nextGroup,
+          storageJson: JSON.stringify(nextStorage),
+          storageNote: `QA one-line layout ${ctx.runKey}`,
+        });
+        await assert((updated.category || '').trim() === nextCategory, `Category not persisted (got ${updated.category})`);
+        await assert((updated.group || '').trim() === nextGroup, `Group not persisted (got ${updated.group})`);
+        let storages: string[] = [];
+        try {
+          storages = JSON.parse(updated.storageJson || '[]') as string[];
+        } catch {
+          storages = [];
+        }
+        await assert(
+          Array.isArray(storages) && nextStorage.every(s => storages.includes(s)),
+          `Storage locations not persisted (got ${updated.storageJson})`,
+        );
+        update({
+          detail: `${updated.name} · ${nextCategory} / ${nextGroup} · ${storages.join(', ')}`,
+          facts: {
+            ingredientId: updated.id,
+            category: updated.category,
+            group: updated.group,
+            storages: storages.join('|'),
+            storageNote: updated.storageNote ?? '',
+          },
+          fixActions: defaultFixActions('component-category-group-storage'),
+        });
+      },
+    },
+    {
+      id: 'component-vendor-product-suggest-box',
+      label: 'Vendor Product suggestion box (name match + packaging)',
+      group: 'component',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId && ctx.components.length >= 1, 'Components missing');
+        const sample = ctx.components[0];
+        const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!].filter(Boolean) as string[];
+        const suggestions = await api.componentTagSuggestions(ctx.companyId!, sample.name, locs);
+        await assert(Array.isArray(suggestions.suggestions), 'Suggestions array missing');
+        // Fresh tenants may have an empty corpus — still verify response shape for the UI box.
+        for (const row of suggestions.suggestions.slice(0, 5)) {
+          await assert(!!row.productName?.trim(), 'Suggestion missing productName');
+          await assert(!!row.vendorName?.trim() || !!row.vendorExternalId?.trim(), 'Suggestion missing vendor');
+          await assert(typeof row.vendorEngaged === 'boolean', 'Suggestion missing vendorEngaged');
+        }
+        const engaged = suggestions.suggestions.filter(s => s.vendorEngaged && !s.alreadyTagged).length;
+        const unengaged = suggestions.suggestions.filter(s => !s.vendorEngaged && !s.alreadyTagged).length;
+        update({
+          detail: `Vendor Product suggestion for “${sample.name}” · ${suggestions.count} · engaged ${engaged} · not engaged ${unengaged}`,
+          facts: {
+            componentName: sample.name,
+            suggestionCount: suggestions.count,
+            engagedCount: engaged,
+            unengagedCount: unengaged,
+            samplePackaging: suggestions.suggestions[0]?.packaging ?? null,
+            sampleVendorType: suggestions.suggestions[0]?.vendorType ?? null,
+          },
+          fixActions: defaultFixActions('component-vendor-product-suggest-box'),
         });
       },
     },
@@ -912,6 +999,51 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         });
       },
     },
+    {
+      id: 'order-returnable-goods',
+      label: 'Returnable Goods overview',
+      group: 'operation-order',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId, 'Company missing');
+        const overview = await api.returnableGoods(ctx.companyId!);
+        await assert(!!overview && typeof overview === 'object', 'Returnable Goods overview missing');
+        await assert(Array.isArray(overview.ledger), 'Returnable Goods ledger missing');
+        await assert(Array.isArray(overview.summary), 'Returnable Goods summary missing');
+        await assert(Array.isArray(overview.returns), 'Returnable Goods returns missing');
+        update({
+          detail: `Returnable Goods · ledger ${overview.ledger.length} · summary ${overview.summary.length} · returns ${overview.returns.length}`,
+          facts: {
+            companyId: ctx.companyId!,
+            ledgerCount: overview.ledger.length,
+            summaryCount: overview.summary.length,
+            returnCount: overview.returns.length,
+          },
+          fixActions: defaultFixActions('order-returnable-goods'),
+        });
+      },
+    },
+    {
+      id: 'order-credit-notes',
+      label: 'Credit Note list + PO search',
+      group: 'operation-order',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId, 'Company missing');
+        const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!].filter(Boolean) as string[];
+        const notes = await api.creditNotes(ctx.companyId!, locs);
+        await assert(Array.isArray(notes), 'Credit notes list missing');
+        const poHits = await api.searchCreditNotePurchaseOrders(ctx.companyId!, 'QA');
+        await assert(Array.isArray(poHits), 'Credit note PO search missing');
+        update({
+          detail: `Credit Notes · ${notes.length} note(s) · PO search ${poHits.length} hit(s)`,
+          facts: {
+            creditNoteCount: notes.length,
+            poSearchHits: poHits.length,
+            locationCount: locs.length,
+          },
+          fixActions: defaultFixActions('order-credit-notes'),
+        });
+      },
+    },
   ],
 
   'verify-stock-after-cash': [
@@ -1123,6 +1255,93 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
       },
     },
     {
+      id: 'sales-pos-sales-fields',
+      label: 'POS Sales system fields',
+      group: 'sales',
+      run: async (_ctx, update) => {
+        const fields = await api.posSalesFields();
+        await assert(Array.isArray(fields) && fields.length >= 5, 'POS Sales fields missing');
+        const keys = new Set(fields.map(f => f.key));
+        for (const required of ['saleDate', 'productName', 'productCode', 'quantity', 'lineTotal']) {
+          await assert(keys.has(required), `POS Sales field missing: ${required}`);
+        }
+        update({
+          detail: `POS Sales fields · ${fields.length} · ${[...keys].slice(0, 6).join(', ')}…`,
+          facts: { fieldCount: fields.length, keys: [...keys].join(',') },
+          fixActions: defaultFixActions('sales-pos-sales-fields'),
+        });
+      },
+    },
+    {
+      id: 'sales-pos-sales-upload',
+      label: 'POS Sales preview · header map · import',
+      group: 'sales',
+      run: async (ctx, update) => {
+        await assert(!!ctx.companyId && !!ctx.restaurantExternalId, 'Company / restaurant missing');
+        const productLabel = ctx.finishedProduct?.name || ctx.b2bProduct?.name || 'QA Finished Product';
+        const businessDate = todayIso();
+        const csv = [
+          'Date,Item,Qty,Amount,Tax',
+          `${businessDate},${productLabel},2,90.00,5.40`,
+          `${businessDate},${productLabel} Alt,1,40.00,2.40`,
+        ].join('\n');
+        const file = new File([csv], `qa-pos-sales-${ctx.runKey}.csv`, { type: 'text/csv' });
+        const preview = await api.posSalesPreview({ file, companyId: ctx.companyId! });
+        await assert(Array.isArray(preview.headers) && preview.headers.length >= 3, 'Preview headers missing');
+        await assert(preview.totalDataRows >= 2, `Expected ≥2 data rows, got ${preview.totalDataRows}`);
+        await assert(!!preview.headerFingerprint, 'Header fingerprint missing');
+
+        const mapping: Record<string, string> = { ...(preview.effectiveMapping || preview.suggestedMapping || {}) };
+        // Ensure required targets exist even if auto-suggest missed a column.
+        const byNorm = Object.fromEntries(
+          preview.headers.map(h => [h.trim().toLowerCase(), h]),
+        );
+        if (!Object.values(mapping).includes('saleDate') && byNorm.date) mapping[byNorm.date] = 'saleDate';
+        if (!Object.values(mapping).includes('productName') && byNorm.item) mapping[byNorm.item] = 'productName';
+        if (!Object.values(mapping).includes('quantity') && byNorm.qty) mapping[byNorm.qty] = 'quantity';
+        if (!Object.values(mapping).includes('lineTotal') && byNorm.amount) mapping[byNorm.amount] = 'lineTotal';
+        if (!Object.values(mapping).includes('tax') && byNorm.tax) mapping[byNorm.tax] = 'tax';
+
+        await api.posSalesSaveHeaderMap({
+          companyId: ctx.companyId!,
+          headerFingerprint: preview.headerFingerprint,
+          mapping,
+          updatedBy: ctx.adminName || 'QA',
+        });
+
+        const importFile = new File([csv], `qa-pos-sales-${ctx.runKey}.csv`, { type: 'text/csv' });
+        const imported = await api.posSalesImport({
+          file: importFile,
+          companyId: ctx.companyId!,
+          locationExternalId: ctx.restaurantExternalId!,
+          businessDate,
+          mapping,
+          createdBy: ctx.adminName || 'QA',
+        });
+        await assert(imported.importedCount >= 1, `Expected imported lines, got ${imported.importedCount}`);
+        const listed = await api.posSalesList({
+          companyId: ctx.companyId!,
+          locationIds: [ctx.restaurantExternalId!],
+          from: businessDate,
+          to: businessDate,
+        });
+        await assert(listed.summary.lineCount >= 1, 'POS Sales list empty after import');
+        update({
+          detail: `POS Sales import batch #${imported.batchId} · ${imported.importedCount} line(s) · gross ${imported.totalGross}`,
+          facts: {
+            batchId: imported.batchId,
+            importedCount: imported.importedCount,
+            skippedCount: imported.skippedCount,
+            totalGross: imported.totalGross,
+            listLineCount: listed.summary.lineCount,
+            headerFingerprint: preview.headerFingerprint,
+            requiresMappingWas: preview.requiresMapping,
+          },
+          fixActions: defaultFixActions('sales-pos-sales-upload'),
+        });
+      },
+    },
+    {
       id: 'sales-account-mapping',
       label: 'Sales · Account Mapping',
       group: 'sales',
@@ -1138,40 +1357,124 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     id: 'report-itemized-sales',
     label: 'Itemized Sales Summary',
     group: 'reports',
-    run: async () => {
-      skipInactive('Itemized Sales Summary report');
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.restaurantExternalId, 'Company / location missing');
+      const month = periodMonthIso();
+      const report = await api.reportItemizedSalesSummary(
+        ctx.companyId!,
+        [ctx.restaurantExternalId!, ctx.kitchenExternalId!].filter(Boolean) as string[],
+        month,
+      );
+      await assert(!!report?.title || Array.isArray(report?.rows), 'Itemized Sales Summary empty response');
+      update({
+        detail: `Itemized Sales Summary · ${month} · ${(report.rows ?? []).length} row(s)`,
+        facts: { month, rowCount: (report.rows ?? []).length, title: report.title ?? '' },
+        fixActions: defaultFixActions('report-itemized-sales'),
+      });
     },
   },
   {
     id: 'report-inventory-summary',
     label: 'Inventory Summary',
     group: 'reports',
-    run: async () => {
-      skipInactive('Inventory Summary report');
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.kitchenExternalId, 'Company / location missing');
+      const period = periodMonthIso();
+      const report = await api.reportInventorySummary(
+        ctx.companyId!,
+        [ctx.kitchenExternalId!],
+        period,
+        'component',
+      );
+      await assert(!!report?.title || Array.isArray(report?.rows), 'Inventory Summary empty response');
+      update({
+        detail: `Inventory Summary · ${period} · ${(report.rows ?? []).length} row(s)`,
+        facts: { period, rowCount: (report.rows ?? []).length, title: report.title ?? '' },
+        fixActions: defaultFixActions('report-inventory-summary'),
+      });
     },
   },
   {
     id: 'report-purchase-summary',
     label: 'Detailed Purchase Summary',
     group: 'reports',
-    run: async () => {
-      skipInactive('Detailed Purchase Summary report');
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.restaurantExternalId, 'Company / location missing');
+      const month = periodMonthIso();
+      const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!].filter(Boolean) as string[];
+      const report = await api.reportDetailedPurchaseSummary(ctx.companyId!, locs, month);
+      await assert(!!report?.title || Array.isArray(report?.rows), 'Detailed Purchase Summary empty response');
+      update({
+        detail: `Detailed Purchase Summary · ${month} · ${(report.rows ?? []).length} row(s)`,
+        facts: { month, rowCount: (report.rows ?? []).length, title: report.title ?? '' },
+        fixActions: defaultFixActions('report-purchase-summary'),
+      });
     },
   },
   {
     id: 'report-production',
     label: 'Production Report',
     group: 'reports',
-    run: async () => {
-      skipInactive('Production Report');
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.kitchenExternalId, 'Company / location missing');
+      const month = periodMonthIso();
+      const report = await api.reportProduction(ctx.companyId!, [ctx.kitchenExternalId!], month);
+      await assert(!!report?.title || Array.isArray(report?.rows), 'Production Report empty response');
+      update({
+        detail: `Production Report · ${month} · ${(report.rows ?? []).length} row(s)`,
+        facts: { month, rowCount: (report.rows ?? []).length, title: report.title ?? '' },
+        fixActions: defaultFixActions('report-production'),
+      });
     },
   },
   {
     id: 'report-wastage',
     label: 'Wastage Report',
     group: 'reports',
-    run: async () => {
-      skipInactive('Wastage Report');
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.kitchenExternalId, 'Company / location missing');
+      const month = periodMonthIso();
+      const report = await api.reportWastage(ctx.companyId!, [ctx.kitchenExternalId!], month);
+      await assert(!!report?.title || Array.isArray(report?.rows), 'Wastage Report empty response');
+      update({
+        detail: `Wastage Report · ${month} · ${(report.rows ?? []).length} row(s)`,
+        facts: { month, rowCount: (report.rows ?? []).length, title: report.title ?? '' },
+        fixActions: defaultFixActions('report-wastage'),
+      });
+    },
+  },
+  {
+    id: 'report-bcg-matrix',
+    label: 'BCG Matrix',
+    group: 'reports',
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.restaurantExternalId, 'Company / location missing');
+      const month = periodMonthIso();
+      const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!].filter(Boolean) as string[];
+      const report = await api.reportBcgMatrix(ctx.companyId!, locs, month);
+      await assert(!!report?.title || Array.isArray(report?.rows), 'BCG Matrix empty response');
+      update({
+        detail: `BCG Matrix · ${month} · ${(report.rows ?? []).length} row(s)`,
+        facts: { month, rowCount: (report.rows ?? []).length, title: report.title ?? '' },
+        fixActions: defaultFixActions('report-bcg-matrix'),
+      });
+    },
+  },
+  {
+    id: 'report-ops-expenses',
+    label: 'Ops Expenses Analysis',
+    group: 'reports',
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.restaurantExternalId, 'Company / location missing');
+      const period = periodMonthIso();
+      const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!].filter(Boolean) as string[];
+      const report = await api.reportOpsExpensesAnalysis(ctx.companyId!, locs, period);
+      await assert(!!report?.title || Array.isArray(report?.rows), 'Ops Expenses Analysis empty response');
+      update({
+        detail: `Ops Expenses Analysis · ${period} · ${(report.rows ?? []).length} row(s)`,
+        facts: { period, rowCount: (report.rows ?? []).length, title: report.title ?? '' },
+        fixActions: defaultFixActions('report-ops-expenses'),
+      });
     },
   },
   {

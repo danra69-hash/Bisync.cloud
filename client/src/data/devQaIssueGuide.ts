@@ -198,6 +198,26 @@ const GUIDES: Record<string, QaIssueGuide> = {
     ],
     checks: ['Counts response valid', 'minProbability ≥ 0.5', 'Suggestions array present (may be empty)'],
   },
+  'component-category-group-storage': {
+    area: "Component \u00b7 My Component",
+    expected: "Category, Group, and Storage Location persist on My Component (one-line Basic Info layout).",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Open My Component detail and confirm Category / Group / Storage on one row.',
+      'Retry after verifying PUT /api/ingredients persists storageJson.',
+    ],
+    checks: ['Category persisted', 'Group persisted', 'Storage locations JSON includes Cold Room + Dry Store'],
+  },
+  'component-vendor-product-suggest-box': {
+    area: "Component \u00b7 My Component",
+    expected: "Vendor Product suggestion box API returns product name, vendor, engaged flag (packaging/type when available).",
+    whereToFix: [
+      'Open Dev Console → Automated QA → this step detail.',
+      'Confirm Vendor Product suggestion under Component Name in My Component detail.',
+      'Rebuild tag-suggestions corpus if counts stay at zero on a warm tenant.',
+    ],
+    checks: ['Suggestions array shape', 'vendorEngaged boolean', 'productName present'],
+  },
   'vendor-listings-state-city-filter': {
     area: "Vendors",
     expected: "QA vendors span ≥2 states/cities and State→City cascade filtering matches Vendor Listings behavior.",
@@ -508,6 +528,43 @@ const GUIDES: Record<string, QaIssueGuide> = {
     ],
     checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
   },
+  'sales-pos-sales-fields': {
+    area: "Sales \u00b7 POS Sales",
+    expected: "GET /api/pos-sales/fields returns saleDate, productName/code, quantity, lineTotal.",
+    whereToFix: [
+      'Open RMS → Sales → POS Sales and confirm the page loads.',
+      'Check PosSalesImportService.SystemFields and /api/pos-sales/fields.',
+    ],
+    checks: ['≥5 fields', 'saleDate/productName/quantity/lineTotal present'],
+  },
+  'sales-pos-sales-upload': {
+    area: "Sales \u00b7 POS Sales",
+    expected: "CSV preview, header map save, and import land lines in POS Sales list for the restaurant location.",
+    whereToFix: [
+      'Open RMS → Sales → POS Sales and upload a sample CSV.',
+      'Verify MappingJson schema ensure (escaped {{}}) and PosSalesImport* tables.',
+      'Purge QA Power companies if leftover imports collide.',
+    ],
+    checks: ['Preview headers + fingerprint', 'Header map saved', 'Import count ≥ 1', 'List shows lines'],
+  },
+  'order-returnable-goods': {
+    area: "Operation \u00b7 Order",
+    expected: "Returnable Goods overview returns ledger, summary, and returns arrays.",
+    whereToFix: [
+      'Open RMS → Order → Returnable Goods.',
+      'Check GET /api/returnable-goods.',
+    ],
+    checks: ['ledger array', 'summary array', 'returns array'],
+  },
+  'order-credit-notes': {
+    area: "Operation \u00b7 Order",
+    expected: "Credit Note list and PO search APIs respond for the QA company.",
+    whereToFix: [
+      'Open RMS → Order → Credit Note.',
+      'Check GET /api/credit-notes and /api/credit-notes/po-search.',
+    ],
+    checks: ['Credit notes array', 'PO search array'],
+  },
   'sales-account-mapping': {
     area: "Sales",
     expected: "Sales \u00b7 Account Mapping completes without error and records verification facts.",
@@ -530,53 +587,66 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'report-itemized-sales': {
     area: "Reports",
-    expected: "Itemized Sales Summary completes without error and records verification facts.",
+    expected: "Itemized Sales Summary API returns a report payload for the current month.",
     whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
+      'Open RMS → Reports → Itemized Sales Summary.',
+      'Check /api/reports/itemized-sales-summary.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Report title or rows present', 'Facts populated'],
   },
   'report-inventory-summary': {
     area: "Reports",
-    expected: "Inventory Summary completes without error and records verification facts.",
+    expected: "Inventory Summary API returns a report payload for the current period.",
     whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
+      'Open RMS → Reports → Inventory Summary.',
+      'Check /api/reports/inventory-summary.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Report title or rows present', 'Facts populated'],
   },
   'report-purchase-summary': {
     area: "Reports",
-    expected: "Detailed Purchase Summary completes without error and records verification facts.",
+    expected: "Detailed Purchase Summary API returns a report payload for the current month.",
     whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
+      'Open RMS → Reports → Detailed Purchase Summary.',
+      'Check /api/reports/detailed-purchase-summary.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Report title or rows present', 'Facts populated'],
   },
   'report-production': {
     area: "Reports",
-    expected: "Production Report completes without error and records verification facts.",
+    expected: "Production Report API returns a report payload for the current month.",
     whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
+      'Open RMS → Reports → Production Report.',
+      'Check /api/reports/production.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Report title or rows present', 'Facts populated'],
   },
   'report-wastage': {
     area: "Reports",
-    expected: "Wastage Report completes without error and records verification facts.",
+    expected: "Wastage Report API returns a report payload for the current month.",
     whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
+      'Open RMS → Reports → Wastage Report.',
+      'Check /api/reports/wastage.',
     ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
+    checks: ['Report title or rows present', 'Facts populated'],
+  },
+  'report-bcg-matrix': {
+    area: "Reports",
+    expected: "BCG Matrix API returns a report payload for the current month.",
+    whereToFix: [
+      'Open RMS → Reports → BCG Matrix.',
+      'Check /api/reports/bcg-matrix.',
+    ],
+    checks: ['Report title or rows present', 'Facts populated'],
+  },
+  'report-ops-expenses': {
+    area: "Reports",
+    expected: "Ops Expenses Analysis API returns a report payload for the current period.",
+    whereToFix: [
+      'Open RMS → Reports → Ops Expenses Analysis.',
+      'Check /api/reports/ops-expenses-analysis.',
+    ],
+    checks: ['Report title or rows present', 'Facts populated'],
   },
   'component-account-mapping': {
     area: "Component \u00b7 My Component",
