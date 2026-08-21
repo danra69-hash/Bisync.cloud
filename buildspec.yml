@@ -1,0 +1,25 @@
+version: 0.2
+
+env:
+  variables:
+    VITE_DEV_CONSOLE_PATH: "/dev/console"
+
+phases:
+  pre_build:
+    commands:
+      - echo "Building commit ${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+      - node scripts/verify-brand-assets.mjs
+  build:
+    commands:
+      - docker build --no-cache --pull --build-arg "VITE_DEV_CONSOLE_PATH=$VITE_DEV_CONSOLE_PATH" -t "$REPO_URI:${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}" -t "$REPO_URI:latest" .
+  post_build:
+    commands:
+      - docker push "$REPO_URI:${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}"
+      - docker push "$REPO_URI:latest"
+      - printf '[{"name":"api","imageUri":"%s"}]' "$REPO_URI:${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}" > imagedefinitions.json
+      - cat imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
