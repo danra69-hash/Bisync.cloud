@@ -79,6 +79,7 @@ ADD https://truststore.pki.rds.amazonaws.com/ap-southeast-1/ap-southeast-1-bundl
 
 COPY --from=api-build --chown=app:app /app/publish .# Canonical venue floor plans — restored on startup when DB is empty/stock.
 COPY --chown=app:app data/floor-plans/ /app/data/floor-plans/
+
 # /app itself is created as root; give the runtime user ownership so ephemeral
 # archives (COGS audit history, stock-card archive) can be created under ContentRoot.
 RUN mkdir -p /app/data-archives/cogs-audit-history/system \
