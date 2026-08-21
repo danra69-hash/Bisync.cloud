@@ -77,7 +77,8 @@ ENV ASPNETCORE_URLS=http://+:8080
 # RDS certificate authority bundle — required by SSL Mode=VerifyFull
 ADD https://truststore.pki.rds.amazonaws.com/ap-southeast-1/ap-southeast-1-bundle.pem /app/rds-ca.pem
 
-COPY --from=api-build --chown=app:app /app/publish .# Canonical venue floor plans — restored on startup when DB is empty/stock.
+COPY --from=api-build --chown=app:app /app/publish .
+# Canonical venue floor plans — restored on startup when DB is empty/stock.
 COPY --chown=app:app data/floor-plans/ /app/data/floor-plans/
 
 # /app itself is created as root; give the runtime user ownership so ephemeral
