@@ -1,13 +1,21 @@
+using System.Security.Claims;
+using Bisync.Api.Auth;
 using Bisync.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Bisync.Api.Tenancy;
 
 /// <summary>
-/// Resolves company/user from:
-/// 1. X-Bisync-Company-Id / X-Bisync-User-Id headers (preferred)
-/// 2. companyId query string (legacy UI)
-/// Platform Super Admin / Dev Team users may omit company (cross-tenant reads).
+/// Resolves company/user identity for the request.
+///
+/// Primary path: validated JWT claims (issued by /api/auth/login). The company a
+/// non-admin sees is fixed in the token and cannot be changed by any header.
+///
+/// Legacy path: X-Bisync-User-Id / X-Bisync-Company-Id headers, honoured ONLY while
+/// Auth:AllowLegacyHeaders is true and only when no token was presented. This exists
+/// so the API can be deployed before every client has been updated.
+///
 /// Identity is always read from the shared control-plane connection.
 /// </summary>
 public sealed class TenantContextMiddleware(RequestDelegate next)
@@ -18,48 +26,85 @@ public sealed class TenantContextMiddleware(RequestDelegate next)
     public async Task InvokeAsync(
         HttpContext http,
         TenantContext tenant,
-        ITenantConnectionResolver resolver)
+        ITenantConnectionResolver resolver,
+        IOptions<TenantAuthOptions> authOptions,
+        ILogger<TenantContextMiddleware> log)
     {
-        if (TryParsePositiveInt(http.Request.Headers[UserHeader].FirstOrDefault(), out var userId))
+        var identity = http.User?.Identity;
+        var authenticated = identity is { IsAuthenticated: true };
+
+        if (authenticated)
         {
-            tenant.UserId = userId;
+            ApplyTokenClaims(http.User!, tenant);
+        }
+        else if (authOptions.Value.AllowLegacyHeaders)
+        {
+            await ApplyLegacyHeadersAsync(http, tenant, resolver);
 
-            var options = new DbContextOptionsBuilder<BisyncDbContext>()
-                .UseNpgsql(resolver.DefaultOperationalConnection)
-                .Options;
-            await using var db = new BisyncDbContext(options);
-
-            var user = await db.AppUsers.AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == userId);
-            if (user is not null)
+            if (tenant.UserId is > 0)
             {
-                var role = (user.Role ?? string.Empty).Trim();
-                tenant.IsPlatformAdmin =
-                    role.Contains("Super Admin", StringComparison.OrdinalIgnoreCase)
-                    || role.Contains("Dev Team", StringComparison.OrdinalIgnoreCase)
-                    || role.Equals("DRA Super Admin", StringComparison.OrdinalIgnoreCase);
-
-                if (!tenant.IsPlatformAdmin && user.CompanyId is > 0)
-                    tenant.CompanyId = user.CompanyId;
-                else if (user.CompanyId is > 0)
-                    tenant.CompanyId ??= user.CompanyId;
+                log.LogWarning(
+                    "Legacy header identity accepted for user {UserId} on {Path}. " +
+                    "This client has not been updated to send a bearer token.",
+                    tenant.UserId, http.Request.Path.Value);
             }
         }
 
-        if (TryParsePositiveInt(http.Request.Headers[CompanyHeader].FirstOrDefault(), out var headerCompany))
+        // A platform admin may switch company via header. Everyone else is locked
+        // to the company in their token, regardless of what they send.
+        if (tenant.IsPlatformAdmin
+            && TryParsePositiveInt(http.Request.Headers[CompanyHeader].FirstOrDefault(), out var headerCompany))
         {
-            // Platform admins may switch company. Everyone else is locked to their home tenant.
-            if (tenant.IsPlatformAdmin || tenant.CompanyId is null or <= 0)
-                tenant.CompanyId = headerCompany;
+            tenant.CompanyId = headerCompany;
         }
-        else if (tenant.CompanyId is null or <= 0
-                 && TryParsePositiveInt(http.Request.Query["companyId"].FirstOrDefault(), out var queryCompany)
-                 && tenant.IsPlatformAdmin)
+        else if (tenant.IsPlatformAdmin
+                 && tenant.CompanyId is null or <= 0
+                 && TryParsePositiveInt(http.Request.Query["companyId"].FirstOrDefault(), out var queryCompany))
         {
             tenant.CompanyId = queryCompany;
         }
 
         await next(http);
+    }
+
+    static void ApplyTokenClaims(ClaimsPrincipal principal, TenantContext tenant)
+    {
+        var sub = principal.FindFirstValue(ClaimTypes.NameIdentifier)
+                  ?? principal.FindFirstValue("sub");
+        if (TryParsePositiveInt(sub, out var userId))
+            tenant.UserId = userId;
+
+        tenant.IsPlatformAdmin =
+            principal.FindFirstValue(BisyncRoles.PlatformAdminClaim) == "1";
+
+        if (TryParsePositiveInt(principal.FindFirstValue(BisyncRoles.CompanyClaim), out var companyId))
+            tenant.CompanyId = companyId;
+    }
+
+    /// <summary>Pre-JWT behaviour, retained only for the transition window.</summary>
+    static async Task ApplyLegacyHeadersAsync(
+        HttpContext http,
+        TenantContext tenant,
+        ITenantConnectionResolver resolver)
+    {
+        if (!TryParsePositiveInt(http.Request.Headers[UserHeader].FirstOrDefault(), out var userId))
+            return;
+
+        tenant.UserId = userId;
+
+        var options = new DbContextOptionsBuilder<BisyncDbContext>()
+            .UseNpgsql(resolver.DefaultOperationalConnection)
+            .Options;
+        await using var db = new BisyncDbContext(options);
+
+        var user = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user is null)
+            return;
+
+        tenant.IsPlatformAdmin = BisyncRoles.IsPlatformAdminRole(user.Role);
+
+        if (user.CompanyId is > 0)
+            tenant.CompanyId = user.CompanyId;
     }
 
     static bool TryParsePositiveInt(string? raw, out int value)
