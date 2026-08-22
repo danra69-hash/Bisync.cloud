@@ -200,7 +200,37 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new DateOnlyJsonConverter());
     });
 builder.Services.AddOpenApi();
+builder.Services.Configure<Bisync.Api.Auth.TenantAuthOptions>(
+    builder.Configuration.GetSection(Bisync.Api.Auth.TenantAuthOptions.Section));
+builder.Services.AddSingleton<Bisync.Api.Auth.ITenantTokenService,
+                              Bisync.Api.Auth.TenantTokenService>();
 
+var authOpts = builder.Configuration
+    .GetSection(Bisync.Api.Auth.TenantAuthOptions.Section)
+    .Get<Bisync.Api.Auth.TenantAuthOptions>() ?? new();
+
+builder.Services
+    .AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
+        .JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(o =>
+    {
+        o.RequireHttpsMetadata = true;
+        o.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = authOpts.Issuer,
+            ValidateAudience = true,
+            ValidAudience = authOpts.Audience,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+                System.Text.Encoding.UTF8.GetBytes(
+                    string.IsNullOrWhiteSpace(authOpts.SigningKey)
+                        ? new string('x', 32) : authOpts.SigningKey)),
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+    });
+builder.Services.AddAuthorization();
 var app = builder.Build();
 
 // Do NOT block PORT bind on Cloud SQL bootstrap. EnsureCreated/SchemaPatcher
@@ -299,8 +329,9 @@ else
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseMiddleware<Bisync.Api.Tenancy.TenantContextMiddleware>();
-
 app.Use(async (context, next) =>
 {
     try
