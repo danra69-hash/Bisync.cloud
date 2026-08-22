@@ -21,8 +21,9 @@ public class AuthController(
     ISystemAuditService systemAudit,
     IHttpClientFactory httpClientFactory,
     PlatformLaunchService platformLaunch,
-    LocationSubscriptionService locationSubscriptions) : ControllerBase
-{
+        LocationSubscriptionService locationSubscriptions,
+    Bisync.Api.Auth.ITenantTokenService tokens) : ControllerBase
+    
     public const string CurrentEulaVersion = "2026-07-24";
     public const string CurrentEulaEffectiveDate = "24 July 2026";
     public const string CurrentEulaTitle = "Bisync.cloud End User License Agreement (EULA)";
@@ -145,9 +146,13 @@ public class AuthController(
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
         var locations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
 
-        await systemAudit.RecordLoginAsync(user, company);
+              await systemAudit.RecordLoginAsync(user, company);
 
-        return Ok(MapUser(user, companies, locations));
+        return Ok(new
+        {
+            user = MapUser(user, companies, locations),
+            token = tokens.Issue(user),
+        });
     }
 
     /// <summary>
@@ -467,7 +472,11 @@ public class AuthController(
         {
             var existingCompanies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
             var existingLocations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
-            return Ok(MapUser(user, existingCompanies, existingLocations));
+             return Ok(new
+        {
+            user = MapUser(user, companies, locations),
+            token = tokens.Issue(user),
+        });
         }
 
         var dto = request.Location;
